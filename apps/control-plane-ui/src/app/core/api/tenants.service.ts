@@ -2,7 +2,8 @@ import { HttpClient } from "@angular/common/http";
 import { Injectable, inject } from "@angular/core";
 import { firstValueFrom } from "rxjs";
 
-import type { CreateTenantPayload, TenantSpend, TenantSummary } from "../models/tenant.models";
+import type { CreateTenantPayload } from "../models/create-tenant-payload.model";
+import type { TenantSummary } from "../models/tenant-summary.model";
 
 /**
  * API service for tenant lifecycle operations in the control-plane UI.
@@ -48,7 +49,7 @@ export class TenantApiService
    */
   async suspendTenant(name: string): Promise<void>
   {
-    await firstValueFrom(this._http.post(`${this._baseUrl}/${encodeURIComponent(name)}/suspend`, {}));
+    await this._runTenantAction(name, "suspend");
   }
 
   /**
@@ -57,7 +58,7 @@ export class TenantApiService
    */
   async resumeTenant(name: string): Promise<void>
   {
-    await firstValueFrom(this._http.post(`${this._baseUrl}/${encodeURIComponent(name)}/resume`, {}));
+    await this._runTenantAction(name, "resume");
   }
 
   /**
@@ -66,27 +67,25 @@ export class TenantApiService
    */
   async deleteTenant(name: string): Promise<void>
   {
-    await firstValueFrom(this._http.delete(`${this._baseUrl}/${encodeURIComponent(name)}`));
+    await firstValueFrom(this._http.delete(this._tenantUrl(name)));
   }
-}
-
-/**
- * API service for tenant spend and budget data.
- */
-@Injectable({ providedIn: "root" })
-export class SpendApiService
-{
-  private readonly _http = inject(HttpClient);
-  private readonly _baseUrl = "/api/ai-budget";
 
   /**
-   * Get spend summary for a specific tenant.
-   * @param tenantName - Tenant unique identifier.
+   * Build the canonical tenant URL using a URL-safe tenant name.
+   * @param name - Tenant unique identifier.
    */
-  async getTenantSpend(tenantName: string): Promise<TenantSpend>
+  private _tenantUrl(name: string): string
   {
-    return await firstValueFrom(
-      this._http.get<TenantSpend>(`${this._baseUrl}/${encodeURIComponent(tenantName)}/spend`),
-    );
+    return `${this._baseUrl}/${encodeURIComponent(name)}`;
+  }
+
+  /**
+   * Execute a standard tenant lifecycle action (suspend/resume).
+   * @param name - Tenant unique identifier.
+   * @param action - Lifecycle action path segment.
+   */
+  private async _runTenantAction(name: string, action: "suspend" | "resume"): Promise<void>
+  {
+    await firstValueFrom(this._http.post(`${this._tenantUrl(name)}/${action}`, {}));
   }
 }

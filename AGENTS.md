@@ -373,3 +373,19 @@ Always create reusable UI components before writing repeated page-level markup.
 
 - All HTTP calls must go through dedicated `core/api` services.
 - Do not issue HTTP requests directly from templates or shared presentational components.
+
+### Angular Signals, Resources, and Forms
+
+- Prefer `resource(...)` for async read/loading flows in components instead of imperative `ngOnInit` data-fetch logic.
+- Prefer `computed(...)`/`effect(...)` orchestration over manual imperative state transitions when deriving UI state.
+- Prefer signal-driven form state for new forms; avoid introducing new `ngModel`-driven feature forms unless required by a specific existing integration.
+
+### Component Template Placement
+
+- Component templates must be defined in separate `*.component.html` files.
+- Do not use inline template literals in `@Component` metadata for feature or shared UI components.
+
+### Enum-First UI State
+
+- Avoid magic strings in component decision logic.
+- Use enums (for example lifecycle phases) and `switch`-based mapping helpers for status-to-UI conversions.

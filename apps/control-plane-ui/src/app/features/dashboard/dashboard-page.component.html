@@ -1,0 +1,32 @@
+<div class="p-4">
+  <div class="flex justify-content-between align-items-center mb-4">
+    <h1 class="text-2xl font-bold m-0">Dashboard</h1>
+    <a routerLink="/provision">
+      <p-button label="New Tenant" icon="pi pi-plus" />
+    </a>
+  </div>
+
+  @if (_loading()) {
+    <div class="flex justify-content-center p-6">
+      <p-progressSpinner />
+    </div>
+  } @else if (_error()) {
+    <p-message severity="error" [text]="_error()!" />
+  } @else if (_tenants().length === 0) {
+    <div class="text-center p-6 text-color-secondary">
+      <p>No tenants found. <a routerLink="/provision">Create your first tenant.</a></p>
+    </div>
+  } @else {
+    <div class="grid">
+      @for (tenant of _tenants(); track tenant.name) {
+        <div class="col-12 md:col-6 lg:col-4">
+          <oc-tenant-card [tenant]="tenant" />
+        </div>
+      }
+    </div>
+    <p class="text-color-secondary text-sm mt-3">
+      {{ _tenants().length }} tenant{{ _tenants().length === 1 ? "" : "s" }} total —
+      {{ _runningCount() }} running
+    </p>
+  }
+</div>

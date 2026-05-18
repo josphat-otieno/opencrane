@@ -3,7 +3,7 @@ import { CommonModule } from "@angular/common";
 import { TagModule } from "primeng/tag";
 import { ProgressBarModule } from "primeng/progressbar";
 
-import type { TenantSpend } from "../../core/models/tenant.models";
+import { TenantSpendAlertState, type TenantSpend } from "../../../core/models/tenant-spend.model";
 
 /**
  * Compact spend chart component showing a tenant's budget usage as a progress bar.
@@ -13,26 +13,7 @@ import type { TenantSpend } from "../../core/models/tenant.models";
   selector: "oc-spend-chart",
   standalone: true,
   imports: [CommonModule, TagModule, ProgressBarModule],
-  template: `
-    <div class="flex flex-column gap-2">
-      <div class="flex justify-content-between align-items-center">
-        <span class="text-sm font-medium">Budget usage</span>
-        <p-tag
-          [value]="_alertLabel(spend.budgetAlertState)"
-          [severity]="_alertSeverity(spend.budgetAlertState)"
-        />
-      </div>
-      <p-progressbar
-        [value]="_usagePercent()"
-        [showValue]="false"
-        [style]="{ height: '8px' }"
-      />
-      <div class="flex justify-content-between text-sm text-color-secondary">
-        <span>\${{ spend.spentUsd.toFixed(2) }} spent</span>
-        <span>\${{ spend.budgetUsd.toFixed(2) }} budget</span>
-      </div>
-    </div>
-  `,
+  templateUrl: "./spend-chart.component.html",
 })
 export class SpendChartComponent
 {
@@ -58,13 +39,17 @@ export class SpendChartComponent
    */
   _alertLabel(state: TenantSpend["budgetAlertState"]): string
   {
-    const map: Record<TenantSpend["budgetAlertState"], string> = {
-      ok: "OK",
-      warning: "Warning",
-      exceeded: "Exceeded",
-    };
-
-    return map[state];
+    switch (state)
+    {
+      case TenantSpendAlertState.Ok:
+        return "OK";
+      case TenantSpendAlertState.Warning:
+        return "Warning";
+      case TenantSpendAlertState.Exceeded:
+        return "Exceeded";
+      default:
+        return "OK";
+    }
   }
 
   /**
@@ -73,12 +58,16 @@ export class SpendChartComponent
    */
   _alertSeverity(state: TenantSpend["budgetAlertState"]): "success" | "warn" | "danger"
   {
-    const map: Record<TenantSpend["budgetAlertState"], "success" | "warn" | "danger"> = {
-      ok: "success",
-      warning: "warn",
-      exceeded: "danger",
-    };
-
-    return map[state];
+    switch (state)
+    {
+      case TenantSpendAlertState.Ok:
+        return "success";
+      case TenantSpendAlertState.Warning:
+        return "warn";
+      case TenantSpendAlertState.Exceeded:
+        return "danger";
+      default:
+        return "success";
+    }
   }
 }

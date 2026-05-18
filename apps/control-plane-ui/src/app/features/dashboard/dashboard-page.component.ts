@@ -1,13 +1,13 @@
-import { Component, inject, OnInit, signal } from "@angular/core";
 import { CommonModule } from "@angular/common";
+import { Component, computed, inject, resource } from "@angular/core";
 import { RouterModule } from "@angular/router";
 import { ButtonModule } from "primeng/button";
-import { ProgressSpinnerModule } from "primeng/progressspinner";
 import { MessageModule } from "primeng/message";
+import { ProgressSpinnerModule } from "primeng/progressspinner";
 
 import { TenantApiService } from "../../core/api/tenants.service";
+import { TenantPhase } from "../../core/models/tenant-phase.enum";
 import { TenantCardComponent } from "../../shared/components/tenant-card/tenant-card.component";
-import type { TenantSummary } from "../../core/models/tenant.models";
 
 /**
  * Dashboard feature page — lists all tenants the current user has access to,
@@ -24,83 +24,33 @@ import type { TenantSummary } from "../../core/models/tenant.models";
     MessageModule,
     TenantCardComponent,
   ],
-  template: `
-    <div class="p-4">
-      <div class="flex justify-content-between align-items-center mb-4">
-        <h1 class="text-2xl font-bold m-0">Dashboard</h1>
-        <a routerLink="/provision">
-          <p-button label="New Tenant" icon="pi pi-plus" />
-        </a>
-      </div>
-
-      @if (_loading()) {
-        <div class="flex justify-content-center p-6">
-          <p-progressSpinner />
-        </div>
-      } @else if (_error()) {
-        <p-message severity="error" [text]="_error()!" />
-      } @else if (_tenants().length === 0) {
-        <div class="text-center p-6 text-color-secondary">
-          <p>No tenants found. <a routerLink="/provision">Create your first tenant.</a></p>
-        </div>
-      } @else {
-        <div class="grid">
-          @for (tenant of _tenants(); track tenant.name) {
-            <div class="col-12 md:col-6 lg:col-4">
-              <oc-tenant-card [tenant]="tenant" />
-            </div>
-          }
-        </div>
-        <p class="text-color-secondary text-sm mt-3">
-          {{ _tenants().length }} tenant{{ _tenants().length === 1 ? "" : "s" }} total —
-          {{ _runningCount() }} running
-        </p>
-      }
-    </div>
-  `,
+  templateUrl: "./dashboard-page.component.html",
 })
-export class DashboardPageComponent implements OnInit
+export class DashboardPageComponent
 {
   /** Injected tenant API service. */
   private readonly _tenantApi = inject(TenantApiService);
 
+  /** Resource-backed tenant list that reloads on demand and tracks loading/error state. */
+  private readonly _tenantsResource = resource({
+    loader: async () => await this._tenantApi.listTenants(),
+    defaultValue: [],
+  });
+
   /** Reactive tenant list. */
-  readonly _tenants = signal<TenantSummary[]>([]);
+  readonly _tenants = computed(() => this._tenantsResource.value());
 
   /** Loading state flag. */
-  readonly _loading = signal(true);
+  readonly _loading = computed(() => this._tenantsResource.isLoading());
 
   /** Error message when the API call fails. */
-  readonly _error = signal<string | null>(null);
-
-  /**
-   * Load tenants from the API on component initialisation.
-   */
-  async ngOnInit(): Promise<void>
-  {
-    try
-    {
-      // 1. Fetch the tenant list — rendered immediately into the card grid.
-      const tenants = await this._tenantApi.listTenants();
-      this._tenants.set(tenants);
-    }
-    catch (err)
-    {
-      // 2. Capture the error for display rather than crashing the component.
-      this._error.set(err instanceof Error ? err.message : "Failed to load tenants");
-    }
-    finally
-    {
-      // 3. Always clear the loading spinner regardless of success or failure.
-      this._loading.set(false);
-    }
-  }
+  readonly _error = computed(() => this._tenantsResource.error()?.message ?? null);
 
   /**
    * Count tenants currently in the Running phase.
    */
-  _runningCount(): number
+  readonly _runningCount = computed(() =>
   {
-    return this._tenants().filter(function _isRunning(t) { return t.phase === "Running"; }).length;
-  }
+    return this._tenants().filter(t => t.phase === TenantPhase.Running).length;
+  });
 }
