@@ -1,4 +1,4 @@
-import { Component, signal } from "@angular/core";
+import { Component, inject, signal } from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { Router, RouterModule } from "@angular/router";
@@ -123,10 +123,10 @@ import type { CreateTenantPayload } from "../../core/models/tenant.models";
 export class ProvisionPageComponent
 {
   /** Injected tenant API service. */
-  private readonly _tenantApi = new TenantApiService();
+  private readonly _tenantApi = inject(TenantApiService);
 
   /** Angular router for post-creation redirect. */
-  private readonly _router = new Router();
+  private readonly _router = inject(Router);
 
   /** Form field values bound via ngModel. */
   readonly _form: CreateTenantPayload = {

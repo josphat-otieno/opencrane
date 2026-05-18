@@ -1,4 +1,4 @@
-import { Component, OnInit, signal } from "@angular/core";
+import { Component, inject, OnInit, signal } from "@angular/core";
 import { ActivatedRoute, Router, RouterModule } from "@angular/router";
 import { CommonModule } from "@angular/common";
 import { ButtonModule } from "primeng/button";
@@ -139,16 +139,16 @@ import type { TenantSpend, TenantSummary } from "../../core/models/tenant.models
 export class TenantDetailPageComponent implements OnInit
 {
   /** Injected tenant API service. */
-  private readonly _tenantApi = new TenantApiService();
+  private readonly _tenantApi = inject(TenantApiService);
 
   /** Injected spend API service. */
-  private readonly _spendApi = new SpendApiService();
+  private readonly _spendApi = inject(SpendApiService);
 
   /** Confirmation dialog service. */
-  private readonly _confirmationService = new ConfirmationService();
+  private readonly _confirmationService = inject(ConfirmationService);
 
   /** Angular router for navigation after delete. */
-  private readonly _router = new Router();
+  private readonly _router = inject(Router);
 
   /** Tenant name from the route parameter. */
   _tenantName = "";
@@ -169,7 +169,7 @@ export class TenantDetailPageComponent implements OnInit
   readonly _error = signal<string | null>(null);
 
   /** Route for accessing the tenant name parameter. */
-  private readonly _route = new ActivatedRoute();
+  private readonly _route = inject(ActivatedRoute);
 
   /**
    * Load tenant and spend data on component initialisation.

@@ -1,4 +1,4 @@
-import { Component, OnInit, signal } from "@angular/core";
+import { Component, inject, OnInit, signal } from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { RouterModule } from "@angular/router";
 import { ButtonModule } from "primeng/button";
@@ -111,7 +111,7 @@ import type { TenantSummary } from "../../core/models/tenant.models";
 export class AdminPanelPageComponent implements OnInit
 {
   /** Injected tenant API service. */
-  private readonly _tenantApi = new TenantApiService();
+  private readonly _tenantApi = inject(TenantApiService);
 
   /** Full unfiltered tenant list. */
   readonly _tenants = signal<TenantSummary[]>([]);
