@@ -19,7 +19,30 @@ export function _GetTenantPhaseSeverity(phase: string): TenantPhaseTagSeverity
       return "warn";
     case TenantPhase.Error:
       return "danger";
+    case TenantPhase.Unknown:
+      return "secondary";
     default:
       return "secondary";
+  }
+}
+
+/**
+ * Parse an API-provided phase value into a known enum variant.
+ * @param phase - Raw lifecycle phase string from API payload.
+ */
+export function _ParseTenantPhase(phase: string): TenantPhase
+{
+  switch (phase)
+  {
+    case TenantPhase.Running:
+      return TenantPhase.Running;
+    case TenantPhase.Pending:
+      return TenantPhase.Pending;
+    case TenantPhase.Suspended:
+      return TenantPhase.Suspended;
+    case TenantPhase.Error:
+      return TenantPhase.Error;
+    default:
+      return TenantPhase.Unknown;
   }
 }

@@ -12,7 +12,7 @@ export interface TenantSummary
   /** Optional team name. */
   team?: string;
   /** Lifecycle phase (e.g. "Running", "Pending", "Suspended", "Error"). */
-  phase: TenantPhase | string;
+  phase: TenantPhase;
   /** Ingress hostname when provisioned. */
   ingressHost?: string;
   /** ISO-8601 creation timestamp. */

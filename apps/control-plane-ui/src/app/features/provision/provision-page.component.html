@@ -10,7 +10,7 @@
           (input)="_name.set($any($event.target).value)"
           placeholder="e.g. acme-engineering"
           required
-          pattern="^[a-z0-9-]+$"
+          [attr.pattern]="_tenantNamePattern"
         />
         <small class="text-color-secondary">Lowercase letters, numbers, and hyphens only.</small>
       </div>
@@ -37,6 +37,7 @@
           (input)="_email.set($any($event.target).value)"
           placeholder="owner@example.com"
           required
+          [attr.pattern]="_emailPattern"
         />
       </div>
 
@@ -58,7 +59,7 @@
           id="budget"
           type="number"
           [value]="_monthlyBudgetUsd() ?? ''"
-          (input)="_monthlyBudgetUsd.set($any($event.target).value === '' ? null : +$any($event.target).value)"
+          (input)="_onBudgetInput($event)"
           [min]="0"
           step="10"
           placeholder="200"

@@ -9,6 +9,9 @@ import { MessageModule } from "primeng/message";
 import type { CreateTenantPayload } from "../../core/models/create-tenant-payload.model";
 import { TenantApiService } from "../../core/api/tenants.service";
 
+const TENANT_NAME_PATTERN = "^[a-z0-9-]+$";
+const EMAIL_PATTERN = "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$";
+
 interface CreateTenantRequestState
 {
   id: number;
@@ -52,6 +55,9 @@ export class ProvisionPageComponent
   /** Pending create request state. */
   private readonly _createRequest = signal<CreateTenantRequestState | null>(null);
 
+  /** Redirect timeout handle for post-create navigation. */
+  private _redirectTimer: ReturnType<typeof setTimeout> | undefined = undefined;
+
   /** Tenant ID field. */
   readonly _name = signal("");
 
@@ -73,6 +79,12 @@ export class ProvisionPageComponent
   /** Whether the submission succeeded. */
   readonly _success = signal(false);
 
+  /** Regex pattern used by the template and computed validation for tenant IDs. */
+  readonly _tenantNamePattern = TENANT_NAME_PATTERN;
+
+  /** Regex pattern used by the template and computed validation for email addresses. */
+  readonly _emailPattern = EMAIL_PATTERN;
+
   /** Computed request payload from the signal-form state. */
   readonly _payload = computed<CreateTenantPayload>(() =>
   {
@@ -89,8 +101,8 @@ export class ProvisionPageComponent
   readonly _canSubmit = computed(() =>
   {
     const payload = this._payload();
-    const isNameValid = /^[a-z0-9-]+$/.test(payload.name);
-    const isEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.email);
+    const isNameValid = new RegExp(this._tenantNamePattern).test(payload.name);
+    const isEmailValid = new RegExp(this._emailPattern).test(payload.email);
     const isBudgetValid = payload.monthlyBudgetUsd === undefined || payload.monthlyBudgetUsd >= 0;
 
     return payload.name.length > 0
@@ -122,6 +134,16 @@ export class ProvisionPageComponent
 
   constructor()
   {
+    // 1. Register one destroy-time cleanup to prevent pending redirect timers from leaking after navigation.
+    this._destroyRef.onDestroy(() =>
+    {
+      if (this._redirectTimer)
+      {
+        clearTimeout(this._redirectTimer);
+      }
+    });
+
+    // 2. React to resource transitions so submit requests map to either inline errors or successful redirect flow.
     effect(() =>
     {
       const request = this._createRequest();
@@ -130,6 +152,7 @@ export class ProvisionPageComponent
         return;
       }
 
+      // 3. Ignore intermediate loading states because only terminal states should update user-visible submission feedback.
       if (this._createTenantResource.isLoading())
       {
         return;
@@ -151,21 +174,27 @@ export class ProvisionPageComponent
         this._success.set(true);
         this._createRequest.set(null);
 
-        let redirectTimer: ReturnType<typeof setTimeout> | undefined = undefined;
-        this._destroyRef.onDestroy(function _cancelRedirect()
+        if (this._redirectTimer)
         {
-          if (redirectTimer)
-          {
-            clearTimeout(redirectTimer);
-          }
-        });
+          clearTimeout(this._redirectTimer);
+        }
 
-        redirectTimer = setTimeout(async () =>
+        this._redirectTimer = setTimeout(async () =>
         {
           await this._router.navigate(["/dashboard"]);
         }, 1500);
       }
     });
+  }
+
+  /**
+   * Update the optional budget signal from a numeric input event payload.
+   * @param event - Native input event from the budget field.
+   */
+  _onBudgetInput(event: Event): void
+  {
+    const rawValue = (event.target as HTMLInputElement).value;
+    this._monthlyBudgetUsd.set(rawValue === "" ? null : +rawValue);
   }
 
   /**

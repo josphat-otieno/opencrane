@@ -18,7 +18,7 @@ export interface TenantSpend
   /** Remaining budget (budgetUsd - spentUsd). */
   remainingUsd: number;
   /** Budget alert state ("ok" | "warning" | "exceeded"). */
-  budgetAlertState: TenantSpendAlertState;
+  budgetAlertState: TenantSpendAlertState | string;
   /** ISO-8601 timestamp of the spend report. */
   reportedAt: string;
 }
