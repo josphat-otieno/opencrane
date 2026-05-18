@@ -60,6 +60,57 @@ spec:
                   items:
                     type: string
                   description: Skill paths to mount from the shared volume
+                skillAllowlist:
+                  type: array
+                  items:
+                    type: string
+                  description: >-
+                    Durable per-tenant skill name allowlist. When present, only skills
+                    in this list are linked at startup. Takes precedence over the OPENCRANE_ALLOWED_SKILLS env var.
+                    Use this field instead of spec.skills for auditable skill governance.
+                mcpPolicy:
+                  type: object
+                  description: >-
+                    Per-tenant MCP server allow/deny policy applied at invocation level.
+                    Complements the AccessPolicy mcpServers field with tenant-specific overrides.
+                  properties:
+                    allow:
+                      type: array
+                      items:
+                        type: string
+                      description: MCP server names explicitly allowed for this tenant.
+                    deny:
+                      type: array
+                      items:
+                        type: string
+                      description: MCP server names explicitly denied for this tenant.
+                channels:
+                  type: object
+                  description: Channel configuration for tenant communication integrations.
+                  properties:
+                    slack:
+                      type: object
+                      description: Slack workspace and channel configuration.
+                      properties:
+                        workspaceId:
+                          type: string
+                          description: Slack workspace/team ID (xoxb-... prefix value).
+                        channelId:
+                          type: string
+                          description: Slack channel ID where the tenant bot posts status (C...).
+                        botTokenSecretName:
+                          type: string
+                          description: Name of the Kubernetes Secret containing the Slack bot token.
+                    whatsapp:
+                      type: object
+                      description: WhatsApp Business API channel configuration.
+                      properties:
+                        phoneNumber:
+                          type: string
+                          description: WhatsApp phone number in E.164 format (e.g. "+15551234567").
+                        credentialsSecretName:
+                          type: string
+                          description: Name of the Kubernetes Secret containing WhatsApp API credentials.
                 configOverrides:
                   type: object
                   x-kubernetes-preserve-unknown-fields: true

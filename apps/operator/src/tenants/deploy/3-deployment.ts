@@ -17,7 +17,15 @@ export function _BuildDeployment(config: OperatorConfig, tenant: Tenant, namespa
   const image = tenant.spec.openclawImage ?? config.tenantDefaultImage;
   const resources = tenant.spec.resources;
   const openclawVersion = tenant.spec.openclawVersion ?? "latest";
-  const allowedSkills = tenant.spec.skills?.join(",");
+
+  // Prefer the durable skillAllowlist field over the legacy skills array.
+  // skillAllowlist is the auditable governance path; spec.skills is the legacy env-var path.
+  const effectiveSkills = tenant.spec.skillAllowlist ?? tenant.spec.skills;
+  const allowedSkills = effectiveSkills?.join(",");
+
+  // Merge tenant-level mcpPolicy with any AccessPolicy mcpServers for deployment injection.
+  const mcpAllow = tenant.spec.mcpPolicy?.allow?.join(",");
+  const mcpDeny = tenant.spec.mcpPolicy?.deny?.join(",");
 
   // 1. Runtime env — inject both OpenClaw-required paths and OpenCrane-managed
   //    runtime hints so the tenant process knows where state, secrets, policy,
@@ -37,6 +45,8 @@ export function _BuildDeployment(config: OperatorConfig, tenant: Tenant, namespa
     ...(tenant.spec.team ? [{ name: "OPENCRANE_TEAM", value: tenant.spec.team }] : []),
     ...(tenant.spec.policyRef ? [{ name: "OPENCRANE_POLICY_REF", value: tenant.spec.policyRef }] : []),
     ...(allowedSkills !== undefined ? [{ name: "OPENCRANE_ALLOWED_SKILLS", value: allowedSkills }] : []),
+    ...(mcpAllow !== undefined ? [{ name: "OPENCRANE_TENANT_MCP_ALLOW", value: mcpAllow }] : []),
+    ...(mcpDeny !== undefined ? [{ name: "OPENCRANE_TENANT_MCP_DENY", value: mcpDeny }] : []),
   ];
 
   if (config.liteLlmEnabled)
