@@ -43,6 +43,12 @@ This is an updated roadmap for shipping OpenCrane, the enterprise multi-tenant A
 - Added configurable threshold evaluation to `GET /api/metrics/projection-drift` so the API now exposes basic drift alert state alongside mismatch counts.
 - Added projection lag metrics to `GET /api/metrics/projection-drift`, derived from drifted row `updatedAt` timestamps so dashboards can estimate how stale current mismatches are.
 
+**Live update (2026-05-25)**:
+- Memory architecture direction is now set: OpenClaw remains the source-system integration layer and writes through to Cognee for tenant-scoped memory orchestration.
+- The earlier "uncertain strict tenancy fit" concern is retired for Cognee. Tenancy and RBAC are treated as supported via Cognee's dataset-level EBAC model.
+- Memory adoption gate is now explicit: dataset granularity choice, AccessPolicy-to-Cognee permission mapping, source-permission propagation, and freshness invalidation strategy are mandatory before production cutover. Self-hosted audit parity is tracked as an operational hardening item.
+- `docs/memory.md` is now the canonical target-state design for the memory layer.
+
 **Strategic approach**: OpenCrane differentiates by combining:
 - **Architectural advantages**: GCS Fuse CSI + Workload Identity (cloud-native isolation), dual-write pattern (CRDs + PostgreSQL), policy-first governance (AccessPolicy CRDs → CiliumNetworkPolicy).
 - **Tactical features**: Cost control (LiteLLM), self-service UX (web + Slack), fleet operations (auto-update, metrics, channel management).
@@ -413,7 +419,14 @@ All Phase 2 architecture questions are now decided. Decisions are marked with th
 6. **Org Knowledge Index Model** — **DECIDED**
    - **Decision**: Minimum canonical schema: `source`, `sourceId`, `owner`, `teamScope`, `sensitivityTags`, `title`, `content`, `contentHash`, `embeddingReady`, `ingestedAt`, `updatedAt`. All fields except `title` and `teamScope` are mandatory.
    - **Decision**: RBAC filtering uses `owner` and `teamScope`. Sensitivity tags are metadata only for Phase 2; they gate retrieval starting Phase 3.
-   - **Decision**: PostgreSQL-only for MVP. pgvector, Cognee, and alternative memory stacks are under comparative review before Phase 3 memory architecture lock.
+   - **Decision**: PostgreSQL-only for current Phase 2 runtime remains in place. To be removed as part of phase 3.
+   - **Decision**: Target memory state for Phase 3+ is Cognee orchestration with OpenClaw write-through ingestion (`docs/memory.md`). OpenClaw remains responsible for source connectors (SharePoint and other enterprise systems).
+   - **Decision**: Dataset granularity is hierarchical: org-wide datasets are shared within tenant boundaries, plus team-wide, project-wide, and personal datasets. Tenant access to project/team/department datasets is bound from the control-plane.
+   - **Decision**: AccessPolicy mapping is controlled by the control-plane, which assigns tenant/user access to project and department datasets and translates policy outcomes to Cognee permission grants.
+   - **Decision**: Source-permission propagation follows user/OpenClaw-initiated copy semantics: content is copied into destination datasets chosen by user action and policy-checked by OpenClaw.
+   - **Decision**: Freshness invalidation uses source version metadata and user-driven revalidation: re-fetch when memory is older than 1 day for the originating user, when explicitly requested, or when source edits are detected through OpenClaw actions.
+   - **Decision**: Self-hosted Cognee audit-log parity is tracked as nice-to-have hardening and follows Cognee's self-hosted roadmap; it is not a hard cutover blocker for the initial rollout.
+   - **Decision**: Memory cutover requires the adoption gate to pass: dataset granularity lock, AccessPolicy mapping, source-permission propagation, and freshness invalidation controls.
 
 7. **Retrieval Authorization Model** — **DECIDED**
    - **Decision**: AccessPolicy is the sole enforcement source for retrieval allow/deny decisions. No additional ACL layer for Phase 2.
@@ -957,5 +970,9 @@ Already complete from previous cycle. Key generation, budget enforcement, spend 
 - Approval flow routes — `POST /api/tenants/approve/:name` and `spec.approvalRequired` CRD field.
 - Channel credential injection into tenant pods (needs Secret reference wiring in deployment builder).
 - GCS snapshot before canary rollback.
+- Memory cutover implementation from PostgreSQL-only retrieval to Cognee write-through (`docs/memory.md`) with AccessPolicy-compatible authorization.
+- Dataset granularity implementation and migration plan for source-restricted content (tenant-wide vs group/user-restricted documents).
+- Optional hardening: verify self-hosted Cognee audit completeness against OpenCrane incident and compliance requirements.
+- Freshness/invalidation implementation using source ETag/version metadata and age-based revalidation.
 - GCP smoke re-validation after Phase 2 changes.
 - DNS + ingress verification.
