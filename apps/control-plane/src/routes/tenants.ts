@@ -1,6 +1,6 @@
 import * as k8s from "@kubernetes/client-node";
 import { Router } from "express";
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 
 import type { CreateTenantRequest, TenantDatasetsResponse, TenantResponse, UpdateTenantDatasetsRequest } from "../types.js";
 import { _DetectTenantProjectionDrift } from "./internal/projection-drift.js";
@@ -175,7 +175,7 @@ export function tenantsRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCli
           action: "DatasetsUpdated",
           resource: `Tenant/${name}`,
           message: `Dataset memberships updated for tenant ${name}`,
-          metadata: membership,
+          metadata: membership as unknown as Prisma.InputJsonValue,
         },
       });
     }
