@@ -51,11 +51,11 @@ This is an updated roadmap for shipping OpenCrane, the enterprise multi-tenant A
 
 **Strategic approach**: OpenCrane differentiates by combining:
 - **Architectural advantages**: GCS Fuse CSI + Workload Identity (cloud-native isolation), dual-write pattern (CRDs + PostgreSQL), policy-first governance (AccessPolicy CRDs → CiliumNetworkPolicy).
-- **Tactical features**: Cost control (LiteLLM), self-service UX (web + Slack), fleet operations (auto-update, metrics, channel management).
+- **Tactical features**: Cost control (LiteLLM), self-service UX (web portal), memory cutover (Cognee write-through).
 
 **Next move**: Execute a dual-track Phase 2 (LiteLLM governance + retrieval/org-knowledge foundation), while keeping Phase 1 regression checks green in CI.
 
-**Effort**: ~342 hours over 8–10 weeks (2 engineers + 1 ops), assuming clear architecture decisions upfront.
+**Effort**: ~282 hours over 7–9 weeks (2 engineers + 1 ops), assuming clear architecture decisions upfront.
 
 ---
 
@@ -63,7 +63,7 @@ This is an updated roadmap for shipping OpenCrane, the enterprise multi-tenant A
 
 Ship a production-grade multi-tenant OpenClaw platform that is:
 1. **Architecturally differentiated**: GCS + IAM isolation, dual-write pattern, Crossplane-driven.
-2. **Feature-complete for org rollout**: Cost control (LiteLLM), self-service UI, fleet updates.
+2. **Feature-complete for org rollout**: Cost control (LiteLLM), self-service UI, memory upgrade.
 3. **Operationally sound**: Observability, role-based access, policy-driven governance.
 
 ---
@@ -80,8 +80,8 @@ This section translates the current README narrative into explicit delivery scop
 | Cost governance and budget controls | In progress | Phase 2 |
 | Retrieval plugin with RBAC-filtered org context | Foundation only today | Phase 2-3 |
 | Company-wide harvesting agents + org index | Not shipped | Phase 2-3 |
-| Self-service provisioning (web + Slack) | Not shipped | Phase 3 |
-| Fleet operations (updates, metrics, channels) | Not shipped | Phase 4 |
+| Self-service provisioning (web portal) | In progress | Phase 3 |
+| Memory orchestration cutover (Cognee write-through) | Planned | Phase 3 |
 
 ### Steering Rule For Docs And Pitch
 
@@ -97,8 +97,8 @@ No feature should move to "Available now" until success criteria are met and the
 1. **Platform trust**: close deferred hardening, dual-write safety, and CI release gates.
 2. **Economic control**: complete LiteLLM keying/spend enforcement and budget visibility.
 3. **Organizational intelligence**: ship retrieval SDK, org index schema, and harvesting-agent MVP.
-4. **Self-service adoption**: deliver tenant provisioning UX and Slack operations flow.
-5. **Operational maturity**: canary updates, rollback safety, metrics, and channel governance.
+4. **Self-service adoption**: deliver tenant provisioning UX with clear auth and audit path.
+5. **Memory adoption**: cut over from PostgreSQL-only retrieval to Cognee write-through memory orchestration.
 
 ### Exit Criteria For "README Realized" (Production Narrative)
 
@@ -393,13 +393,13 @@ All Phase 2 architecture questions are now decided. Decisions are marked with th
 
 1. **LiteLLM Deployment Model** — **DECIDED**
    - **Decision**: LiteLLM deploys in the same namespace (`opencrane`) as the operator and control-plane. No separate namespace until traffic warrants it.
-   - **Decision**: LiteLLM shares the platform PostgreSQL for Phase 2; a dedicated database is a Phase 4+ upgrade if write throughput requires it.
+   - **Decision**: LiteLLM shares the platform PostgreSQL for Phase 2; a dedicated database is a post-Phase-3 upgrade if write throughput requires it.
    - **Decision**: Master key and database URL remain chart-managed (Secret-backed); LiteLLM model config is installer-managed via a separate ConfigMap that operators update without chart upgrades.
 
 2. **Virtual Key Generation** — **DECIDED**
    - **Decision**: Operator initiates virtual key creation synchronously during Tenant reconcile (Step 4 of reconcile loop). Reconcile blocks until the key is stored, with the LiteLLM API call retried on transient failures.
    - **Decision**: Keys are static per tenant (no auto-rotation). Revocation is manual via `POST /api/ai-budget/:tenantName/litellm-key/revoke`.
-   - **Decision**: A pool-based pre-generation path is deferred to Phase 4 if reconcile latency becomes a problem.
+   - **Decision**: A pool-based pre-generation path is deferred to a later optimization backlog if reconcile latency becomes a problem.
 
 3. **Spend Tracking** — **DECIDED**
    - **Decision**: Spend is tracked per tenant (primary) and per model (secondary). The `/api/ai-budget/:tenantName/spend` route queries LiteLLM usage API in real time and augments with local budget metadata from PostgreSQL.
@@ -559,70 +559,63 @@ platform/
 
 ---
 
-## Phase 3: Self-Service Provisioning
+## Phase 3: Self-Service Provisioning + Memory Cutover
 
-### Architecture Checkpoint: Self-Service UI & Slack Bot
+### Architecture Checkpoint: Portal, Auth, and Memory Rollout
 
-Before building the portal and Slack bot, decide:
+Before finishing this phase, lock the following:
 
 1. **Web Portal Stack**
-   - Portal is embedded in the existing control-plane-ui (Angular). No separate Next.js app.
-   - Should auth be OIDC (Google/company SSO) or stay on bearer tokens from the control-plane API?
-   - Should the portal features require a new Angular route module or extend existing feature structure?
+   - Portal remains embedded in the existing control-plane-ui (Angular). No separate Next.js app.
+   - Auth baseline for this phase is bearer token.
+   - OIDC is explicitly deferred to future work.
 
 2. **Tenant Provisioning Model**
-   - Should self-provisioning create Tenant CRs directly (unrestricted), or require admin approval?
-   - Should there be a limited set of allowed names/teams, or open-form naming?
-   - Should users be able to pin OpenClaw versions, or always use `latest`?
-   - Should users be able to set resource limits (CPU/memory/storage), or use org defaults only?
+   - Self-provisioning creates Tenant CRs directly for Phase 3 scope.
+   - Naming/team constraints and resource defaults are policy-driven by the control-plane.
+   - Version pinning remains supported through the existing OpenClaw version field.
 
-3. **Slack Bot Scope**
-   - Should `/opencrane create` be a simple command (create with name only) or a form interaction?
-   - Should the bot support other commands (logs, restart, delete)? Or just create/status/delete for Phase 3?
-   - Should it post detailed status to a #opencrane-announcements channel, or DM the user?
-   - Should it integrate with approval workflows (if enabled), or auto-approve?
+3. **Approval and 2FA Direction**
+   - Approval flow is moved to future work and is not a Phase 3 gate.
+   - When approval flow is enabled later, it uses bearer-token auth initially.
+   - Add an optional 2FA toggle for approval actions as part of that future approval rollout.
 
-4. **Data Model**
-   - Should we add a `createdBy` and `lastModifiedBy` field to Tenant spec to track ownership?
-   - Should there be a `requestStatus` field (Pending, Approved, Rejected) in the Tenant CRD?
-   - Should audit log include who created/deleted/approved each tenant?
+4. **Memory Upgrade Rollout**
+   - Move memory cutover into this phase: migrate from PostgreSQL-only retrieval runtime to Cognee write-through orchestration.
+   - Keep OpenClaw as source connector and policy enforcement boundary.
+   - Enforce dataset granularity, AccessPolicy mapping, source-permission propagation, and freshness invalidation as mandatory rollout gates.
 
-5. **Approval Workflow (Optional)**
-   - If approvals are required, who approves? (All admins, specific team, automatically after 24h?)
-   - Should approval be in the portal, via Slack reaction, or both?
-   - Should unapproved tenants consume resources (stay in Pending state without Deployment)?
-
-**Action**: Decide on OIDC vs. bearer token auth, approval logic, and scope (portal only, Slack only, or both) before writing code.
+**Action**: Ship portal + memory cutover in Phase 3 with bearer-token baseline auth. Keep approval workflow and OIDC in future work, and carry optional approval 2FA as a planned extension.
 
 ---
 
 ### Deliverables
 
 1. **Web Portal** (embedded in apps/control-plane-ui)
-   - Angular 20 feature modules added to the existing control-plane-ui app.
+   - Angular 20 feature modules in the existing control-plane-ui app.
    - API calls go through dedicated core services in `core/api/`.
    - Feature pages:
      - **Dashboard**: List my tenants, health, spend, last reconciled.
      - **Provision**: Form (name, email, team, openclawVersion pin, policy).
      - **Tenant Detail**: Config view, logs, resource usage.
-     - **Admin Panel**: List all tenants, approve pending requests, view audit log.
-   - Auth: bearer token (interim); OIDC deferred to Phase 3+ decision.
+     - **Admin Panel**: Tenant visibility and audit log visibility.
+   - Auth: bearer token for this phase.
 
-2. **Control Plane Enhancement: Approval Flow (Optional)**
-   - New Tenant CRD field: `spec.approvalRequired: bool`.
-   - New route `POST /api/tenants/approve/:name` (admin only).
-   - Webhook or polling loop: if approval required, Tenant stays in Pending until approved.
+2. **Memory Cutover: Cognee Write-Through**
+   - Replace PostgreSQL-only retrieval runtime path with Cognee orchestration (`docs/memory.md`).
+   - Keep OpenClaw responsible for source ingestion, permission-aware copy semantics, and retrieval mediation.
+   - Implement dataset-level access wiring from AccessPolicy outcomes.
+   - Implement freshness invalidation using source version metadata + age-based revalidation.
 
 3. **Dual-write write-path simplification**
    - Migrate projection writes from request-path dual-write to a watcher-fed projector component.
    - Retire request-path PostgreSQL mutation for dual-written Tenant and AccessPolicy entities.
    - Add idempotency keys and bounded reconciliation lag objectives.
 
-3. **Slack Bot** (apps/operator or apps/slack-bot)
-   - `/opencrane create`: Slash command form, creates Tenant CR with user context.
-   - `/opencrane status <name>`: Shows phase, ingress host, spend.
-   - `/opencrane delete <name>`: Deletes tenant (with confirmation button).
-   - Notifications: Post to #opencrane-deployments on tenant creation/failure.
+4. **Future Work (Explicitly Deferred)**
+   - Approval flow routes and CRD fields.
+   - Approval action security with bearer token + optional 2FA toggle.
+   - OIDC migration for portal and control-plane auth.
 
 ### File Structure Additions
 
@@ -653,19 +646,15 @@ apps/
 │           └── admin/
 │               ├── admin.component.ts
 │               └── admin.component.html
-├── slack-bot/
-│   ├── src/
-│   │   ├── index.ts         # Slack Bolt app
-│   │   ├── commands/
-│   │   │   ├── create.ts   # /opencrane create
-│   │   │   ├── status.ts   # /opencrane status
-│   │   │   └── delete.ts   # /opencrane delete
-│   │   ├── handlers/
-│   │   │   └── app-mention.ts
-│   │   └── utils/
-│   │       └── k8s.ts      # Tenant CR creation
-│   ├── package.json
-│   └── manifest.yaml       # Slack app manifest
+├── control-plane/
+│   └── src/
+│       ├── routes/
+│       │   └── retrieval.ts
+│       └── core/
+│           └── memory/
+│               ├── cognee-client.ts
+│               ├── dataset-mapper.ts
+│               └── freshness-policy.ts
 ```
 
 ### Key Tasks (Phase 3)
@@ -674,114 +663,23 @@ apps/
 |------|-------|--------|-----------|
 | Angular portal features scaffold + auth | Frontend | 12h | Phase 1 API |
 | Tenant provisioning form + dashboard | Frontend | 15h | Control Plane API |
-| Admin panel (list, approve, audit) | Frontend | 10h | Approval flow |
-| Control Plane approval flow (optional) | Backend | 8h | Phase 1 done |
-| Slack bot (create/status/delete) | Backend | 15h | K8s client setup |
-| Portal → control-plane integration | Backend | 8h | Portal code |
-| Tests: provisioning, Slack commands | QA | 12h | All code |
-| **Phase 3 Total** | | **80h** | |
+| Admin panel (visibility + audit) | Frontend | 8h | Portal routes |
+| Memory cutover to Cognee write-through | Backend | 20h | Phase 2 retrieval foundation |
+| AccessPolicy -> Cognee dataset permission mapping | Backend | 10h | Memory cutover core |
+| Freshness/invalidation implementation | Backend | 8h | Source metadata contract |
+| Portal -> control-plane integration | Backend | 8h | Portal code |
+| Tests: provisioning + memory authorization | QA | 14h | All code |
+| **Phase 3 Total** | | **95h** | |
 
 ### Success Criteria
 
 - [x] Non-admin user can self-provision tenant via web form (ProvisionPageComponent + TenantApiService implemented).
 - [ ] Tenant appears in Kubernetes as Tenant CR within 30s (operator reconcile already handles this; e2e not re-run).
 - [x] Dashboard shows health, spend, and last reconciled time per tenant (DashboardPageComponent + SpendChartComponent implemented).
-- [ ] Admin can approve pending tenants (if approval flow enabled; approval flow routes deferred to Phase 3+ iteration).
-- [ ] Slack `/opencrane create` creates tenants from Slack (not a current requirement; deferred unless scope is explicitly re-approved).
-- [ ] Slack bot posts status + error notifications to #channel (deferred to Phase 3 iteration).
-
----
-
-## Phase 4: Operational Maturity
-
-### Architecture Checkpoint: Fleet Operations & Governance
-
-Before implementing updates, metrics, and self-config, clarify:
-
-1. **Fleet Update Strategy**
-   - Should the operator watch npm for new OpenClaw releases and auto-update tenants?
-   - Should version pinning be enforced (pinned tenants never auto-update), or is it advisory only?
-   - Should canary rollout be automatic (1 tenant → all success → roll to rest) or require manual approval?
-   - Should we back up to GCS before every update? Or only on rollback failure?
-   - How long should the operator wait for a pod to become Ready before rolling back? (default 5min?)
-
-2. **Channel Configuration**
-   - Should Slack/WhatsApp credentials be stored as Secrets (with operator injecting them) or configured in the tenant itself?
-   - Should channels be specified at create time or changeable post-creation?
-   - Should there be a shared org default channel, or only per-tenant channels?
-
-3. **Observability & Metrics**
-   - Should tenant pods export Prometheus metrics directly, or use a sidecar?
-   - Should metrics include: token usage, last action timestamp, error count? Anything else?
-   - Should the operator export reconciliation duration, resource creation errors, watch lag?
-   - Should we set up Grafana dashboards, or just Prometheus targets?
-
-4. **Agent Self-Config Governance**
-   - Is this required for Phase 4, or can it be deferred to Phase 5?
-   - If required, should agents request skills via an API endpoint or a special message to the operator?
-   - Should allowlist be per-tenant or org-wide?
-   - Should denied requests alert the operator, or silently fail?
-
-5. **Channel Auto-Discovery**
-   - Should the operator listens for annotations on Tenants (e.g., `slack.channel=C123`) and auto-inject?
-   - Or is channel config purely in the Tenant spec?
-
-**Action**: Decide on auto-update policy (canary + auto, or manual), whether channel configs are Secret-backed, and whether agent self-config is a must-have for this phase.
-
----
-
-### Deliverables
-
-1. **Fleet Update Controller** (operator enhancement)
-   - Watch for OpenClaw releases on npm (or polling).
-   - Rolling update strategy: canary (1 tenant) → rest.
-   - Before update: GCS snapshot via gcloud.
-   - On pod startup failure: auto-rollback.
-   - Respect `spec.openclawVersion` pin (don't auto-update if pinned).
-   - Logging: operator logs all actions, control plane surfaces update history.
-
-2. **Channel Config in Tenant CRD**
-   - New spec fields:
-     ```yaml
-     spec:
-       channels:
-         slack:
-           workspaceId: xoxb-...
-           channelId: C123...
-         whatsapp:
-           phoneNumber: "+1..."
-     ```
-   - Operator injects creds into tenant ConfigMap.
-
-3. **Prometheus Metrics per Tenant**
-   - Tenant pod exports metrics: token usage, last action timestamp, error count.
-   - Operator exposes metrics: reconcile duration, status phase.
-   - ServiceMonitor CRD for Prometheus scrape.
-
-4. **Agent Self-Configuration Governance** (optional, lower priority)
-   - New CRD: `OpenClawSelfConfig` (allowlist of skills agents can request).
-   - Agent runtime calls `/api/self-config/request` → validated against allowlist → approved/denied logged.
-
-### Key Tasks (Phase 4)
-
-| Task | Owner | Effort | Dependency |
-|------|-------|--------|-----------|
-| Fleet update controller (operator) | Backend | 20h | GCS API integration |
-| Channel config in Tenant CRD | Backend | 10h | Secrets/config injection |
-| Prometheus ServiceMonitor per tenant | DevOps | 10h | Metrics setup |
-| Agent self-config allowlist CRD | Backend | 12h | Operator done |
-| Dashboard: update history, channel config | Frontend | 8h | Phase 3 UI |
-| Integration tests: canary update, rollback | QA | 15h | Fleet controller code |
-| **Phase 4 Total** | | **75h** | |
-
-### Success Criteria
-
-- [x] Operator detects new OpenClaw release (`TenantUpdateWithCanaryStrategyController` with npm registry polling implemented in `apps/operator/src/tenant-rollout/`).
-- [x] Canary updates 1 tenant, waits for confirmation, rolls to rest (`TenantUpdateWithCanaryStrategyController.startCanaryRollout` implemented with Deployment readiness polling).
-- [ ] On failure, auto-rollback restores from GCS snapshot (GCS snapshot deferred; in-place version revert is implemented).
-- [x] Tenant communication config is represented as adapter-oriented channel entries in `TenantSpec`; CRD alignment is tracked as follow-up refactor.
-- [ ] Operator injects channel creds into tenant pod (channel credential injection from Secret references deferred to Phase 4 iteration).
-- [x] Prometheus scrapes tenant metrics; grafana dashboard shows usage (`/prom/metrics` endpoint added to control-plane in Prometheus text format).
+- [ ] Retrieval runtime is cut over from PostgreSQL-only path to Cognee write-through for Phase 3 target tenants.
+- [ ] AccessPolicy-compatible dataset permissions are enforced in retrieval responses.
+- [ ] Freshness invalidation path revalidates stale memory based on source-version metadata and age threshold.
+- [ ] Approval flow remains explicitly deferred; no Phase 3 blocker depends on approval route delivery.
 
 ---
 
@@ -795,7 +693,7 @@ Before implementing updates, metrics, and self-config, clarify:
 4. **Testing**: Operator integration tests (k3d), control-plane API tests, Helm chart validation.
 5. **Observability**: Structured logging (pino), Cloud Logging ingestion, operator metrics.
 
-### Nice to Have (Phase 4+)
+### Nice to Have (Post-Phase 3)
 
 1. Observability: OTel → ClickHouse for audit trail.
 2. Advanced governance: policy approvals, audit webhook.
@@ -809,9 +707,8 @@ Before implementing updates, metrics, and self-config, clarify:
 |-------|--------|----------|-------|
 | **Phase 1** (Core) | 90h | 3 weeks (2 eng + 1 ops) | Week 1 |
 | **Phase 2** (Cost control + retrieval foundation) | 97h | 2-3 weeks (parallel to Phase 1 end) | Week 2 |
-| **Phase 3** (Self-service) | 80h | 2–3 weeks (after Phase 1) | Week 4 |
-| **Phase 4** (Maturity) | 75h | 2–3 weeks (after Phase 2) | Week 5 |
-| **Total** | **342h** | **8–10 weeks** | |
+| **Phase 3** (Self-service + memory cutover) | 95h | 3 weeks (after Phase 2) | Week 4 |
+| **Total** | **282h** | **7–9 weeks** | |
 
 ---
 
@@ -825,7 +722,6 @@ Before implementing updates, metrics, and self-config, clarify:
 | LiteLLM key generation during reconcile blocks tenant creation | Async key generation + retry loop, fallback to pre-generated key pool |
 | Retrieval returns data outside tenant scope | Enforce AccessPolicy-filtered query path, deny-by-default checks, and conformance tests for allow/deny behavior |
 | Harvesting agent ingestion drift or stale context | Cursor-based sync with checkpoints, lag/error SLO alerts, and replay-capable ingest jobs |
-| Slack bot auth expires | Token rotation via Slack renew API, operator watches for stale tokens |
 | Update rollback fails | Manual rollback instructions, `kubectl patch Tenant` to change version |
 
 ---
@@ -867,18 +763,12 @@ This avoids rework and ensures alignment across teams.
 
 ### Phase 3 Decisions (Complete by Week 4)
 - [x] Portal: embedded in Angular control-plane-ui (decided — no separate Next.js app)
-- [ ] Auth: OIDC or bearer token?
-- [ ] Approval required: yes/no, and if yes, auto-approval or manual process?
-- [ ] Slack bot scope: create, status, delete only, or more commands?
-- [ ] Slack form interaction: simple command or elaborate form flow?
-
-### Phase 4 Decisions (Complete by Week 6)
-- [ ] Auto-update: automatic canary rollout, or manual approval?
-- [ ] Canary duration: how long to wait for pod Ready before rollback?
-- [ ] Backup: GCS snapshot before every update or only on failure?
-- [ ] Channel config: Secret-backed or Tenant spec field?
-- [ ] Agent self-config: required for Phase 4 or defer to Phase 5?
-- [ ] Metrics: sidecar or direct export from pod?
+- [x] Auth baseline: bearer token for Phase 3 delivery.
+- [ ] OIDC migration plan: deferred to future work.
+- [x] Slack bot scope removed from roadmap scope.
+- [x] Approval workflow deferred to future work (not a Phase 3 gate).
+- [x] Future approval security direction: bearer token + optional 2FA toggle.
+- [x] Memory upgrade moved into Phase 3 required scope.
 
 ---
 
@@ -941,7 +831,7 @@ Already complete from previous cycle. Key generation, budget enforcement, spend 
 ### Session 5 — MCP + tenant skill governance
 - `skillAllowlist` field added to Tenant CRD and `TenantSpec` interface for durable, auditable skill governance.
 - `mcpPolicy` field added to Tenant CRD and `TenantSpec` for per-tenant invocation-level MCP enforcement.
-- `channels` field added to Tenant CRD for Slack/WhatsApp configuration (Phase 4 injection deferred).
+- `channels` field added to Tenant CRD for Slack/WhatsApp configuration (credential injection remains deferred).
 - Operator deployment builder injects `OPENCRANE_TENANT_MCP_ALLOW` and `OPENCRANE_TENANT_MCP_DENY` env vars.
 - `entrypoint.sh` updated: tenant CRD deny wins over policy-level allow; audit log messages on each decision.
 
@@ -960,14 +850,13 @@ Already complete from previous cycle. Key generation, budget enforcement, spend 
 - Feature pages: `DashboardPageComponent`, `ProvisionPageComponent`, `TenantDetailPageComponent`, `AdminPanelPageComponent`.
 - App routes updated: `/dashboard`, `/provision`, `/tenants/:name`, `/admin`.
 
-### Session 9 — Phase 4 operational maturity
+### Session 9 — Operational maturity foundation
 - `TenantUpdateWithCanaryStrategyController` implemented in `apps/operator/src/tenant-rollout/` with npm release polling and canary rollout strategy.
 - Prometheus-format `/prom/metrics` endpoint added to control-plane with tenant phase gauges, org document count, audit entry counter, and process metrics.
 - `channels` model is being shifted toward adapter-oriented configuration rather than provider-specific inline schema.
 
 ### Remaining work (not yet implemented)
-- Slack bot (`apps/slack-bot`) — Slash command `/opencrane create/status/delete` path.
-- Approval flow routes — `POST /api/tenants/approve/:name` and `spec.approvalRequired` CRD field.
+- Approval flow routes (future work) — `POST /api/tenants/approve/:name` and `spec.approvalRequired` CRD field, with bearer-token auth and optional 2FA toggle.
 - Channel credential injection into tenant pods (needs Secret reference wiring in deployment builder).
 - GCS snapshot before canary rollback.
 - Memory cutover implementation from PostgreSQL-only retrieval to Cognee write-through (`docs/memory.md`) with AccessPolicy-compatible authorization.
