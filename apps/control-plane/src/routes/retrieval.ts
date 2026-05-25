@@ -5,6 +5,9 @@ import type { PrismaClient } from "@prisma/client";
 import { _HashQuery } from "../domain/retrieval/retrieval-hash.util.js";
 import { _CheckRetrievalPolicyDenied, _ResolveTenantPolicyName } from "../domain/retrieval/retrieval-policy.logic.js";
 import type { RetrievalErrorResponse, RetrievalQueryRequest, RetrievalQueryResponse } from "../domain/retrieval/retrieval.types.js";
+import { OPENCRANE_API_GROUP, OPENCRANE_API_VERSION, TENANT_CRD_PLURAL } from "./internal/crd-constants.js";
+import { _IsDatasetMembershipDenied, _ParseTenantDatasetMembership } from "./internal/tenant-datasets.js";
+import type { DatasetScope, TenantDatasetMembership } from "./internal/tenant-datasets.types.js";
 
 /** Excerpt character limit — avoids returning full large documents to the caller. */
 const CONTENT_EXCERPT_LIMIT = 500;
@@ -55,7 +58,30 @@ export function retrievalRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaC
 
     const { query, tenantName, teamScope, limit: rawLimit } = body;
     const limit = Math.min(rawLimit ?? DEFAULT_LIMIT, MAX_LIMIT);
+    const datasetScope = _ResolveDatasetScope(body.datasetScope);
     const queriedAt = new Date().toISOString();
+
+    if (!datasetScope)
+    {
+      const errorBody: RetrievalErrorResponse = {
+        code: "UNAUTHORIZED",
+        error: "datasetScope must be one of: org, team, project, personal",
+      };
+      res.status(400).json(errorBody);
+      return;
+    }
+
+    const datasetId = _ResolveDatasetId(datasetScope, body.datasetId);
+
+    if (!datasetId)
+    {
+      const errorBody: RetrievalErrorResponse = {
+        code: "UNAUTHORIZED",
+        error: "datasetId is required",
+      };
+      res.status(400).json(errorBody);
+      return;
+    }
 
     // 2. Resolve the tenant from PostgreSQL to verify it exists.
     const tenant = await prisma.tenant.findUnique({ where: { name: tenantName } });
@@ -81,18 +107,59 @@ export function retrievalRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaC
       namespace,
     );
 
+    let datasetDenied = false;
+    if (!policyDeniesRetrieval)
+    {
+      let datasetMembership: TenantDatasetMembership;
+      try
+      {
+        datasetMembership = await _ResolveTenantDatasetMembership(customApi, tenantName, namespace);
+      }
+      catch
+      {
+        await prisma.auditEntry.create({
+          data: {
+            tenant: tenantName,
+            action: "RetrievalDenied",
+            resource: `Tenant/${tenantName}`,
+            message: `Retrieval query '${query.slice(0, 80)}' by tenant ${tenantName} — denied (dataset membership unavailable)`,
+            metadata: {
+              queryHash: _HashQuery(query),
+              policyRef: policyName ?? "none",
+              teamScope: teamScope ?? null,
+              datasetScope,
+              datasetId,
+              deniedBy: "dataset-membership-unavailable",
+            },
+          },
+        });
+
+        const errorBody: RetrievalErrorResponse = {
+          code: "INTERNAL_ERROR",
+          error: "tenant dataset membership could not be resolved",
+        };
+        res.status(503).json(errorBody);
+        return;
+      }
+
+      datasetDenied = _IsDatasetMembershipDenied(datasetMembership, datasetScope, datasetId);
+    }
+
     // 4. Audit the query regardless of the authorization outcome so all retrieval
     //    attempts are traceable, not just successful ones.
     await prisma.auditEntry.create({
       data: {
         tenant: tenantName,
-        action: policyDeniesRetrieval ? "RetrievalDenied" : "RetrievalAllowed",
+        action: (policyDeniesRetrieval || datasetDenied) ? "RetrievalDenied" : "RetrievalAllowed",
         resource: `Tenant/${tenantName}`,
-        message: `Retrieval query '${query.slice(0, 80)}' by tenant ${tenantName} — ${policyDeniesRetrieval ? "denied" : "allowed"}`,
+        message: `Retrieval query '${query.slice(0, 80)}' by tenant ${tenantName} — ${(policyDeniesRetrieval || datasetDenied) ? "denied" : "allowed"}`,
         metadata: {
           queryHash: _HashQuery(query),
           policyRef: policyName ?? "none",
           teamScope: teamScope ?? null,
+          datasetScope,
+          datasetId,
+          deniedBy: policyDeniesRetrieval ? "policy" : (datasetDenied ? "dataset" : null),
         },
       },
     });
@@ -108,8 +175,20 @@ export function retrievalRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaC
       return;
     }
 
-    // 6. Execute the filtered query — apply team scope when the caller requests it
+    // 6. Deny retrieval when the tenant is not a member of the requested dataset.
+    if (datasetDenied)
+    {
+      const errorBody: RetrievalErrorResponse = {
+        code: "DATASET_DENIED",
+        error: `Dataset access denied for scope '${datasetScope}' and dataset '${datasetId}'`,
+      };
+      res.status(403).json(errorBody);
+      return;
+    }
+
+    // 7. Execute the filtered query — apply team scope when the caller requests it
     //    so tenants can narrow results to their own team's documents.
+    const datasetFilter = _BuildDatasetScopeFilter(datasetScope, datasetId);
     const docs = await prisma.orgDocument.findMany({
       where: {
         AND: [
@@ -119,6 +198,7 @@ export function retrievalRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaC
               { title: { contains: query, mode: "insensitive" } },
             ],
           },
+          ...(datasetFilter ? [datasetFilter] : []),
           ...(teamScope ? [{ teamScope }] : []),
         ],
       },
@@ -126,7 +206,7 @@ export function retrievalRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaC
       take: limit,
     });
 
-    // 7. Map database rows to the public response shape, truncating large content
+    // 8. Map database rows to the public response shape, truncating large content
     //    to the configured excerpt limit to avoid oversized payloads.
     const results = docs.map(function _toResult(doc)
     {
@@ -148,6 +228,8 @@ export function retrievalRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaC
       count: results.length,
       authOutcome: "allowed",
       queriedAt,
+      datasetScope,
+      datasetId,
     };
 
     res.json(response);
@@ -177,4 +259,107 @@ export function retrievalRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaC
   });
 
   return router;
+}
+
+/**
+ * Resolve dataset ID defaults based on the requested scope.
+ * @param datasetScope - Requested dataset scope.
+ * @param rawDatasetId - Optional dataset ID from request body.
+ */
+function _ResolveDatasetId(datasetScope: DatasetScope, rawDatasetId: unknown): string | null
+{
+  const datasetId = typeof rawDatasetId === "string" ? rawDatasetId.trim() : "";
+  if (datasetId.length > 0)
+  {
+    return datasetId;
+  }
+
+  if (datasetScope === "org")
+  {
+    return "default";
+  }
+
+  return null;
+}
+
+/**
+ * Resolve and validate dataset scope from an untrusted request value.
+ * @param rawScope - Raw dataset scope from the request body.
+ */
+function _ResolveDatasetScope(rawScope: string | undefined): DatasetScope | null
+{
+  if (rawScope === undefined)
+  {
+    return "org";
+  }
+
+  if (rawScope === "org" || rawScope === "team" || rawScope === "project" || rawScope === "personal")
+  {
+    return rawScope;
+  }
+
+  return null;
+}
+
+/**
+ * Resolve tenant dataset membership from Tenant CR annotations.
+ * @param customApi - Kubernetes custom objects API client.
+ * @param tenantName - Tenant resource name.
+ * @param namespace - Kubernetes namespace.
+ */
+async function _ResolveTenantDatasetMembership(
+  customApi: k8s.CustomObjectsApi,
+  tenantName: string,
+  namespace: string,
+): Promise<TenantDatasetMembership>
+{
+  const response = await customApi.getNamespacedCustomObject({
+    group: OPENCRANE_API_GROUP,
+    version: OPENCRANE_API_VERSION,
+    namespace,
+    plural: TENANT_CRD_PLURAL,
+    name: tenantName,
+  }) as { metadata?: { annotations?: Record<string, string> } };
+
+  return _ParseTenantDatasetMembership(response.metadata?.annotations);
+}
+
+/**
+ * Build a Prisma query fragment for dataset-scope filtering.
+ * @param datasetScope - Effective dataset scope.
+ * @param datasetId - Effective dataset identifier.
+ */
+function _BuildDatasetScopeFilter(
+  datasetScope: DatasetScope,
+  datasetId: string,
+): Record<string, unknown> | null
+{
+  switch (datasetScope)
+  {
+    case "org":
+      if (datasetId === "default")
+      {
+        return {
+          OR: [
+            { sensitivityTags: { has: "org:default" } },
+            {
+              AND: [
+                { sensitivityTags: { isEmpty: true } },
+                { teamScope: null },
+              ],
+            },
+          ],
+        };
+      }
+
+      return { sensitivityTags: { has: `org:${datasetId}` } };
+    case "team":
+      return { teamScope: datasetId };
+    case "project":
+      return { sensitivityTags: { has: `project:${datasetId}` } };
+    case "personal":
+      return { owner: datasetId };
+    default:
+      return null;
+  }
 }

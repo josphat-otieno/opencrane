@@ -15,6 +15,12 @@ export interface RetrievalQueryRequest
   /** Optional team scope to restrict results to documents owned by a team. */
   teamScope?: string;
 
+  /** Dataset scope used for AccessPolicy-compatible dataset authorization (defaults to "org"). */
+  datasetScope?: "org" | "team" | "project" | "personal";
+
+  /** Dataset identifier inside the selected scope (defaults to "default" for org scope). */
+  datasetId?: string;
+
   /** Maximum number of results to return (default: 20, max: 100). */
   limit?: number;
 }
@@ -64,13 +70,19 @@ export interface RetrievalQueryResponse
 
   /** ISO-8601 timestamp of when this query was evaluated. */
   queriedAt: string;
+
+  /** Effective dataset scope used for this query. */
+  datasetScope: "org" | "team" | "project" | "personal";
+
+  /** Effective dataset identifier used for this query. */
+  datasetId: string;
 }
 
 /** Retrieval error response body. */
 export interface RetrievalErrorResponse
 {
   /** Machine-readable error code. */
-  code: "UNAUTHORIZED" | "TENANT_NOT_FOUND" | "POLICY_DENIED" | "INTERNAL_ERROR";
+  code: "UNAUTHORIZED" | "TENANT_NOT_FOUND" | "POLICY_DENIED" | "DATASET_DENIED" | "INTERNAL_ERROR";
 
   /** Human-readable error description. */
   error: string;

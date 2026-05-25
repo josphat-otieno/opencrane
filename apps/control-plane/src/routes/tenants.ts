@@ -2,10 +2,11 @@ import * as k8s from "@kubernetes/client-node";
 import { Router } from "express";
 import type { PrismaClient } from "@prisma/client";
 
-import type { CreateTenantRequest, TenantResponse } from "../types.js";
+import type { CreateTenantRequest, TenantDatasetsResponse, TenantResponse, UpdateTenantDatasetsRequest } from "../types.js";
 import { _DetectTenantProjectionDrift } from "./internal/projection-drift.js";
 import { _RepairTenantProjection } from "./internal/projection-repair.js";
 import { OPENCRANE_API_GROUP, OPENCRANE_API_VERSION, TENANT_CRD_PLURAL } from "./internal/crd-constants.js";
+import { _ParseTenantDatasetMembership, _SerializeTenantDatasetMembership } from "./internal/tenant-datasets.js";
 
 /**
  * Creates an Express router that exposes CRUD operations and
@@ -61,6 +62,125 @@ export function tenantsRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCli
     });
 
     res.json(response);
+  });
+
+  /** Get dataset memberships for a tenant from Tenant CR annotations. */
+  router.get("/:name/datasets", async function _getTenantDatasets(req, res)
+  {
+    try
+    {
+      const tenant = await customApi.getNamespacedCustomObject({
+        group: OPENCRANE_API_GROUP,
+        version: OPENCRANE_API_VERSION,
+        namespace,
+        plural: TENANT_CRD_PLURAL,
+        name: req.params.name,
+      }) as { metadata?: { annotations?: Record<string, string> } };
+
+      const response: TenantDatasetsResponse = _ParseTenantDatasetMembership(tenant.metadata?.annotations);
+      res.json(response);
+    }
+    catch (error)
+    {
+      if (_IsKubernetesNotFoundError(error))
+      {
+        res.status(404).json({ error: "Tenant not found" });
+        return;
+      }
+
+      res.status(502).json({ error: "Failed to load tenant datasets" });
+    }
+  });
+
+  /** Update dataset memberships for a tenant and persist them as Tenant CR annotations. */
+  router.put("/:name/datasets", async function _putTenantDatasets(req, res)
+  {
+    // 1. Validate body shape early so malformed requests never reach Kubernetes mutation paths.
+    const name = req.params.name;
+    const body = req.body as Partial<UpdateTenantDatasetsRequest>;
+    const membership = _ValidateTenantDatasetUpdate(body);
+
+    if (!membership)
+    {
+      res.status(400).json({ error: "org, team, project, and personal must all be string arrays" });
+      return;
+    }
+
+    // 2. Read the current Tenant CR first so we preserve unrelated annotations on patch.
+    let tenant: { metadata?: { annotations?: Record<string, string> } };
+    try
+    {
+      tenant = await customApi.getNamespacedCustomObject({
+        group: OPENCRANE_API_GROUP,
+        version: OPENCRANE_API_VERSION,
+        namespace,
+        plural: TENANT_CRD_PLURAL,
+        name,
+      }) as { metadata?: { annotations?: Record<string, string> } };
+    }
+    catch (error)
+    {
+      if (_IsKubernetesNotFoundError(error))
+      {
+        res.status(404).json({ error: "Tenant not found" });
+        return;
+      }
+
+      res.status(502).json({ error: "Failed to load tenant datasets" });
+      return;
+    }
+
+    // 3. Patch normalized dataset annotations onto the tenant and persist an audit trail.
+    const patch = {
+      metadata: {
+        annotations: {
+          ...(tenant.metadata?.annotations ?? {}),
+          ..._SerializeTenantDatasetMembership(membership),
+        },
+      },
+    };
+
+    try
+    {
+      await customApi.patchNamespacedCustomObject({
+        group: OPENCRANE_API_GROUP,
+        version: OPENCRANE_API_VERSION,
+        namespace,
+        plural: TENANT_CRD_PLURAL,
+        name,
+        body: patch,
+      });
+    }
+    catch (error)
+    {
+      if (_IsKubernetesNotFoundError(error))
+      {
+        res.status(404).json({ error: "Tenant not found" });
+        return;
+      }
+
+      res.status(502).json({ error: "Failed to persist tenant datasets" });
+      return;
+    }
+
+    try
+    {
+      await prisma.auditEntry.create({
+        data: {
+          tenant: name,
+          action: "DatasetsUpdated",
+          resource: `Tenant/${name}`,
+          message: `Dataset memberships updated for tenant ${name}`,
+          metadata: membership,
+        },
+      });
+    }
+    catch
+    {
+      // Best-effort audit write: dataset membership changes are already persisted in Kubernetes.
+    }
+
+    res.json(membership);
   });
 
   /** Get a single tenant by name. */
@@ -276,4 +396,60 @@ export function tenantsRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCli
   });
 
   return router;
+}
+
+/**
+ * Validate and normalize a tenant dataset membership update payload.
+ * @param body - Raw request body.
+ */
+function _ValidateTenantDatasetUpdate(body: Partial<UpdateTenantDatasetsRequest>): UpdateTenantDatasetsRequest | null
+{
+  if (!Array.isArray(body.org) || !Array.isArray(body.team) || !Array.isArray(body.project) || !Array.isArray(body.personal))
+  {
+    return null;
+  }
+
+  if (!_IsStringArray(body.org) || !_IsStringArray(body.team) || !_IsStringArray(body.project) || !_IsStringArray(body.personal))
+  {
+    return null;
+  }
+
+  return {
+    org: body.org,
+    team: body.team,
+    project: body.project,
+    personal: body.personal,
+  };
+}
+
+/**
+ * Check whether every element in the provided array is a string.
+ * @param value - Candidate value.
+ */
+function _IsStringArray(value: unknown[]): value is string[]
+{
+  return value.every(function _isString(entry)
+  {
+    return typeof entry === "string";
+  });
+}
+
+/**
+ * Check whether an unknown Kubernetes client error represents a not-found response.
+ * @param error - Unknown thrown error from Kubernetes client calls.
+ */
+function _IsKubernetesNotFoundError(error: unknown): boolean
+{
+  if (typeof error !== "object" || error === null)
+  {
+    return false;
+  }
+
+  const errorObject = error as {
+    statusCode?: number;
+    response?: { statusCode?: number };
+    body?: { code?: number };
+  };
+  const statusCode = errorObject.statusCode ?? errorObject.response?.statusCode ?? errorObject.body?.code;
+  return statusCode === 404;
 }

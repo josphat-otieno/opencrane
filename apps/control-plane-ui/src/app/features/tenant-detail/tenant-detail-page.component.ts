@@ -15,8 +15,11 @@ import { SpendApiService } from "../../core/api/spend.service";
 import { TenantApiService } from "../../core/api/tenants.service";
 import { TenantPhase } from "../../core/models/tenant-phase.enum";
 import { _GetTenantPhaseSeverity, type TenantPhaseTagSeverity } from "../../core/models/tenant-phase.utils";
+import type { DatasetMembership } from "../../core/models/dataset-membership.model";
+import type { DatasetMembershipSaveEvent } from "../../core/models/dataset-membership-save-event.model";
 import type { TenantSpend } from "../../core/models/tenant-spend.model";
 import type { TenantSummary } from "../../core/models/tenant-summary.model";
+import { DatasetMembershipEditorComponent } from "../../shared/components/dataset-membership-editor/dataset-membership-editor.component";
 import { SpendChartComponent } from "../../shared/components/spend-chart/spend-chart.component";
 
 /**
@@ -36,6 +39,7 @@ import { SpendChartComponent } from "../../shared/components/spend-chart/spend-c
     MessageModule,
     ConfirmDialogModule,
     SpendChartComponent,
+    DatasetMembershipEditorComponent,
   ],
   providers: [ConfirmationService],
   templateUrl: "./tenant-detail-page.component.html",
@@ -62,6 +66,18 @@ export class TenantDetailPageComponent
 
   /** Tenant lifecycle enum for template comparisons. */
   readonly _tenantPhase = TenantPhase;
+
+  /** Dataset save-in-flight flag. */
+  readonly _datasetSaving = signal(false);
+
+  /** Dataset save error message. */
+  readonly _datasetError = signal<string | null>(null);
+
+  /** Dataset load error message; when present, edits are disabled to prevent accidental overwrite. */
+  readonly _datasetLoadError = signal<string | null>(null);
+
+  /** Dataset save success flag. */
+  readonly _datasetSaveSuccess = signal(false);
 
   /** Tenant name from the route parameter. */
   readonly _tenantName = toSignal(
@@ -99,6 +115,28 @@ export class TenantDetailPageComponent
     defaultValue: null,
   });
 
+  /** Resource-backed dataset membership lookup. */
+  private readonly _datasetMembershipResource = rxResource<DatasetMembership, string>({
+    params: this._tenantName,
+    stream: ({ params }) =>
+    {
+      if (!params)
+      {
+        return of({ org: ["default"], team: [], project: [], personal: [] });
+      }
+
+      this._datasetLoadError.set(null);
+      return this._tenantApi.getTenantDatasets$(params).pipe(
+        catchError(() =>
+        {
+          this._datasetLoadError.set("Unable to load dataset memberships. Retry before saving.");
+          return of({ org: ["default"], team: [], project: [], personal: [] });
+        }),
+      );
+    },
+    defaultValue: { org: ["default"], team: [], project: [], personal: [] },
+  });
+
   /** Loaded tenant data. */
   readonly _tenant = computed(() => this._tenantResource.value());
 
@@ -110,6 +148,9 @@ export class TenantDetailPageComponent
 
   /** Error message. */
   readonly _error = computed(() => this._tenantResource.error()?.message ?? null);
+
+  /** Current dataset memberships for the tenant. */
+  readonly _datasetMembership = computed(() => this._datasetMembershipResource.value());
 
   /** Whether the tenant can be suspended. */
   readonly _canSuspend = computed(() => this._tenant()?.phase === TenantPhase.Running);
@@ -192,6 +233,42 @@ export class TenantDetailPageComponent
     finally
     {
       this._actionLoading.set(false);
+    }
+  }
+
+  /**
+   * Persist updated dataset memberships.
+   * @param event - Save event payload from the dataset editor component.
+   */
+  async _saveDatasets(event: DatasetMembershipSaveEvent): Promise<void>
+  {
+    // 1. Fail fast when membership load failed to avoid writing fallback defaults over unknown server state.
+    if (this._datasetLoadError())
+    {
+      this._datasetError.set("Retry loading dataset memberships before saving.");
+      return;
+    }
+
+    // 2. Set in-flight UI state before the API call so the form reflects save progress and clears stale status messages.
+    this._datasetSaving.set(true);
+    this._datasetError.set(null);
+    this._datasetSaveSuccess.set(false);
+
+    try
+    {
+      // 3. Persist memberships then reload from server to keep local state aligned with canonical backend normalization.
+      await this._tenantApi.updateTenantDatasets(this._tenantName(), event.membership);
+      this._datasetMembershipResource.reload();
+      this._datasetSaveSuccess.set(true);
+    }
+    catch (error)
+    {
+      const message = error instanceof Error ? error.message : "Failed to save dataset memberships";
+      this._datasetError.set(message);
+    }
+    finally
+    {
+      this._datasetSaving.set(false);
     }
   }
 }

@@ -4,6 +4,7 @@
 
 import type { PrismaClient } from "@prisma/client";
 import type * as k8s from "@kubernetes/client-node";
+import type { TenantDatasetMembership } from "./routes/internal/tenant-datasets.types.js";
 
 /** Dependencies injected into the Express app for route handlers. */
 export interface AppDependencies
@@ -69,6 +70,16 @@ export interface TenantResponse
   ingressHost?: string;
   /** ISO-8601 creation timestamp. */
   createdAt?: string;
+}
+
+/** Request body for updating tenant dataset memberships. */
+export interface UpdateTenantDatasetsRequest extends TenantDatasetMembership
+{
+}
+
+/** Response body for tenant dataset membership endpoints. */
+export interface TenantDatasetsResponse extends TenantDatasetMembership
+{
 }
 
 /** Metadata entry describing a shared skill. */

@@ -681,8 +681,8 @@ apps/
 - [ ] Tenant appears in Kubernetes as Tenant CR within 30s.
 - [x] Dashboard shows health, spend, and last reconciled time per tenant (DashboardPageComponent + SpendChartComponent implemented).
 - [ ] Retrieval runtime is cut over from PostgreSQL-only path to Cognee write-through for all tenants using a hard switch.
-- [ ] AccessPolicy-compatible dataset permissions are enforced in retrieval responses.
-- [ ] control-plane-ui exposes dataset membership controls for org/team/project/personal scopes.
+- [x] AccessPolicy-compatible dataset permissions are enforced in retrieval responses (dataset scope/id authorization added to `/api/retrieval/query` with `DATASET_DENIED` path and conformance tests).
+- [x] control-plane-ui exposes dataset membership controls for org/team/project/personal scopes (Tenant Detail includes reusable Dataset Membership editor backed by `/api/tenants/:name/datasets`).
 - [x] Approval flow remains explicitly deferred; no Phase 3 blocker depends on approval route delivery.
 - [x] Freshness/invalidation is deferred to Sprint 3+ and controlled from Clawdbot.
 
@@ -881,12 +881,18 @@ Already complete from previous cycle. Key generation, budget enforcement, spend 
 - Prometheus-format `/prom/metrics` endpoint added to control-plane with tenant phase gauges, org document count, audit entry counter, and process metrics.
 - `channels` model is being shifted toward adapter-oriented configuration rather than provider-specific inline schema.
 
+### Session 10 — Dataset membership controls + retrieval authorization
+- Added tenant dataset membership API endpoints: `GET /api/tenants/:name/datasets`, `PUT /api/tenants/:name/datasets` (Tenant CR annotation-backed).
+- Added reusable `DatasetMembershipEditorComponent` in control-plane-ui Tenant Detail page for org/team/project/personal controls.
+- Retrieval route now enforces dataset scope membership (`datasetScope`, `datasetId`) with explicit `DATASET_DENIED` responses and audit metadata.
+- Added conformance tests for dataset allow/deny retrieval paths and tenant dataset endpoint coverage.
+
 ### Remaining work (not yet implemented)
 - Approval flow routes (future work) — `POST /api/tenants/approve/:name` and `spec.approvalRequired` CRD field, with bearer-token auth and optional 2FA toggle.
 - Channel credential injection into tenant pods (needs Secret reference wiring in deployment builder).
 - GCS snapshot before canary rollback.
 - Memory cutover implementation from PostgreSQL-only retrieval to Cognee write-through (`docs/memory.md`) with AccessPolicy-compatible authorization.
-- Dataset granularity implementation and migration plan for source-restricted content (tenant-wide vs group/user-restricted documents).
+- Dataset granularity baseline is now implemented for org/team/project/personal membership controls in control-plane + control-plane-ui; source-permission propagation migration for source-restricted content remains open.
 - Optional hardening: verify self-hosted Cognee audit completeness against OpenCrane incident and compliance requirements.
 - Freshness/invalidation implementation using source ETag/version metadata and age-based revalidation.
 - GCP smoke re-validation after Phase 2 changes.

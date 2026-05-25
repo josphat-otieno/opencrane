@@ -4,6 +4,7 @@ import type { Observable } from "rxjs";
 import { firstValueFrom } from "rxjs";
 
 import type { CreateTenantPayload } from "../models/create-tenant-payload.model";
+import type { DatasetMembership } from "../models/dataset-membership.model";
 import type { TenantSummary } from "../models/tenant-summary.model";
 
 /**
@@ -86,6 +87,25 @@ export class TenantApiService
   async deleteTenant(name: string): Promise<void>
   {
     await firstValueFrom(this._http.delete(this._tenantUrl(name)));
+  }
+
+  /**
+   * Read dataset memberships for a tenant.
+   * @param name - Tenant unique identifier.
+   */
+  getTenantDatasets$(name: string): Observable<DatasetMembership>
+  {
+    return this._http.get<DatasetMembership>(`${this._tenantUrl(name)}/datasets`);
+  }
+
+  /**
+   * Persist dataset memberships for a tenant.
+   * @param name - Tenant unique identifier.
+   * @param payload - Updated dataset membership lists.
+   */
+  async updateTenantDatasets(name: string, payload: DatasetMembership): Promise<DatasetMembership>
+  {
+    return await firstValueFrom(this._http.put<DatasetMembership>(`${this._tenantUrl(name)}/datasets`, payload));
   }
 
   /**
