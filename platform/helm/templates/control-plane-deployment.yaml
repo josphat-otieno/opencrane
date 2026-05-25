@@ -30,6 +30,19 @@ spec:
               value: {{ .Values.controlPlane.service.port | quote }}
             - name: INGRESS_DOMAIN
               value: {{ .Values.ingress.domain | quote }}
+            - name: COGNEE_ENDPOINT
+              value: {{ .Values.controlPlane.cognee.endpoint | quote }}
+            - name: COGNEE_QUERY_TIMEOUT_MS
+              value: {{ .Values.controlPlane.cognee.queryTimeoutMs | quote }}
+            - name: COGNEE_HEALTH_TIMEOUT_MS
+              value: {{ .Values.controlPlane.cognee.healthTimeoutMs | quote }}
+            {{- if .Values.controlPlane.cognee.existingSecret }}
+            - name: COGNEE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.controlPlane.cognee.existingSecret }}
+                  key: {{ .Values.controlPlane.cognee.secretKey }}
+            {{- end }}
             - name: LITELLM_ENDPOINT
               value: {{ .Values.litellm.endpoint | quote }}
             {{- if .Values.litellm.enabled }}

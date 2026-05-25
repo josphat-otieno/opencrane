@@ -16,6 +16,10 @@ const CONTENT_EXCERPT_LIMIT = 500;
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
 
+/** Cognee HTTP timeout defaults (milliseconds). */
+const DEFAULT_COGNEE_TIMEOUT_MS = 5000;
+const DEFAULT_COGNEE_HEALTH_TIMEOUT_MS = 3000;
+
 /**
  * Creates an Express router for the org knowledge retrieval API.
  *
@@ -186,42 +190,29 @@ export function retrievalRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaC
       return;
     }
 
-    // 7. Execute the filtered query — apply team scope when the caller requests it
-    //    so tenants can narrow results to their own team's documents.
-    const datasetFilter = _BuildDatasetScopeFilter(datasetScope, datasetId);
-    const docs = await prisma.orgDocument.findMany({
-      where: {
-        AND: [
-          {
-            OR: [
-              { content: { contains: query, mode: "insensitive" } },
-              { title: { contains: query, mode: "insensitive" } },
-            ],
-          },
-          ...(datasetFilter ? [datasetFilter] : []),
-          ...(teamScope ? [{ teamScope }] : []),
-        ],
-      },
-      orderBy: { ingestedAt: "desc" },
-      take: limit,
-    });
-
-    // 8. Map database rows to the public response shape, truncating large content
-    //    to the configured excerpt limit to avoid oversized payloads.
-    const results = docs.map(function _toResult(doc)
+    // 7. Execute retrieval against Cognee. PostgreSQL retrieval has been retired.
+    let results: RetrievalQueryResponse["results"];
+    try
     {
-      return {
-        id: doc.id,
-        source: doc.source,
-        sourceId: doc.sourceId,
-        owner: doc.owner,
-        teamScope: doc.teamScope ?? undefined,
-        sensitivityTags: doc.sensitivityTags,
-        title: doc.title ?? undefined,
-        contentExcerpt: doc.content.slice(0, CONTENT_EXCERPT_LIMIT),
-        ingestedAt: doc.ingestedAt.toISOString(),
+      results = await _QueryCognee({
+        query,
+        tenantName,
+        teamScope,
+        datasetScope,
+        datasetId,
+        limit,
+      });
+    }
+    catch (error)
+    {
+      const message = error instanceof Error ? error.message : "Cognee retrieval query failed";
+      const errorBody: RetrievalErrorResponse = {
+        code: "INTERNAL_ERROR",
+        error: message,
       };
-    });
+      res.status(503).json(errorBody);
+      return;
+    }
 
     const response: RetrievalQueryResponse = {
       results,
@@ -241,21 +232,38 @@ export function retrievalRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaC
    */
   router.get("/health", async function _getRetrievalHealth(req, res)
   {
-    // 1. Count indexed documents to validate the org index is reachable.
-    const totalDocuments = await prisma.orgDocument.count();
-    const sourceCounts = await prisma.orgDocument.groupBy({
-      by: ["source"],
-      _count: { id: true },
-    });
+    try
+    {
+      const timeoutMs = _ReadPositiveIntEnv("COGNEE_HEALTH_TIMEOUT_MS", DEFAULT_COGNEE_HEALTH_TIMEOUT_MS);
+      const healthResponse = await fetch(_BuildCogneeUrl("/health"), {
+        method: "GET",
+        signal: AbortSignal.timeout(timeoutMs),
+      });
 
-    res.json({
-      status: "ok",
-      totalDocuments,
-      sources: sourceCounts.map(function _toSourceEntry(row)
+      if (!healthResponse.ok)
       {
-        return { source: row.source, count: row._count.id };
-      }),
-    });
+        res.status(503).json({
+          status: "error",
+          backend: "cognee",
+          error: `Cognee health probe failed with status ${healthResponse.status}`,
+        });
+        return;
+      }
+
+      res.json({
+        status: "ok",
+        backend: "cognee",
+      });
+    }
+    catch (error)
+    {
+      const message = error instanceof Error ? error.message : "Cognee health probe failed";
+      res.status(503).json({
+        status: "error",
+        backend: "cognee",
+        error: message,
+      });
+    }
   });
 
   return router;
@@ -324,42 +332,188 @@ async function _ResolveTenantDatasetMembership(
   return _ParseTenantDatasetMembership(response.metadata?.annotations);
 }
 
-/**
- * Build a Prisma query fragment for dataset-scope filtering.
- * @param datasetScope - Effective dataset scope.
- * @param datasetId - Effective dataset identifier.
- */
-function _BuildDatasetScopeFilter(
-  datasetScope: DatasetScope,
-  datasetId: string,
-): Record<string, unknown> | null
+interface CogneeQueryInput
 {
-  switch (datasetScope)
-  {
-    case "org":
-      if (datasetId === "default")
-      {
-        return {
-          OR: [
-            { sensitivityTags: { has: "org:default" } },
-            {
-              AND: [
-                { sensitivityTags: { isEmpty: true } },
-                { teamScope: null },
-              ],
-            },
-          ],
-        };
-      }
+  query: string;
+  tenantName: string;
+  teamScope?: string;
+  datasetScope: DatasetScope;
+  datasetId: string;
+  limit: number;
+}
 
-      return { sensitivityTags: { has: `org:${datasetId}` } };
-    case "team":
-      return { teamScope: datasetId };
-    case "project":
-      return { sensitivityTags: { has: `project:${datasetId}` } };
-    case "personal":
-      return { owner: datasetId };
-    default:
-      return null;
+/**
+ * Query Cognee as the single retrieval runtime.
+ * @param input - Normalized retrieval request.
+ */
+async function _QueryCognee(input: CogneeQueryInput): Promise<RetrievalQueryResponse["results"]>
+{
+  const timeoutMs = _ReadPositiveIntEnv("COGNEE_QUERY_TIMEOUT_MS", DEFAULT_COGNEE_TIMEOUT_MS);
+  const response = await fetch(_BuildCogneeUrl("/v1/retrieval/query"), {
+    method: "POST",
+    headers: _BuildCogneeHeaders(),
+    body: JSON.stringify({
+      query: input.query,
+      tenantName: input.tenantName,
+      teamScope: input.teamScope ?? null,
+      datasetScope: input.datasetScope,
+      datasetId: input.datasetId,
+      limit: input.limit,
+    }),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+
+  if (!response.ok)
+  {
+    throw new Error(`Cognee retrieval query failed with status ${response.status}`);
   }
+
+  const payload = await response.json() as unknown;
+  return _NormalizeCogneeResults(payload);
+}
+
+/**
+ * Normalize a Cognee response into the public retrieval response shape.
+ * @param payload - Raw Cognee query response.
+ */
+function _NormalizeCogneeResults(payload: unknown): RetrievalQueryResponse["results"]
+{
+  if (typeof payload !== "object" || payload === null)
+  {
+    return [];
+  }
+
+  const payloadRecord = payload as Record<string, unknown>;
+  const rawResults = _PickArray(payloadRecord, ["results", "items", "documents", "matches"]);
+  if (!rawResults)
+  {
+    return [];
+  }
+
+  return rawResults.map(function _toResult(entry, index)
+  {
+    const record = typeof entry === "object" && entry !== null
+      ? entry as Record<string, unknown>
+      : {};
+    const id = _PickString(record, ["id"]) ?? `cognee-${index + 1}`;
+    const sourceId = _PickString(record, ["sourceId", "source_id", "documentId", "document_id"]) ?? id;
+    const content = _PickString(record, ["contentExcerpt", "content_excerpt", "excerpt", "content", "text"]) ?? "";
+    const ingestedAt = _PickString(record, ["ingestedAt", "ingested_at", "timestamp"]) ?? new Date().toISOString();
+
+    return {
+      id,
+      source: _PickString(record, ["source"]) ?? "cognee",
+      sourceId,
+      owner: _PickString(record, ["owner", "tenantName", "tenant"]) ?? "unknown",
+      teamScope: _PickString(record, ["teamScope", "team_scope"]) ?? undefined,
+      sensitivityTags: _PickStringArray(record, ["sensitivityTags", "sensitivity_tags", "tags"]),
+      title: _PickString(record, ["title"]) ?? undefined,
+      contentExcerpt: content.slice(0, CONTENT_EXCERPT_LIMIT),
+      ingestedAt,
+    };
+  });
+}
+
+/**
+ * Resolve Cognee URL and append the requested path.
+ * @param path - Path suffix beginning with "/".
+ */
+function _BuildCogneeUrl(path: string): string
+{
+  const endpoint = process.env.COGNEE_ENDPOINT?.trim();
+  if (!endpoint)
+  {
+    throw new Error("COGNEE_ENDPOINT is required for retrieval runtime");
+  }
+
+  return `${endpoint.replace(/\/+$/, "")}${path}`;
+}
+
+/**
+ * Build HTTP headers for Cognee requests.
+ */
+function _BuildCogneeHeaders(): Record<string, string>
+{
+  const apiKey = process.env.COGNEE_API_KEY?.trim();
+  if (!apiKey)
+  {
+    return { "content-type": "application/json" };
+  }
+
+  return {
+    "content-type": "application/json",
+    authorization: "Bearer " + apiKey,
+  };
+}
+
+/**
+ * Parse a positive integer env var with fallback.
+ * @param key - Environment variable name.
+ * @param fallback - Fallback value when unset/invalid.
+ */
+function _ReadPositiveIntEnv(key: string, fallback: number): number
+{
+  const raw = process.env[key];
+  const value = raw ? Number(raw) : Number.NaN;
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
+}
+
+/**
+ * Pick the first string value from a set of candidate keys.
+ * @param record - Source record.
+ * @param keys - Candidate keys in priority order.
+ */
+function _PickString(record: Record<string, unknown>, keys: string[]): string | null
+{
+  for (const key of keys)
+  {
+    const value = record[key];
+    if (typeof value === "string" && value.trim().length > 0)
+    {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Pick and normalize a string-array field from a set of candidate keys.
+ * @param record - Source record.
+ * @param keys - Candidate keys in priority order.
+ */
+function _PickStringArray(record: Record<string, unknown>, keys: string[]): string[]
+{
+  for (const key of keys)
+  {
+    const value = record[key];
+    if (Array.isArray(value))
+    {
+      return value.filter(function _isString(entry): entry is string
+      {
+        return typeof entry === "string" && entry.length > 0;
+      });
+    }
+  }
+
+  return [];
+}
+
+/**
+ * Pick the first array field from a set of candidate keys.
+ * @param record - Source record.
+ * @param keys - Candidate keys in priority order.
+ */
+function _PickArray(record: Record<string, unknown>, keys: string[]): unknown[] | null
+{
+  for (const key of keys)
+  {
+    const value = record[key];
+    if (Array.isArray(value))
+    {
+      return value;
+    }
+  }
+
+  return null;
 }

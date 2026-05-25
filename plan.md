@@ -678,9 +678,9 @@ apps/
 ### Success Criteria
 
 - [x] Non-admin user can self-provision tenant via web form (ProvisionPageComponent + TenantApiService implemented).
-- [ ] Tenant appears in Kubernetes as Tenant CR within 30s.
+- [x] Tenant appears in Kubernetes as Tenant CR within 30s (create route now polls Kubernetes and returns 504 if the CR is not visible within the SLO window).
 - [x] Dashboard shows health, spend, and last reconciled time per tenant (DashboardPageComponent + SpendChartComponent implemented).
-- [ ] Retrieval runtime is cut over from PostgreSQL-only path to Cognee write-through for all tenants using a hard switch.
+- [x] Retrieval runtime is cut over from PostgreSQL-only path to Cognee write-through for all tenants using a hard switch (`/api/retrieval/query` now calls Cognee directly; PostgreSQL org-document retrieval path removed).
 - [x] AccessPolicy-compatible dataset permissions are enforced in retrieval responses (dataset scope/id authorization added to `/api/retrieval/query` with `DATASET_DENIED` path and conformance tests).
 - [x] control-plane-ui exposes dataset membership controls for org/team/project/personal scopes (Tenant Detail includes reusable Dataset Membership editor backed by `/api/tenants/:name/datasets`).
 - [x] Approval flow remains explicitly deferred; no Phase 3 blocker depends on approval route delivery.

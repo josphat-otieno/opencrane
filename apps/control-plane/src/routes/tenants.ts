@@ -8,6 +8,10 @@ import { _RepairTenantProjection } from "./internal/projection-repair.js";
 import { OPENCRANE_API_GROUP, OPENCRANE_API_VERSION, TENANT_CRD_PLURAL } from "./internal/crd-constants.js";
 import { _ParseTenantDatasetMembership, _SerializeTenantDatasetMembership } from "./internal/tenant-datasets.js";
 
+/** Tenant CR appearance SLO constants. */
+const TENANT_CR_APPEARANCE_TIMEOUT_MS = 30_000;
+const TENANT_CR_APPEARANCE_POLL_INTERVAL_MS = 500;
+
 /**
  * Creates an Express router that exposes CRUD operations and
  * suspend/resume actions for Tenant custom resources.
@@ -237,6 +241,29 @@ export function tenantsRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCli
       body: tenantCr,
     });
 
+    let tenantAppeared = false;
+    try
+    {
+      tenantAppeared = await _WaitForTenantCrAppearance(
+        customApi,
+        body.name,
+        namespace,
+        _ReadPositiveIntEnv("TENANT_CR_APPEARANCE_TIMEOUT_MS", TENANT_CR_APPEARANCE_TIMEOUT_MS),
+        _ReadPositiveIntEnv("TENANT_CR_APPEARANCE_POLL_INTERVAL_MS", TENANT_CR_APPEARANCE_POLL_INTERVAL_MS),
+      );
+    }
+    catch
+    {
+      res.status(502).json({ error: "Failed to validate Tenant CR appearance in Kubernetes" });
+      return;
+    }
+
+    if (!tenantAppeared)
+    {
+      res.status(504).json({ error: "Tenant CR did not appear in Kubernetes within 30 seconds" });
+      return;
+    }
+
     await prisma.tenant.create({
       data: {
         name: body.name,
@@ -452,4 +479,74 @@ function _IsKubernetesNotFoundError(error: unknown): boolean
   };
   const statusCode = errorObject.statusCode ?? errorObject.response?.statusCode ?? errorObject.body?.code;
   return statusCode === 404;
+}
+
+/**
+ * Wait until a newly-created tenant becomes observable as a Tenant CR.
+ * @param customApi - Kubernetes custom objects API client.
+ * @param tenantName - Tenant resource name.
+ * @param namespace - Kubernetes namespace.
+ * @param timeoutMs - Maximum wait time in milliseconds.
+ * @param pollIntervalMs - Polling interval in milliseconds.
+ */
+async function _WaitForTenantCrAppearance(
+  customApi: k8s.CustomObjectsApi,
+  tenantName: string,
+  namespace: string,
+  timeoutMs: number,
+  pollIntervalMs: number,
+): Promise<boolean>
+{
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() <= deadline)
+  {
+    try
+    {
+      await customApi.getNamespacedCustomObject({
+        group: OPENCRANE_API_GROUP,
+        version: OPENCRANE_API_VERSION,
+        namespace,
+        plural: TENANT_CRD_PLURAL,
+        name: tenantName,
+      });
+
+      return true;
+    }
+    catch (error)
+    {
+      if (!_IsKubernetesNotFoundError(error))
+      {
+        throw error;
+      }
+    }
+
+    await _Sleep(pollIntervalMs);
+  }
+
+  return false;
+}
+
+/**
+ * Parse positive integer env vars with fallback values.
+ * @param key - Environment variable name.
+ * @param fallback - Fallback value.
+ */
+function _ReadPositiveIntEnv(key: string, fallback: number): number
+{
+  const raw = process.env[key];
+  const parsed = raw ? Number(raw) : Number.NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+}
+
+/**
+ * Sleep for the provided duration.
+ * @param durationMs - Duration in milliseconds.
+ */
+async function _Sleep(durationMs: number): Promise<void>
+{
+  await new Promise(function _resolveAfterSleep(resolve)
+  {
+    setTimeout(resolve, durationMs);
+  });
 }

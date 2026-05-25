@@ -3,7 +3,7 @@ import express from "express";
 import type { Express } from "express";
 import type { PrismaClient } from "@prisma/client";
 import request from "supertest";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { retrievalRouter } from "../../routes/retrieval.js";
 
@@ -63,8 +63,35 @@ function _buildCustomApiStub(tenantSpec: unknown, policySpec: unknown): k8s.Cust
   } as unknown as k8s.CustomObjectsApi;
 }
 
+/**
+ * Configure a global fetch mock that returns a JSON payload.
+ * @param payload - JSON payload for response.json().
+ * @param status - HTTP status code.
+ */
+function _mockFetchJson(payload: unknown, status = 200): void
+{
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+    ok: status >= 200 && status < 300,
+    status,
+    json: vi.fn().mockResolvedValue(payload),
+  } as unknown as Response));
+}
+
 describe("retrievalRouter — conformance tests", () =>
 {
+  beforeEach(() =>
+  {
+    process.env.COGNEE_ENDPOINT = "http://cognee.test";
+    _mockFetchJson({ results: [] });
+  });
+
+  afterEach(() =>
+  {
+    delete process.env.COGNEE_ENDPOINT;
+    delete process.env.COGNEE_API_KEY;
+    vi.unstubAllGlobals();
+  });
+
   describe("POST /api/retrieval/query — validation", () =>
   {
     it("returns 400 when query is missing", async () =>
@@ -218,7 +245,8 @@ describe("retrievalRouter — conformance tests", () =>
         },
       ];
 
-      const prisma = _buildPrismaStub({ orgDocuments: mockDocs });
+      _mockFetchJson({ results: mockDocs });
+      const prisma = _buildPrismaStub();
       // No policy configured on the tenant — retrieval is allowed by default.
       const customApi = _buildCustomApiStub({ spec: { policyRef: null } }, {});
       const app = _buildRetrievalApp(customApi, prisma);
@@ -255,7 +283,8 @@ describe("retrievalRouter — conformance tests", () =>
         },
       ];
 
-      const prisma = _buildPrismaStub({ orgDocuments: mockDocs });
+      _mockFetchJson({ results: mockDocs });
+      const prisma = _buildPrismaStub();
       const customApi = _buildCustomApiStub(
         { spec: { policyRef: "engineering-policy" } },
         { spec: { mcpServers: { allow: ["retrieval", "skills"] } } },
@@ -290,7 +319,8 @@ describe("retrievalRouter — conformance tests", () =>
         },
       ];
 
-      const prisma = _buildPrismaStub({ orgDocuments: mockDocs });
+      _mockFetchJson({ results: mockDocs });
+      const prisma = _buildPrismaStub();
       const customApi = _buildCustomApiStub(
         {
           spec: { policyRef: null },
@@ -329,7 +359,8 @@ describe("retrievalRouter — conformance tests", () =>
         },
       ];
 
-      const prisma = _buildPrismaStub({ orgDocuments: mockDocs });
+      _mockFetchJson({ results: mockDocs });
+      const prisma = _buildPrismaStub();
       const customApi = _buildCustomApiStub(
         {
           spec: { policyRef: null },
@@ -348,14 +379,15 @@ describe("retrievalRouter — conformance tests", () =>
       expect(response.body.count).toBe(1);
     });
 
-    it("applies org dataset tag filtering for org/default requests", async () =>
+    it("forwards dataset scope and id to Cognee for org/default requests", async () =>
     {
-      const findManySpy = vi.fn().mockResolvedValue([]);
-      const prisma = {
-        tenant: { findUnique: vi.fn().mockResolvedValue({ name: "acme", phase: "Running" }) },
-        orgDocument: { findMany: findManySpy, count: vi.fn().mockResolvedValue(0), groupBy: vi.fn().mockResolvedValue([]) },
-        auditEntry: { create: vi.fn().mockResolvedValue({}) },
-      } as unknown as PrismaClient;
+      const fetchSpy = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({ results: [] }),
+      });
+      vi.stubGlobal("fetch", fetchSpy);
+      const prisma = _buildPrismaStub();
       const customApi = _buildCustomApiStub(
         {
           spec: { policyRef: null },
@@ -370,18 +402,10 @@ describe("retrievalRouter — conformance tests", () =>
         .send({ query: "notes", tenantName: "acme", datasetScope: "org", datasetId: "default" });
 
       expect(response.status).toBe(200);
-      const whereClause = findManySpy.mock.calls[0][0].where;
-      expect(whereClause.AND).toContainEqual({
-        OR: [
-          { sensitivityTags: { has: "org:default" } },
-          {
-            AND: [
-              { sensitivityTags: { isEmpty: true } },
-              { teamScope: null },
-            ],
-          },
-        ],
-      });
+      const fetchCall = fetchSpy.mock.calls[0];
+      const requestBody = JSON.parse(fetchCall[1].body);
+      expect(requestBody.datasetScope).toBe("org");
+      expect(requestBody.datasetId).toBe("default");
     });
   });
 
@@ -519,7 +543,8 @@ describe("retrievalRouter — conformance tests", () =>
         },
       ];
 
-      const prisma = _buildPrismaStub({ orgDocuments: mockDocs });
+      _mockFetchJson({ results: mockDocs });
+      const prisma = _buildPrismaStub();
       const customApi = _buildCustomApiStub({ spec: {} }, {});
       const app = _buildRetrievalApp(customApi, prisma);
 
@@ -534,21 +559,10 @@ describe("retrievalRouter — conformance tests", () =>
 
   describe("GET /api/retrieval/health", () =>
   {
-    it("returns 200 with document count and source breakdown", async () =>
+    it("returns 200 when Cognee health probe succeeds", async () =>
     {
-      const prisma = {
-        orgDocument: {
-          count: vi.fn().mockResolvedValue(42),
-          groupBy: vi.fn().mockResolvedValue([
-            { source: "slack", _count: { id: 30 } },
-            { source: "confluence", _count: { id: 12 } },
-          ]),
-          findMany: vi.fn(),
-        },
-        tenant: { findUnique: vi.fn() },
-        auditEntry: { create: vi.fn() },
-      } as unknown as PrismaClient;
-
+      _mockFetchJson({});
+      const prisma = _buildPrismaStub();
       const customApi = _buildCustomApiStub({}, {});
       const app = _buildRetrievalApp(customApi, prisma);
 
@@ -556,9 +570,7 @@ describe("retrievalRouter — conformance tests", () =>
 
       expect(response.status).toBe(200);
       expect(response.body.status).toBe("ok");
-      expect(response.body.totalDocuments).toBe(42);
-      expect(response.body.sources).toHaveLength(2);
-      expect(response.body.sources[0].source).toBe("slack");
+      expect(response.body.backend).toBe("cognee");
     });
   });
 });

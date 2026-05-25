@@ -20,6 +20,9 @@ function _buildTenantsApp(customApi: k8s.CustomObjectsApi, prisma: PrismaClient)
 function _buildPrismaStub(): PrismaClient
 {
   return {
+    tenant: {
+      create: vi.fn().mockResolvedValue({}),
+    },
     auditEntry: {
       create: vi.fn().mockResolvedValue({}),
     },
@@ -188,5 +191,68 @@ describe("tenantsRouter dataset membership endpoints", () =>
 
     expect(response.status).toBe(502);
     expect(response.body.error).toBe("Failed to load tenant datasets");
+  });
+});
+
+describe("tenantsRouter create endpoint — Tenant CR appearance validation", () =>
+{
+  it("creates a tenant when the Tenant CR appears", async () =>
+  {
+    const customApi = {
+      createNamespacedCustomObject: vi.fn().mockResolvedValue({}),
+      getNamespacedCustomObject: vi.fn().mockResolvedValue({}),
+    } as unknown as k8s.CustomObjectsApi;
+    const tenantCreateSpy = vi.fn().mockResolvedValue({});
+    const auditCreateSpy = vi.fn().mockResolvedValue({});
+    const prisma = {
+      tenant: { create: tenantCreateSpy },
+      auditEntry: { create: auditCreateSpy },
+    } as unknown as PrismaClient;
+
+    const app = _buildTenantsApp(customApi, prisma);
+    const response = await request(app)
+      .post("/api/tenants")
+      .send({
+        name: "acme",
+        displayName: "Acme",
+        email: "owner@acme.io",
+      });
+
+    expect(response.status).toBe(201);
+    expect(tenantCreateSpy).toHaveBeenCalledOnce();
+    expect(auditCreateSpy).toHaveBeenCalledOnce();
+  });
+
+  it("returns 504 when the Tenant CR does not appear within the SLO window", async () =>
+  {
+    process.env.TENANT_CR_APPEARANCE_TIMEOUT_MS = "5";
+    process.env.TENANT_CR_APPEARANCE_POLL_INTERVAL_MS = "1";
+    const customApi = {
+      createNamespacedCustomObject: vi.fn().mockResolvedValue({}),
+      getNamespacedCustomObject: vi.fn().mockRejectedValue({ statusCode: 404 }),
+    } as unknown as k8s.CustomObjectsApi;
+    const tenantCreateSpy = vi.fn().mockResolvedValue({});
+    const auditCreateSpy = vi.fn().mockResolvedValue({});
+    const prisma = {
+      tenant: { create: tenantCreateSpy },
+      auditEntry: { create: auditCreateSpy },
+    } as unknown as PrismaClient;
+
+    const app = _buildTenantsApp(customApi, prisma);
+    const response = await request(app)
+      .post("/api/tenants")
+      .send({
+        name: "slow-tenant",
+        displayName: "Slow Tenant",
+        email: "owner@acme.io",
+      });
+
+    delete process.env.TENANT_CR_APPEARANCE_TIMEOUT_MS;
+    delete process.env.TENANT_CR_APPEARANCE_POLL_INTERVAL_MS;
+
+    expect(response.status).toBe(504);
+    expect(response.body.error).toContain("within 30 seconds");
+    expect(tenantCreateSpy).not.toHaveBeenCalled();
+    expect(auditCreateSpy).not.toHaveBeenCalled();
   });
 });
