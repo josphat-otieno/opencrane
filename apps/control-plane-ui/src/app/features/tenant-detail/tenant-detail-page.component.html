@@ -1,0 +1,101 @@
+<p-confirmDialog />
+<div class="p-4">
+  <div class="flex align-items-center gap-2 mb-4">
+    <a routerLink="/dashboard">
+      <p-button icon="pi pi-arrow-left" [text]="true" severity="secondary" />
+    </a>
+    <h1 class="text-2xl font-bold m-0">
+      {{ _tenant()?.displayName ?? _tenantName() }}
+    </h1>
+    @if (_tenant()) {
+      <p-tag
+        [value]="_tenant()!.phase"
+        [severity]="_phaseSeverity(_tenant()!.phase)"
+      />
+    }
+  </div>
+
+  @if (_loading()) {
+    <p-progressSpinner />
+  } @else if (_error()) {
+    <p-message severity="error" [text]="_error()!" />
+  } @else if (_tenant()) {
+    <div class="grid">
+      <div class="col-12 md:col-6">
+        <p-card header="Details" styleClass="h-full">
+          <div class="flex flex-column gap-2">
+            <div class="flex justify-content-between">
+              <span class="text-color-secondary">Name</span>
+              <span class="font-medium">{{ _tenant()!.name }}</span>
+            </div>
+            <div class="flex justify-content-between">
+              <span class="text-color-secondary">Email</span>
+              <span>{{ _tenant()!.email }}</span>
+            </div>
+            @if (_tenant()!.team) {
+              <div class="flex justify-content-between">
+                <span class="text-color-secondary">Team</span>
+                <span>{{ _tenant()!.team }}</span>
+              </div>
+            }
+            @if (_tenant()!.ingressHost) {
+              <div class="flex justify-content-between">
+                <span class="text-color-secondary">URL</span>
+                <a [href]="'https://' + _tenant()!.ingressHost" target="_blank" rel="noopener">
+                  {{ _tenant()!.ingressHost }}
+                </a>
+              </div>
+            }
+            @if (_tenant()!.createdAt) {
+              <div class="flex justify-content-between">
+                <span class="text-color-secondary">Created</span>
+                <span>{{ _tenant()!.createdAt | date:'mediumDate' }}</span>
+              </div>
+            }
+          </div>
+        </p-card>
+      </div>
+
+      <div class="col-12 md:col-6">
+        <p-card header="Budget & Spend" styleClass="h-full">
+          @if (_spend()) {
+            <oc-spend-chart [spend]="_spend()!" />
+          } @else {
+            <p class="text-color-secondary text-sm">Spend data unavailable.</p>
+          }
+        </p-card>
+      </div>
+    </div>
+
+    <div class="flex gap-2 mt-4">
+      @if (_canSuspend()) {
+        <p-button
+          label="Suspend"
+          icon="pi pi-pause"
+          severity="warn"
+          [outlined]="true"
+          [loading]="_actionLoading()"
+          (click)="_suspend()"
+        />
+      }
+      @if (_canResume()) {
+        <p-button
+          label="Resume"
+          icon="pi pi-play"
+          severity="success"
+          [outlined]="true"
+          [loading]="_actionLoading()"
+          (click)="_resume()"
+        />
+      }
+      <p-button
+        label="Delete"
+        icon="pi pi-trash"
+        severity="danger"
+        [outlined]="true"
+        [loading]="_actionLoading()"
+        (click)="_confirmDelete()"
+      />
+    </div>
+  }
+</div>

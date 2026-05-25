@@ -1,0 +1,78 @@
+<div class="p-4">
+  <div class="flex justify-content-between align-items-center mb-4">
+    <h1 class="text-2xl font-bold m-0">Admin Panel</h1>
+    <div class="flex gap-2 align-items-center">
+      <input
+        pInputText
+        [value]="_filter()"
+        (input)="_onFilterInput($event)"
+        placeholder="Filter by name or team..."
+        class="p-inputtext-sm"
+      />
+      <a routerLink="/provision">
+        <p-button label="New Tenant" icon="pi pi-plus" size="small" />
+      </a>
+    </div>
+  </div>
+
+  @if (_loading()) {
+    <p-progressSpinner />
+  } @else if (_error()) {
+    <p-message severity="error" [text]="_error()!" />
+  } @else {
+    <p-table
+      [value]="_filteredTenants()"
+      [sortField]="'name'"
+      [sortOrder]="1"
+      [paginator]="true"
+      [rows]="25"
+      [showCurrentPageReport]="true"
+      currentPageReportTemplate="Showing {first} to {last} of {totalRecords} tenants"
+      styleClass="p-datatable-sm"
+    >
+      <ng-template pTemplate="header">
+        <tr>
+          <th pSortableColumn="name">Name <p-sortIcon field="name" /></th>
+          <th pSortableColumn="displayName">Display Name <p-sortIcon field="displayName" /></th>
+          <th pSortableColumn="team">Team <p-sortIcon field="team" /></th>
+          <th pSortableColumn="phase">Phase <p-sortIcon field="phase" /></th>
+          <th>Actions</th>
+        </tr>
+      </ng-template>
+      <ng-template pTemplate="body" let-tenant>
+        <tr>
+          <td><code class="text-sm">{{ tenant.name }}</code></td>
+          <td>{{ tenant.displayName }}</td>
+          <td>{{ tenant.team ?? "—" }}</td>
+          <td>
+            <p-tag
+              [value]="tenant.phase"
+              [severity]="_phaseSeverity(tenant.phase)"
+            />
+          </td>
+          <td>
+            <a [routerLink]="['/tenants', tenant.name]">
+              <p-button
+                icon="pi pi-eye"
+                [text]="true"
+                size="small"
+                pTooltip="View detail"
+              />
+            </a>
+          </td>
+        </tr>
+      </ng-template>
+      <ng-template pTemplate="emptymessage">
+        <tr>
+          <td colspan="5" class="text-center text-color-secondary">No tenants match the filter.</td>
+        </tr>
+      </ng-template>
+    </p-table>
+    <p class="text-color-secondary text-sm mt-2">
+      {{ _tenants().length }} total —
+      {{ _runningCount() }} running,
+      {{ _suspendedCount() }} suspended,
+      {{ _errorCount() }} error
+    </p>
+  }
+</div>

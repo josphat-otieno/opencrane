@@ -2,3 +2,4 @@ packages:
   - apps/operator
   - apps/control-plane
   - apps/control-plane-ui
+  - apps/harvesting-agent

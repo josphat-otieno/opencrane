@@ -149,3 +149,34 @@ model ProviderApiKey {
 
   @@map("provider_api_keys")
 }
+
+model OrgDocument {
+  id              String   @id @default(cuid())
+  source          String
+  sourceId        String   @map("source_id")
+  owner           String
+  teamScope       String?  @map("team_scope")
+  sensitivityTags String[] @map("sensitivity_tags")
+  title           String?
+  content         String
+  contentHash     String?  @map("content_hash")
+  embeddingReady  Boolean  @default(false) @map("embedding_ready")
+  ingestedAt      DateTime @default(now()) @map("ingested_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([source, sourceId])
+  @@index([source])
+  @@index([owner])
+  @@index([teamScope])
+  @@map("org_documents")
+}
+
+model HarvestingCursor {
+  id          String   @id @default(cuid())
+  source      String   @unique
+  cursorValue String   @map("cursor_value")
+  lastSyncAt  DateTime @map("last_sync_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("harvesting_cursors")
+}

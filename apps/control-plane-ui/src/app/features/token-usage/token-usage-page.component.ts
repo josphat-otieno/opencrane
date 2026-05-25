@@ -1,4 +1,4 @@
-import { CommonModule } from "@angular/common";
+import { DecimalPipe } from "@angular/common";
 import { Component, OnInit, signal } from "@angular/core";
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from "@angular/forms";
 import { ButtonModule } from "primeng/button";
@@ -16,7 +16,7 @@ import { UiSectionCardComponent } from "../../shared/components/ui-section-card/
 @Component({
   selector: "oc-token-usage-page",
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, ButtonModule, InputNumberModule, InputTextModule, SelectModule, TableModule, TagModule, UiSectionCardComponent],
+  imports: [DecimalPipe, ReactiveFormsModule, ButtonModule, InputNumberModule, InputTextModule, SelectModule, TableModule, TagModule, UiSectionCardComponent],
   templateUrl: "./token-usage-page.component.html",
   styleUrl: "./token-usage-page.component.css",
 })

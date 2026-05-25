@@ -1,4 +1,3 @@
-import { CommonModule } from "@angular/common";
 import { ButtonModule } from "primeng/button";
 import { Component, OnInit, computed, inject } from "@angular/core";
 import { RouterOutlet } from "@angular/router";
@@ -11,7 +10,7 @@ import { AuthService } from "./core/auth/auth.service";
 @Component({
   selector: "oc-root",
   standalone: true,
-  imports: [ButtonModule, CommonModule, MenubarModule, RouterOutlet],
+  imports: [ButtonModule, MenubarModule, RouterOutlet],
   templateUrl: "./app.component.html",
   styleUrl: "./app.component.css",
 })

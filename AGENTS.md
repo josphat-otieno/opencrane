@@ -373,3 +373,31 @@ Always create reusable UI components before writing repeated page-level markup.
 
 - All HTTP calls must go through dedicated `core/api` services.
 - Do not issue HTTP requests directly from templates or shared presentational components.
+
+### Angular Signals, Resources, and Forms
+
+- Prefer `resource(...)` for async read/loading flows in components instead of imperative `ngOnInit` data-fetch logic.
+- Prefer `rxResource(...)` / `httpResource(...)` over ad-hoc Promise orchestration when data originates from observables or HTTP.
+- Prefer `computed(...)`/`effect(...)` orchestration over manual imperative state transitions when deriving UI state.
+- Use signal-driven forms only for new and refactored feature forms.
+
+### Component Template Placement
+
+- Component templates must be defined in separate `*.component.html` files.
+- Do not use inline template literals in `@Component` metadata for feature or shared UI components.
+
+### Modern Standalone Angular Imports
+
+- Do not import `CommonModule` or `RouterModule` in standalone components.
+- Use modern control flow syntax (`@if`, `@for`, `@switch`) instead of structural directives like `*ngIf` and `*ngFor`.
+- Import standalone router directives directly (for example `RouterLink`, `RouterOutlet`) when templates need routing directives.
+
+### Enum-First UI State
+
+- Avoid magic strings in component decision logic.
+- Use enums (for example lifecycle phases) and `switch`-based mapping helpers for status-to-UI conversions.
+
+### Delivery Direction (Pre-Production)
+
+- Do not preserve legacy compatibility paths by default while the platform is pre-production.
+- Prefer optimal target architecture and delete superseded legacy branches when refactoring.

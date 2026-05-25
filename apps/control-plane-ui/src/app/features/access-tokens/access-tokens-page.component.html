@@ -7,8 +7,12 @@
       <p-button type="submit" label="Create token"></p-button>
     </form>
 
-    <p *ngIf="newlyCreatedToken()" class="secret">{{ newlyCreatedToken() }}</p>
-    <p *ngIf="message()" class="message">{{ message() }}</p>
+    @if (newlyCreatedToken()) {
+      <p class="secret">{{ newlyCreatedToken() }}</p>
+    }
+    @if (message()) {
+      <p class="message">{{ message() }}</p>
+    }
   </oc-ui-section-card>
 
   <oc-ui-section-card title="Issued Tokens" subtitle="Revoke tokens that are no longer needed.">

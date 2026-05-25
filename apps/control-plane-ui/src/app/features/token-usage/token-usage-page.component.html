@@ -64,5 +64,7 @@
     </p-table>
   </oc-ui-section-card>
 
-  <p *ngIf="message()" class="message">{{ message() }}</p>
+  @if (message()) {
+    <p class="message">{{ message() }}</p>
+  }
 </section>

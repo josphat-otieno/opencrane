@@ -2,7 +2,9 @@
   <div class="heading">
     <div>
       <h2>{{ title }}</h2>
-      <p *ngIf="subtitle">{{ subtitle }}</p>
+      @if (subtitle) {
+        <p>{{ subtitle }}</p>
+      }
     </div>
     <div class="actions">
       <ng-content select="[actions]"></ng-content>

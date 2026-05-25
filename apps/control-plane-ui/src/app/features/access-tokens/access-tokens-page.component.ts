@@ -1,4 +1,4 @@
-import { CommonModule } from "@angular/common";
+import { DatePipe } from "@angular/common";
 import { Component, OnInit, signal } from "@angular/core";
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from "@angular/forms";
 import { ButtonModule } from "primeng/button";
@@ -14,7 +14,7 @@ import { UiSectionCardComponent } from "../../shared/components/ui-section-card/
 @Component({
   selector: "oc-access-tokens-page",
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, ButtonModule, InputTextModule, TableModule, TagModule, UiSectionCardComponent],
+  imports: [DatePipe, ReactiveFormsModule, ButtonModule, InputTextModule, TableModule, TagModule, UiSectionCardComponent],
   templateUrl: "./access-tokens-page.component.html",
   styleUrl: "./access-tokens-page.component.css",
 })

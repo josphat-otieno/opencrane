@@ -1,0 +1,91 @@
+<div class="p-4 max-w-30rem mx-auto">
+  <p-card header="Provision New Tenant">
+    <form (ngSubmit)="_submit()" class="flex flex-column gap-3">
+      <div class="flex flex-column gap-1">
+        <label for="name" class="font-medium">Tenant ID</label>
+        <input
+          pInputText
+          id="name"
+          [value]="_name()"
+          (input)="_name.set($any($event.target).value)"
+          placeholder="e.g. acme-engineering"
+          required
+          [attr.pattern]="_tenantNamePattern"
+        />
+        <small class="text-color-secondary">Lowercase letters, numbers, and hyphens only.</small>
+      </div>
+
+      <div class="flex flex-column gap-1">
+        <label for="displayName" class="font-medium">Display Name</label>
+        <input
+          pInputText
+          id="displayName"
+          [value]="_displayName()"
+          (input)="_displayName.set($any($event.target).value)"
+          placeholder="ACME Engineering"
+          required
+        />
+      </div>
+
+      <div class="flex flex-column gap-1">
+        <label for="email" class="font-medium">Owner Email</label>
+        <input
+          pInputText
+          id="email"
+          type="email"
+          [value]="_email()"
+          (input)="_email.set($any($event.target).value)"
+          placeholder="owner@example.com"
+          required
+          [attr.pattern]="_emailPattern"
+        />
+      </div>
+
+      <div class="flex flex-column gap-1">
+        <label for="team" class="font-medium">Team (optional)</label>
+        <input
+          pInputText
+          id="team"
+          [value]="_team()"
+          (input)="_team.set($any($event.target).value)"
+          placeholder="engineering"
+        />
+      </div>
+
+      <div class="flex flex-column gap-1">
+        <label for="budget" class="font-medium">Monthly Budget (USD, optional)</label>
+        <input
+          pInputText
+          id="budget"
+          type="number"
+          [value]="_monthlyBudgetUsd() ?? ''"
+          (input)="_onBudgetInput($event)"
+          [min]="0"
+          step="10"
+          placeholder="200"
+        />
+      </div>
+
+      @if (_error()) {
+        <p-message severity="error" [text]="_error()!" />
+      }
+
+      @if (_success()) {
+        <p-message severity="success" text="Tenant created! Redirecting..." />
+      }
+
+      <div class="flex gap-2 justify-content-end">
+        <a routerLink="/dashboard">
+          <p-button label="Cancel" severity="secondary" [outlined]="true" />
+        </a>
+        <p-button
+          type="submit"
+          label="Create Tenant"
+          icon="pi pi-check"
+          [loading]="_submitting()"
+          [disabled]="!_canSubmit() || _submitting()"
+        />
+      </div>
+    </form>
+  </p-card>
+</div>

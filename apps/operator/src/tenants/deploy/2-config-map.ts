@@ -48,7 +48,7 @@ export function _BuildConfigMap(config: OperatorConfig, tenant: Tenant, namespac
       name,
       team: tenant.spec.team ?? null,
       policyRef: tenant.spec.policyRef ?? null,
-      requestedSkills: tenant.spec.skills ?? [],
+      requestedSkills: tenant.spec.skillAllowlist ?? [],
     },
     policy: {
       effectiveRef: effectivePolicy?.metadata?.name ?? tenant.spec.policyRef ?? null,

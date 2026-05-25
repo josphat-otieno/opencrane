@@ -14,7 +14,9 @@
       </form>
     </div>
 
-    <p *ngIf="message()" class="message">{{ message() }}</p>
+    @if (message()) {
+      <p class="message">{{ message() }}</p>
+    }
   </oc-ui-section-card>
 
   <oc-ui-section-card title="Configured Providers" subtitle="Current provider key status.">

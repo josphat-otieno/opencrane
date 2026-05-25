@@ -4,6 +4,7 @@ import pino from "pino";
 import { _LoadOperatorConfig } from "./config.js";
 import { _CreateTenantOperator, IdleChecker } from "./tenants/index.js";
 import { PolicyOperator } from "./policies/operator.js";
+import { _ReadTenantRolloutConfig, TenantUpdateWithCanaryStrategyController } from "./tenant-rollout/tenant-update-with-canary-strategy.controller.js";
 
 /** Root logger for the opencrane-operator process. */
 const log = pino({ name: "opencrane-operator" });
@@ -28,6 +29,46 @@ async function main(): Promise<void>
   const tenantOperator = _CreateTenantOperator(kc, config, log);
   const policyOperator = new PolicyOperator(kc, config, log);
   const idleChecker = new IdleChecker(kc, config, log);
+
+  // Start tenant rollout canary release polling when auto-update is enabled
+  const tenantRolloutConfig = _ReadTenantRolloutConfig();
+  if (tenantRolloutConfig.autoUpdateEnabled)
+  {
+    const customApi = kc.makeApiClient(k8s.CustomObjectsApi);
+    const appsApi = kc.makeApiClient(k8s.AppsV1Api);
+    const tenantRolloutController = new TenantUpdateWithCanaryStrategyController(
+      customApi,
+      appsApi,
+      log,
+      config.watchNamespace,
+      tenantRolloutConfig,
+    );
+    log.info(
+      { releaseTag: tenantRolloutConfig.releaseTag, canaryTimeoutMs: tenantRolloutConfig.canaryTimeoutMs },
+      "tenant rollout canary controller enabled",
+    );
+
+    // Poll npm registry for new releases; the controller handles rollout internally
+    setInterval(async function _pollRelease()
+    {
+      try
+      {
+        const latest = await tenantRolloutController.getLatestRelease();
+        if (latest !== null)
+        {
+          log.debug({ latest }, "tenant rollout release poll");
+        }
+      }
+      catch (err)
+      {
+        log.warn({ err }, "tenant rollout release poll failed; will retry next interval");
+      }
+    }, 15 * 60 * 1000); // every 15 minutes
+  }
+  else
+  {
+    log.info("tenant rollout auto-update disabled (OPENCRANE_AUTO_UPDATE_ENABLED not set to true)");
+  }
 
   // Start idle-checker (runs on a timer, non-blocking)
   _idleCheckerRef = idleChecker;

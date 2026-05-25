@@ -40,7 +40,7 @@ Pod starts
 | `OPENCLAW_VERSION` | npm version to install (e.g. `latest`, `2026.3.15`). Defaults to `latest`. |
 | `OPENCRANE_RUNTIME_MODE` | Runtime mode identifier (`managed`) for OpenCrane-aware runtimes |
 | `OPENCRANE_RUNTIME_CONTRACT_PATH` | Path to the managed-runtime contract JSON (`/config/opencrane-managed-runtime.json`) |
-| `OPENCRANE_ALLOWED_SKILLS` | Optional comma-separated allowlist of shared skills derived from `Tenant.spec.skills` |
+| `OPENCRANE_ALLOWED_SKILLS` | Optional comma-separated allowlist of shared skills derived from `Tenant.spec.skillAllowlist` |
 | `OPENCRANE_POLICY_REF` | Optional policy reference carried from `Tenant.spec.policyRef` for runtime awareness |
 | `OPENCRANE_ALLOWED_MCP_SERVERS` | Derived at startup from the managed-runtime contract and used to gate runtime features such as shared skills |
 | `OPENCRANE_DENIED_MCP_SERVERS` | Derived at startup from the managed-runtime contract and used to block runtime features such as shared skills |

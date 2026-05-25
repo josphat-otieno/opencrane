@@ -91,7 +91,7 @@ importers:
         version: 7.0.0
       primeng:
         specifier: ^20.3.0
-        version: 20.4.0(2f4b33d91382652c00bc72b36921bc80)
+        version: 20.4.0(pl5h5vjntu5eya4ximvqi7xoaa)
       rxjs:
         specifier: 7.8.2
         version: 7.8.2
@@ -138,6 +138,31 @@ importers:
       typescript:
         specifier: 5.8.2
         version: 5.8.2
+
+  apps/harvesting-agent:
+    dependencies:
+      '@prisma/client':
+        specifier: ^6.0.0
+        version: 6.19.2(prisma@6.19.2(typescript@5.8.2))(typescript@5.8.2)
+      pino:
+        specifier: ^9.6.0
+        version: 9.14.0
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.15.31
+      prisma:
+        specifier: ^6.0.0
+        version: 6.19.2(typescript@5.8.2)
+      tsx:
+        specifier: ^4.19.0
+        version: 4.21.0
+      typescript:
+        specifier: ^5.7.0
+        version: 5.8.2
+      vitest:
+        specifier: ^3.1.0
+        version: 3.2.4(@types/node@22.15.31)(jiti@2.6.1)(sass@1.97.1)(tsx@4.21.0)
 
   apps/operator:
     dependencies:
@@ -6904,7 +6929,7 @@ snapshots:
 
   primeicons@7.0.0: {}
 
-  primeng@20.4.0(2f4b33d91382652c00bc72b36921bc80):
+  primeng@20.4.0(pl5h5vjntu5eya4ximvqi7xoaa):
     dependencies:
       '@angular/animations': 20.3.0(@angular/core@20.3.0(@angular/compiler@20.3.0)(rxjs@7.8.2)(zone.js@0.15.1))
       '@angular/cdk': 20.2.14(@angular/common@20.3.0(@angular/core@20.3.0(@angular/compiler@20.3.0)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@20.3.0(@angular/compiler@20.3.0)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2)

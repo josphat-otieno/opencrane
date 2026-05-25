@@ -1,4 +1,4 @@
-import { CommonModule } from "@angular/common";
+import { DecimalPipe } from "@angular/common";
 import { Component, OnDestroy, OnInit, signal } from "@angular/core";
 import { ButtonModule } from "primeng/button";
 import { TagModule } from "primeng/tag";
@@ -12,7 +12,7 @@ import { UiSectionCardComponent } from "../../shared/components/ui-section-card/
 @Component({
   selector: "oc-server-stats-page",
   standalone: true,
-  imports: [CommonModule, ButtonModule, TagModule, UiKpiTileComponent, UiSectionCardComponent],
+  imports: [DecimalPipe, ButtonModule, TagModule, UiKpiTileComponent, UiSectionCardComponent],
   templateUrl: "./server-stats-page.component.html",
   styleUrl: "./server-stats-page.component.css",
 })

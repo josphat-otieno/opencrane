@@ -30,8 +30,32 @@ export interface TenantSpec
     memory?: string;
   };
 
-  /** List of skill names to enable for this tenant. */
-  skills?: string[];
+  /**
+   * Durable per-tenant skill name allowlist.
+   * When present, only skills in this list are linked at startup.
+   */
+  skillAllowlist?: string[];
+
+  /**
+   * Per-tenant MCP server allow/deny policy applied at invocation level.
+   * Complements the AccessPolicy mcpServers field with tenant-specific overrides.
+   */
+  mcpPolicy?: {
+    /** MCP server names explicitly allowed for this tenant. */
+    allow?: string[];
+    /** MCP server names explicitly denied for this tenant. */
+    deny?: string[];
+  };
+
+  /** Channel adapter configuration for tenant communication integrations. */
+  channels?: Array<{
+    /** Adapter identifier (e.g. "slack", "whatsapp", "teams", "sharepoint"). */
+    adapter: string;
+    /** Adapter configuration payload understood by the selected adapter implementation. */
+    config?: Record<string, unknown>;
+    /** Optional Kubernetes Secret name containing adapter credentials. */
+    credentialsSecretName?: string;
+  }>;
 
   /** Arbitrary OpenClaw config overrides merged into the base config. */
   configOverrides?: Record<string, unknown>;

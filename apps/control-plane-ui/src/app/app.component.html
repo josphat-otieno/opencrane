@@ -6,10 +6,12 @@
         <h1>Control Plane Dashboard</h1>
       </div>
 
-      <div class="auth-state" *ngIf="authStatus()?.authenticated">
-        <span class="auth-user">{{ displayName() }}</span>
-        <button pButton type="button" label="Sign Out" icon="pi pi-sign-out" severity="secondary" (click)="logout()"></button>
-      </div>
+      @if (authStatus()?.authenticated) {
+        <div class="auth-state">
+          <span class="auth-user">{{ displayName() }}</span>
+          <button pButton type="button" label="Sign Out" icon="pi pi-sign-out" severity="secondary" (click)="logout()"></button>
+        </div>
+      }
     </div>
 
     <p-menubar [model]="navigation"></p-menubar>

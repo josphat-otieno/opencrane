@@ -92,7 +92,7 @@ describe("TenantResourceBuilder", () =>
   {
     const tenant = _makeTenant("strict", {
       policyRef: "restricted-mcp",
-      skills: ["company-policy", "deploy-helper"],
+      skillAllowlist: ["company-policy", "deploy-helper"],
     });
 
     const deployment = _BuildDeployment(defaultConfig, tenant, "default");

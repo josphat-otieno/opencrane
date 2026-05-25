@@ -1,4 +1,3 @@
-import { CommonModule } from "@angular/common";
 import { Component, Input } from "@angular/core";
 import { ProgressBarModule } from "primeng/progressbar";
 
@@ -6,7 +5,7 @@ import { ProgressBarModule } from "primeng/progressbar";
 @Component({
   selector: "oc-ui-kpi-tile",
   standalone: true,
-  imports: [CommonModule, ProgressBarModule],
+  imports: [ProgressBarModule],
   templateUrl: "./ui-kpi-tile.component.html",
   styleUrl: "./ui-kpi-tile.component.css",
 })

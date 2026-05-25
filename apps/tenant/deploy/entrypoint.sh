@@ -9,9 +9,13 @@ CONFIG_SOURCE="${OPENCRANE_CONFIG_SOURCE_PATH:-/config/openclaw.json}"
 RUNTIME_CONTRACT_PATH="${OPENCRANE_RUNTIME_CONTRACT_PATH:-/config/opencrane-managed-runtime.json}"
 SKILLS_DIR="$STATE_DIR/agents/main/skills"
 OPENCLAW_VERSION="${OPENCLAW_VERSION:-latest}"
+# MCP policy from AccessPolicy (policy-level enforcement via runtime contract)
 OPENCRANE_ALLOWED_MCP_SERVERS="${OPENCRANE_ALLOWED_MCP_SERVERS:-}"
 OPENCRANE_DENIED_MCP_SERVERS="${OPENCRANE_DENIED_MCP_SERVERS:-}"
 OPENCRANE_MCP_POLICY_ENFORCED="${OPENCRANE_MCP_POLICY_ENFORCED:-false}"
+# MCP policy from Tenant CRD spec (tenant-level governance override, injected by operator)
+OPENCRANE_TENANT_MCP_ALLOW="${OPENCRANE_TENANT_MCP_ALLOW:-}"
+OPENCRANE_TENANT_MCP_DENY="${OPENCRANE_TENANT_MCP_DENY:-}"
 
 function _csv_contains()
 {
@@ -70,15 +74,30 @@ function _mcp_server_is_enabled()
 {
   local server_name="$1"
 
+  # 1. Check tenant-level CRD deny list first — tenant-level deny always wins.
+  if [ -n "$OPENCRANE_TENANT_MCP_DENY" ] && _csv_contains "$OPENCRANE_TENANT_MCP_DENY" "$server_name"; then
+    echo "[opencrane] MCP server '$server_name' denied by tenant CRD mcpPolicy.deny" >&2
+    return 1
+  fi
+
+  # 2. Check tenant-level CRD allow list — if present and does not include the server, deny.
+  if [ -n "$OPENCRANE_TENANT_MCP_ALLOW" ] && ! _csv_contains "$OPENCRANE_TENANT_MCP_ALLOW" "$server_name"; then
+    echo "[opencrane] MCP server '$server_name' not in tenant CRD mcpPolicy.allow" >&2
+    return 1
+  fi
+
+  # 3. Check AccessPolicy-level enforcement when the runtime contract is loaded.
   if [ "$OPENCRANE_MCP_POLICY_ENFORCED" != "true" ]; then
     return 0
   fi
 
   if [ -n "$OPENCRANE_DENIED_MCP_SERVERS" ] && _csv_contains "$OPENCRANE_DENIED_MCP_SERVERS" "$server_name"; then
+    echo "[opencrane] MCP server '$server_name' denied by AccessPolicy" >&2
     return 1
   fi
 
   if [ -n "$OPENCRANE_ALLOWED_MCP_SERVERS" ] && ! _csv_contains "$OPENCRANE_ALLOWED_MCP_SERVERS" "$server_name"; then
+    echo "[opencrane] MCP server '$server_name' not in AccessPolicy allow list" >&2
     return 1
   fi
 

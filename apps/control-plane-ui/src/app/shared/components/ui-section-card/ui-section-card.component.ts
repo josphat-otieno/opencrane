@@ -1,4 +1,3 @@
-import { CommonModule } from "@angular/common";
 import { Component, Input } from "@angular/core";
 import { CardModule } from "primeng/card";
 
@@ -6,7 +5,7 @@ import { CardModule } from "primeng/card";
 @Component({
   selector: "oc-ui-section-card",
   standalone: true,
-  imports: [CommonModule, CardModule],
+  imports: [CardModule],
   templateUrl: "./ui-section-card.component.html",
   styleUrl: "./ui-section-card.component.css",
 })
