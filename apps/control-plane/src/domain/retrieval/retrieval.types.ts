@@ -3,6 +3,15 @@
  * Shared between the retrieval route and conformance tests.
  */
 
+/** Dataset scopes supported by retrieval authorization and dataset partitioning. */
+export enum DatasetScope
+{
+  Org = "org",
+  Team = "team",
+  Project = "project",
+  Personal = "personal",
+}
+
 /** Request body for a retrieval query. */
 export interface RetrievalQueryRequest
 {
@@ -16,7 +25,7 @@ export interface RetrievalQueryRequest
   teamScope?: string;
 
   /** Dataset scope used for AccessPolicy-compatible dataset authorization (defaults to "org"). */
-  datasetScope?: "org" | "team" | "project" | "personal";
+  datasetScope?: DatasetScope;
 
   /** Dataset identifier inside the selected scope (defaults to "default" for org scope). */
   datasetId?: string;
@@ -72,7 +81,7 @@ export interface RetrievalQueryResponse
   queriedAt: string;
 
   /** Effective dataset scope used for this query. */
-  datasetScope: "org" | "team" | "project" | "personal";
+  datasetScope: DatasetScope;
 
   /** Effective dataset identifier used for this query. */
   datasetId: string;
@@ -82,7 +91,7 @@ export interface RetrievalQueryResponse
 export interface RetrievalErrorResponse
 {
   /** Machine-readable error code. */
-  code: "UNAUTHORIZED" | "TENANT_NOT_FOUND" | "POLICY_DENIED" | "DATASET_DENIED" | "INTERNAL_ERROR";
+  code: "UNAUTHORIZED" | "TENANT_NOT_FOUND" | "POLICY_DENIED" | "INTERNAL_ERROR";
 
   /** Human-readable error description. */
   error: string;

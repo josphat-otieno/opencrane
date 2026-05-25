@@ -196,31 +196,30 @@ describe("retrievalRouter — conformance tests", () =>
       expect(response.body.datasetId).toBe("default");
     });
 
-    it("returns 503 when tenant dataset membership cannot be resolved", async () =>
+    it("forwards Cognee tenant and session headers for retrieval isolation", async () =>
     {
-      const auditCreateSpy = vi.fn().mockResolvedValue({});
-      const prisma = {
-        tenant: { findUnique: vi.fn().mockResolvedValue({ name: "acme", phase: "Running" }) },
-        orgDocument: { findMany: vi.fn(), count: vi.fn(), groupBy: vi.fn() },
-        auditEntry: { create: auditCreateSpy },
-      } as unknown as PrismaClient;
-      const customApi = {
-        getNamespacedCustomObject: vi.fn()
-          .mockResolvedValueOnce({ spec: { policyRef: null } })
-          .mockRejectedValueOnce(new Error("k8s unavailable")),
-      } as unknown as k8s.CustomObjectsApi;
+      const fetchSpy = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({ results: [] }),
+      });
+      vi.stubGlobal("fetch", fetchSpy);
+      const prisma = _buildPrismaStub();
+      const customApi = _buildCustomApiStub({ spec: { policyRef: null } }, {});
       const app = _buildRetrievalApp(customApi, prisma);
 
       const response = await request(app)
         .post("/api/retrieval/query")
+        .set("Authorization", "******")
+        .set("x-user-id", "user-123")
         .send({ query: "notes", tenantName: "acme", datasetScope: "org", datasetId: "default" });
 
-      expect(response.status).toBe(503);
-      expect(response.body.code).toBe("INTERNAL_ERROR");
-      expect(auditCreateSpy).toHaveBeenCalledOnce();
-      const auditCall = auditCreateSpy.mock.calls[0][0];
-      expect(auditCall.data.action).toBe("RetrievalDenied");
-      expect(auditCall.data.metadata.deniedBy).toBe("dataset-membership-unavailable");
+      expect(response.status).toBe(200);
+      const fetchCall = fetchSpy.mock.calls[0];
+      expect(fetchCall[1].headers.authorization).toBe("******");
+      expect(fetchCall[1].headers["x-cognee-user-id"]).toBe("user-123");
+      expect(fetchCall[1].headers["x-cognee-tenant-id"]).toBe("acme");
+      expect(fetchCall[1].headers["x-cognee-session-id"]).toBe("session_acme_user-123");
     });
   });
 
@@ -446,7 +445,7 @@ describe("retrievalRouter — conformance tests", () =>
       expect(response.body.code).toBe("POLICY_DENIED");
     });
 
-    it("returns 403 when tenant is not a member of requested dataset", async () =>
+    it("allows retrieval and delegates dataset enforcement to Cognee for team scope", async () =>
     {
       const auditCreateSpy = vi.fn().mockResolvedValue({});
       const prisma = {
@@ -467,15 +466,14 @@ describe("retrievalRouter — conformance tests", () =>
         .post("/api/retrieval/query")
         .send({ query: "notes", tenantName: "acme", datasetScope: "team", datasetId: "engineering" });
 
-      expect(response.status).toBe(403);
-      expect(response.body.code).toBe("DATASET_DENIED");
+      expect(response.status).toBe(200);
       expect(auditCreateSpy).toHaveBeenCalledOnce();
       const auditCall = auditCreateSpy.mock.calls[0][0];
-      expect(auditCall.data.action).toBe("RetrievalDenied");
-      expect(auditCall.data.metadata.deniedBy).toBe("dataset");
+      expect(auditCall.data.action).toBe("RetrievalAllowed");
+      expect(auditCall.data.metadata.deniedBy).toBeNull();
     });
 
-    it("returns 403 when tenant is not a member of requested project dataset", async () =>
+    it("allows retrieval and delegates dataset enforcement to Cognee for project scope", async () =>
     {
       const prisma = _buildPrismaStub();
       const customApi = _buildCustomApiStub(
@@ -491,8 +489,7 @@ describe("retrievalRouter — conformance tests", () =>
         .post("/api/retrieval/query")
         .send({ query: "notes", tenantName: "acme", datasetScope: "project", datasetId: "zeus" });
 
-      expect(response.status).toBe(403);
-      expect(response.body.code).toBe("DATASET_DENIED");
+      expect(response.status).toBe(200);
     });
 
     it("creates an audit entry with action RetrievalDenied when access is denied", async () =>

@@ -1,13 +1,12 @@
 import * as k8s from "@kubernetes/client-node";
 import { Router } from "express";
+import type { Request } from "express";
 import type { PrismaClient } from "@prisma/client";
 
 import { _HashQuery } from "../domain/retrieval/retrieval-hash.util.js";
 import { _CheckRetrievalPolicyDenied, _ResolveTenantPolicyName } from "../domain/retrieval/retrieval-policy.logic.js";
+import { DatasetScope } from "../domain/retrieval/retrieval.types.js";
 import type { RetrievalErrorResponse, RetrievalQueryRequest, RetrievalQueryResponse } from "../domain/retrieval/retrieval.types.js";
-import { OPENCRANE_API_GROUP, OPENCRANE_API_VERSION, TENANT_CRD_PLURAL } from "./internal/crd-constants.js";
-import { _IsDatasetMembershipDenied, _ParseTenantDatasetMembership } from "./internal/tenant-datasets.js";
-import type { DatasetScope, TenantDatasetMembership } from "./internal/tenant-datasets.types.js";
 
 /** Excerpt character limit — avoids returning full large documents to the caller. */
 const CONTENT_EXCERPT_LIMIT = 500;
@@ -111,59 +110,21 @@ export function retrievalRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaC
       namespace,
     );
 
-    let datasetDenied = false;
-    if (!policyDeniesRetrieval)
-    {
-      let datasetMembership: TenantDatasetMembership;
-      try
-      {
-        datasetMembership = await _ResolveTenantDatasetMembership(customApi, tenantName, namespace);
-      }
-      catch
-      {
-        await prisma.auditEntry.create({
-          data: {
-            tenant: tenantName,
-            action: "RetrievalDenied",
-            resource: `Tenant/${tenantName}`,
-            message: `Retrieval query '${query.slice(0, 80)}' by tenant ${tenantName} — denied (dataset membership unavailable)`,
-            metadata: {
-              queryHash: _HashQuery(query),
-              policyRef: policyName ?? "none",
-              teamScope: teamScope ?? null,
-              datasetScope,
-              datasetId,
-              deniedBy: "dataset-membership-unavailable",
-            },
-          },
-        });
-
-        const errorBody: RetrievalErrorResponse = {
-          code: "INTERNAL_ERROR",
-          error: "tenant dataset membership could not be resolved",
-        };
-        res.status(503).json(errorBody);
-        return;
-      }
-
-      datasetDenied = _IsDatasetMembershipDenied(datasetMembership, datasetScope, datasetId);
-    }
-
     // 4. Audit the query regardless of the authorization outcome so all retrieval
     //    attempts are traceable, not just successful ones.
     await prisma.auditEntry.create({
       data: {
         tenant: tenantName,
-        action: (policyDeniesRetrieval || datasetDenied) ? "RetrievalDenied" : "RetrievalAllowed",
+        action: policyDeniesRetrieval ? "RetrievalDenied" : "RetrievalAllowed",
         resource: `Tenant/${tenantName}`,
-        message: `Retrieval query '${query.slice(0, 80)}' by tenant ${tenantName} — ${(policyDeniesRetrieval || datasetDenied) ? "denied" : "allowed"}`,
+        message: `Retrieval query '${query.slice(0, 80)}' by tenant ${tenantName} — ${policyDeniesRetrieval ? "denied" : "allowed"}`,
         metadata: {
           queryHash: _HashQuery(query),
           policyRef: policyName ?? "none",
           teamScope: teamScope ?? null,
           datasetScope,
           datasetId,
-          deniedBy: policyDeniesRetrieval ? "policy" : (datasetDenied ? "dataset" : null),
+          deniedBy: policyDeniesRetrieval ? "policy" : null,
         },
       },
     });
@@ -179,18 +140,7 @@ export function retrievalRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaC
       return;
     }
 
-    // 6. Deny retrieval when the tenant is not a member of the requested dataset.
-    if (datasetDenied)
-    {
-      const errorBody: RetrievalErrorResponse = {
-        code: "DATASET_DENIED",
-        error: `Dataset access denied for scope '${datasetScope}' and dataset '${datasetId}'`,
-      };
-      res.status(403).json(errorBody);
-      return;
-    }
-
-    // 7. Execute retrieval against Cognee. PostgreSQL retrieval has been retired.
+    // 6. Execute retrieval against Cognee. PostgreSQL retrieval has been retired.
     let results: RetrievalQueryResponse["results"];
     try
     {
@@ -201,6 +151,7 @@ export function retrievalRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaC
         datasetScope,
         datasetId,
         limit,
+        headers: _BuildCogneeHeaders(req, tenantName),
       });
     }
     catch (error)
@@ -282,7 +233,7 @@ function _ResolveDatasetId(datasetScope: DatasetScope, rawDatasetId: unknown): s
     return datasetId;
   }
 
-  if (datasetScope === "org")
+  if (datasetScope === DatasetScope.Org)
   {
     return "default";
   }
@@ -294,42 +245,24 @@ function _ResolveDatasetId(datasetScope: DatasetScope, rawDatasetId: unknown): s
  * Resolve and validate dataset scope from an untrusted request value.
  * @param rawScope - Raw dataset scope from the request body.
  */
-function _ResolveDatasetScope(rawScope: string | undefined): DatasetScope | null
+function _ResolveDatasetScope(rawScope: unknown): DatasetScope | null
 {
   if (rawScope === undefined)
   {
-    return "org";
+    return DatasetScope.Org;
   }
 
-  if (rawScope === "org" || rawScope === "team" || rawScope === "project" || rawScope === "personal")
+  if (
+    rawScope === DatasetScope.Org
+    || rawScope === DatasetScope.Team
+    || rawScope === DatasetScope.Project
+    || rawScope === DatasetScope.Personal
+  )
   {
     return rawScope;
   }
 
   return null;
-}
-
-/**
- * Resolve tenant dataset membership from Tenant CR annotations.
- * @param customApi - Kubernetes custom objects API client.
- * @param tenantName - Tenant resource name.
- * @param namespace - Kubernetes namespace.
- */
-async function _ResolveTenantDatasetMembership(
-  customApi: k8s.CustomObjectsApi,
-  tenantName: string,
-  namespace: string,
-): Promise<TenantDatasetMembership>
-{
-  const response = await customApi.getNamespacedCustomObject({
-    group: OPENCRANE_API_GROUP,
-    version: OPENCRANE_API_VERSION,
-    namespace,
-    plural: TENANT_CRD_PLURAL,
-    name: tenantName,
-  }) as { metadata?: { annotations?: Record<string, string> } };
-
-  return _ParseTenantDatasetMembership(response.metadata?.annotations);
 }
 
 interface CogneeQueryInput
@@ -340,6 +273,7 @@ interface CogneeQueryInput
   datasetScope: DatasetScope;
   datasetId: string;
   limit: number;
+  headers: Record<string, string>;
 }
 
 /**
@@ -351,7 +285,7 @@ async function _QueryCognee(input: CogneeQueryInput): Promise<RetrievalQueryResp
   const timeoutMs = _ReadPositiveIntEnv("COGNEE_QUERY_TIMEOUT_MS", DEFAULT_COGNEE_TIMEOUT_MS);
   const response = await fetch(_BuildCogneeUrl("/v1/retrieval/query"), {
     method: "POST",
-    headers: _BuildCogneeHeaders(),
+    headers: input.headers,
     body: JSON.stringify({
       query: input.query,
       tenantName: input.tenantName,
@@ -432,18 +366,61 @@ function _BuildCogneeUrl(path: string): string
 /**
  * Build HTTP headers for Cognee requests.
  */
-function _BuildCogneeHeaders(): Record<string, string>
+function _BuildCogneeHeaders(req: Request, tenantName: string): Record<string, string>
 {
-  const apiKey = process.env.COGNEE_API_KEY?.trim();
-  if (!apiKey)
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+  };
+
+  const authorization = req.headers.authorization;
+  if (typeof authorization === "string" && authorization.length > 0)
   {
-    return { "content-type": "application/json" };
+    headers.authorization = authorization;
   }
 
-  return {
-    "content-type": "application/json",
-    authorization: "Bearer " + apiKey,
-  };
+  const userId = _ReadFirstHeaderValue(req.headers["x-user-id"])
+    ?? req.session?.authUser?.email
+    ?? req.session?.authUser?.sub;
+
+  if (userId)
+  {
+    headers["x-cognee-user-id"] = userId;
+  }
+
+  headers["x-cognee-tenant-id"] = tenantName;
+  headers["x-cognee-session-id"] = _BuildCogneeSessionId(tenantName, userId);
+  headers["x-opencrane-retrieval-source"] = "control-plane";
+
+  return headers;
+}
+
+/**
+ * Build a deterministic Cognee session identifier for this retrieval request.
+ * @param tenantName - Tenant name from retrieval query.
+ * @param userId - Resolved caller user identifier.
+ */
+function _BuildCogneeSessionId(tenantName: string, userId: string | undefined): string
+{
+  const tenantPart = tenantName.trim().replace(/[^a-zA-Z0-9_-]+/g, "_");
+  const userPart = (userId ?? "anonymous").trim().replace(/[^a-zA-Z0-9@._-]+/g, "_");
+  return `session_${tenantPart}_${userPart}`;
+}
+
+/**
+ * Resolve a single header value when the incoming value may be a string array.
+ * @param value - Raw Express header value.
+ */
+function _ReadFirstHeaderValue(value: string | string[] | undefined): string | undefined
+{
+  if (Array.isArray(value))
+  {
+    return value.find(function _isNonEmpty(entry)
+    {
+      return entry.trim().length > 0;
+    });
+  }
+
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
 }
 
 /**

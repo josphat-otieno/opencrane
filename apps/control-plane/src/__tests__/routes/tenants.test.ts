@@ -17,36 +17,44 @@ function _buildTenantsApp(customApi: k8s.CustomObjectsApi, prisma: PrismaClient)
 }
 
 /** Build a minimal Prisma stub for tenant route tests. */
-function _buildPrismaStub(): PrismaClient
+function _buildPrismaStub(overrides: Partial<{
+  tenantFindUnique: unknown;
+  datasetMembershipFindUnique: unknown;
+  datasetMembershipUpsert: unknown;
+  auditEntryCreate: unknown;
+}> = {}): PrismaClient
 {
   return {
     tenant: {
       create: vi.fn().mockResolvedValue({}),
+      findUnique: vi.fn().mockResolvedValue("tenantFindUnique" in overrides ? overrides.tenantFindUnique : { name: "acme" }),
+    },
+    tenantDatasetMembership: {
+      findUnique: vi.fn().mockResolvedValue("datasetMembershipFindUnique" in overrides ? overrides.datasetMembershipFindUnique : null),
+      upsert: vi.fn().mockResolvedValue("datasetMembershipUpsert" in overrides ? overrides.datasetMembershipUpsert : {}),
     },
     auditEntry: {
-      create: vi.fn().mockResolvedValue({}),
+      create: vi.fn().mockResolvedValue("auditEntryCreate" in overrides ? overrides.auditEntryCreate : {}),
     },
   } as unknown as PrismaClient;
 }
 
 describe("tenantsRouter dataset membership endpoints", () =>
 {
-  it("returns dataset memberships parsed from tenant annotations", async () =>
+  it("returns dataset memberships from SQL projection rows", async () =>
   {
-    const customApi = {
-      getNamespacedCustomObject: vi.fn().mockResolvedValue({
-        metadata: {
-          annotations: {
-            "opencrane.io/datasets-org": "default,global",
-            "opencrane.io/datasets-team": "engineering",
-            "opencrane.io/datasets-project": "apollo",
-            "opencrane.io/datasets-personal": "owner@example.com",
-          },
+    const prisma = _buildPrismaStub({
+      tenantFindUnique: {
+        name: "acme",
+        datasetMembership: {
+          org: ["default", "global"],
+          team: ["engineering"],
+          project: ["apollo"],
+          personal: ["owner@example.com"],
         },
-      }),
-    } as unknown as k8s.CustomObjectsApi;
-
-    const app = _buildTenantsApp(customApi, _buildPrismaStub());
+      },
+    });
+    const app = _buildTenantsApp({} as k8s.CustomObjectsApi, prisma);
     const response = await request(app).get("/api/tenants/acme/datasets");
 
     expect(response.status).toBe(200);
@@ -58,22 +66,16 @@ describe("tenantsRouter dataset membership endpoints", () =>
 
   it("updates tenant dataset memberships and writes an audit entry", async () =>
   {
-    const getSpy = vi.fn().mockResolvedValue({
-      metadata: { annotations: { "opencrane.io/existing": "value" } },
-    });
-    const patchSpy = vi.fn().mockResolvedValue({});
     const auditCreateSpy = vi.fn().mockResolvedValue({});
+    const upsertSpy = vi.fn().mockResolvedValue({});
 
-    const customApi = {
-      getNamespacedCustomObject: getSpy,
-      patchNamespacedCustomObject: patchSpy,
-    } as unknown as k8s.CustomObjectsApi;
+    const prisma = _buildPrismaStub({
+      auditEntryCreate: {},
+    });
+    prisma.auditEntry.create = auditCreateSpy as unknown as PrismaClient["auditEntry"]["create"];
+    prisma.tenantDatasetMembership.upsert = upsertSpy as unknown as PrismaClient["tenantDatasetMembership"]["upsert"];
 
-    const prisma = {
-      auditEntry: { create: auditCreateSpy },
-    } as unknown as PrismaClient;
-
-    const app = _buildTenantsApp(customApi, prisma);
+    const app = _buildTenantsApp({} as k8s.CustomObjectsApi, prisma);
     const response = await request(app)
       .put("/api/tenants/acme/datasets")
       .send({
@@ -84,19 +86,17 @@ describe("tenantsRouter dataset membership endpoints", () =>
       });
 
     expect(response.status).toBe(200);
-    expect(patchSpy).toHaveBeenCalledOnce();
+    expect(upsertSpy).toHaveBeenCalledOnce();
     expect(auditCreateSpy).toHaveBeenCalledOnce();
     expect(response.body.team).toEqual(["engineering"]);
   });
 
   it("returns 404 when updating datasets for a missing tenant", async () =>
   {
-    const customApi = {
-      getNamespacedCustomObject: vi.fn().mockRejectedValue({ statusCode: 404 }),
-      patchNamespacedCustomObject: vi.fn(),
-    } as unknown as k8s.CustomObjectsApi;
-
-    const app = _buildTenantsApp(customApi, _buildPrismaStub());
+    const app = _buildTenantsApp(
+      {} as k8s.CustomObjectsApi,
+      _buildPrismaStub({ tenantFindUnique: null }),
+    );
     const response = await request(app)
       .put("/api/tenants/missing/datasets")
       .send({
@@ -112,12 +112,7 @@ describe("tenantsRouter dataset membership endpoints", () =>
 
   it("returns 400 when dataset update payload is invalid", async () =>
   {
-    const customApi = {
-      getNamespacedCustomObject: vi.fn(),
-      patchNamespacedCustomObject: vi.fn(),
-    } as unknown as k8s.CustomObjectsApi;
-
-    const app = _buildTenantsApp(customApi, _buildPrismaStub());
+    const app = _buildTenantsApp({} as k8s.CustomObjectsApi, _buildPrismaStub());
     const response = await request(app)
       .put("/api/tenants/acme/datasets")
       .send({
@@ -133,14 +128,9 @@ describe("tenantsRouter dataset membership endpoints", () =>
 
   it("returns 502 when persisting dataset updates fails", async () =>
   {
-    const customApi = {
-      getNamespacedCustomObject: vi.fn().mockResolvedValue({
-        metadata: { annotations: {} },
-      }),
-      patchNamespacedCustomObject: vi.fn().mockRejectedValue(new Error("patch failed")),
-    } as unknown as k8s.CustomObjectsApi;
-
-    const app = _buildTenantsApp(customApi, _buildPrismaStub());
+    const prisma = _buildPrismaStub();
+    prisma.tenantDatasetMembership.upsert = vi.fn().mockRejectedValue(new Error("upsert failed")) as unknown as PrismaClient["tenantDatasetMembership"]["upsert"];
+    const app = _buildTenantsApp({} as k8s.CustomObjectsApi, prisma);
     const response = await request(app)
       .put("/api/tenants/acme/datasets")
       .send({
@@ -156,17 +146,9 @@ describe("tenantsRouter dataset membership endpoints", () =>
 
   it("returns 200 when audit write fails after dataset patch succeeds", async () =>
   {
-    const customApi = {
-      getNamespacedCustomObject: vi.fn().mockResolvedValue({
-        metadata: { annotations: {} },
-      }),
-      patchNamespacedCustomObject: vi.fn().mockResolvedValue({}),
-    } as unknown as k8s.CustomObjectsApi;
-    const prisma = {
-      auditEntry: { create: vi.fn().mockRejectedValue(new Error("audit unavailable")) },
-    } as unknown as PrismaClient;
-
-    const app = _buildTenantsApp(customApi, prisma);
+    const prisma = _buildPrismaStub();
+    prisma.auditEntry.create = vi.fn().mockRejectedValue(new Error("audit unavailable")) as unknown as PrismaClient["auditEntry"]["create"];
+    const app = _buildTenantsApp({} as k8s.CustomObjectsApi, prisma);
     const response = await request(app)
       .put("/api/tenants/acme/datasets")
       .send({
@@ -182,11 +164,9 @@ describe("tenantsRouter dataset membership endpoints", () =>
 
   it("returns 502 when loading datasets fails for a non-not-found error", async () =>
   {
-    const customApi = {
-      getNamespacedCustomObject: vi.fn().mockRejectedValue({ statusCode: 500 }),
-    } as unknown as k8s.CustomObjectsApi;
-
-    const app = _buildTenantsApp(customApi, _buildPrismaStub());
+    const prisma = _buildPrismaStub();
+    prisma.tenant.findUnique = vi.fn().mockRejectedValue(new Error("db unavailable")) as unknown as PrismaClient["tenant"]["findUnique"];
+    const app = _buildTenantsApp({} as k8s.CustomObjectsApi, prisma);
     const response = await request(app).get("/api/tenants/acme/datasets");
 
     expect(response.status).toBe(502);

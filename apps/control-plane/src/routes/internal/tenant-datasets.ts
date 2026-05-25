@@ -1,19 +1,20 @@
-import type { DatasetScope, TenantDatasetMembership } from "./tenant-datasets.types.js";
+import { DatasetScope } from "./tenant-datasets.types.js";
+import type { TenantDatasetMembership } from "./tenant-datasets.types.js";
 
 /** Annotation keys used to store tenant dataset memberships on the Tenant CR. */
 const DATASET_ANNOTATION_KEYS: Record<DatasetScope, string> = {
-  org: "opencrane.io/datasets-org",
-  team: "opencrane.io/datasets-team",
-  project: "opencrane.io/datasets-project",
-  personal: "opencrane.io/datasets-personal",
+  [DatasetScope.Org]: "opencrane.io/datasets-org",
+  [DatasetScope.Team]: "opencrane.io/datasets-team",
+  [DatasetScope.Project]: "opencrane.io/datasets-project",
+  [DatasetScope.Personal]: "opencrane.io/datasets-personal",
 };
 
 /** Default dataset membership for tenants that do not yet carry explicit annotations. */
 const DEFAULT_DATASET_MEMBERSHIP: TenantDatasetMembership = {
-  org: ["default"],
-  team: [],
-  project: [],
-  personal: [],
+  [DatasetScope.Org]: ["default"],
+  [DatasetScope.Team]: [],
+  [DatasetScope.Project]: [],
+  [DatasetScope.Personal]: [],
 };
 
 /**
@@ -25,10 +26,10 @@ export function _ParseTenantDatasetMembership(
 ): TenantDatasetMembership
 {
   return {
-    org: _ParseDatasetList(annotations?.[DATASET_ANNOTATION_KEYS.org], DEFAULT_DATASET_MEMBERSHIP.org),
-    team: _ParseDatasetList(annotations?.[DATASET_ANNOTATION_KEYS.team], DEFAULT_DATASET_MEMBERSHIP.team),
-    project: _ParseDatasetList(annotations?.[DATASET_ANNOTATION_KEYS.project], DEFAULT_DATASET_MEMBERSHIP.project),
-    personal: _ParseDatasetList(annotations?.[DATASET_ANNOTATION_KEYS.personal], DEFAULT_DATASET_MEMBERSHIP.personal),
+    [DatasetScope.Org]: _ParseDatasetList(annotations?.[DATASET_ANNOTATION_KEYS[DatasetScope.Org]], DEFAULT_DATASET_MEMBERSHIP[DatasetScope.Org]),
+    [DatasetScope.Team]: _ParseDatasetList(annotations?.[DATASET_ANNOTATION_KEYS[DatasetScope.Team]], DEFAULT_DATASET_MEMBERSHIP[DatasetScope.Team]),
+    [DatasetScope.Project]: _ParseDatasetList(annotations?.[DATASET_ANNOTATION_KEYS[DatasetScope.Project]], DEFAULT_DATASET_MEMBERSHIP[DatasetScope.Project]),
+    [DatasetScope.Personal]: _ParseDatasetList(annotations?.[DATASET_ANNOTATION_KEYS[DatasetScope.Personal]], DEFAULT_DATASET_MEMBERSHIP[DatasetScope.Personal]),
   };
 }
 
@@ -41,10 +42,10 @@ export function _SerializeTenantDatasetMembership(
 ): Record<string, string>
 {
   return {
-    [DATASET_ANNOTATION_KEYS.org]: _SerializeDatasetList(membership.org),
-    [DATASET_ANNOTATION_KEYS.team]: _SerializeDatasetList(membership.team),
-    [DATASET_ANNOTATION_KEYS.project]: _SerializeDatasetList(membership.project),
-    [DATASET_ANNOTATION_KEYS.personal]: _SerializeDatasetList(membership.personal),
+    [DATASET_ANNOTATION_KEYS[DatasetScope.Org]]: _SerializeDatasetList(membership.org),
+    [DATASET_ANNOTATION_KEYS[DatasetScope.Team]]: _SerializeDatasetList(membership.team),
+    [DATASET_ANNOTATION_KEYS[DatasetScope.Project]]: _SerializeDatasetList(membership.project),
+    [DATASET_ANNOTATION_KEYS[DatasetScope.Personal]]: _SerializeDatasetList(membership.personal),
   };
 }
 

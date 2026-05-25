@@ -36,13 +36,8 @@ spec:
               value: {{ .Values.controlPlane.cognee.queryTimeoutMs | quote }}
             - name: COGNEE_HEALTH_TIMEOUT_MS
               value: {{ .Values.controlPlane.cognee.healthTimeoutMs | quote }}
-            {{- if .Values.controlPlane.cognee.existingSecret }}
-            - name: COGNEE_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.controlPlane.cognee.existingSecret }}
-                  key: {{ .Values.controlPlane.cognee.secretKey }}
-            {{- end }}
+            - name: COGNEE_ENABLE_BACKEND_ACCESS_CONTROL
+              value: {{ ternary "true" "false" .Values.controlPlane.cognee.backendAccessControl | quote }}
             - name: LITELLM_ENDPOINT
               value: {{ .Values.litellm.endpoint | quote }}
             {{- if .Values.litellm.enabled }}

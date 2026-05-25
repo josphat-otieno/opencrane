@@ -6,7 +6,6 @@ import type { CreateTenantRequest, TenantDatasetsResponse, TenantResponse, Updat
 import { _DetectTenantProjectionDrift } from "./internal/projection-drift.js";
 import { _RepairTenantProjection } from "./internal/projection-repair.js";
 import { OPENCRANE_API_GROUP, OPENCRANE_API_VERSION, TENANT_CRD_PLURAL } from "./internal/crd-constants.js";
-import { _ParseTenantDatasetMembership, _SerializeTenantDatasetMembership } from "./internal/tenant-datasets.js";
 
 /** Tenant CR appearance SLO constants. */
 const TENANT_CR_APPEARANCE_TIMEOUT_MS = 30_000;
@@ -68,38 +67,45 @@ export function tenantsRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCli
     res.json(response);
   });
 
-  /** Get dataset memberships for a tenant from Tenant CR annotations. */
+  /** Get dataset memberships for a tenant from SQL projection storage. */
   router.get("/:name/datasets", async function _getTenantDatasets(req, res)
   {
     try
     {
-      const tenant = await customApi.getNamespacedCustomObject({
-        group: OPENCRANE_API_GROUP,
-        version: OPENCRANE_API_VERSION,
-        namespace,
-        plural: TENANT_CRD_PLURAL,
-        name: req.params.name,
-      }) as { metadata?: { annotations?: Record<string, string> } };
+      const tenant = await prisma.tenant.findUnique({
+        where: { name: req.params.name },
+        select: {
+          name: true,
+          datasetMembership: {
+            select: {
+              org: true,
+              team: true,
+              project: true,
+              personal: true,
+            },
+          },
+        },
+      });
 
-      const response: TenantDatasetsResponse = _ParseTenantDatasetMembership(tenant.metadata?.annotations);
-      res.json(response);
-    }
-    catch (error)
-    {
-      if (_IsKubernetesNotFoundError(error))
+      if (!tenant)
       {
         res.status(404).json({ error: "Tenant not found" });
         return;
       }
 
+      const response: TenantDatasetsResponse = tenant.datasetMembership ?? _DefaultTenantDatasetMembership();
+      res.json(response);
+    }
+    catch
+    {
       res.status(502).json({ error: "Failed to load tenant datasets" });
     }
   });
 
-  /** Update dataset memberships for a tenant and persist them as Tenant CR annotations. */
+  /** Update dataset memberships for a tenant and persist them in SQL projection storage. */
   router.put("/:name/datasets", async function _putTenantDatasets(req, res)
   {
-    // 1. Validate body shape early so malformed requests never reach Kubernetes mutation paths.
+    // 1. Validate body shape early so malformed requests never reach persistence mutation paths.
     const name = req.params.name;
     const body = req.body as Partial<UpdateTenantDatasetsRequest>;
     const membership = _ValidateTenantDatasetUpdate(body);
@@ -110,59 +116,39 @@ export function tenantsRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCli
       return;
     }
 
-    // 2. Read the current Tenant CR first so we preserve unrelated annotations on patch.
-    let tenant: { metadata?: { annotations?: Record<string, string> } };
+    // 2. Ensure tenant exists before writing membership rows.
     try
     {
-      tenant = await customApi.getNamespacedCustomObject({
-        group: OPENCRANE_API_GROUP,
-        version: OPENCRANE_API_VERSION,
-        namespace,
-        plural: TENANT_CRD_PLURAL,
-        name,
-      }) as { metadata?: { annotations?: Record<string, string> } };
-    }
-    catch (error)
-    {
-      if (_IsKubernetesNotFoundError(error))
+      const tenant = await prisma.tenant.findUnique({
+        where: { name },
+        select: { name: true },
+      });
+      if (!tenant)
       {
         res.status(404).json({ error: "Tenant not found" });
         return;
       }
-
+    }
+    catch
+    {
       res.status(502).json({ error: "Failed to load tenant datasets" });
       return;
     }
 
-    // 3. Patch normalized dataset annotations onto the tenant and persist an audit trail.
-    const patch = {
-      metadata: {
-        annotations: {
-          ...(tenant.metadata?.annotations ?? {}),
-          ..._SerializeTenantDatasetMembership(membership),
-        },
-      },
-    };
-
+    // 3. Persist normalized dataset memberships in SQL and write an audit trail.
     try
     {
-      await customApi.patchNamespacedCustomObject({
-        group: OPENCRANE_API_GROUP,
-        version: OPENCRANE_API_VERSION,
-        namespace,
-        plural: TENANT_CRD_PLURAL,
-        name,
-        body: patch,
+      await prisma.tenantDatasetMembership.upsert({
+        where: { tenant: name },
+        create: {
+          tenant: name,
+          ...membership,
+        },
+        update: membership,
       });
     }
-    catch (error)
+    catch
     {
-      if (_IsKubernetesNotFoundError(error))
-      {
-        res.status(404).json({ error: "Tenant not found" });
-        return;
-      }
-
       res.status(502).json({ error: "Failed to persist tenant datasets" });
       return;
     }
@@ -181,7 +167,7 @@ export function tenantsRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCli
     }
     catch
     {
-      // Best-effort audit write: dataset membership changes are already persisted in Kubernetes.
+      // Best-effort audit write: dataset membership changes are already persisted in SQL.
     }
 
     res.json(membership);
@@ -549,4 +535,17 @@ async function _Sleep(durationMs: number): Promise<void>
   {
     setTimeout(resolve, durationMs);
   });
+}
+
+/**
+ * Default dataset membership used when a tenant has no explicit SQL row yet.
+ */
+function _DefaultTenantDatasetMembership(): TenantDatasetsResponse
+{
+  return {
+    org: ["default"],
+    team: [],
+    project: [],
+    personal: [],
+  };
 }

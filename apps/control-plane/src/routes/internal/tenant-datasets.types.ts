@@ -1,5 +1,6 @@
-/** Dataset scopes supported by tenant dataset membership controls. */
-export type DatasetScope = "org" | "team" | "project" | "personal";
+import { DatasetScope } from "../../domain/retrieval/retrieval.types.js";
+
+export { DatasetScope };
 
 /** Dataset membership lists grouped by scope. */
 export interface TenantDatasetMembership

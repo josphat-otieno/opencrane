@@ -19,8 +19,22 @@ model Tenant {
   updatedAt       DateTime     @updatedAt @map("updated_at")
   auditEntries    AuditEntry[]
   litellmKeys     TenantLiteLlmKey[]
+  datasetMembership TenantDatasetMembership?
 
   @@map("tenants")
+}
+
+model TenantDatasetMembership {
+  tenant     String   @id
+  org        String[] @default(["default"])
+  team       String[] @default([])
+  project    String[] @default([])
+  personal   String[] @default([])
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  tenantRef  Tenant   @relation(fields: [tenant], references: [name], onDelete: Cascade)
+
+  @@map("tenant_dataset_memberships")
 }
 
 model TenantLiteLlmKey {
