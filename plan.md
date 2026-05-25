@@ -581,9 +581,11 @@ Before finishing this phase, lock the following:
    - Add an optional 2FA toggle for approval actions as part of that future approval rollout.
 
 4. **Memory Upgrade Rollout**
-   - Move memory cutover into this phase: migrate from PostgreSQL-only retrieval runtime to Cognee write-through orchestration.
+   - Move memory cutover into this phase: migrate from PostgreSQL-only retrieval runtime to Cognee write-through orchestration for all tenants.
+   - Use a hard switch rollout (no dual-read fallback window) once migration validation passes.
    - Keep OpenClaw as source connector and policy enforcement boundary.
-   - Enforce dataset granularity, AccessPolicy mapping, source-permission propagation, and freshness invalidation as mandatory rollout gates.
+   - Enforce dataset granularity, AccessPolicy mapping, and source-permission propagation as mandatory rollout gates.
+   - Freshness/invalidation is deferred to Sprint 3+ and will be integrated and controlled from Clawdbot.
 
 **Action**: Ship portal + memory cutover in Phase 3 with bearer-token baseline auth. Keep approval workflow and OIDC in future work, and carry optional approval 2FA as a planned extension.
 
@@ -599,13 +601,14 @@ Before finishing this phase, lock the following:
      - **Provision**: Form (name, email, team, openclawVersion pin, policy).
      - **Tenant Detail**: Config view, logs, resource usage.
      - **Admin Panel**: Tenant visibility and audit log visibility.
+    - Add dataset-assignment UI in control-plane-ui for org/team/project/personal dataset membership and visibility.
    - Auth: bearer token for this phase.
 
 2. **Memory Cutover: Cognee Write-Through**
    - Replace PostgreSQL-only retrieval runtime path with Cognee orchestration (`docs/memory.md`).
+   - Cut over all tenants in a single hard-switch migration window.
    - Keep OpenClaw responsible for source ingestion, permission-aware copy semantics, and retrieval mediation.
-   - Implement dataset-level access wiring from AccessPolicy outcomes.
-   - Implement freshness invalidation using source version metadata + age-based revalidation.
+   - Implement dataset-level access wiring from AccessPolicy outcomes for org/team/project/personal scopes.
 
 3. **Dual-write write-path simplification**
    - Migrate projection writes from request-path dual-write to a watcher-fed projector component.
@@ -616,6 +619,7 @@ Before finishing this phase, lock the following:
    - Approval flow routes and CRD fields.
    - Approval action security with bearer token + optional 2FA toggle.
    - OIDC migration for portal and control-plane auth.
+   - Freshness/invalidation implementation, integrated and controlled from Clawdbot.
 
 ### File Structure Additions
 
@@ -664,22 +668,23 @@ apps/
 | Angular portal features scaffold + auth | Frontend | 12h | Phase 1 API |
 | Tenant provisioning form + dashboard | Frontend | 15h | Control Plane API |
 | Admin panel (visibility + audit) | Frontend | 8h | Portal routes |
+| Dataset assignment UI in control-plane-ui (org/team/project/personal) | Frontend | 10h | Portal routes |
 | Memory cutover to Cognee write-through | Backend | 20h | Phase 2 retrieval foundation |
 | AccessPolicy -> Cognee dataset permission mapping | Backend | 10h | Memory cutover core |
-| Freshness/invalidation implementation | Backend | 8h | Source metadata contract |
 | Portal -> control-plane integration | Backend | 8h | Portal code |
 | Tests: provisioning + memory authorization | QA | 14h | All code |
-| **Phase 3 Total** | | **95h** | |
+| **Phase 3 Total** | | **97h** | |
 
 ### Success Criteria
 
 - [x] Non-admin user can self-provision tenant via web form (ProvisionPageComponent + TenantApiService implemented).
-- [ ] Tenant appears in Kubernetes as Tenant CR within 30s (operator reconcile already handles this; e2e not re-run).
+- [ ] Tenant appears in Kubernetes as Tenant CR within 30s.
 - [x] Dashboard shows health, spend, and last reconciled time per tenant (DashboardPageComponent + SpendChartComponent implemented).
-- [ ] Retrieval runtime is cut over from PostgreSQL-only path to Cognee write-through for Phase 3 target tenants.
+- [ ] Retrieval runtime is cut over from PostgreSQL-only path to Cognee write-through for all tenants using a hard switch.
 - [ ] AccessPolicy-compatible dataset permissions are enforced in retrieval responses.
-- [ ] Freshness invalidation path revalidates stale memory based on source-version metadata and age threshold.
-- [ ] Approval flow remains explicitly deferred; no Phase 3 blocker depends on approval route delivery.
+- [ ] control-plane-ui exposes dataset membership controls for org/team/project/personal scopes.
+- [x] Approval flow remains explicitly deferred; no Phase 3 blocker depends on approval route delivery.
+- [x] Freshness/invalidation is deferred to Sprint 3+ and controlled from Clawdbot.
 
 ---
 
@@ -707,8 +712,8 @@ apps/
 |-------|--------|----------|-------|
 | **Phase 1** (Core) | 90h | 3 weeks (2 eng + 1 ops) | Week 1 |
 | **Phase 2** (Cost control + retrieval foundation) | 97h | 2-3 weeks (parallel to Phase 1 end) | Week 2 |
-| **Phase 3** (Self-service + memory cutover) | 95h | 3 weeks (after Phase 2) | Week 4 |
-| **Total** | **282h** | **7–9 weeks** | |
+| **Phase 3** (Self-service + memory cutover) | 97h | 3 weeks (after Phase 2) | Week 4 |
+| **Total** | **284h** | **7–9 weeks** | |
 
 ---
 
@@ -769,6 +774,27 @@ This avoids rework and ensures alignment across teams.
 - [x] Approval workflow deferred to future work (not a Phase 3 gate).
 - [x] Future approval security direction: bearer token + optional 2FA toggle.
 - [x] Memory upgrade moved into Phase 3 required scope.
+- [x] Memory cutover wave: all tenants.
+- [x] Cutover mode: hard switch.
+- [x] Dataset granularity: org, team, project, personal.
+- [x] Dataset control surface: included in control-plane-ui.
+- [x] Tenant CR SLO target: 30 seconds.
+- [x] Freshness/invalidation: deferred to Sprint 3+ under Clawdbot control.
+
+#### Phase 3 Decision Lock: AccessPolicy -> Cognee Mapping
+
+- AccessPolicy remains the sole authorization source for retrieval decisions.
+- Dataset scopes are enforced as org/team/project/personal, with deny-by-default behavior.
+- Explicit deny always overrides allow on scope conflicts.
+- Retrieval path grants read access only to datasets explicitly allowed by effective policy.
+- Write/share/delete permissions are disabled by default and require explicit policy authorization.
+- Every retrieval authorization outcome must be audit-logged with principal, dataset scope, action, decision, and policy reason.
+
+#### Phase 3 Closure Rule: Deferred Approvals
+
+- Approval flow remains a Sprint 3+ deliverable and is not a blocker for Phase 3 closure.
+- Phase 3 is considered complete only if no success criterion depends on approval route delivery.
+- Future approval implementation baseline remains bearer token auth with optional 2FA toggle.
 
 ---
 
