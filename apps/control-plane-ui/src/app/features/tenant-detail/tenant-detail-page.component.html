@@ -65,6 +65,22 @@
           }
         </p-card>
       </div>
+
+      <div class="col-12">
+        <p-card header="Dataset Membership" styleClass="h-full">
+          @if (_datasetLoadError()) {
+            <p-message severity="warn" [text]="_datasetLoadError()!" />
+          }
+          <oc-dataset-membership-editor
+            [membership]="_datasetMembership()"
+            [saving]="_datasetSaving()"
+            [disabled]="_datasetLoadError() !== null"
+            [error]="_datasetError()"
+            [success]="_datasetSaveSuccess()"
+            (save)="_saveDatasets($event)"
+          />
+        </p-card>
+      </div>
     </div>
 
     <div class="flex gap-2 mt-4">
