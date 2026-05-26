@@ -86,11 +86,11 @@ OpenCrane is represented here as a clean operating model: a central **Control Pl
 └─────────────┬────────────┘      └──────────────────────────────┘
               │
               ▼
-┌────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                   Kubernetes Cluster (OpenCrane)                                         │
-│                                                                                                            │
-│ Left Control Pillar                    Tenant Runtime Pillar                         Egress Pillar        │
-│                                                                                                            │
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                   Kubernetes Cluster (OpenCrane)                                          │
+│                                                                                                           │
+│ Local infrastructure                      Tenant Runtime Pillar                      Egress Pillar        │
+│                                                                                                           │
 │ ┌────────────────────────────┐         ┌────────────────────────────┐            ┌──────────────────────┐ │
 │ │ Operator Control           │         │         jente.oc           │            │ Egress Control Plane │ │
 │ │ - tenant/policy reconcile  │         │         OpenClaw           │            │ - outbound policy    │ │
@@ -99,10 +99,10 @@ OpenCrane is represented here as a clean operating model: a central **Control Pl
 │                                        │    GCS     │      IAM      │            │ - AI token access    │ │
 │ ┌────────────────────────────┐         │   bucket   │ + SecretVault │            │ - audit / rate limit │ │
 │ │ Cognee Brain               │         └────────────────────────────┘            │ - external access ctl│ │
-│ │ - retrieval orchestration  │                                                  │ - MCP egress policy  │ │
+│ │ - retrieval orchestration  │                                                   │ - MCP egress policy  │ │
 │ │ - endpoint authorization   │         ┌────────────────────────────┐            │ - external endpoint  │ │
 │ │ - policy-aware memory      │         │         jane.oc            │            │ - DLP / exfil checks │ │
-│ └────────────────────────────┘         │         OpenClaw           │            │ - identity attestation│ │
+│ └────────────────────────────┘         │         OpenClaw           │            │ - identity attestatio│ │
 │                                        │        (isolated)          │            └──────────────────────┘ │
 │ ┌────────────────────────────┐         ├────────────┬───────────────┤                                     │
 │ │ MCP Server Plane           │         │    GCS     │      IAM      │                                     │
