@@ -76,41 +76,51 @@ See [**Current State** and **Roadmap**](#current-state-phase-1) below for implem
 
 ## Architecture
 
-OpenCrane is represented here as a clean operating model: a central **Control Plane** backed by **Cloud SQL + Skills Repo**, a **Cross-Repo Operator Plane**, isolated **OpenClaw tenant pods**, and an **Egress Control Plane** that enforces network and AI access guardrails.
+OpenCrane is represented here as a clean operating model: a central **Control Plane** backed by **Cloud SQL + Skills Repo**, a **Cognee Brain** for retrieval orchestration, isolated **OpenClaw tenant pods**, and explicit in-cluster platform planes for operator control, harvesting, MCP servers, and egress guardrails.
 
 ```
-    ┌──────────────────────────┐          ┌───────────────────────────┐
-    │      Control Plane       │◄────────►│   Cloud SQL (Postgres)    │
-    │   admin.opencrane.ai     │          │   org / users / state     │
-    │   Express + Prisma       │          ├───────────────────────────┤
-    └─────────────┬────────────┘          │ Versioned AI Skills Repo  │
-                  │                       │ Tenant Managment          │
-                  │                       │ Access Control Management │
-                  │                       │ Shared Context Management │                 
-                  ▼                       └───────────────────────────┘
-┌────────────────────────────┐   ┌──────────────────┐   ┌──────────────────┐   ┌────────────────────────────┐
-│ Cross-Repo Operator Plane  │   │     jente.oc     │   │     jane.oc      │   │    Egress Control Plane    │
-│                            │   │     OpenClaw     │   │     OpenClaw     │   │                            │
-│ - repo reconcile           │   │    (isolated)    │   │    (isolated)    │   │ - outbound policy          │
-│ - skill deployment         │   ├────────┬─────────┤   ├────────┬─────────┤   │ - proxy / allowlists       │
-│ - config push              │   │   GCS  │ IAM     │   │   GCS  │ IAM     │   │ - secrets brokerage        │
-│ - bootstrap sync           │   │ bucket │+ Secret │   │ bucket │+ Secret │   │ - AI token access          │
-│ - rollout coordination     │   │        │ Vault   │   │ IAM    │ Vault   │   │ - audit / rate limiting    │
-│                            │   └──────────────────┘   └──────────────────┘   │ - external access control  │
-│ - Department & Project     │                                                 │                            │
-│     documents              │                                                 │                            │
-│ - Company-Wide Agents      │   ┌──────────────────┐                          │                            │
-│                            │   │     niels.oc     │                          │                            │
-│                            │   │     OpenClaw     │                          │                            │
-│                            │   │    (isolated)    │                          │                            │
-│                            │   ├────────┬─────────┤                          │                            │
-│                            │   │   GCS  │ IAM     │                          │                            │
-│                            │   │ bucket │+ Secret │                          │                            │
-│                            │   │        │ Vault   │                          │                            │
-└────────────────────────────┘   └──────────────────┘                          └────────────────────────────┘
+┌──────────────────────────┐      ┌──────────────────────────────┐
+│      Control Plane       │◄────►│  Cloud SQL + Skills Repo    │
+│   admin.opencrane.ai     │      │  org / users / teams /      │
+│   Express + Prisma       │      │  projects / state           │
+└─────────────┬────────────┘      └──────────────────────────────┘
+              │
+              ▼
+┌────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                   Kubernetes Cluster (OpenCrane)                                         │
+│                                                                                                            │
+│ Left Control Pillar                    Tenant Runtime Pillar                         Egress Pillar        │
+│                                                                                                            │
+│ ┌────────────────────────────┐         ┌────────────────────────────┐            ┌──────────────────────┐ │
+│ │ Operator Control           │         │         jente.oc           │            │ Egress Control Plane │ │
+│ │ - tenant/policy reconcile  │         │         OpenClaw           │            │ - outbound policy    │ │
+│ │ - rollout coordination     │         │        (isolated)          │            │ - proxy / allowlists │ │
+│ └────────────────────────────┘         ├────────────┬───────────────┤            │ - secrets brokerage  │ │
+│                                        │    GCS     │      IAM      │            │ - AI token access    │ │
+│ ┌────────────────────────────┐         │   bucket   │ + SecretVault │            │ - audit / rate limit │ │
+│ │ Cognee Brain               │         └────────────────────────────┘            │ - external access ctl│ │
+│ │ - retrieval orchestration  │                                                  │ - MCP egress policy  │ │
+│ │ - endpoint authorization   │         ┌────────────────────────────┐            │ - external endpoint  │ │
+│ │ - policy-aware memory      │         │         jane.oc            │            │ - DLP / exfil checks │ │
+│ └────────────────────────────┘         │         OpenClaw           │            │ - identity attestation│ │
+│                                        │        (isolated)          │            └──────────────────────┘ │
+│ ┌────────────────────────────┐         ├────────────┬───────────────┤                                     │
+│ │ MCP Server Plane           │         │    GCS     │      IAM      │                                     │
+│ │ - tenant/org MCP servers   │         │   bucket   │ + SecretVault │                                     │
+│ │ - policy-checked tool API  │         └────────────────────────────┘                                     │
+│ │ - protocol participation   │                                                                            │
+│ └────────────────────────────┘         ┌────────────────────────────┐                                     │
+│                                        │         niels.oc           │                                     │
+│ ┌────────────────────────────┐         │         OpenClaw           │                                     │
+│ │ Harvesting Agents          │         │        (isolated)          │                                     │
+│ │ - Slack/Teams connectors   │         ├────────────┬───────────────┤                                     │
+│ │ - ingest + normalize docs  │         │    GCS     │      IAM      │                                     │
+│ │ - publish to Cognee        │         │   bucket   │ + SecretVault │                                     │
+│ └────────────────────────────┘         └────────────────────────────┘                                     │
+└────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-In this view, the Egress Control Plane represents the network and model-access guardrails (including AI token access and rate controls), while the operator plane handles tenant rollout and shared skill distribution.
+In this view, the left control pillar is split into separate Operator Control, Cognee Brain, MCP Server Plane, and Harvesting Agents blocks, while Egress Control enforces outbound and model-access guardrails.
 
 ### Direct Retrieval Runtime: Extending Tenant Context
 
