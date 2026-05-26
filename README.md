@@ -117,7 +117,7 @@ OpenCrane is represented here as a clean operating model: a central **Control Pl
 │ │ - ingest + normalize docs  │         │    GCS     │      IAM      │                                     │
 │ │ - publish to Cognee        │         │   bucket   │ + SecretVault │                                     │
 │ └────────────────────────────┘         └────────────────────────────┘                                     │
-└────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 In this view, the left control pillar is split into separate Operator Control, Cognee Brain, MCP Server Plane, and Harvesting Agents blocks, while Egress Control enforces outbound and model-access guardrails.
