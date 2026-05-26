@@ -56,7 +56,7 @@ Each employee gets their own **private AI assistant**—an isolated OpenClaw ins
 
 - **Knows who you are**: Holds your personal access tokens and can read and write data across the organization's platforms *as you*
 - **Stays private**: Your conversations with the AI are stored locally in your pod's encrypted storage. OpenCrane enforces network-level policies and budget controls, but does not log or inspect conversation contents.
-- **Accesses organizational knowledge**: Uses a retrieval plugin to discover shared skills and organizational context—teams, projects, company policies—during the agentic loop, with automatic RBAC filtering based on your role.
+- **Accesses organizational knowledge directly**: Queries Cognee from the OpenClaw/Clawdbot runtime during the agentic loop, with policy-compatible dataset scope selection and citations.
 
 OpenCrane also runs **company-wide information gathering agents** (dedicated tenant deployments with elevated permissions) that:
 - Continuously harvest organizational knowledge from Slack, Teams, email, ticketing systems, and other company platforms
@@ -65,8 +65,9 @@ OpenCrane also runs **company-wide information gathering agents** (dedicated ten
 
 OpenCrane orchestrates all of this by:
 - **Infrastructure Management**: Deploying and managing assistants for each employee. Supporting local or remote LLM models. Enforcing token budgets and cost limits per employee.
-- **Retrieval Plugins**: Every tenant pod runs a retrieval plugin that extends the agentic loop with RBAC-filtered organizational context.
-- **Organizational Knowledge**: Company-wide agents harvest and index org data; retrieval plugins make it accessible based on role.
+- **Permissions Control Plane**: Managing dataset memberships and permissions in Cognee (for org/team/project/personal scopes) without sitting in the retrieval request path.
+- **Uniform Awareness Runtime**: Enforcing a common awareness contract across tenant runtimes (query rewrite rules, scope selection, citations, fallback, freshness behavior).
+- **Organizational Knowledge**: Company-wide agents harvest and index org data; direct tenant retrieval runtimes make it accessible based on role and dataset scope.
 - **Scalable architecture**: The same multi-tenant, Kubernetes-native design works from 10 to 10,000 employees.
 - **Skill sharing**: Managing skill updates and deployments across the organization.
 - **Secure storage**: All data stored in your organization's infrastructure, encrypted at rest.
@@ -111,14 +112,15 @@ OpenCrane is represented here as a clean operating model: a central **Control Pl
 
 In this view, the Egress Control Plane represents the network and model-access guardrails (including AI token access and rate controls), while the operator plane handles tenant rollout and shared skill distribution.
 
-### Retrieval Plugins: Extending Tenant Context
+### Direct Retrieval Runtime: Extending Tenant Context
 
-Each tenant pod runs a **retrieval plugin** that bridges the isolated assistant with organizational knowledge during the agentic loop. This plugin:
+Each tenant pod runs a **retrieval runtime** that bridges the isolated assistant with organizational knowledge during the agentic loop. In Phase 4, retrieval is direct from OpenClaw/Clawdbot to Cognee; the control-plane remains responsible for permissions and policy distribution only. This runtime:
 
 1. **Receives queries** from the OpenClaw agent as it needs context
-2. **Queries the Org Knowledge Index** for relevant departments, projects, teammates, company policies
-3. **Respects role-based access** — returns only knowledge the tenant can access based on their team/permissions
-4. **Can push knowledge back** — skills developed locally can be promoted to shared libraries after review
+2. **Queries Cognee directly** for relevant departments, projects, teammates, and policy context
+3. **Applies uniform awareness contract behavior** for scope selection, citations, fallback, and freshness handling
+4. **Respects permission grants** produced by control-plane dataset membership sync
+5. **Can push knowledge back** — skills developed locally can be promoted to shared libraries after review
 
 ```
 During Agentic Loop:
@@ -129,21 +131,34 @@ During Agentic Loop:
               │
               ▼
 ┌─────────────────────────────────────┐
-│  Retrieval Plugin                   │
+│  Retrieval Runtime                  │
 │  (runs within tenant pod)           │
-│  1. Check: Can this tenant access   │
-│     engineering team info?          │
-│  2. Query Org Index                 │
+│  1. Resolve awareness contract      │
+│     version and active scopes       │
+│  2. Query Cognee directly           │
 │  3. Return: Members, projects,      │
-│     shared skills (filtered)        │
+│     shared skills + citations       │
 └──────────────┬──────────────────────┘
                │
                ▼
 ┌──────────────────────────────────────────────────┐
-│  Org Knowledge Index (PostgreSQL + Vector DB)    │
-│  Returns filtered results based on tenant RBAC   │
+│  Cognee Knowledge Plane                           │
+│  Enforces dataset memberships synced by control   │
+│  plane and returns scope-filtered results         │
 └──────────────────────────────────────────────────┘
 ```
+
+### Phase 4 Architecture Direction
+
+- **Direct retrieval path**: OpenClaw/Clawdbot calls Cognee directly for knowledge retrieval.
+- **Control-plane authority boundary**: Control-plane sets and syncs permissions/dataset memberships only; no retrieval proxy.
+- **Uniform Awareness Contract**: Fleet-wide hybrid model using:
+  - declarative contract schema as source of truth,
+  - shared OpenClaw SDK as execution engine,
+  - control-plane served effective-contract endpoint per scope.
+- **Rollout safety**: SemVer contract compatibility, tenant-cohort canaries, optional shadow mode, and contract-ID rollback.
+- **Skills sharing protocol**: Explicit promotion/demotion flow across personal, project, department, and org scopes with immutable digest-pinned versions.
+- **Legacy removal target**: Filesystem-only sharing path is removed after protocol cutover.
 
 ### Current State (Phase 1)
 
@@ -159,11 +174,14 @@ OpenCrane Phase 1 delivers a **production-ready multi-tenant control plane** wit
 - ✅ **IAM-first identity**: Workload Identity for pod authentication; no shared bearer tokens
 - ✅ **Self-hosted**: Deploy on your infrastructure (Kubernetes 1.28+); full data sovereignty
 - ✅ **Helm & Terraform IaC**: Production-ready deployment templates
+- ✅ **Direct retrieval cutover**: Retrieval path is direct from OpenClaw/Clawdbot to Cognee
+- ✅ **Permission sync boundary**: Control-plane manages Cognee dataset memberships and grants (no retrieval proxy)
 
 **Retrieval plugin foundation (basic):**
 - ✅ Static skill discovery from filesystem during agentic loop
 - ✅ Skill metadata indexed in PostgreSQL for discovery
-- ⏳ **In progress**: RBAC-aware retrieval plugin SDK for accessing org context
+- ⏳ **In progress**: Uniform awareness contract SDK + control-plane effective-contract delivery
+- ⏳ **In progress**: Skill-sharing protocol runtime and OCI-backed bundle distribution
 
 ### Roadmap (Phase 2+)
 
@@ -178,6 +196,14 @@ OpenCrane Phase 1 delivers a **production-ready multi-tenant control plane** wit
 - 🎯 **Conversation-level governance**: Inspect and log conversations for security/policy alignment
 - 🎯 **Multi-cluster deployment**: Geo-replication and cross-region failover
 - 🎯 **Advanced RBAC**: Fine-grained resource-level permissions (per-skill, per-project visibility)
+
+**Phase 4 (Fleet Organizational Awareness):**
+- 🎯 **Uniform Awareness Contract**: One fleet-wide contract for query rewrite, scope selection, citations, fallback, and freshness behavior
+- 🎯 **Hybrid contract delivery**: Declarative schema + shared OpenClaw SDK + control-plane effective-contract endpoint
+- 🎯 **Safe contract rollouts**: SemVer compatibility, canary cohorts, shadow-mode verification, and contract-ID rollback
+- 🎯 **Direct retrieval architecture hardening**: Preserve OpenClaw/Clawdbot -> Cognee direct path while control-plane remains permissions authority only
+- 🎯 **Skills sharing protocol**: Promotion/demotion across personal/project/department/org with immutable digest-pinned bundles and compliance telemetry
+- 🎯 **Legacy deprecation**: Remove filesystem-only sharing path after protocol cutover
 
 ## Components
 

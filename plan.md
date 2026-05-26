@@ -653,7 +653,7 @@ apps/
 ├── control-plane/
 │   └── src/
 │       ├── routes/
-│       │   └── retrieval.ts
+│       │   └── tenants.ts
 │       └── core/
 │           └── memory/
 │               ├── cognee-client.ts
@@ -688,6 +688,119 @@ apps/
 
 ---
 
+## Phase 4: Fleet Organizational Awareness
+
+### Architecture Checkpoint: Uniform Awareness Across All OpenClaws
+
+1. **Awareness Control Model**
+   - Retrieval stays direct from OpenClaw/Clawdbot to Cognee.
+   - Control-plane remains the authority for dataset membership and permission grants only. This needs to be integrated with Cognee so Cognee can ensure Clawdbot access is secure.
+   - No control-plane retrieval proxy is reintroduced.
+
+2. **Uniform Awareness Contract**
+    - Adopt a hybrid uniform-awareness contract model:
+       - Declarative contract schema as source of truth (query rewrite policy, dataset scope selection, citation requirement, fallback behavior, freshness policy).
+       - Shared OpenClaw SDK as the execution engine so behavior is consistent across all tenant runtimes.
+       - Control-plane served effective-contract endpoint for per-scope delivery (org/department/project/personal), cached client-side by contract ID.
+    - Use explicit SemVer for contract compatibility:
+       - Major for breaking behavior/response changes.
+       - Minor for additive capabilities.
+       - Patch for non-breaking fixes.
+    - Roll out with operational safeguards:
+       - Tenant-cohort canary progression (personal -> project -> department -> org).
+       - Optional shadow-mode diffing before cutover.
+       - Contract-ID pinning and one-step rollback to the previous known-good contract.
+
+3. **Org Knowledge Fabric Scope**
+   - Build one normalized organization index model shared across all connectors.
+   - Standardize document lineage metadata (source, owner, ACL origin, freshness markers, ingest cursor).
+   - Keep source systems as SoR; Cognee remains orchestration/storage.
+
+4. **Policy and Freshness Enforcement Plane**
+   - Enforce policy at write-time (dataset assignment) and read-time (OpenClaw post-filter checks where needed).
+   - Freshness/invalidation logic is centralized as reusable OpenClaw behavior, not bespoke prompt rules.
+   - Define stale-data fallback UX and reason codes.
+
+5. **Skills Sharing and Participation Protocol**
+   - Define a fleet-wide skills-sharing model with explicit hierarchy: org, department, project, personal.
+   - Support controlled promotion and demotion between scopes (personal -> project -> department -> org and reverse) with policy checks and audit trail.
+   - Every promoted or demoted skill remains versioned and immutable by digest; no in-place mutation.
+   - Define a protocol every OpenClaw participates in: advertise capabilities, request shared skills, attest policy context, emit execution outcome events.
+   - Control-plane monitors protocol participation health, policy compliance, and rollout version drift.
+   - Prefer existing protocols first: OpenClaw skill folder format plus OCI Distribution for bundle transport/versioning.
+
+**Action**: Deliver a single organizational-awareness layer that every OpenClaw instance consumes identically, with direct Cognee retrieval and centrally managed permissions.
+
+---
+
+### Deliverables
+
+1. **Org Context SDK For OpenClaw Fleet**
+   - Shared OpenClaw package that wraps retrieval, reranking, citation shaping, and freshness checks.
+   - Required in every tenant runtime so awareness behavior is uniform by default.
+   - Feature-flagged rollout controls per tenant cohort.
+
+2. **Awareness Policy Compiler**
+   - Compile AccessPolicy + dataset membership into Cognee grants and OpenClaw runtime hints.
+   - Emit deterministic policy snapshots with version IDs for audit and rollback.
+
+3. **Organization Index Schema v2**
+   - Add canonical metadata fields for org semantics (department, project, confidentiality, jurisdiction, retention class).
+   - Add connector conformance validation so all sources produce uniform metadata shape.
+
+4. **Fleet Evaluation Harness**
+   - Golden query suite for organizational awareness quality (correctness, policy safety, citation quality, freshness).
+   - Regression gate in CI before awareness-contract changes can be promoted.
+
+5. **Observability and SLOs**
+   - Awareness SLOs: permission-violation rate, stale-answer rate, citation coverage, p95 retrieval latency.
+   - Per-tenant and fleet-wide dashboards with alerting for policy or freshness regressions.
+
+6. **Skills Sharing Mesh and Protocol Runtime**
+   - Implement a shared-skills participation protocol for OpenClaws with versioned message contracts.
+   - Add control-plane visibility endpoints for protocol heartbeats, skill bundle distribution status, and policy-compliant execution traces.
+   - Add kill-switch and scoped rollout controls for protocol versions.
+
+7. **Hierarchical Skill Registry (Protocol-First)**
+   - Replace filesystem-only skill sharing with a registry-backed distribution model while preserving local cache for runtime startup during migration.
+   - Skill content standard: OpenClaw SKILL.md bundle format with frontmatter metadata validation.
+   - Distribution/versioning standard: OCI artifacts (semver tags + immutable digest pinning).
+   - Promotion and demotion are metadata operations over immutable versions (scope grants move, artifact stays unchanged).
+   - After protocol cutover criteria pass, remove legacy filesystem-only sharing paths and keep filesystem usage as pull-through cache only.
+
+### Key Tasks (Phase 4)
+
+| Task | Owner | Effort | Dependency |
+|------|-------|--------|-----------|
+| Org Context SDK shared package | Backend | 20h | Phase 3 memory cutover |
+| Awareness contract + versioned rollout controls | Backend | 14h | SDK baseline |
+| AccessPolicy compiler to Cognee grants + runtime hints | Backend | 18h | Dataset membership APIs |
+| Org index schema v2 + connector conformance checks | Backend | 20h | Harvesting foundation |
+| Fleet evaluation harness (golden queries) | QA + Backend | 18h | SDK + schema v2 |
+| Awareness SLO dashboards and alerts | DevOps + QA | 14h | Telemetry instrumentation |
+| Skills sharing protocol runtime + schema | Backend | 16h | Org Context SDK + skill allowlist model |
+| Control-plane protocol monitoring + dashboards | Backend + DevOps | 10h | Protocol runtime telemetry |
+| Hierarchical scope promotion/demotion workflow + audit trail | Backend | 10h | Skills sharing protocol runtime |
+| OCI-based skill registry sync (digest pinning + rollout policy) | Backend + DevOps | 6h | Hierarchical scope model |
+| Tenant-cohort canary rollout and rollback playbook | DevOps | 10h | Feature flags + evaluation harness |
+| **Phase 4 Total** | | **156h** | |
+
+### Success Criteria
+
+- [ ] Every OpenClaw uses the same awareness SDK and contract version by default.
+- [ ] Retrieval remains direct to Cognee with no control-plane retrieval mediation path.
+- [ ] AccessPolicy updates propagate to Cognee grants within defined SLO.
+- [ ] Golden query suite passes for correctness, policy safety, freshness, and citation quality.
+- [ ] Fleet dashboards expose awareness SLOs with alert thresholds and runbook links.
+- [ ] Canary rollout path can promote and rollback awareness contract versions without tenant downtime.
+- [ ] Shared skills are discoverable and consumable across allowed scopes using a single fleet protocol.
+- [ ] Control-plane can monitor per-tenant protocol participation, drifted versions, and policy-violating skill executions.
+- [ ] Skills support org, department, project, and personal scopes with policy-controlled promotion and demotion flows.
+- [ ] Every deployed skill is versioned and pinned by immutable artifact digest, with rollback to prior versions supported per scope.
+- [ ] Legacy filesystem-only sharing paths are removed after protocol cutover; only registry-backed distribution with optional pull-through cache remains.
+
+---
+
 ## Cross-Phase Priorities
 
 ### Must Do Before Public Release
@@ -711,9 +824,10 @@ apps/
 | Phase | Effort | Timeline | Start |
 |-------|--------|----------|-------|
 | **Phase 1** (Core) | 90h | 3 weeks (2 eng + 1 ops) | Week 1 |
-| **Phase 2** (Cost control + retrieval foundation) | 97h | 2-3 weeks (parallel to Phase 1 end) | Week 2 |
+| **Phase 2** (Cost control + retrieval foundation) | 127h | 2-3 weeks (parallel to Phase 1 end) | Week 2 |
 | **Phase 3** (Self-service + memory cutover) | 97h | 3 weeks (after Phase 2) | Week 4 |
-| **Total** | **284h** | **7–9 weeks** | |
+| **Phase 4** (Fleet organizational awareness) | 156h | 5-6 weeks (after Phase 3) | Week 7 |
+| **Total** | **470h** | **12–15 weeks** | |
 
 ---
 
@@ -780,6 +894,19 @@ This avoids rework and ensures alignment across teams.
 - [x] Dataset control surface: included in control-plane-ui.
 - [x] Tenant CR SLO target: 30 seconds.
 - [x] Freshness/invalidation: deferred to Sprint 3+ under Clawdbot control.
+
+### Phase 4 Decisions (Lock Before Execution)
+- [ ] Awareness SDK ownership model (single package vs per-domain modules).
+- [ ] Contract version rollout strategy (global vs tenant cohort waves).
+- [ ] Minimum required citation format in OpenClaw responses.
+- [ ] Fleet SLO thresholds for freshness, latency, and policy safety.
+- [ ] Connector conformance bar for org index schema v2 adoption.
+- [ ] Skills sharing scope rules (org/department/project/personal) and precedence model.
+- [ ] Protocol transport and delivery guarantees for claw participation events.
+- [ ] Monitoring severity model for non-participating claws and policy-violating executions.
+- [ ] Department scope semantics versus team scope migration rules.
+- [ ] Promotion and demotion authorization rules and required approvers per scope boundary.
+- [ ] OCI artifact naming, tagging, and digest pinning policy for skill versions.
 
 #### Phase 3 Decision Lock: AccessPolicy -> Cognee Mapping
 
