@@ -15,9 +15,6 @@ export interface OpenClawTenantOperatorConfig
   /** Kubernetes ingress class to annotate on tenant ingresses. */
   ingressClassName: string;
 
-  /** Name of the shared PVC mounted read-only into every tenant pod. */
-  sharedSkillsPvcName: string;
-
   /** Port number exposed by the OpenClaw gateway inside tenant pods. */
   gatewayPort: number;
 
