@@ -39,12 +39,39 @@ Full cluster context lives in `README.md`; this brief covers the two service pla
 1. **Control plane is the only authority.** Neither plane holds authoritative config. Native admin UIs/APIs are disabled; both are operator-reconciled and drift-detected (reuse `apps/control-plane/src/routes/internal/projection-drift.ts` pattern).
 2. **Tenant→plane auth = projected ServiceAccount token**, audience-bound (`aud=obot-gateway` / `aud=skill-registry`), ~600s TTL, kubelet-rotated. **Delete** the predictable `OPENCLAW_GATEWAY_TOKEN` (`apps/operator/src/tenants/deploy/3-deployment.ts:36`).
 3. **The serving plane is the live authority; the pod contract is advisory** and can never widen access.
-4. **Scope is compiled centrally** (org → dept → team → project → personal/individual) by a single compiler shared by both planes.
+4. **Authorization is group-based, not tier-based.** The compiler knows only principals, groups, and grants (deny-wins → priority); the control plane owns the org→group mapping, sync, and nesting. Tiers are a UI affordance only. See *Authorization model* below — this is canonical.
 5. **MCP downstream secrets live only in Obot**, injected server-side via the shim; never reach a pod.
 6. **MCP servers and skill bundles run/originate in-cluster**; no remote calls. Tenants reach only the plane ingress, never the backing stores (Obot DB, OCI registry).
 7. **Two clocks:** revocation is effective on the next gateway call / next pull (fail-closed); newly granted capabilities become usable once the pod re-pulls the contract (eventually-consistent).
 8. **ClawdBot config** BOOTSTRAP.MD, SOUL.MD and other briefs are designed and injected at create time to ensure the ClawdBot is aware of it's role within the organisation and works as intended. ClawdBot on bootstrap explains to the user how OpenCrane works (explained to a toddler in a professional way!).
-9. **Remove legacy** Legacy wiring needs to be removed. We don't; want duplicate failover paths but a single clean architecture.
+9. **No legacy. No backwards compatibility.** Remove every superseded path as you build the replacement — the predictable `OPENCLAW_GATEWAY_TOKEN`, the shared-skills PVC + `entrypoint.sh` symlink, the filesystem-only `skillsRouter`, the CSV MCP allow/deny enforcement, and any dual-write or failover branch. The platform is pre-production (`AGENTS.md` Delivery Direction): ship one clean target architecture, **not** a migration layer. Do **not** add compatibility shims, feature flags for old paths, or parallel code branches "just in case". Delete, don't deprecate.
+
+## Authorization model (canonical — groups, not tiers)
+
+**The compiler is tier-agnostic.** It knows only **principals, groups, and grants** — it has no concept of "department", "team", or "project". Org structure is a control-plane concern. This is deliberate: a fixed scope-tier enum would be baked into the compiler, CRDs, the versioned contract, the DB, and the UI, so adding or changing a level later would mean a migration across all of them **plus a fleet contract-version rollout**. Groups make the level set free to evolve with zero compiler/contract change. **Do not introduce a scope-tier enum anywhere downstream.**
+
+**Primitives:**
+
+- `Group` — a named set of principals **or** an explicit list of individuals: `{ id, name, kind (named | individual-list), members[] (tenant/principal refs), source (manual | idp | scim | tier-derived), createdAt, syncedAt }`. A direct-to-tenant share is just a group of one.
+- `Grant` — attaches a payload to a group: `{ id, targetGroupId, effect (allow | deny), priority (int), payload (mcpServerId | skillBundleId+digest), grantedBy, createdAt }`.
+
+**Resolution (the only precedence rule the compiler knows):**
+
+1. Collect all grants whose `targetGroup` contains the principal.
+2. **deny-wins** — any matching `deny` removes the payload, regardless of priority.
+3. Otherwise the **highest `priority`** allow wins (this is what resolves *which skill version/digest* applies).
+4. Deterministic tiebreak (newest `createdAt`) when priorities tie.
+
+The compiler never interprets what a group *means*.
+
+**Control-plane responsibilities (where the org model lives):**
+
+- **Own + sync group membership** from IdP / SCIM / org structure / manual edits, kept current.
+- **Flatten nested groups** (e.g. "department = union of its teams") into flat principal sets *before* the compiler sees them — the compiler does no graph traversal.
+- **Tier → group + priority mapping.** The familiar tiers (org / department / team / project / personal) are a **UI affordance only**: the control plane seeds one group per tier instance and assigns each a default `priority` (personal high → org low). Tiers exist in the UI and in the tier→group mapping — **nowhere downstream**.
+- **Membership change → recompile → push.** A membership change recomputes affected principals' grants and rides the existing live-grant clock (push to gateway; tenant re-pulls contract).
+
+**Reconcile existing data:** the current dataset-membership vocabulary (`org/team/project/personal`) becomes seed groups under this model. Reconcile it to groups — do **not** keep it as a parallel scope enum.
 
 ## Components & responsibilities
 
@@ -99,7 +126,7 @@ Extend the control plane to own the full lifecycle of MCP servers available to t
 **Data model** (Prisma, new models):
 
 - `McpServer` — canonical registry entry: `{ id, name, description, transport (stdio | sse | streamable-http), image?, url?, envSchema, configSchema, tags[], sourceRef?, createdAt, updatedAt }`.
-- `McpServerGrant` — per-scope entitlement: `{ mcpServerId, scope (org | dept | team | project | individual), subject, grantedBy, createdAt }`. The 5-level compiler rolls these into the effective set.
+- `McpServerGrant` — an instance of the canonical `Grant`: `{ mcpServerId, targetGroupId, effect (allow | deny), priority, grantedBy, createdAt }`. The group-based compiler rolls these into the effective set (deny-wins → priority).
 - `McpServerCredential` — pointer to the Obot token store entry (never stored in the control-plane DB directly): `{ mcpServerId, obotCredentialRef, rotatedAt }`.
 
 **Routes** (`apps/control-plane/src/routes/mcp-servers.ts`):
@@ -120,13 +147,13 @@ On every write, the control plane pushes updated config + grants to the Obot MCP
 
 ### Skill catalog, sharing & promotion
 
-Replace the current filesystem-only `skillsRouter` (`apps/control-plane/src/routes/skills.ts`) with a registry-backed catalog that supports authoring, scoped sharing, and promotion/demotion across the 5-level hierarchy.
+Replace the current filesystem-only `skillsRouter` (`apps/control-plane/src/routes/skills.ts`) with a registry-backed catalog that supports authoring, group-scoped sharing, and promotion/demotion across groups (see *Authorization model*). The filesystem-only router is **deleted**, not kept alongside.
 
 **Data model** (Prisma, extend existing `Skill` model):
 
-- `SkillBundle` — immutable content record: `{ id, name, version (SemVer), description, author, scope, subject, digest (OCI SHA256), contentSize, tags[], sourceRef?, scanStatus (pending | clean | flagged), promotedFrom?, createdAt }`.
-- `SkillEntitlement` — per-scope entitlement (mirrors `McpServerGrant`): `{ skillBundleId, scope, subject, grantedBy, createdAt }`.
-- `SkillPromotion` — audit trail for promotion/demotion: `{ id, skillBundleId, fromScope, toScope, promotedBy, reviewedBy?, decision (pending | approved | rejected), decidedAt? }`.
+- `SkillBundle` — immutable content record: `{ id, name, version (SemVer), description, author, authorGroupId, digest (OCI SHA256), contentSize, tags[], sourceRef?, scanStatus (pending | clean | flagged), promotedFrom?, createdAt }`.
+- `SkillEntitlement` — an instance of the canonical `Grant` (mirrors `McpServerGrant`): `{ skillBundleId, targetGroupId, effect (allow | deny), priority, grantedBy, createdAt }`.
+- `SkillPromotion` — audit trail for promotion/demotion: `{ id, skillBundleId, fromGroupId, toGroupId, promotedBy, reviewedBy?, decision (pending | approved | rejected), decidedAt? }`.
 
 **Routes** (`apps/control-plane/src/routes/skill-catalog.ts`):
 
@@ -198,7 +225,7 @@ Support installing MCP servers and skills from external registries and curated u
 
 ### Effective-contract integration
 
-Both MCP servers and skills flow into the tenant's effective contract via the shared 5-level compiler:
+Both MCP servers and skills flow into the tenant's effective contract via the shared group-based compiler:
 
 ```json
 {
@@ -213,14 +240,14 @@ Both MCP servers and skills flow into the tenant's effective contract via the sh
   "skills": {
     "registry": "http://skill-registry.opencrane-system.svc:5000",
     "entitled": [
-      { "name": "company-policy", "scope": "org", "version": "1.0.0", "digest": "sha256:abc123..." },
-      { "name": "team-playbook",  "scope": "team:engineering", "version": "2.1.0", "digest": "sha256:def456..." }
+      { "name": "company-policy", "grantedVia": "group:all-staff",   "version": "1.0.0", "digest": "sha256:abc123..." },
+      { "name": "team-playbook",  "grantedVia": "group:engineering", "version": "2.1.0", "digest": "sha256:def456..." }
     ]
   }
 }
 ```
 
-The `GET /api/tenants/:name/effective-contract` endpoint compiles this by evaluating all `McpServerGrant` and `SkillEntitlement` records that match the tenant's position in the org hierarchy.
+The `GET /api/tenants/:name/effective-contract` endpoint compiles this by evaluating all `McpServerGrant` and `SkillEntitlement` grants whose target group contains the tenant, applying deny-wins → priority resolution.
 
 ## Internal running agents & scheduling
 
@@ -234,7 +261,7 @@ Split by ownership:
 1. **Identity:** projected-token volume/mount + `OBOT_GATEWAY_URL` / skill-registry URL env in `3-deployment.ts`; remove `OPENCLAW_GATEWAY_TOKEN`; set tenant SA audiences.
 2. **Contract:** extend `runtimeContract` in `2-config-map.ts:50` with `gateway`, `mcp.servers` (compiled grant), `skills` (entitled index), `contractVersion`. Demote `entrypoint.sh:73` CSV check to advisory pre-filter.
 3. **CRDs:** add `MCPServer`, `ObotConfig`, `SkillBundle`/`SkillRegistry`, and a per-tenant `Schedule` CRD under `platform/helm/crds/`; extend `AccessPolicy.mcpServers` / `Tenant.spec.mcpPolicy` as needed.
-4. **Control plane:** shared 5-level permission compiler; `GET /api/tenants/:name/effective-contract` (versioned); config + grant push to both planes; MCP registry routes; skill registry + promotion/demotion routes; Cognee-backed catalog search.
+4. **Control plane:** shared group-based permission compiler (principals/groups/grants, deny-wins → priority) + group sync/flattening + tier→group seed mapping; `GET /api/tenants/:name/effective-contract` (versioned); config + grant push to both planes; MCP registry routes; skill registry + promotion/demotion routes; Cognee-backed catalog search.
 5. **Operator:** reconcile both planes' config + registries; drift detect/repair.
 6. **Skill registry service:** new ingress service over OCI/ORAS; scoped `get-by-entitled-digest`; entitlement enforcement; ingest/scan pipeline.
 7. **Helm/network:** deploy Obot headless (admin disabled, IdP bound to central OIDC); deploy skill registry + OCI store; NetworkPolicies restricting tenant → plane ingress only (no path to Obot DB or OCI store).
@@ -250,12 +277,16 @@ Split by ownership:
 - Adding a grant becomes usable after the next contract re-pull, no restart.
 - Manual edits to either plane's config are reverted by drift reconcile.
 - Per-tenant schedules survive pod suspension and restarts; claws run no self-owned cron.
+- **No scope-tier enum exists** in the compiler, CRDs, contract, or DB — authorization is groups + grants only.
+- **No legacy or backwards-compatibility paths remain**: `OPENCLAW_GATEWAY_TOKEN`, the shared-skills PVC + `entrypoint.sh` symlink, the filesystem-only `skillsRouter`, and the CSV MCP allow/deny enforcement are **deleted, not deprecated** — no shims, flags, or parallel branches.
 - All new code conforms to `AGENTS.md`.
 
 ## Resolved decisions
 
 - **MCP credential custody = central broker.** Obot holds downstream creds; the pod never receives them. **Confirmed.**
 - **Skill substrate = build thin over OCI/ORAS + Cognee** (not a ClawHub fork). OCI immutability/digest-pinning meets the plan's intent. **Confirmed.**
+- **Authorization = groups, not tiers.** Compiler operates on principals/groups/grants (deny-wins → priority); control plane owns org→group sync, nesting, and tier→priority seeding; tiers are UI-only. **Locked.**
+- **No backwards compatibility.** All superseded/legacy wiring is removed as its replacement lands — no shims, flags, or failover branches. **Locked.**
 
 ## Out of scope / deferred
 
