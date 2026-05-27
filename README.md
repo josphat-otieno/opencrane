@@ -76,41 +76,51 @@ See [**Current State** and **Roadmap**](#current-state-phase-1) below for implem
 
 ## Architecture
 
-OpenCrane is represented here as a clean operating model: a central **Control Plane** backed by **Cloud SQL + Skills Repo**, a **Cross-Repo Operator Plane**, isolated **OpenClaw tenant pods**, and an **Egress Control Plane** that enforces network and AI access guardrails.
+OpenCrane is represented here as a clean operating model: a central **Control Plane** backed by **Cloud SQL + Skills Repo**, a **Cognee Brain** for retrieval orchestration, isolated **OpenClaw tenant pods**, and explicit in-cluster platform planes for operator control, harvesting, MCP servers, and egress guardrails.
 
 ```
-    ┌──────────────────────────┐          ┌───────────────────────────┐
-    │      Control Plane       │◄────────►│   Cloud SQL (Postgres)    │
-    │   admin.opencrane.ai     │          │   org / users / state     │
-    │   Express + Prisma       │          ├───────────────────────────┤
-    └─────────────┬────────────┘          │ Versioned AI Skills Repo  │
-                  │                       │ Tenant Managment          │
-                  │                       │ Access Control Management │
-                  │                       │ Shared Context Management │                 
-                  ▼                       └───────────────────────────┘
-┌────────────────────────────┐   ┌──────────────────┐   ┌──────────────────┐   ┌────────────────────────────┐
-│ Cross-Repo Operator Plane  │   │     jente.oc     │   │     jane.oc      │   │    Egress Control Plane    │
-│                            │   │     OpenClaw     │   │     OpenClaw     │   │                            │
-│ - repo reconcile           │   │    (isolated)    │   │    (isolated)    │   │ - outbound policy          │
-│ - skill deployment         │   ├────────┬─────────┤   ├────────┬─────────┤   │ - proxy / allowlists       │
-│ - config push              │   │   GCS  │ IAM     │   │   GCS  │ IAM     │   │ - secrets brokerage        │
-│ - bootstrap sync           │   │ bucket │+ Secret │   │ bucket │+ Secret │   │ - AI token access          │
-│ - rollout coordination     │   │        │ Vault   │   │ IAM    │ Vault   │   │ - audit / rate limiting    │
-│                            │   └──────────────────┘   └──────────────────┘   │ - external access control  │
-│ - Department & Project     │                                                 │                            │
-│     documents              │                                                 │                            │
-│ - Company-Wide Agents      │   ┌──────────────────┐                          │                            │
-│                            │   │     niels.oc     │                          │                            │
-│                            │   │     OpenClaw     │                          │                            │
-│                            │   │    (isolated)    │                          │                            │
-│                            │   ├────────┬─────────┤                          │                            │
-│                            │   │   GCS  │ IAM     │                          │                            │
-│                            │   │ bucket │+ Secret │                          │                            │
-│                            │   │        │ Vault   │                          │                            │
-└────────────────────────────┘   └──────────────────┘                          └────────────────────────────┘
+┌──────────────────────────┐      ┌──────────────────────────────┐
+│      Control Plane       │◄────►│  Cloud SQL + Skills Repo     │
+│   admin.opencrane.ai     │      │  org / users / teams /       │
+│   Express + Prisma       │      │  projects / state            │
+└─────────────┬────────────┘      └──────────────────────────────┘
+              │
+              ▼
+┌───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                   Kubernetes Cluster (OpenCrane)                                          │
+│                                                                                                           │
+│ Local infrastructure                      Tenant Runtime Pillar                      Egress Pillar        │
+│                                                                                                           │
+│ ┌────────────────────────────┐         ┌────────────────────────────┐            ┌──────────────────────┐ │
+│ │ Operator Control           │         │         jente.oc           │            │ Egress Control Plane │ │
+│ │ - tenant/policy reconcile  │         │         OpenClaw           │            │ - outbound policy    │ │
+│ │ - rollout coordination     │         │        (isolated)          │            │ - proxy / allowlists │ │
+│ └────────────────────────────┘         ├────────────┬───────────────┤            │ - secrets brokerage  │ │
+│                                        │    GCS     │      IAM      │            │ - AI token access    │ │
+│ ┌────────────────────────────┐         │   bucket   │ + SecretVault │            │ - audit / rate limit │ │
+│ │ Cognee Brain               │         └────────────────────────────┘            │ - external access ctl│ │
+│ │ - retrieval orchestration  │                                                   │ - MCP egress policy  │ │
+│ │ - endpoint authorization   │         ┌────────────────────────────┐            │ - external endpoint  │ │
+│ │ - policy-aware memory      │         │         jane.oc            │            │ - DLP / exfil checks │ │
+│ └────────────────────────────┘         │         OpenClaw           │            │ - identity attestatio│ │
+│                                        │        (isolated)          │            └──────────────────────┘ │
+│ ┌────────────────────────────┐         ├────────────┬───────────────┤                                     │
+│ │ MCP Server Plane           │         │    GCS     │      IAM      │                                     │
+│ │ - tenant/org MCP servers   │         │   bucket   │ + SecretVault │                                     │
+│ │ - policy-checked tool API  │         └────────────────────────────┘                                     │
+│ │ - protocol participation   │                                                                            │
+│ └────────────────────────────┘         ┌────────────────────────────┐                                     │
+│                                        │         niels.oc           │                                     │
+│ ┌────────────────────────────┐         │         OpenClaw           │                                     │
+│ │ Harvesting Agents          │         │        (isolated)          │                                     │
+│ │ - Slack/Teams connectors   │         ├────────────┬───────────────┤                                     │
+│ │ - ingest + normalize docs  │         │    GCS     │      IAM      │                                     │
+│ │ - publish to Cognee        │         │   bucket   │ + SecretVault │                                     │
+│ └────────────────────────────┘         └────────────────────────────┘                                     │
+└───────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-In this view, the Egress Control Plane represents the network and model-access guardrails (including AI token access and rate controls), while the operator plane handles tenant rollout and shared skill distribution.
+In this view, the left control pillar is split into separate Operator Control, Cognee Brain, MCP Server Plane, and Harvesting Agents blocks, while Egress Control enforces outbound and model-access guardrails.
 
 ### Direct Retrieval Runtime: Extending Tenant Context
 
@@ -183,27 +193,34 @@ OpenCrane Phase 1 delivers a **production-ready multi-tenant control plane** wit
 - ⏳ **In progress**: Uniform awareness contract SDK + control-plane effective-contract delivery
 - ⏳ **In progress**: Skill-sharing protocol runtime and OCI-backed bundle distribution
 
-### Roadmap (Phase 2+)
+### Roadmap (Plan-Aligned)
 
-**Phase 2 (Near-term):**
-- 🚀 **Dynamic retrieval plugins**: Retrieval plugin SDK with RBAC filtering for querying Org Knowledge Index
-- 🚀 **Company-wide harvesting agents**: System agents that continuously index knowledge from Slack, Teams, email, ticketing systems
-- 🚀 **Org Knowledge Index**: PostgreSQL backend with optional vector DB for similarity search
-- 🚀 **Knowledge promotion**: Workflows for promoting locally-developed skills to shared libraries with governance/review
+**Phase 2 (Cost Control + Retrieval Foundation, largely completed):**
+- ✅ LiteLLM is integrated in-cluster through the root chart, with operator-managed tenant virtual keys and spend/budget APIs.
+- ✅ Retrieval authorization model is locked: retrieval is direct OpenClaw/Clawdbot -> Cognee, and control-plane handles dataset permission mapping only.
+- ✅ Harvesting-agent MVP foundation is in place with connector and metrics scaffolding.
+- ✅ AccessPolicy outcomes are translated to Cognee dataset memberships.
+- ✅ Projection-drift detection, repair routes, and threshold-based alerting are implemented.
+- ⏳ Remaining hardening: explicit control-plane-managed env update propagation path into tenant runtime.
 
-**Phase 3 (Medium-term):**
-- 🎯 **RAG-powered retrieval**: Vector similarity search for org knowledge; dynamic context enrichment
-- 🎯 **Conversation-level governance**: Inspect and log conversations for security/policy alignment
-- 🎯 **Multi-cluster deployment**: Geo-replication and cross-region failover
-- 🎯 **Advanced RBAC**: Fine-grained resource-level permissions (per-skill, per-project visibility)
+**Phase 3 (Self-Service Provisioning + Memory Cutover, completed with deferred items tracked):**
+- ✅ Portal flow shipped in the existing Angular control-plane-ui: self-provisioning, tenant dashboard, tenant detail, and dataset membership UI.
+- ✅ Memory path cut over from PostgreSQL-only retrieval to Cognee write-through with direct runtime retrieval.
+- ✅ AccessPolicy-compatible dataset permission sync to Cognee is active.
+- ⏸️ Explicitly deferred: approval workflow expansion, optional approval 2FA, OIDC migration, and freshness/invalidation implementation details controlled from Clawdbot.
 
-**Phase 4 (Fleet Organizational Awareness):**
-- 🎯 **Uniform Awareness Contract**: One fleet-wide contract for query rewrite, scope selection, citations, fallback, and freshness behavior
-- 🎯 **Hybrid contract delivery**: Declarative schema + shared OpenClaw SDK + control-plane effective-contract endpoint
-- 🎯 **Safe contract rollouts**: SemVer compatibility, canary cohorts, shadow-mode verification, and contract-ID rollback
-- 🎯 **Direct retrieval architecture hardening**: Preserve OpenClaw/Clawdbot -> Cognee direct path while control-plane remains permissions authority only
-- 🎯 **Skills sharing protocol**: Promotion/demotion across personal/project/department/org with immutable digest-pinned bundles and compliance telemetry
-- 🎯 **Legacy deprecation**: Remove filesystem-only sharing path after protocol cutover
+**Phase 4 (Fleet Organizational Awareness, current focus):**
+- 🎯 Uniform Awareness Contract across all OpenClaws using a hybrid model:
+  - declarative contract schema,
+  - shared OpenClaw SDK execution layer,
+  - control-plane effective-contract delivery endpoint by scope.
+- 🎯 Safe fleet rollouts via SemVer compatibility, canary cohorts, optional shadow-mode validation, and contract-ID rollback.
+- 🎯 Org knowledge fabric standardization with schema v2 and connector conformance checks.
+- 🎯 Awareness policy compiler to translate AccessPolicy + dataset membership into Cognee grants and runtime hints.
+- 🎯 Fleet evaluation harness and awareness SLO dashboards (policy safety, freshness, citation coverage, latency).
+- 🎯 Skills sharing protocol runtime with control-plane monitoring for participation health and version drift.
+- 🎯 Hierarchical skill registry (org/department/project/personal) with immutable OCI digest-pinned bundles.
+- 🎯 Legacy filesystem-only skill sharing removed after protocol cutover, with optional pull-through cache retained for startup resilience.
 
 ## Components
 

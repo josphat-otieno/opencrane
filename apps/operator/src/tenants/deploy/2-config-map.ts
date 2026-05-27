@@ -30,11 +30,18 @@ export function _BuildConfigMap(config: OperatorConfig, tenant: Tenant, namespac
     },
     ...(config.liteLlmEnabled
       ? {
-          llmProxy: {
-            endpoint: config.liteLlmEndpoint,
-            apiKey: "${LITELLM_API_KEY}",
-          },
-        }
+            models: {
+              mode: "merge",
+              providers: {
+                "litellm-proxy": {
+                  baseUrl: config.liteLlmEndpoint,
+                  apiKey: "${LITELLM_API_KEY}",
+                  api: "openai-completions",
+                  models: []
+                },
+              },
+            },
+          }
       : {}),
   };
 
