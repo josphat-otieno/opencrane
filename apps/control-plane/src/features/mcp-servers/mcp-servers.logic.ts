@@ -8,7 +8,6 @@ import {
   Prisma,
   type PrismaClient,
 } from "@prisma/client";
-import { uniq as ___uniq } from "lodash";
 
 import type {
   McpServerGrantInput,
@@ -416,13 +415,19 @@ function _NormalizeStringArray(values: string[] | undefined): string[]
     return [];
   }
 
-  return ___uniq(values.map(function _trim(value)
+  const uniqueValues = new Set<string>();
+  for (const value of values)
   {
-    return value.trim();
-  }).filter(function _isNonEmpty(value)
-  {
-    return value.length > 0;
-  }));
+    const normalizedValue = value.trim();
+    if (normalizedValue.length === 0)
+    {
+      continue;
+    }
+
+    uniqueValues.add(normalizedValue);
+  }
+
+  return Array.from(uniqueValues);
 }
 
 /**

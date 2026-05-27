@@ -282,17 +282,24 @@ function _NormalizeMembers(members: unknown): string[]
     return [];
   }
 
-  return ___sortBy(
-    ___uniq(
-      members.map(function _mapMember(member)
-      {
-        return typeof member === "string" ? member.trim() : "";
-      }).filter(function _isNonEmpty(member)
-      {
-        return member.length > 0;
-      }),
-    ),
-  );
+  const uniqueMembers = new Set<string>();
+  for (const member of members)
+  {
+    if (typeof member !== "string")
+    {
+      continue;
+    }
+
+    const normalizedMember = member.trim();
+    if (normalizedMember.length === 0)
+    {
+      continue;
+    }
+
+    uniqueMembers.add(normalizedMember);
+  }
+
+  return ___sortBy(Array.from(uniqueMembers));
 }
 
 /**
