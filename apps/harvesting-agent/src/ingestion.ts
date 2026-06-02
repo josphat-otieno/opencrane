@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@prisma/client";
+import type PrismaClientPackage from "@prisma/client";
 import type { Logger } from "pino";
 
 import type { NormalizedDocument, SyncCursor } from "./domain/harvesting-agents/harvesting-agent.types.js";
@@ -69,17 +69,9 @@ export async function _IngestDocuments(
  * @param source  - Logical source name (e.g. "slack").
  * @returns Cursor record or null.
  */
-export async function _LoadCursor(prisma: PrismaClient, source: string): Promise<SyncCursor | null>
+export async function _LoadCursor(prisma: PrismaClientPackage.PrismaClient, source: string): Promise<SyncCursor | null>
 {
-  const row = await (prisma as unknown as {
-    harvestingCursor: {
-      findUnique: (args: { where: { source: string } }) => Promise<{
-        source: string;
-        cursorValue: string;
-        lastSyncAt: Date;
-      } | null>;
-    };
-  }).harvestingCursor.findUnique({ where: { source } });
+  const row = await prisma.harvestingCursor.findUnique({ where: { source } });
 
   if (!row)
   {
@@ -100,17 +92,9 @@ export async function _LoadCursor(prisma: PrismaClient, source: string): Promise
  * @param source      - Logical source name.
  * @param cursorValue - New cursor value (e.g. latest message timestamp).
  */
-export async function _SaveCursor(prisma: PrismaClient, source: string, cursorValue: string): Promise<void>
+export async function _SaveCursor(prisma: PrismaClientPackage.PrismaClient, source: string, cursorValue: string): Promise<void>
 {
-  await (prisma as unknown as {
-    harvestingCursor: {
-      upsert: (args: {
-        where: { source: string };
-        create: object;
-        update: object;
-      }) => Promise<unknown>;
-    };
-  }).harvestingCursor.upsert({
+  await prisma.harvestingCursor.upsert({
     where: { source },
     create: { source, cursorValue, lastSyncAt: new Date() },
     update: { cursorValue, lastSyncAt: new Date() },

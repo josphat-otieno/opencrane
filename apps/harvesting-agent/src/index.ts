@@ -1,3 +1,4 @@
+import PrismaClientPackage from "@prisma/client";
 import pino from "pino";
 
 import { SlackConnector } from "./connectors/slack.connector.js";
@@ -79,14 +80,14 @@ function _ReadDatabaseUrl(): string
 async function _RunSlackSyncCycle(
   connector: SlackConnector,
   cogneeEndpoint: string,
-  prisma: { harvestingCursor: unknown; auditEntry: unknown },
+  prisma: PrismaClientPackage.PrismaClient,
 ): Promise<void>
 {
   const source = "slack";
   log.info({ source }, "starting sync cycle");
 
   // 1. Load the persisted cursor from the last successful sync.
-  const cursor = await _LoadCursor(prisma as never, source);
+  const cursor = await _LoadCursor(prisma, source);
 
   // 2. Fetch new messages from Slack since the cursor timestamp.
   const { documents, nextCursor, errors } = await connector.sync(cursor);
@@ -103,7 +104,7 @@ async function _RunSlackSyncCycle(
   // 4. Advance the cursor to the latest message timestamp if progress was made.
   if (nextCursor)
   {
-    await _SaveCursor(prisma as never, source, nextCursor);
+    await _SaveCursor(prisma, source, nextCursor);
   }
 
   // 5. Record metrics for this cycle so the metrics server can serve them.
@@ -131,9 +132,7 @@ async function _Main(): Promise<void>
   _StartMetricsServer(metricsPort, log);
 
   // 3. Initialize the Prisma client for cursor persistence.
-  //    Dynamic import used because prisma generate is a dev-time step.
-  const { PrismaClient } = await import("@prisma/client");
-  const prisma = new PrismaClient();
+  const prisma = new PrismaClientPackage.PrismaClient();
 
   // 4. Initialize the Slack connector with the resolved configuration.
   const slackConnector = new SlackConnector(slackConfig, log);
@@ -144,13 +143,13 @@ async function _Main(): Promise<void>
   );
 
   // 5. Run the first sync cycle immediately on startup, then repeat at the configured interval.
-  await _RunSlackSyncCycle(slackConnector, cogneeEndpoint, prisma as never);
+  await _RunSlackSyncCycle(slackConnector, cogneeEndpoint, prisma);
 
   setInterval(async function _syncTick()
   {
     try
     {
-      await _RunSlackSyncCycle(slackConnector, cogneeEndpoint, prisma as never);
+      await _RunSlackSyncCycle(slackConnector, cogneeEndpoint, prisma);
     }
     catch (err)
     {
