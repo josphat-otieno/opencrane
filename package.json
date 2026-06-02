@@ -18,7 +18,7 @@
     "ignoredBuiltDependencies": []
   },
   "scripts": {
-    "build": "pnpm -r build",
+    "build": "pnpm --filter @opencrane/control-plane db:generate && pnpm -r build",
     "dev": "pnpm -r --parallel dev",
     "test": "pnpm -r test",
     "test:e2e:k3d": "./platform/tests/k3d-e2e.sh",
