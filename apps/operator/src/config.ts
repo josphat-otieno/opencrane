@@ -15,9 +15,6 @@ export interface OpenClawTenantOperatorConfig
   /** Kubernetes ingress class to annotate on tenant ingresses. */
   ingressClassName: string;
 
-  /** Shared PVC name mounted into tenant pods for common skill assets. */
-  sharedSkillsPvcName: string;
-
   /** Port number exposed by the OpenClaw gateway inside tenant pods. */
   gatewayPort: number;
 
@@ -80,7 +77,6 @@ export function _LoadOperatorConfig(): OpenClawTenantOperatorConfig
     tenantDefaultImage: _readEnvValue<string>("TENANT_DEFAULT_IMAGE", "string"),
     ingressDomain: _readEnvValue<string>("INGRESS_DOMAIN", "string"),
     ingressClassName: _readEnvValue<string>("INGRESS_CLASS_NAME", "string"),
-    sharedSkillsPvcName: _readEnvValue<string>("SHARED_SKILLS_PVC_NAME", "string"),
     gatewayPort: _readEnvValue<number>("GATEWAY_PORT", "number"),
     storageProvider: _readEnvValue<OpenClawTenantOperatorConfig["storageProvider"]>("STORAGE_PROVIDER", "storageProvider"),
     bucketPrefix: _readEnvValue<string>("BUCKET_PREFIX", "string"),

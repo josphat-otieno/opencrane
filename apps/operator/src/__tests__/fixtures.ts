@@ -12,7 +12,6 @@ export const defaultConfig: OperatorConfig = {
   tenantDefaultImage: "ghcr.io/opencrane/tenant:latest",
   ingressDomain: "opencrane.local",
   ingressClassName: "nginx",
-  sharedSkillsPvcName: "opencrane-shared-skills",
   gatewayPort: 18789,
   storageProvider: "gcs",
   bucketPrefix: "opencrane",
