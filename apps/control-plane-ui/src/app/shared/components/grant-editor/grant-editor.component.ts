@@ -4,10 +4,10 @@ import { InputTextModule } from "primeng/inputtext";
 import { MessageModule } from "primeng/message";
 import { TagModule } from "primeng/tag";
 
-import { GrantAccess, GrantScope, type Grant, type GrantSubjectType } from "../../../core/models/grant.model";
+import { GrantAccess, GrantScope, GrantSubjectType, type Grant } from "../../../core/models/grant.model";
 
 /** Supported principal types exposed in the reusable grant editor. */
-const _GRANT_SUBJECT_TYPES: GrantSubjectType[] = ["group", "tenant", "user"];
+const _GRANT_SUBJECT_TYPES: GrantSubjectType[] = [GrantSubjectType.Group, GrantSubjectType.Tenant, GrantSubjectType.User];
 
 /** Supported scopes exposed in the reusable grant editor. */
 const _GRANT_SCOPES: GrantScope[] = [GrantScope.Org, GrantScope.Department, GrantScope.Project, GrantScope.Personal];
@@ -40,7 +40,7 @@ export class GrantEditorComponent
   @Output() grantsChange = new EventEmitter<Grant[]>();
 
   /** Draft subject type for the next grant row. */
-  readonly _draftSubjectType = signal<GrantSubjectType>("group");
+  readonly _draftSubjectType = signal<GrantSubjectType>(GrantSubjectType.Group);
 
   /** Draft subject name for the next grant row. */
   readonly _draftSubjectName = signal("");
@@ -114,6 +114,7 @@ export class GrantEditorComponent
       id: _CreateGrantId(this._draftSubjectType(), subjectName, this._draftScope(), this._draftAccess()),
       scope: this._draftScope(),
       subjectType: this._draftSubjectType(),
+      subjectId: subjectName,
       subjectName,
       access: this._draftAccess(),
       note: this._draftNote().trim() || undefined,
@@ -140,7 +141,7 @@ export class GrantEditorComponent
     this._draftNote.set("");
     this._draftScope.set(GrantScope.Org);
     this._draftAccess.set(GrantAccess.Allow);
-    this._draftSubjectType.set("group");
+    this._draftSubjectType.set(GrantSubjectType.Group);
   }
 
   /** Map an access decision to a PrimeNG tag severity. */

@@ -1,13 +1,14 @@
 import {
-  GrantAccess as __PrismaGrantAccess,
-  GrantPayloadType as __PrismaGrantPayloadType,
-  GrantScope as __PrismaGrantScope,
-  GrantSubjectType as __PrismaGrantSubjectType,
-  McpServerStatus as __PrismaMcpServerStatus,
-  McpServerTransport as __PrismaMcpServerTransport,
-  Prisma,
-  type PrismaClient,
-} from "@prisma/client";
+  GrantAccess,
+  GrantScope,
+  GrantSubjectType,
+  McpServerStatus,
+  McpServerTransport,
+  type Grant,
+  type McpServer,
+  type McpServerCredential,
+} from "@opencrane/contracts";
+import { Prisma, type PrismaClient } from "@prisma/client";
 
 import type {
   McpServerGrantInput,
@@ -21,64 +22,14 @@ import type {
 
 type _McpServerRow = Prisma.McpServerGetPayload<{ include: { scopedGrants: true; credentials: true; source: true } }>;
 
-/** JSON response shape returned by the MCP server routes. */
-export interface McpServerResponse
-{
-  /** Stable server identifier. */
-  id: string;
-  /** Display name shown in the catalog. */
-  name: string;
-  /** Operator-facing summary. */
-  description: string;
-  /** Gateway endpoint or upstream address. */
-  endpoint: string;
-  /** Primary organizational scope for the server. */
-  scope: McpServerRouteScope;
-  /** Transport contract used by the server. */
-  transport: McpServerRouteTransport;
-  /** Current rollout status. */
-  status: McpServerRouteStatus;
-  /** Capability labels surfaced in the UI. */
-  capabilities: string[];
-  /** Optional upstream source label. */
-  sourceName?: string;
-  /** Last successful sync timestamp. */
-  lastSyncedAt?: string;
-  /** Compiled grants linked to the server. */
-  grants: McpServerGrantResponse[];
-  /** Credential metadata linked to the server. */
-  credentials: McpServerCredentialResponse[];
-}
+/** Shared response contract returned by the MCP server routes. */
+export type McpServerResponse = McpServer;
 
-/** JSON response shape returned for a normalized MCP server grant. */
-export interface McpServerGrantResponse
-{
-  /** Stable grant identifier. */
-  id: string;
-  /** Organizational scope carried by the grant. */
-  scope: McpServerRouteScope;
-  /** Subject family receiving the grant. */
-  subjectType: McpServerRouteSubjectType;
-  /** Subject identifier used by the compiler. */
-  subjectId: string;
-  /** Human-friendly subject label. */
-  subjectName: string;
-  /** Allow or deny outcome. */
-  access: McpServerRouteAccess;
-  /** Optional operator note. */
-  note?: string;
-}
+/** Shared grant contract returned for normalized MCP server grants. */
+export type McpServerGrantResponse = Grant;
 
-/** JSON response shape returned for a normalized credential row. */
-export interface McpServerCredentialResponse
-{
-  /** Stable credential identifier. */
-  id: string;
-  /** Operator-facing label for the credential. */
-  displayName: string;
-  /** Secret reference consumed by the gateway. */
-  secretRef: string;
-}
+/** Shared credential contract returned for normalized credential rows. */
+export type McpServerCredentialResponse = McpServerCredential;
 
 /** Persist response shape returned after create/update/delete mutations. */
 export interface McpServerMutationResponse
@@ -89,74 +40,112 @@ export interface McpServerMutationResponse
   status: "created" | "updated" | "deleted";
 }
 
+/** Typed Prisma scope values used during runtime lookups. */
+const _PRISMA_GRANT_SCOPE = {
+  Org: "Org",
+  Department: "Department",
+  Project: "Project",
+  Personal: "Personal",
+} as const;
+
+/** Typed Prisma subject values used during runtime lookups. */
+const _PRISMA_GRANT_SUBJECT_TYPE = {
+  Group: "Group",
+  Tenant: "Tenant",
+  User: "User",
+} as const;
+
+/** Typed Prisma access values used during runtime lookups. */
+const _PRISMA_GRANT_ACCESS = {
+  Allow: "Allow",
+  Deny: "Deny",
+} as const;
+
+/** Typed Prisma transport values used during runtime lookups. */
+const _PRISMA_MCP_SERVER_TRANSPORT = {
+  StreamableHttp: "StreamableHttp",
+  ServerSentEvents: "ServerSentEvents",
+  WebSocket: "WebSocket",
+} as const;
+
+/** Typed Prisma status values used during runtime lookups. */
+const _PRISMA_MCP_SERVER_STATUS = {
+  Active: "Active",
+  Degraded: "Degraded",
+  Draft: "Draft",
+} as const;
+
+/** Typed Prisma payload value used for MCP grants persisted in Prisma. */
+const _PRISMA_MCP_SERVER_PAYLOAD_TYPE = "McpServer";
+
 /** Route scope lookup keyed by Prisma enum values. */
-const _ROUTE_SCOPE_BY_PRISMA_SCOPE: Record<__PrismaGrantScope, McpServerRouteScope> = {
-  [__PrismaGrantScope.Org]: "org",
-  [__PrismaGrantScope.Department]: "department",
-  [__PrismaGrantScope.Project]: "project",
-  [__PrismaGrantScope.Personal]: "personal",
+const _ROUTE_SCOPE_BY_PRISMA_SCOPE = {
+  [_PRISMA_GRANT_SCOPE.Org]: GrantScope.Org,
+  [_PRISMA_GRANT_SCOPE.Department]: GrantScope.Department,
+  [_PRISMA_GRANT_SCOPE.Project]: GrantScope.Project,
+  [_PRISMA_GRANT_SCOPE.Personal]: GrantScope.Personal,
 };
 
 /** Prisma scope lookup keyed by route values. */
-const _PRISMA_SCOPE_BY_ROUTE_SCOPE: Record<McpServerRouteScope, __PrismaGrantScope> = {
-  org: __PrismaGrantScope.Org,
-  department: __PrismaGrantScope.Department,
-  project: __PrismaGrantScope.Project,
-  personal: __PrismaGrantScope.Personal,
+const _PRISMA_SCOPE_BY_ROUTE_SCOPE = {
+  org: _PRISMA_GRANT_SCOPE.Org,
+  department: _PRISMA_GRANT_SCOPE.Department,
+  project: _PRISMA_GRANT_SCOPE.Project,
+  personal: _PRISMA_GRANT_SCOPE.Personal,
 };
 
 /** Route subject lookup keyed by Prisma enum values. */
-const _ROUTE_SUBJECT_BY_PRISMA_SUBJECT: Record<__PrismaGrantSubjectType, McpServerRouteSubjectType> = {
-  [__PrismaGrantSubjectType.Group]: "group",
-  [__PrismaGrantSubjectType.Tenant]: "tenant",
-  [__PrismaGrantSubjectType.User]: "user",
+const _ROUTE_SUBJECT_BY_PRISMA_SUBJECT = {
+  [_PRISMA_GRANT_SUBJECT_TYPE.Group]: GrantSubjectType.Group,
+  [_PRISMA_GRANT_SUBJECT_TYPE.Tenant]: GrantSubjectType.Tenant,
+  [_PRISMA_GRANT_SUBJECT_TYPE.User]: GrantSubjectType.User,
 };
 
 /** Prisma subject lookup keyed by route values. */
-const _PRISMA_SUBJECT_BY_ROUTE_SUBJECT: Record<McpServerRouteSubjectType, __PrismaGrantSubjectType> = {
-  group: __PrismaGrantSubjectType.Group,
-  tenant: __PrismaGrantSubjectType.Tenant,
-  user: __PrismaGrantSubjectType.User,
+const _PRISMA_SUBJECT_BY_ROUTE_SUBJECT = {
+  group: _PRISMA_GRANT_SUBJECT_TYPE.Group,
+  tenant: _PRISMA_GRANT_SUBJECT_TYPE.Tenant,
+  user: _PRISMA_GRANT_SUBJECT_TYPE.User,
 };
 
 /** Route access lookup keyed by Prisma enum values. */
-const _ROUTE_ACCESS_BY_PRISMA_ACCESS: Record<__PrismaGrantAccess, McpServerRouteAccess> = {
-  [__PrismaGrantAccess.Allow]: "allow",
-  [__PrismaGrantAccess.Deny]: "deny",
+const _ROUTE_ACCESS_BY_PRISMA_ACCESS = {
+  [_PRISMA_GRANT_ACCESS.Allow]: GrantAccess.Allow,
+  [_PRISMA_GRANT_ACCESS.Deny]: GrantAccess.Deny,
 };
 
 /** Prisma access lookup keyed by route values. */
-const _PRISMA_ACCESS_BY_ROUTE_ACCESS: Record<McpServerRouteAccess, __PrismaGrantAccess> = {
-  allow: __PrismaGrantAccess.Allow,
-  deny: __PrismaGrantAccess.Deny,
+const _PRISMA_ACCESS_BY_ROUTE_ACCESS = {
+  allow: _PRISMA_GRANT_ACCESS.Allow,
+  deny: _PRISMA_GRANT_ACCESS.Deny,
 };
 
 /** Route transport lookup keyed by Prisma enum values. */
-const _ROUTE_TRANSPORT_BY_PRISMA_TRANSPORT: Record<__PrismaMcpServerTransport, McpServerRouteTransport> = {
-  [__PrismaMcpServerTransport.StreamableHttp]: "streamable-http",
-  [__PrismaMcpServerTransport.ServerSentEvents]: "sse",
-  [__PrismaMcpServerTransport.WebSocket]: "websocket",
+const _ROUTE_TRANSPORT_BY_PRISMA_TRANSPORT = {
+  [_PRISMA_MCP_SERVER_TRANSPORT.StreamableHttp]: McpServerTransport.StreamableHttp,
+  [_PRISMA_MCP_SERVER_TRANSPORT.ServerSentEvents]: McpServerTransport.ServerSentEvents,
+  [_PRISMA_MCP_SERVER_TRANSPORT.WebSocket]: McpServerTransport.WebSocket,
 };
 
 /** Prisma transport lookup keyed by route values. */
-const _PRISMA_TRANSPORT_BY_ROUTE_TRANSPORT: Record<McpServerRouteTransport, __PrismaMcpServerTransport> = {
-  "streamable-http": __PrismaMcpServerTransport.StreamableHttp,
-  sse: __PrismaMcpServerTransport.ServerSentEvents,
-  websocket: __PrismaMcpServerTransport.WebSocket,
+const _PRISMA_TRANSPORT_BY_ROUTE_TRANSPORT = {
+  "streamable-http": _PRISMA_MCP_SERVER_TRANSPORT.StreamableHttp,
+  sse: _PRISMA_MCP_SERVER_TRANSPORT.ServerSentEvents,
+  websocket: _PRISMA_MCP_SERVER_TRANSPORT.WebSocket,
 };
 
 /** Route status lookup keyed by Prisma enum values. */
-const _ROUTE_STATUS_BY_PRISMA_STATUS: Record<__PrismaMcpServerStatus, McpServerRouteStatus> = {
-  [__PrismaMcpServerStatus.Active]: "active",
-  [__PrismaMcpServerStatus.Degraded]: "degraded",
-  [__PrismaMcpServerStatus.Draft]: "draft",
+const _ROUTE_STATUS_BY_PRISMA_STATUS = {
+  [_PRISMA_MCP_SERVER_STATUS.Active]: McpServerStatus.Active,
+  [_PRISMA_MCP_SERVER_STATUS.Degraded]: McpServerStatus.Degraded,
+  [_PRISMA_MCP_SERVER_STATUS.Draft]: McpServerStatus.Draft,
 };
 
 /** Prisma status lookup keyed by route values. */
-const _PRISMA_STATUS_BY_ROUTE_STATUS: Record<McpServerRouteStatus, __PrismaMcpServerStatus> = {
-  active: __PrismaMcpServerStatus.Active,
-  degraded: __PrismaMcpServerStatus.Degraded,
-  draft: __PrismaMcpServerStatus.Draft,
+const _PRISMA_STATUS_BY_ROUTE_STATUS = {
+  active: _PRISMA_MCP_SERVER_STATUS.Active,
+  degraded: _PRISMA_MCP_SERVER_STATUS.Degraded,
+  draft: _PRISMA_MCP_SERVER_STATUS.Draft,
 };
 
 /**
@@ -210,9 +199,9 @@ export async function createMcpServer(prisma: PrismaClient, body: McpServerWrite
       name: body.name,
       description: body.description ?? "",
       endpoint: body.endpoint,
-      scope: _PRISMA_SCOPE_BY_ROUTE_SCOPE[body.scope],
-      transport: _PRISMA_TRANSPORT_BY_ROUTE_TRANSPORT[body.transport],
-      status: _PRISMA_STATUS_BY_ROUTE_STATUS[body.status ?? "draft"],
+      scope: _PRISMA_SCOPE_BY_ROUTE_SCOPE[body.scope] as Prisma.McpServerCreateInput["scope"],
+      transport: _PRISMA_TRANSPORT_BY_ROUTE_TRANSPORT[body.transport] as Prisma.McpServerCreateInput["transport"],
+      status: _PRISMA_STATUS_BY_ROUTE_STATUS[body.status ?? "draft"] as Prisma.McpServerCreateInput["status"],
       capabilities: _NormalizeStringArray(body.capabilities),
       ...(body.sourceId ? { sourceId: body.sourceId } : {}),
       ...(body.lastSyncedAt ? { lastSyncedAt: new Date(body.lastSyncedAt) } : {}),
@@ -251,9 +240,9 @@ export async function updateMcpServer(prisma: PrismaClient, serverId: string, bo
       ...(body.name ? { name: body.name } : {}),
       ...(body.description !== undefined ? { description: body.description ?? "" } : {}),
       ...(body.endpoint ? { endpoint: body.endpoint } : {}),
-      ...(body.scope ? { scope: _PRISMA_SCOPE_BY_ROUTE_SCOPE[body.scope] } : {}),
-      ...(body.transport ? { transport: _PRISMA_TRANSPORT_BY_ROUTE_TRANSPORT[body.transport] } : {}),
-      ...(body.status ? { status: _PRISMA_STATUS_BY_ROUTE_STATUS[body.status] } : {}),
+      ...(body.scope ? { scope: _PRISMA_SCOPE_BY_ROUTE_SCOPE[body.scope] as Prisma.McpServerUpdateInput["scope"] } : {}),
+      ...(body.transport ? { transport: _PRISMA_TRANSPORT_BY_ROUTE_TRANSPORT[body.transport] as Prisma.McpServerUpdateInput["transport"] } : {}),
+      ...(body.status ? { status: _PRISMA_STATUS_BY_ROUTE_STATUS[body.status] as Prisma.McpServerUpdateInput["status"] } : {}),
       ...(body.capabilities ? { capabilities: _NormalizeStringArray(body.capabilities) } : {}),
       ...(body.sourceId !== undefined ? { sourceId: body.sourceId } : {}),
       ...(body.lastSyncedAt !== undefined ? { lastSyncedAt: body.lastSyncedAt ? new Date(body.lastSyncedAt) : null } : {}),
@@ -357,7 +346,7 @@ async function _DeleteMcpServerChildren(prisma: PrismaClient, serverId: string):
 {
   await prisma.mcpServerGrant.deleteMany({ where: { mcpServerId: serverId } });
   await prisma.mcpServerCredential.deleteMany({ where: { mcpServerId: serverId } });
-  await prisma.grant.deleteMany({ where: { mcpServerId: serverId, payloadType: __PrismaGrantPayloadType.McpServer } });
+  await prisma.grant.deleteMany({ where: { mcpServerId: serverId, payloadType: _PRISMA_MCP_SERVER_PAYLOAD_TYPE } });
 }
 
 /**
@@ -442,12 +431,12 @@ function _MapGenericGrantCreateInput(serverId: string, grant: McpServerGrantInpu
   const subjectId = _ResolveGrantSubjectId(grant);
 
   return {
-    payloadType: __PrismaGrantPayloadType.McpServer,
+    payloadType: _PRISMA_MCP_SERVER_PAYLOAD_TYPE,
     payloadId: serverId,
-    scope: _PRISMA_SCOPE_BY_ROUTE_SCOPE[grant.scope],
-    subjectType: _PRISMA_SUBJECT_BY_ROUTE_SUBJECT[grant.subjectType],
+    scope: _PRISMA_SCOPE_BY_ROUTE_SCOPE[grant.scope] as Prisma.GrantUncheckedCreateInput["scope"],
+    subjectType: _PRISMA_SUBJECT_BY_ROUTE_SUBJECT[grant.subjectType] as Prisma.GrantUncheckedCreateInput["subjectType"],
     subjectId,
-    access: _PRISMA_ACCESS_BY_ROUTE_ACCESS[grant.access],
+    access: _PRISMA_ACCESS_BY_ROUTE_ACCESS[grant.access] as Prisma.GrantUncheckedCreateInput["access"],
     priority: grant.priority ?? 0,
     note: grant.note,
     ...(grant.subjectType === "group" ? { groupId: subjectId } : {}),
@@ -470,10 +459,10 @@ function _MapScopedGrantCreateInput(serverId: string, grantId: string, grant: Mc
   return {
     mcpServerId: serverId,
     grantId,
-    scope: _PRISMA_SCOPE_BY_ROUTE_SCOPE[grant.scope],
-    subjectType: _PRISMA_SUBJECT_BY_ROUTE_SUBJECT[grant.subjectType],
+    scope: _PRISMA_SCOPE_BY_ROUTE_SCOPE[grant.scope] as Prisma.McpServerGrantCreateManyInput["scope"],
+    subjectType: _PRISMA_SUBJECT_BY_ROUTE_SUBJECT[grant.subjectType] as Prisma.McpServerGrantCreateManyInput["subjectType"],
     subjectId,
-    access: _PRISMA_ACCESS_BY_ROUTE_ACCESS[grant.access],
+    access: _PRISMA_ACCESS_BY_ROUTE_ACCESS[grant.access] as Prisma.McpServerGrantCreateManyInput["access"],
     priority: grant.priority ?? 0,
     note: grant.note,
     ...(grant.subjectType === "group" ? { groupId: subjectId } : {}),

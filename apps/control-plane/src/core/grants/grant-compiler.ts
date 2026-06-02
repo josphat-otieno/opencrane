@@ -1,9 +1,4 @@
 import {
-  GrantAccess as __PrismaGrantAccess,
-  GrantPayloadType as __PrismaGrantPayloadType,
-  GrantScope as __PrismaGrantScope,
-  GrantSubjectType as __PrismaGrantSubjectType,
-  Prisma,
   type PrismaClient,
 } from "@prisma/client";
 import { some as ___some, sortBy as ___sortBy } from "lodash";
@@ -17,15 +12,15 @@ import {
 } from "./grant-compiler.types.js";
 
 /** Narrow group rows to the membership fields used during compilation. */
-const _GROUP_ROW_SELECT = Prisma.validator<Prisma.GroupDefaultArgs>()({
+const _GROUP_ROW_SELECT = {
   select: {
     id: true,
     members: true,
   },
-});
+} as const;
 
 /** Narrow grant rows to the precedence fields used during compilation. */
-const _GRANT_ROW_SELECT = Prisma.validator<Prisma.GrantDefaultArgs>()({
+const _GRANT_ROW_SELECT = {
   select: {
     id: true,
     payloadType: true,
@@ -37,41 +32,83 @@ const _GRANT_ROW_SELECT = Prisma.validator<Prisma.GrantDefaultArgs>()({
     subjectId: true,
     createdAt: true,
   },
-});
+} as const;
+
+/** Typed Prisma payload values used during runtime lookups. */
+const _PRISMA_GRANT_PAYLOAD_TYPE = {
+  Awareness: "Awareness",
+  McpServer: "McpServer",
+  SkillBundle: "SkillBundle",
+} as const;
+
+/** Typed Prisma access values used during runtime lookups. */
+const _PRISMA_GRANT_ACCESS = {
+  Allow: "Allow",
+  Deny: "Deny",
+} as const;
+
+/** Typed Prisma scope values used during runtime lookups. */
+const _PRISMA_GRANT_SCOPE = {
+  Org: "Org",
+  Department: "Department",
+  Project: "Project",
+  Personal: "Personal",
+} as const;
+
+/** Typed Prisma subject values used during runtime lookups. */
+const _PRISMA_GRANT_SUBJECT_TYPE = {
+  Group: "Group",
+  Tenant: "Tenant",
+  User: "User",
+} as const;
 
 /** Principal subject types that resolve directly against the caller identifier. */
-const _DIRECT_SUBJECT_TYPES: __PrismaGrantSubjectType[] = [__PrismaGrantSubjectType.Tenant, __PrismaGrantSubjectType.User];
+const _DIRECT_SUBJECT_TYPES = [_PRISMA_GRANT_SUBJECT_TYPE.Tenant, _PRISMA_GRANT_SUBJECT_TYPE.User];
 
 /** Compiler-facing access enum lookup keyed by Prisma enum values. */
-const _COMPILER_ACCESS_BY_PRISMA_ACCESS: Record<__PrismaGrantAccess, GrantCompilerAccess> = {
-  [__PrismaGrantAccess.Allow]: GrantCompilerAccess.Allow,
-  [__PrismaGrantAccess.Deny]: GrantCompilerAccess.Deny,
+const _COMPILER_ACCESS_BY_PRISMA_ACCESS = {
+  [_PRISMA_GRANT_ACCESS.Allow]: GrantCompilerAccess.Allow,
+  [_PRISMA_GRANT_ACCESS.Deny]: GrantCompilerAccess.Deny,
 };
 
 /** Compiler-facing payload enum lookup keyed by Prisma enum values. */
-const _COMPILER_PAYLOAD_BY_PRISMA_PAYLOAD: Record<__PrismaGrantPayloadType, GrantCompilerPayloadType> = {
-  [__PrismaGrantPayloadType.Awareness]: GrantCompilerPayloadType.Awareness,
-  [__PrismaGrantPayloadType.McpServer]: GrantCompilerPayloadType.McpServer,
-  [__PrismaGrantPayloadType.SkillBundle]: GrantCompilerPayloadType.SkillBundle,
+const _COMPILER_PAYLOAD_BY_PRISMA_PAYLOAD = {
+  [_PRISMA_GRANT_PAYLOAD_TYPE.Awareness]: GrantCompilerPayloadType.Awareness,
+  [_PRISMA_GRANT_PAYLOAD_TYPE.McpServer]: GrantCompilerPayloadType.McpServer,
+  [_PRISMA_GRANT_PAYLOAD_TYPE.SkillBundle]: GrantCompilerPayloadType.SkillBundle,
 };
 
 /** Compiler-facing scope enum lookup keyed by Prisma enum values. */
-const _COMPILER_SCOPE_BY_PRISMA_SCOPE: Record<__PrismaGrantScope, GrantCompilerScope> = {
-  [__PrismaGrantScope.Org]: GrantCompilerScope.Org,
-  [__PrismaGrantScope.Department]: GrantCompilerScope.Department,
-  [__PrismaGrantScope.Project]: GrantCompilerScope.Project,
-  [__PrismaGrantScope.Personal]: GrantCompilerScope.Personal,
+const _COMPILER_SCOPE_BY_PRISMA_SCOPE = {
+  [_PRISMA_GRANT_SCOPE.Org]: GrantCompilerScope.Org,
+  [_PRISMA_GRANT_SCOPE.Department]: GrantCompilerScope.Department,
+  [_PRISMA_GRANT_SCOPE.Project]: GrantCompilerScope.Project,
+  [_PRISMA_GRANT_SCOPE.Personal]: GrantCompilerScope.Personal,
 };
 
 /** Compiler-facing subject enum lookup keyed by Prisma enum values. */
-const _COMPILER_SUBJECT_BY_PRISMA_SUBJECT: Record<__PrismaGrantSubjectType, GrantCompilerSubjectType> = {
-  [__PrismaGrantSubjectType.Group]: GrantCompilerSubjectType.Group,
-  [__PrismaGrantSubjectType.Tenant]: GrantCompilerSubjectType.Tenant,
-  [__PrismaGrantSubjectType.User]: GrantCompilerSubjectType.User,
+const _COMPILER_SUBJECT_BY_PRISMA_SUBJECT = {
+  [_PRISMA_GRANT_SUBJECT_TYPE.Group]: GrantCompilerSubjectType.Group,
+  [_PRISMA_GRANT_SUBJECT_TYPE.Tenant]: GrantCompilerSubjectType.Tenant,
+  [_PRISMA_GRANT_SUBJECT_TYPE.User]: GrantCompilerSubjectType.User,
 };
 
-type _GroupRow = Prisma.GroupGetPayload<typeof _GROUP_ROW_SELECT>;
-type _GrantRow = Prisma.GrantGetPayload<typeof _GRANT_ROW_SELECT>;
+type _PrismaGrantAccess = typeof _PRISMA_GRANT_ACCESS[keyof typeof _PRISMA_GRANT_ACCESS];
+type _PrismaGrantScope = typeof _PRISMA_GRANT_SCOPE[keyof typeof _PRISMA_GRANT_SCOPE];
+type _PrismaGrantSubjectType = typeof _PRISMA_GRANT_SUBJECT_TYPE[keyof typeof _PRISMA_GRANT_SUBJECT_TYPE];
+type _PrismaGrantPayloadType = keyof typeof _COMPILER_PAYLOAD_BY_PRISMA_PAYLOAD;
+type _GroupRow = { id: string; members: unknown };
+type _GrantRow = {
+  id: string;
+  payloadType: _PrismaGrantPayloadType;
+  payloadId: string;
+  access: _PrismaGrantAccess;
+  priority: number;
+  scope: _PrismaGrantScope;
+  subjectType: _PrismaGrantSubjectType;
+  subjectId: string;
+  createdAt: Date;
+};
 
 /**
  * Compile effective grant decisions for a principal and payload family.
@@ -119,7 +156,7 @@ export async function compile(
         ...(matchingGroupIds.length > 0
           ? [
               {
-                subjectType: __PrismaGrantSubjectType.Group,
+                subjectType: _PRISMA_GRANT_SUBJECT_TYPE.Group,
                 subjectId: {
                   in: matchingGroupIds,
                 },
@@ -262,15 +299,15 @@ function _MemberMatchesPrincipal(member: unknown, principalId: string): boolean
  * @param payloadType - Compiler payload family requested by the caller.
  * @returns Prisma enum value used in SQL filters.
  */
-function _ToPrismaPayloadType(payloadType: GrantCompilerPayloadType): __PrismaGrantPayloadType
+function _ToPrismaPayloadType(payloadType: GrantCompilerPayloadType): _PrismaGrantPayloadType
 {
   switch (payloadType)
   {
     case GrantCompilerPayloadType.Awareness:
-      return __PrismaGrantPayloadType.Awareness;
+      return _PRISMA_GRANT_PAYLOAD_TYPE.Awareness;
     case GrantCompilerPayloadType.McpServer:
-      return __PrismaGrantPayloadType.McpServer;
+      return _PRISMA_GRANT_PAYLOAD_TYPE.McpServer;
     case GrantCompilerPayloadType.SkillBundle:
-      return __PrismaGrantPayloadType.SkillBundle;
+      return _PRISMA_GRANT_PAYLOAD_TYPE.SkillBundle;
   }
 }

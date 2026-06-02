@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@kubernetes/client-node": "^1.0.0",
+    "@opencrane/contracts": "workspace:*",
     "@prisma/client": "^6.0.0",
     "@types/express-session": "^1.19.0",
     "express": "^5.1.0",

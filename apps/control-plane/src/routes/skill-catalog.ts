@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type { Grant, SkillBundle, SkillPromotion } from "@opencrane/contracts";
 import type { PrismaClient } from "@prisma/client";
 
 import type { SkillBundleWriteRequest, SkillEntitlementInput } from "./skill-catalog.types.js";
@@ -248,44 +249,44 @@ async function _DeleteSkillBundleChildren(prisma: PrismaClient, bundleId: string
  * @param bundle - Raw persisted bundle record.
  * @returns JSON response payload.
  */
-function _MapSkillBundle(bundle: Record<string, unknown>): Record<string, unknown>
+function _MapSkillBundle(bundle: Record<string, unknown>): SkillBundle
 {
   const source = bundle.source as { name?: string } | null | undefined;
   const entitlements = Array.isArray(bundle.entitlements) ? bundle.entitlements as Array<Record<string, unknown>> : [];
   const promotions = Array.isArray(bundle.promotions) ? bundle.promotions as Array<Record<string, unknown>> : [];
 
   return {
-    id: bundle.id,
-    name: bundle.name,
-    description: bundle.description,
-    version: bundle.version,
-    digest: bundle.digest,
-    scope: String(bundle.scope).toLowerCase(),
-    status: String(bundle.status).toLowerCase(),
+    id: String(bundle.id),
+    name: String(bundle.name),
+    description: String(bundle.description),
+    version: String(bundle.version),
+    digest: String(bundle.digest),
+    scope: String(bundle.scope).toLowerCase() as SkillBundle["scope"],
+    status: String(bundle.status).toLowerCase() as SkillBundle["status"],
     tags: Array.isArray(bundle.tags) ? bundle.tags : [],
     sourceName: source?.name,
     publishedAt: bundle.publishedAt instanceof Date ? bundle.publishedAt.toISOString() : undefined,
-    grants: entitlements.map(function _mapGrant(grant)
+    grants: entitlements.map(function _mapGrant(grant): Grant
     {
       return {
-        id: grant.id,
-        scope: String(grant.scope).toLowerCase(),
-        subjectType: String(grant.subjectType).toLowerCase(),
-        subjectId: grant.subjectId,
-        subjectName: grant.subjectId,
-        access: String(grant.access).toLowerCase(),
-        note: grant.note ?? undefined,
+        id: String(grant.id),
+        scope: String(grant.scope).toLowerCase() as Grant["scope"],
+        subjectType: String(grant.subjectType).toLowerCase() as Grant["subjectType"],
+        subjectId: String(grant.subjectId),
+        subjectName: String(grant.subjectId),
+        access: String(grant.access).toLowerCase() as Grant["access"],
+        note: typeof grant.note === "string" ? grant.note : undefined,
       };
     }),
-    promotions: promotions.map(function _mapPromotion(promotion)
+    promotions: promotions.map(function _mapPromotion(promotion): SkillPromotion
     {
       return {
-        id: promotion.id,
-        fromScope: String(promotion.fromScope).toLowerCase(),
-        toScope: String(promotion.toScope).toLowerCase(),
-        promotedBy: promotion.promotedBy,
-        status: String(promotion.status).toLowerCase(),
-        notes: promotion.notes ?? undefined,
+        id: String(promotion.id),
+        fromScope: String(promotion.fromScope).toLowerCase() as SkillPromotion["fromScope"],
+        toScope: String(promotion.toScope).toLowerCase() as SkillPromotion["toScope"],
+        promotedBy: String(promotion.promotedBy),
+        status: String(promotion.status).toLowerCase() as SkillPromotion["status"],
+        notes: typeof promotion.notes === "string" ? promotion.notes : undefined,
       };
     }),
   };

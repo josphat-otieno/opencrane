@@ -1,3 +1,6 @@
+# OpenCrane keeps MCPServer as a first-class CRD even when Obot brokers runtime traffic.
+# The CRD is the control-plane source of truth for inventory, grants, credential refs,
+# and reconciliation status; the gateway plane consumes this record instead of replacing it.
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:

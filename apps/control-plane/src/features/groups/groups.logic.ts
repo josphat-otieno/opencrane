@@ -1,11 +1,5 @@
-import {
-  GrantAccess as __PrismaGrantAccess,
-  GrantPayloadType as __PrismaGrantPayloadType,
-  GrantScope as __PrismaGrantScope,
-  GrantSubjectType as __PrismaGrantSubjectType,
-  Prisma,
-  type PrismaClient,
-} from "@prisma/client";
+import { GrantAccess, GrantScope, GrantSubjectType, type Grant, type Group } from "@opencrane/contracts";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import { sortBy as ___sortBy, uniq as ___uniq } from "lodash";
 
 import type {
@@ -18,43 +12,11 @@ import type {
 
 type _GroupWithGrantsRow = Prisma.GroupGetPayload<{ include: { grants: true } }>;
 
-/** JSON response shape returned by the groups routes. */
-export interface GroupResponse
-{
-  /** Stable group identifier. */
-  id: string;
-  /** Human-friendly group name. */
-  name: string;
-  /** Organizational scope represented by the group. */
-  scope: GroupRouteScope;
-  /** Optional operator-facing description. */
-  description?: string;
-  /** Normalized principal identifiers attached to the group. */
-  members: string[];
-  /** Current number of normalized members. */
-  memberCount: number;
-  /** Awareness grants linked to the group. */
-  grants: GroupGrantResponse[];
-}
+/** Shared response contract returned by the groups routes. */
+export type GroupResponse = Group;
 
-/** JSON response shape returned for a normalized group grant. */
-export interface GroupGrantResponse
-{
-  /** Stable grant identifier. */
-  id: string;
-  /** Organizational scope carried by the grant. */
-  scope: GroupRouteScope;
-  /** Subject family receiving the grant. */
-  subjectType: GroupRouteSubjectType;
-  /** Subject identifier used by the compiler. */
-  subjectId: string;
-  /** Human-friendly subject label. */
-  subjectName: string;
-  /** Allow or deny outcome. */
-  access: GroupRouteAccess;
-  /** Optional operator note. */
-  note?: string;
-}
+/** Shared grant contract returned for normalized group grants. */
+export type GroupGrantResponse = Grant;
 
 /** Persist response shape returned after create/update/delete mutations. */
 export interface GroupMutationResponse
@@ -65,46 +27,70 @@ export interface GroupMutationResponse
   status: "created" | "updated" | "deleted";
 }
 
+/** Typed Prisma scope values used during runtime lookups. */
+const _PRISMA_GRANT_SCOPE = {
+  Org: "Org",
+  Department: "Department",
+  Project: "Project",
+  Personal: "Personal",
+} as const;
+
+/** Typed Prisma subject values used during runtime lookups. */
+const _PRISMA_GRANT_SUBJECT_TYPE = {
+  Group: "Group",
+  Tenant: "Tenant",
+  User: "User",
+} as const;
+
+/** Typed Prisma access values used during runtime lookups. */
+const _PRISMA_GRANT_ACCESS = {
+  Allow: "Allow",
+  Deny: "Deny",
+} as const;
+
+/** Typed Prisma payload value used for awareness grants persisted in Prisma. */
+const _PRISMA_AWARENESS_PAYLOAD_TYPE = "Awareness";
+
 /** Route scope lookup keyed by Prisma enum values. */
-const _ROUTE_SCOPE_BY_PRISMA_SCOPE: Record<__PrismaGrantScope, GroupRouteScope> = {
-  [__PrismaGrantScope.Org]: "org",
-  [__PrismaGrantScope.Department]: "department",
-  [__PrismaGrantScope.Project]: "project",
-  [__PrismaGrantScope.Personal]: "personal",
+const _ROUTE_SCOPE_BY_PRISMA_SCOPE = {
+  [_PRISMA_GRANT_SCOPE.Org]: GrantScope.Org,
+  [_PRISMA_GRANT_SCOPE.Department]: GrantScope.Department,
+  [_PRISMA_GRANT_SCOPE.Project]: GrantScope.Project,
+  [_PRISMA_GRANT_SCOPE.Personal]: GrantScope.Personal,
 };
 
 /** Prisma scope lookup keyed by route values. */
-const _PRISMA_SCOPE_BY_ROUTE_SCOPE: Record<GroupRouteScope, __PrismaGrantScope> = {
-  org: __PrismaGrantScope.Org,
-  department: __PrismaGrantScope.Department,
-  project: __PrismaGrantScope.Project,
-  personal: __PrismaGrantScope.Personal,
+const _PRISMA_SCOPE_BY_ROUTE_SCOPE = {
+  org: _PRISMA_GRANT_SCOPE.Org,
+  department: _PRISMA_GRANT_SCOPE.Department,
+  project: _PRISMA_GRANT_SCOPE.Project,
+  personal: _PRISMA_GRANT_SCOPE.Personal,
 };
 
 /** Route subject lookup keyed by Prisma enum values. */
-const _ROUTE_SUBJECT_BY_PRISMA_SUBJECT: Record<__PrismaGrantSubjectType, GroupRouteSubjectType> = {
-  [__PrismaGrantSubjectType.Group]: "group",
-  [__PrismaGrantSubjectType.Tenant]: "tenant",
-  [__PrismaGrantSubjectType.User]: "user",
+const _ROUTE_SUBJECT_BY_PRISMA_SUBJECT = {
+  [_PRISMA_GRANT_SUBJECT_TYPE.Group]: GrantSubjectType.Group,
+  [_PRISMA_GRANT_SUBJECT_TYPE.Tenant]: GrantSubjectType.Tenant,
+  [_PRISMA_GRANT_SUBJECT_TYPE.User]: GrantSubjectType.User,
 };
 
 /** Prisma subject lookup keyed by route values. */
-const _PRISMA_SUBJECT_BY_ROUTE_SUBJECT: Record<GroupRouteSubjectType, __PrismaGrantSubjectType> = {
-  group: __PrismaGrantSubjectType.Group,
-  tenant: __PrismaGrantSubjectType.Tenant,
-  user: __PrismaGrantSubjectType.User,
+const _PRISMA_SUBJECT_BY_ROUTE_SUBJECT = {
+  group: _PRISMA_GRANT_SUBJECT_TYPE.Group,
+  tenant: _PRISMA_GRANT_SUBJECT_TYPE.Tenant,
+  user: _PRISMA_GRANT_SUBJECT_TYPE.User,
 };
 
 /** Route access lookup keyed by Prisma enum values. */
-const _ROUTE_ACCESS_BY_PRISMA_ACCESS: Record<__PrismaGrantAccess, GroupRouteAccess> = {
-  [__PrismaGrantAccess.Allow]: "allow",
-  [__PrismaGrantAccess.Deny]: "deny",
+const _ROUTE_ACCESS_BY_PRISMA_ACCESS = {
+  [_PRISMA_GRANT_ACCESS.Allow]: GrantAccess.Allow,
+  [_PRISMA_GRANT_ACCESS.Deny]: GrantAccess.Deny,
 };
 
 /** Prisma access lookup keyed by route values. */
-const _PRISMA_ACCESS_BY_ROUTE_ACCESS: Record<GroupRouteAccess, __PrismaGrantAccess> = {
-  allow: __PrismaGrantAccess.Allow,
-  deny: __PrismaGrantAccess.Deny,
+const _PRISMA_ACCESS_BY_ROUTE_ACCESS = {
+  allow: _PRISMA_GRANT_ACCESS.Allow,
+  deny: _PRISMA_GRANT_ACCESS.Deny,
 };
 
 /**
@@ -159,7 +145,7 @@ export async function createGroup(prisma: PrismaClient, body: GroupWriteRequest)
   const createdGroup = await prisma.group.create({
     data: {
       name: body.name,
-      scope: _PRISMA_SCOPE_BY_ROUTE_SCOPE[body.scope],
+      scope: _PRISMA_SCOPE_BY_ROUTE_SCOPE[body.scope] as Prisma.GroupCreateInput["scope"],
       ...(body.description ? { description: body.description } : {}),
       members: members as Prisma.InputJsonValue,
     },
@@ -206,7 +192,7 @@ export async function updateGroup(prisma: PrismaClient, groupId: string, body: P
     where: { id: groupId },
     data: {
       ...(body.name ? { name: body.name } : {}),
-      ...(body.scope ? { scope: _PRISMA_SCOPE_BY_ROUTE_SCOPE[body.scope] } : {}),
+      ...(body.scope ? { scope: _PRISMA_SCOPE_BY_ROUTE_SCOPE[body.scope] as Prisma.GroupUpdateInput["scope"] } : {}),
       ...(body.description !== undefined ? { description: body.description } : {}),
       ...(members ? { members: members as Prisma.InputJsonValue } : {}),
     },
@@ -214,7 +200,7 @@ export async function updateGroup(prisma: PrismaClient, groupId: string, body: P
 
   // 3. Replace awareness grants wholesale because the route treats the submitted grant list as authoritative.
   await prisma.grant.deleteMany({
-    where: { groupId, payloadType: __PrismaGrantPayloadType.Awareness },
+    where: { groupId, payloadType: _PRISMA_AWARENESS_PAYLOAD_TYPE },
   });
   if (body.grants && body.grants.length > 0)
   {
@@ -249,7 +235,7 @@ export async function deleteGroup(prisma: PrismaClient, groupId: string): Promis
 {
   // 1. Remove linked awareness grants first so there are no dangling compiler rows after the group disappears.
   await prisma.grant.deleteMany({
-    where: { groupId, payloadType: __PrismaGrantPayloadType.Awareness },
+    where: { groupId, payloadType: _PRISMA_AWARENESS_PAYLOAD_TYPE },
   });
 
   // 2. Delete the group once linked grants are gone so the mutation stays referentially clean.
@@ -355,12 +341,12 @@ function _MapGrantResponse(grant: _GroupWithGrantsRow["grants"][number]): GroupG
 function _MapGrantCreateInput(groupId: string, grant: GroupGrantInput): Prisma.GrantCreateManyInput
 {
   return {
-    payloadType: __PrismaGrantPayloadType.Awareness,
+    payloadType: _PRISMA_AWARENESS_PAYLOAD_TYPE,
     payloadId: grant.payloadId ?? "awareness/default",
-    scope: _PRISMA_SCOPE_BY_ROUTE_SCOPE[grant.scope],
-    subjectType: _PRISMA_SUBJECT_BY_ROUTE_SUBJECT[grant.subjectType],
+    scope: _PRISMA_SCOPE_BY_ROUTE_SCOPE[grant.scope] as Prisma.GrantCreateManyInput["scope"],
+    subjectType: _PRISMA_SUBJECT_BY_ROUTE_SUBJECT[grant.subjectType] as Prisma.GrantCreateManyInput["subjectType"],
     subjectId: _ResolveGrantSubjectId(grant),
-    access: _PRISMA_ACCESS_BY_ROUTE_ACCESS[grant.access],
+    access: _PRISMA_ACCESS_BY_ROUTE_ACCESS[grant.access] as Prisma.GrantCreateManyInput["access"],
     priority: grant.priority ?? 0,
     note: grant.note,
     groupId,

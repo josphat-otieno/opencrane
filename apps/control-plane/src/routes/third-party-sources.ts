@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type { ThirdPartySource, ThirdPartySourceItem } from "@opencrane/contracts";
 import type { PrismaClient } from "@prisma/client";
 
 import type { ThirdPartySourceWriteRequest } from "./third-party-sources.types.js";
@@ -217,31 +218,31 @@ export function thirdPartySourcesRouter(prisma: PrismaClient): Router
  * @param source - Raw persisted source record.
  * @returns JSON response payload.
  */
-function _MapThirdPartySource(source: Record<string, unknown>): Record<string, unknown>
+function _MapThirdPartySource(source: Record<string, unknown>): ThirdPartySource
 {
   const items = Array.isArray(source.items) ? source.items as Array<Record<string, unknown>> : [];
 
   return {
-    id: source.id,
-    name: source.name,
-    kind: String(source.kind).replace("McpRegistry", "mcp-registry").replace("AnthropicSkills", "anthropic-skills").replace("GitRepository", "git-repository").replace("ManualUpload", "manual-upload").toLowerCase(),
-    status: String(source.status).replace("PendingApproval", "pending-approval").toLowerCase(),
-    originUrl: source.originUrl,
-    syncMode: source.syncMode,
+    id: String(source.id),
+    name: String(source.name),
+    kind: String(source.kind).replace("McpRegistry", "mcp-registry").replace("AnthropicSkills", "anthropic-skills").replace("GitRepository", "git-repository").replace("ManualUpload", "manual-upload").toLowerCase() as ThirdPartySource["kind"],
+    status: String(source.status).replace("PendingApproval", "pending-approval").toLowerCase() as ThirdPartySource["status"],
+    originUrl: String(source.originUrl),
+    syncMode: String(source.syncMode) as ThirdPartySource["syncMode"],
     managedItemCount: items.length,
     lastSyncedAt: source.lastSyncedAt instanceof Date ? source.lastSyncedAt.toISOString() : undefined,
     nextRunAt: source.nextRunAt instanceof Date ? source.nextRunAt.toISOString() : undefined,
-    notes: source.notes ?? undefined,
-    items: items.map(function _mapItem(item)
+    notes: typeof source.notes === "string" ? source.notes : undefined,
+    items: items.map(function _mapItem(item): ThirdPartySourceItem
     {
       return {
-        id: item.id,
-        kind: String(item.kind).replace("McpServer", "mcp-server").replace("SkillBundle", "skill-bundle").toLowerCase(),
-        name: item.name,
-        upstreamId: item.upstreamId,
-        version: item.version ?? undefined,
-        digest: item.digest ?? undefined,
-        metadata: item.metadata ?? undefined,
+        id: typeof item.id === "string" ? item.id : undefined,
+        kind: String(item.kind).replace("McpServer", "mcp-server").replace("SkillBundle", "skill-bundle").toLowerCase() as ThirdPartySourceItem["kind"],
+        name: String(item.name),
+        upstreamId: String(item.upstreamId),
+        version: typeof item.version === "string" ? item.version : undefined,
+        digest: typeof item.digest === "string" ? item.digest : undefined,
+        metadata: typeof item.metadata === "object" && item.metadata !== null ? item.metadata as Record<string, unknown> : undefined,
       };
     }),
   };
