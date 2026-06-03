@@ -9,7 +9,12 @@ import { _BuildTenantLabels } from "./tenant-labels.js";
  *
  * This builder is the main place where OpenCrane translates tenant intent
  * into runtime behavior: image/version selection, platform env vars, storage
- * strategy, skill mounting, LiteLLM integration, and pod hardening defaults.
+ * strategy, LiteLLM integration, and pod hardening defaults.
+ *
+ * Skill and MCP grants are NOT injected here. They are compiled by the
+ * control-plane effective-contract endpoint and re-pulled by the pod at each
+ * agentic-loop boundary. The contract is advisory; the ingress planes (Obot
+ * MCP Gateway and Skill Registry) are the live authz boundary.
  */
 export function _BuildDeployment(config: OperatorConfig, tenant: Tenant, namespace: string): k8s.V1Deployment
 {
@@ -18,34 +23,29 @@ export function _BuildDeployment(config: OperatorConfig, tenant: Tenant, namespa
   const resources = tenant.spec.resources;
   const openclawVersion = tenant.spec.openclawVersion ?? "latest";
 
-  // Use only the durable skillAllowlist field for tenant skill governance.
-  const allowedSkills = tenant.spec.skillAllowlist?.join(",");
-
-  // Merge tenant-level mcpPolicy with any AccessPolicy mcpServers for deployment injection.
-  const mcpAllow = tenant.spec.mcpPolicy?.allow?.join(",");
-  const mcpDeny = tenant.spec.mcpPolicy?.deny?.join(",");
-
   // 1. Runtime env — inject both OpenClaw-required paths and OpenCrane-managed
   //    runtime hints so the tenant process knows where state, secrets, policy,
   //    and platform contract files live.
+  //    Note: CSV skill/MCP allow lists are removed — authorization is now
+  //    group-based and compiled by the control-plane effective-contract endpoint.
   const envVars: k8s.V1EnvVar[] = [
     { name: "OPENCLAW_STATE_DIR", value: "/data/openclaw" },
     { name: "OPENCLAW_SECRETS_DIR", value: "/data/secrets" },
     { name: "OPENCLAW_ENCRYPTION_KEY_PATH", value: "/etc/openclaw/encryption-key/key" },
     { name: "OPENCLAW_TENANT_NAME", value: name },
-    { name: "OPENCLAW_GATEWAY_TOKEN", value: `opencrane-${name}-gateway` },
     { name: "OPENCLAW_VERSION", value: openclawVersion },
     { name: "OPENCRANE_RUNTIME_MODE", value: "managed" },
     { name: "OPENCRANE_RUNTIME_CONTRACT_PATH", value: "/config/opencrane-managed-runtime.json" },
+    { name: "OPENCRANE_MCP_GATEWAY_URL", value: config.mcpGatewayUrl },
+    { name: "OPENCRANE_SKILL_REGISTRY_URL", value: config.skillRegistryUrl },
+    { name: "OPENCRANE_MCP_GATEWAY_TOKEN_PATH", value: "/var/run/opencrane/tokens/obot-gateway.token" },
+    { name: "OPENCRANE_SKILL_REGISTRY_TOKEN_PATH", value: "/var/run/opencrane/tokens/skill-registry.token" },
     { name: "HOME", value: "/tmp/opencrane-home" },
     { name: "TMPDIR", value: "/tmp" },
     { name: "NPM_CONFIG_CACHE", value: "/tmp/npm-cache" },
     ...(config.liteLlmEnabled ? [{ name: "LITELLM_ENDPOINT", value: config.liteLlmEndpoint }] : []),
     ...(tenant.spec.team ? [{ name: "OPENCRANE_TEAM", value: tenant.spec.team }] : []),
     ...(tenant.spec.policyRef ? [{ name: "OPENCRANE_POLICY_REF", value: tenant.spec.policyRef }] : []),
-    ...(allowedSkills !== undefined ? [{ name: "OPENCRANE_ALLOWED_SKILLS", value: allowedSkills }] : []),
-    ...(mcpAllow !== undefined ? [{ name: "OPENCRANE_TENANT_MCP_ALLOW", value: mcpAllow }] : []),
-    ...(mcpDeny !== undefined ? [{ name: "OPENCRANE_TENANT_MCP_DENY", value: mcpDeny }] : []),
   ];
 
   if (config.liteLlmEnabled)
@@ -77,19 +77,41 @@ export function _BuildDeployment(config: OperatorConfig, tenant: Tenant, namespa
   // 2. Volume mounts — keep only explicit writable paths mounted read-write;
   //    everything else stays read-only so the container can run with a
   //    read-only root filesystem.
+  //    Skills are now pulled per-entitlement from the Skill Registry via
+  //    projected token; there is no shared-skills PVC mount.
   const volumeMounts: k8s.V1VolumeMount[] = [
     { name: "config", mountPath: "/config", readOnly: true },
-    { name: "shared-skills", mountPath: "/shared-skills", readOnly: true },
     { name: "pod-secrets", mountPath: "/data/secrets" },
     { name: "encryption-key", mountPath: "/etc/openclaw/encryption-key", readOnly: true },
+    { name: "projected-identity", mountPath: "/var/run/opencrane/tokens", readOnly: true },
     { name: "tmp", mountPath: "/tmp" },
   ];
 
   const volumes: k8s.V1Volume[] = [
     { name: "config", configMap: { name: `openclaw-${name}-config` } },
-    { name: "shared-skills", persistentVolumeClaim: { claimName: config.sharedSkillsPvcName, readOnly: true } },
     { name: "pod-secrets", emptyDir: { medium: "Memory", sizeLimit: "10Mi" } },
     { name: "encryption-key", secret: { secretName: `openclaw-${name}-encryption-key` } },
+    {
+      name: "projected-identity",
+      projected: {
+        sources: [
+          {
+            serviceAccountToken: {
+              path: "obot-gateway.token",
+              expirationSeconds: config.projectedTokenTtlSeconds,
+              audience: "obot-gateway",
+            },
+          },
+          {
+            serviceAccountToken: {
+              path: "skill-registry.token",
+              expirationSeconds: config.projectedTokenTtlSeconds,
+              audience: "skill-registry",
+            },
+          },
+        ],
+      },
+    },
     { name: "tmp", emptyDir: {} },
   ];
 

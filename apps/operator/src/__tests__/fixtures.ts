@@ -12,7 +12,6 @@ export const defaultConfig: OperatorConfig = {
   tenantDefaultImage: "ghcr.io/opencrane/tenant:latest",
   ingressDomain: "opencrane.local",
   ingressClassName: "nginx",
-  sharedSkillsPvcName: "opencrane-shared-skills",
   gatewayPort: 18789,
   storageProvider: "gcs",
   bucketPrefix: "opencrane",
@@ -25,6 +24,9 @@ export const defaultConfig: OperatorConfig = {
   liteLlmEndpoint: "http://litellm:4000",
   liteLlmMasterKey: "",
   liteLlmDefaultMonthlyBudgetUsd: 50,
+  mcpGatewayUrl: "http://obot-gateway.opencrane-system.svc:8080",
+  skillRegistryUrl: "http://skill-registry.opencrane-system.svc:5000",
+  projectedTokenTtlSeconds: 600,
 };
 
 /**

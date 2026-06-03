@@ -46,29 +46,40 @@ export function _BuildConfigMap(config: OperatorConfig, tenant: Tenant, namespac
   };
 
   // 2. Managed-runtime contract — publish OpenCrane-owned capabilities and
-  //    tenant context in a machine-readable form for future runtime features.
+  //    tenant context in a machine-readable form for runtime features.
+  //    mcp.servers and skills.entitled are advisory stubs only; the live
+  //    compiled grant is served by GET /api/tenants/:name/effective-contract
+  //    and re-pulled by the pod at each agentic-loop boundary. The ingress
+  //    planes (Obot MCP Gateway, Skill Registry) are the authoritative boundary.
   const runtimeContract = {
     version: "opencrane-runtime/v1alpha1",
+    contractVersion: "2.1.0",
     platform: "opencrane",
     mode: "managed",
     tenant: {
       name,
       team: tenant.spec.team ?? null,
       policyRef: tenant.spec.policyRef ?? null,
-      requestedSkills: tenant.spec.skillAllowlist ?? [],
     },
     policy: {
       effectiveRef: effectivePolicy?.metadata?.name ?? tenant.spec.policyRef ?? null,
-      mcpServers: effectivePolicy?.spec.mcpServers ?? null,
+    },
+    mcp: {
+      gateway: config.mcpGatewayUrl,
+      // Actual compiled server grants are fetched from effective-contract at runtime.
+      servers: [],
+    },
+    skills: {
+      registry: config.skillRegistryUrl,
+      // Actual entitled skill index is fetched from effective-contract at runtime.
+      entitled: [],
     },
     capabilities: {
       liteLlmProxy: config.liteLlmEnabled,
-      sharedSkills: true,
       storageProvider: config.storageProvider || "pvc",
       persistentState: true,
       ephemeralSecrets: true,
       autoSuspend: config.idleTimeoutMinutes > 0,
-      mcpPolicyEnforced: effectivePolicy?.spec.mcpServers !== undefined,
     },
   };
 

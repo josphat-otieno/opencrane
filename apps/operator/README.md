@@ -103,7 +103,6 @@ src/
 | `TENANT_DEFAULT_IMAGE` | `ghcr.io/opencrane/tenant:latest` | Fallback container image for tenant pods |
 | `INGRESS_DOMAIN` | `opencrane.local` | Base domain for `{tenant}.{domain}` ingress hosts |
 | `INGRESS_CLASS_NAME` | `nginx` | Kubernetes ingress class name |
-| `SHARED_SKILLS_PVC_NAME` | `opencrane-shared-skills` | PVC mounted read-only into every tenant pod |
 | `GATEWAY_PORT` | `18789` | OpenClaw gateway port inside tenant pods |
 | `STORAGE_PROVIDER` | `""` | Cloud storage: `gcs`, `azure-blob`, `s3`, or empty for PVC fallback |
 | `BUCKET_PREFIX` | `opencrane` | Prefix for bucket names (`{prefix}-{tenantName}`) |

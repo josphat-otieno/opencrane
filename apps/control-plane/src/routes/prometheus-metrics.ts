@@ -15,12 +15,11 @@ const _log = pino({ name: "prometheus-metrics" });
  *
  * What this route reports:
  * - tenant lifecycle distribution (`opencrane_tenants_total`)
- * - org knowledge corpus size (`opencrane_org_documents_total`)
  * - audit log growth (`opencrane_audit_entries_total`)
  * - process uptime and Node heap usage for runtime diagnostics
  *
  * How it connects to the app:
- * - Values are sourced from PostgreSQL via Prisma (tenant/docs/audit state).
+ * - Values are sourced from PostgreSQL via Prisma (tenant/audit state).
  * - The operator and platform monitoring stack scrape this endpoint for alerting and trend dashboards.
  *
  * Exposes these metrics in the Prometheus text exposition format
@@ -45,17 +44,10 @@ export function prometheusMetricsRouter(prisma: PrismaClient, customApi: k8s.Cus
       _count: { name: true },
     });
 
-    // 2. Collect drift count from the metrics snapshot to expose as a gauge.
-    const totalDocuments = await prisma.orgDocument.count().catch(function _handleMissing(err: unknown)
-    {
-      _log.warn({ err }, "org document count unavailable; returning 0 for Prometheus gauge");
-      return 0;
-    });
-
-    // 3. Collect audit entry count as a counter proxy.
+    // 2. Collect audit entry count as a counter proxy.
     const auditEntryCount = await prisma.auditEntry.count();
 
-    // 4. Build Prometheus text format output — one line per metric sample.
+    // 3. Build Prometheus text format output — one line per metric sample.
     const lines: string[] = [
       "# HELP opencrane_tenants_total Number of tenants by lifecycle phase",
       "# TYPE opencrane_tenants_total gauge",
@@ -63,11 +55,6 @@ export function prometheusMetricsRouter(prisma: PrismaClient, customApi: k8s.Cus
       {
         return `opencrane_tenants_total{phase="${row.phase}"} ${row._count.name}`;
       }),
-
-      "",
-      "# HELP opencrane_org_documents_total Total documents in the org knowledge index",
-      "# TYPE opencrane_org_documents_total gauge",
-      `opencrane_org_documents_total ${totalDocuments}`,
 
       "",
       "# HELP opencrane_audit_entries_total Total audit log entries",
@@ -85,10 +72,11 @@ export function prometheusMetricsRouter(prisma: PrismaClient, customApi: k8s.Cus
       `nodejs_heap_used_bytes ${process.memoryUsage().heapUsed}`,
     ];
 
-    // 5. Respond with Prometheus text format content type so scrapers accept it.
+    // 4. Respond with Prometheus text format content type so scrapers accept it.
     res.set("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
     res.send(lines.join("\n") + "\n");
   });
 
   return router;
 }
+

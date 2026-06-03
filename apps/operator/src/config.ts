@@ -15,9 +15,6 @@ export interface OpenClawTenantOperatorConfig
   /** Kubernetes ingress class to annotate on tenant ingresses. */
   ingressClassName: string;
 
-  /** Name of the shared PVC mounted read-only into every tenant pod. */
-  sharedSkillsPvcName: string;
-
   /** Port number exposed by the OpenClaw gateway inside tenant pods. */
   gatewayPort: number;
 
@@ -56,6 +53,15 @@ export interface OpenClawTenantOperatorConfig
 
   /** Optional default AccessPolicy name used when no explicit or selector match is found. */
   defaultTenantPolicyRef?: string;
+
+  /** In-cluster MCP gateway URL exposed to tenant runtimes through managed env/contract. */
+  mcpGatewayUrl: string;
+
+  /** In-cluster skill registry delivery URL exposed to tenant runtimes. */
+  skillRegistryUrl: string;
+
+  /** Projected ServiceAccount token TTL in seconds for ingress-plane audiences. */
+  projectedTokenTtlSeconds: number;
 }
 
 /** Backwards-compatible alias used by existing operator modules. */
@@ -71,7 +77,6 @@ export function _LoadOperatorConfig(): OpenClawTenantOperatorConfig
     tenantDefaultImage: _readEnvValue<string>("TENANT_DEFAULT_IMAGE", "string"),
     ingressDomain: _readEnvValue<string>("INGRESS_DOMAIN", "string"),
     ingressClassName: _readEnvValue<string>("INGRESS_CLASS_NAME", "string"),
-    sharedSkillsPvcName: _readEnvValue<string>("SHARED_SKILLS_PVC_NAME", "string"),
     gatewayPort: _readEnvValue<number>("GATEWAY_PORT", "number"),
     storageProvider: _readEnvValue<OpenClawTenantOperatorConfig["storageProvider"]>("STORAGE_PROVIDER", "storageProvider"),
     bucketPrefix: _readEnvValue<string>("BUCKET_PREFIX", "string"),
@@ -85,6 +90,9 @@ export function _LoadOperatorConfig(): OpenClawTenantOperatorConfig
     liteLlmMasterKey: _readEnvValue<string>("LITELLM_MASTER_KEY", "string", false, ""),
     liteLlmDefaultMonthlyBudgetUsd: _readEnvValue<number>("LITELLM_DEFAULT_MONTHLY_BUDGET_USD", "number"),
     defaultTenantPolicyRef: _readEnvValue<string>("DEFAULT_TENANT_POLICY_REF", "string", false, ""),
+    mcpGatewayUrl: _readEnvValue<string>("MCP_GATEWAY_URL", "string", false, "http://obot-gateway.opencrane-system.svc:8080"),
+    skillRegistryUrl: _readEnvValue<string>("SKILL_REGISTRY_URL", "string", false, "http://skill-registry.opencrane-system.svc:5000"),
+    projectedTokenTtlSeconds: _readEnvValue<number>("PROJECTED_TOKEN_TTL_SECONDS", "number", false, 600),
   };
 }
 
