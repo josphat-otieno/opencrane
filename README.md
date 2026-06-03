@@ -104,7 +104,7 @@ OpenCrane is represented here as a clean operating model: a central **Control Pl
 │  │ - reconciles Obot      │    │   Drive   │ + Workload │    │ - credential broker/shim     │  │
 │  │   config + registry    │    │           │  Identity  │    ├──────────────────────────────┤  │
 │  │ - drift detect/repair  │    │           |            |    │ In-cluster MCP servers       │  │
-│  └──────────────────────── ┘    │           |            |    │ (registry-pulled, run        │  │
+│  └────────────────────────┘    │           |            |    │ (registry-pulled, run        │  │
 │                                └──────┬────┬────────────┘    │  locally)                    │  │
 │  ┌────────────────────────┐           |    │  (3) JWT        ├──────────────────────────────┤  │
 │  │ Cognee Brain           │◄──────┬────────┴────────────────►│ Obot token store             │  │
