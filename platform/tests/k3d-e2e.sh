@@ -160,6 +160,12 @@ kubectl create secret generic "$DB_SECRET_NAME" \
   -o yaml | kubectl apply -f -
 
 if [[ "$LOCAL_PROFILE" == "strict" ]]; then
+  if [[ -z "$LITELLM_MASTER_KEY" ]]; then
+    echo "[e2e] LOCAL_PROFILE=strict requires LITELLM_MASTER_KEY to be set and non-empty"
+    echo "[e2e] Example: LOCAL_PROFILE=strict LITELLM_MASTER_KEY=dev-e2e-key platform/tests/k3d-e2e.sh"
+    exit 1
+  fi
+
   kubectl create secret generic "$LITELLM_SECRET_NAME" \
     -n "$NAMESPACE" \
     --from-literal=LITELLM_MASTER_KEY="$LITELLM_MASTER_KEY" \
