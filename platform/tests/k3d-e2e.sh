@@ -7,7 +7,9 @@ NAMESPACE="${NAMESPACE:-opencrane-system}"
 RELEASE_NAME="${RELEASE_NAME:-opencrane}"
 KEEP_CLUSTER="${KEEP_CLUSTER:-0}"
 TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-240}"
-MIN_FREE_GB="${MIN_FREE_GB:-8}"
+DB_STORAGE_GB="${DB_STORAGE_GB:-10}"
+DISK_HEADROOM_GB="${DISK_HEADROOM_GB:-2}"
+MIN_FREE_GB="${MIN_FREE_GB:-$(( DB_STORAGE_GB + DISK_HEADROOM_GB ))}"
 DB_RELEASE_NAME="${DB_RELEASE_NAME:-opencrane-db}"
 DB_SECRET_NAME="${DB_SECRET_NAME:-opencrane-db}"
 DB_PASSWORD="${DB_PASSWORD:-opencrane-e2e-password}"
@@ -42,6 +44,7 @@ function _require_free_space()
 
   if [[ -z "$free_kb" || "$free_kb" -lt "$min_free_kb" ]]; then
     echo "[e2e] Insufficient free disk space for image builds."
+    echo "[e2e] Baseline includes DB storage (${DB_STORAGE_GB}GiB) + headroom (${DISK_HEADROOM_GB}GiB)."
     echo "[e2e] Required: ${MIN_FREE_GB}GiB, Available: $(( free_kb / 1024 / 1024 ))GiB"
     exit 1
   fi
@@ -136,7 +139,7 @@ spec:
   instances: 1
   imageName: ghcr.io/cloudnative-pg/postgresql:16
   storage:
-    size: 10Gi
+    size: ${DB_STORAGE_GB}Gi
     storageClass: local-path
   resources:
     requests:
