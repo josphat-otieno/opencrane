@@ -930,6 +930,19 @@ export const spec = {
       },
     },
 
+    "/providers/keys/{provider}": {
+      delete: {
+        operationId: "deleteProviderKey",
+        summary: "Delete a configured provider API key",
+        tags: ["Provider Keys"],
+        parameters: [{ name: "provider", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          204: { description: "Key deleted." },
+          404: notFound("Provider key not found."),
+        },
+      },
+    },
+
     // ------------------------------------------------------------------
     // AI budget & spend
     // ------------------------------------------------------------------

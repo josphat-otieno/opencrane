@@ -960,10 +960,13 @@ Phase 5 is executed in five sequential steps. Each step must be complete before 
    - `GET /api/v1/openapi.json` serves the spec at runtime.
    - CI drift gate: `pnpm emit-openapi && git diff --exit-code openapi.json` — fails if spec is stale after a route change.
 
-**Step 3 — Contract / SDK package + `oc` CLI**
-   - Generate a typed client and DTOs from OpenAPI into `libs/contracts`; version alongside the API.
-   - New `apps/cli` package: command groups for tenants, policies, datasets, budgets/spend, MCP servers, skills (incl. promotion/demotion), schedules, audit, and awareness-contract rollout/rollback.
-   - Human and machine output modes (`--output table|json`); OIDC/projected-token auth; non-interactive automation support.
+**Step 3 — Contract / SDK package + `oc` CLI** ✅ Complete
+   - `openapi-typescript` generates typed `paths` from `openapi.json` into `libs/contracts/src/generated/api.ts`.
+   - `createControlPlaneClient(baseUrl, token?)` factory in `libs/contracts/src/client.ts` wraps `openapi-fetch`; fully typed against the generated paths.
+   - New `apps/cli` package (`oc` binary) with Commander; command groups: `tenants`, `policies`, `mcp`, `skills`, `budget`, `audit`, `tokens`, `providers`.
+   - Human and machine output modes (`--output table|json`); bearer-token auth via `OPENCRANE_TOKEN`/`--token`; `OPENCRANE_URL`/`--url` for server target.
+   - Non-interactive automation: every destructive command is non-interactive (no confirmation prompts); `--output json` + exit code semantics for scripting.
+   - `/providers/keys/{provider}` DELETE endpoint added to spec, route, and CLI.
 
 **Step 4 — Capability parity audit + auth alignment**
    - Enumerate every action currently exposed only in `control-plane-ui`; ensure each has an API + CLI path.

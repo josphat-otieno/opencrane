@@ -4,3 +4,4 @@ packages:
   - apps/control-plane
   - apps/control-plane-ui
   - apps/harvesting-agent
+  - apps/cli
