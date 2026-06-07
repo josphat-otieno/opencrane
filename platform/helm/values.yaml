@@ -120,20 +120,23 @@ tenant:
       memory: 4Gi
   # -- OpenClaw gateway port inside tenant pods
   gatewayPort: 18789
-  # -- Per-tenant cloud storage (GCS bucket, Azure Blob, S3)
-  storage:
-    # -- Cloud storage provider: gcs, azure-blob, s3, or "" for PVC fallback
-    provider: ""
-    # -- Bucket name prefix (bucket name = {prefix}-{tenantName})
+
+# -- Hosting provider: onprem (default), gcp, azure, aws.
+# Override with values/gcp.yaml etc. for cloud installs.
+hosting:
+  # -- Active hosting substrate. Defaults to on-prem; no cloud env vars required.
+  provider: onprem
+  # -- GCP-specific settings (required when provider=gcp)
+  gcp:
+    projectId: ""
     bucketPrefix: ""
-    # -- CSI driver for mounting cloud storage into pods
-    csiDriver: ""
-    # -- GCP project ID (required for Workload Identity with GCS)
-    gcpProject: ""
+    # -- CSI driver for GCS Fuse mounts; defaults to the standard GKE driver.
+    csiDriver: gcsfuse.csi.storage.gke.io
 
 # -- Ingress settings
 ingress:
   enabled: true
+  # -- Ingress class is set by the hosting adapter; override here only for custom setups.
   className: nginx
   # -- Base domain for tenant subdomains (tenant.domain)
   domain: opencrane.local
@@ -230,11 +233,11 @@ orgSecrets:
   #   openai-api-key: OPENAI_API_KEY
   #   anthropic-api-key: ANTHROPIC_API_KEY
 
-# -- Crossplane integration for dynamic cloud resource provisioning
+# -- Crossplane is no longer on the default path.
+# Bucket provisioning is handled in-operator via the cloud SDK (GcpHostingAdapter etc).
+# If you need Crossplane for other resource types, deploy it separately as an optional component.
 crossplane:
   enabled: false
-  # -- Cloud provider: gcp, azure, aws
-  provider: ""
 
 # -- External Secrets Operator integration
 externalSecrets:

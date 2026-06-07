@@ -1,6 +1,7 @@
-# Kept for backwards compatibility with existing CI references.
-# The canonical override file is now platform/helm/values/gcp.yaml.
+# GCP-specific value overrides for OpenCrane on GKE.
 # Usage: helm install opencrane platform/helm -f platform/helm/values/gcp.yaml
+#
+# Set GCP_PROJECT_ID, GCP_BUCKET_PREFIX per environment.
 
 global:
   environment: prod

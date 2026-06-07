@@ -1,3 +1,9 @@
+import { HostingProvider } from "./hosting/hosting-adapter.types.js";
+import type { GcpHostingConfig } from "./hosting/hosting-adapter.types.js";
+
+export type { GcpHostingConfig };
+export { HostingProvider };
+
 /**
  * Runtime configuration for the operator, loaded from environment variables.
  */
@@ -12,26 +18,14 @@ export interface OpenClawTenantOperatorConfig
   /** Base domain for tenant ingress hostnames. */
   ingressDomain: string;
 
-  /** Kubernetes ingress class to annotate on tenant ingresses. */
-  ingressClassName: string;
-
   /** Port number exposed by the OpenClaw gateway inside tenant pods. */
   gatewayPort: number;
 
-  /** Cloud storage provider type (empty string = PVC fallback). */
-  storageProvider: "gcs" | "azure-blob" | "s3" | "";
+  /** Active hosting substrate. Defaults to on-prem. */
+  hostingProvider: HostingProvider;
 
-  /** Bucket name prefix for tenant storage. */
-  bucketPrefix: string;
-
-  /** GCP project ID for Workload Identity bindings. */
-  gcpProject: string;
-
-  /** CSI driver name for mounting cloud storage into pods. */
-  csiDriver: string;
-
-  /** Whether Crossplane manages storage resources. */
-  crossplaneEnabled: boolean;
+  /** GCP-specific config; present only when hostingProvider === Gcp. */
+  gcp?: GcpHostingConfig;
 
   /** Minutes of inactivity before a tenant is auto-suspended (0 = disabled). */
   idleTimeoutMinutes: number;
@@ -72,17 +66,22 @@ export type OperatorConfig = OpenClawTenantOperatorConfig;
  */
 export function _LoadOperatorConfig(): OpenClawTenantOperatorConfig
 {
+  // 1. Resolve hosting provider first; GCP block is conditionally required.
+  const hostingProvider = _readHostingProvider();
+
   return {
     watchNamespace: _readEnvValue<string>("WATCH_NAMESPACE", "string"),
     tenantDefaultImage: _readEnvValue<string>("TENANT_DEFAULT_IMAGE", "string"),
     ingressDomain: _readEnvValue<string>("INGRESS_DOMAIN", "string"),
-    ingressClassName: _readEnvValue<string>("INGRESS_CLASS_NAME", "string"),
     gatewayPort: _readEnvValue<number>("GATEWAY_PORT", "number"),
-    storageProvider: _readEnvValue<OpenClawTenantOperatorConfig["storageProvider"]>("STORAGE_PROVIDER", "storageProvider"),
-    bucketPrefix: _readEnvValue<string>("BUCKET_PREFIX", "string"),
-    gcpProject: _readEnvValue<string>("GCP_PROJECT", "string"),
-    csiDriver: _readEnvValue<string>("CSI_DRIVER", "string"),
-    crossplaneEnabled: _readEnvValue<boolean>("CROSSPLANE_ENABLED", "boolean"),
+    hostingProvider,
+    gcp: hostingProvider === HostingProvider.Gcp
+      ? {
+          projectId: _readEnvValue<string>("GCP_PROJECT_ID", "string"),
+          bucketPrefix: _readEnvValue<string>("GCP_BUCKET_PREFIX", "string"),
+          csiDriver: _readEnvValue<string>("GCP_CSI_DRIVER", "string", false, "gcsfuse.csi.storage.gke.io"),
+        }
+      : undefined,
     idleTimeoutMinutes: _readEnvValue<number>("IDLE_TIMEOUT_MINUTES", "number"),
     idleCheckIntervalSeconds: _readEnvValue<number>("IDLE_CHECK_INTERVAL_SECONDS", "number"),
     liteLlmEnabled: _readEnvValue<boolean>("LITELLM_ENABLED", "boolean"),
@@ -96,15 +95,33 @@ export function _LoadOperatorConfig(): OpenClawTenantOperatorConfig
   };
 }
 
+/**
+ * Parse the HOSTING_PROVIDER env var.
+ * Defaults to on-prem when unset so plain cluster installs need no configuration.
+ */
+function _readHostingProvider(): HostingProvider
+{
+  const raw = process.env["HOSTING_PROVIDER"] ?? "";
+  switch (raw)
+  {
+    case "gcp": return HostingProvider.Gcp;
+    case "azure": return HostingProvider.Azure;
+    case "aws": return HostingProvider.Aws;
+    case "onprem":
+    case "":
+    default:
+      return HostingProvider.OnPrem;
+  }
+}
 
 /**
  * Supported runtime env parsing modes.
  */
-type OpenClawTenantOperatorConfigValueType = "string" | "number" | "boolean" | "storageProvider";
+type EnvValueType = "string" | "number" | "boolean";
 
 /**
  * Read and parse a typed environment variable.
- * 
+ *
  * @param envName - Environment variable name to read.
  * @param valueType - Runtime parsing mode used to convert the raw string into type T.
  * @param isMandatory - When true, throws if variable is not set.
@@ -113,7 +130,7 @@ type OpenClawTenantOperatorConfigValueType = "string" | "number" | "boolean" | "
  */
 function _readEnvValue<T>(
   envName: string,
-  valueType: OpenClawTenantOperatorConfigValueType,
+  valueType: EnvValueType,
   isMandatory: boolean = true,
   defaultVal: T | null = null,
 ): T
@@ -151,13 +168,6 @@ function _readEnvValue<T>(
         if (rawValue === "true") return true as T;
         if (rawValue === "false") return false as T;
         throw new Error("must be 'true' or 'false'");
-      case "storageProvider":
-        if (rawValue === "gcs" || rawValue === "azure-blob" || rawValue === "s3" || rawValue === "")
-        {
-          return rawValue as T;
-        }
-
-        throw new Error("must be one of: '', gcs, azure-blob, s3");
     }
   }
   catch (err)

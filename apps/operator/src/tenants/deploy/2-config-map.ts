@@ -76,7 +76,7 @@ export function _BuildConfigMap(config: OperatorConfig, tenant: Tenant, namespac
     },
     capabilities: {
       liteLlmProxy: config.liteLlmEnabled,
-      storageProvider: config.storageProvider || "pvc",
+      hostingProvider: config.hostingProvider,
       persistentState: true,
       ephemeralSecrets: true,
       autoSuspend: config.idleTimeoutMinutes > 0,

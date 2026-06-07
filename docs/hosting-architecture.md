@@ -336,6 +336,36 @@ if (stateVolume.requiresPvc)
 
 The builders (`_BuildServiceAccount`, `_BuildDeployment`, `_BuildIngress`) take the adapter (or its returned DTOs) instead of reading `config.storageProvider`. The broken `_BuildGCPBucketClaim` / Crossplane path is deleted.
 
+### 4.6 Dependency strategy: cloud SDKs are optional and lazy-loaded
+
+The on-prem default must not depend on any cloud SDK — at install time or at runtime. If `@google-cloud/storage` (and later the Azure/AWS SDKs) were ordinary `dependencies`, every on-prem install would drag in all of them, defeating the adapter pattern's whole purpose. Two mechanisms enforce the separation:
+
+1. **`optionalDependencies`** — each cloud SDK is declared under `optionalDependencies` in `apps/operator/package.json`, never `dependencies`. A normal `pnpm install` fetches them for development and cloud images; an on-prem image built with `pnpm install --no-optional` omits them entirely and still runs.
+2. **Lazy `import()` at the SDK boundary** — the SDK is loaded with a dynamic `await import("@google-cloud/storage")` inside the client method that uses it, not with a top-level import. The only compile-time reference is a TypeScript `import type`, which is erased and produces zero runtime code. So the static chain `factory → GcpHostingAdapter → GcpBucketClient` loads with the SDK absent; the SDK is `require`d only when a GCP bucket operation actually executes.
+
+```typescript
+// apps/operator/src/hosting/adapters/gcp/gcp-bucket.client.ts
+import type { Storage } from "@google-cloud/storage"; // erased at compile time — no runtime dep
+
+export class GcpBucketClient implements GcsBucketOperations
+{
+  private storage: Storage | null = null;
+
+  /** Lazily import the optional SDK and memoise the client. */
+  private async _getStorage(): Promise<Storage>
+  {
+    if (this.storage) return this.storage;
+    const sdk = await import("@google-cloud/storage"); // loaded only on a real GCP op
+    this.storage = new sdk.Storage({ projectId: this.projectId });
+    return this.storage;
+  }
+}
+```
+
+**Net effect (verified):** with the package physically removed, the on-prem factory builds and provisions normally, the GCP adapter still *constructs*, and only a live GCP bucket operation fails — with an actionable "install the optional GCP dependency" error rather than a module-load crash at startup.
+
+**Rule for every cloud adapter.** Each `adapters/<cloud>/**` folder declares its SDK under `optionalDependencies`, imports it only as `import type`, and loads it via dynamic `import()` at the operation boundary. This keeps the dependency graph flexible: the substrate you don't use is the substrate you don't ship. A future step may graduate each adapter into its own workspace package (`@opencrane/hosting-gcp`) for full install-time isolation — the `HostingAdapter` contract makes that a non-breaking change — but optional + lazy already delivers the runtime independence.
+
 ## 5. Capability Matrix
 
 Explicit, not implied. A blank cell means "not implemented" — the provider is simply not selectable for that concern until built.

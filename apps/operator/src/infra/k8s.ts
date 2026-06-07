@@ -82,11 +82,6 @@ async function _createResource(client: any, resource: k8s.KubernetesObject, name
       return client.createNamespacedDeployment({ namespace, body: resource });
     case "Ingress":
       return client.createNamespacedIngress({ namespace, body: resource });
-    case "BucketClaim":
-    {
-      const { group, version } = _splitApiVersion(resource.apiVersion);
-      return client.createNamespacedCustomObject({ group, version, namespace, plural: _toPlural(resource.kind), body: resource });
-    }
     default:
       throw new Error(`unsupported resource kind for typed create client: ${resource.kind ?? "unknown"}`);
   }
@@ -116,11 +111,6 @@ async function _readResource(client: any, resource: k8s.KubernetesObject, namesp
       return client.readNamespacedDeployment({ name, namespace });
     case "Ingress":
       return client.readNamespacedIngress({ name, namespace });
-    case "BucketClaim":
-    {
-      const { group, version } = _splitApiVersion(resource.apiVersion);
-      return client.getNamespacedCustomObject({ group, version, namespace, plural: _toPlural(resource.kind), name });
-    }
     default:
       throw new Error(`unsupported resource kind for typed read client: ${resource.kind ?? "unknown"}`);
   }
@@ -150,46 +140,9 @@ async function _replaceResource(client: any, resource: k8s.KubernetesObject, nam
       return client.replaceNamespacedDeployment({ name, namespace, body: resource });
     case "Ingress":
       return client.replaceNamespacedIngress({ name, namespace, body: resource });
-    case "BucketClaim":
-    {
-      const { group, version } = _splitApiVersion(resource.apiVersion);
-      return client.replaceNamespacedCustomObject({ group, version, namespace, plural: _toPlural(resource.kind), name, body: resource });
-    }
     default:
       throw new Error(`unsupported resource kind for typed replace client: ${resource.kind ?? "unknown"}`);
   }
-}
-
-/**
- * Split a Kubernetes apiVersion string into group/version parts.
- */
-function _splitApiVersion(apiVersion?: string): { group: string; version: string }
-{
-  if (!apiVersion)
-  {
-    throw new Error("resource apiVersion is required for custom resource apply");
-  }
-
-  const parts = apiVersion.split("/");
-  if (parts.length !== 2)
-  {
-    throw new Error(`invalid custom resource apiVersion: ${apiVersion}`);
-  }
-
-  return { group: parts[0], version: parts[1] };
-}
-
-/**
- * Convert Kind to a simple plural resource name (e.g., BucketClaim -> bucketclaims).
- */
-function _toPlural(kind?: string): string
-{
-  if (!kind)
-  {
-    throw new Error("resource kind is required for custom resource apply");
-  }
-
-  return `${kind.toLowerCase()}s`;
 }
 
 /**

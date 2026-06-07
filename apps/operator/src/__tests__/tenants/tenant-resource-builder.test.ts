@@ -1,15 +1,25 @@
 import { describe, expect, it } from "vitest";
 
-import { defaultConfig, _makeAccessPolicy, _makeTenant } from "../fixtures.js";
+import { defaultConfig, gcpConfig, gcpAdapter, onPremAdapter, _makeAccessPolicy, _makeTenant } from "../fixtures.js";
 import { _BuildConfigMap, _BuildDeployment, _BuildIngress, _BuildServiceAccount, _BuildStatePvc } from "../../tenants/deploy/index.js";
 
 describe("TenantResourceBuilder", () =>
 {
-  it("builds ServiceAccount with Workload Identity annotation", () =>
+  it("builds ServiceAccount with no annotations on-prem", () =>
   {
     const tenant = _makeTenant("jente");
 
-    const sa = _BuildServiceAccount(defaultConfig, tenant, "default");
+    const sa = _BuildServiceAccount(onPremAdapter, tenant, "default");
+
+    expect(sa.metadata?.name).toBe("openclaw-jente");
+    expect(sa.metadata?.annotations).toEqual({});
+  });
+
+  it("builds ServiceAccount with Workload Identity annotation on GCP", () =>
+  {
+    const tenant = _makeTenant("jente");
+
+    const sa = _BuildServiceAccount(gcpAdapter, tenant, "default");
 
     expect(sa.metadata?.name).toBe("openclaw-jente");
     expect(sa.metadata?.annotations?.["iam.gke.io/gcp-service-account"])
@@ -54,42 +64,53 @@ describe("TenantResourceBuilder", () =>
     expect(runtimeContract.skills.entitled).toEqual([]);
   });
 
-  it("builds Deployment with pvc fallback when no cloud storage", () =>
+  it("builds Deployment with PVC volume on-prem", () =>
   {
-    const localConfig = {
-      ...defaultConfig,
-      storageProvider: "" as const,
-      csiDriver: "",
-    };
-
     const tenant = _makeTenant("local");
+    const stateVolume = onPremAdapter.buildStateVolume("local");
 
-    const deployment = _BuildDeployment(localConfig, tenant, "default");
+    const deployment = _BuildDeployment(defaultConfig, stateVolume, tenant, "default");
     const volumes = deployment.spec?.template?.spec?.volumes ?? [];
     const tenantStorage = volumes.find((v) => v.name === "tenant-storage");
 
     expect(tenantStorage?.persistentVolumeClaim?.claimName).toBe("openclaw-local-state");
   });
 
-  it("builds state PVC for local storage fallback", () =>
+  it("on-prem stateVolume requiresPvc is true", () =>
+  {
+    const stateVolume = onPremAdapter.buildStateVolume("test");
+
+    expect(stateVolume.requiresPvc).toBe(true);
+    expect(stateVolume.volumeMount.mountPath).toBe("/data/openclaw");
+  });
+
+  it("builds Deployment with CSI volume on GCP", () =>
+  {
+    const tenant = _makeTenant("cloud");
+    const stateVolume = gcpAdapter.buildStateVolume("cloud");
+
+    const deployment = _BuildDeployment(gcpConfig, stateVolume, tenant, "default");
+    const volumes = deployment.spec?.template?.spec?.volumes ?? [];
+    const tenantStorage = volumes.find((v) => v.name === "tenant-storage");
+
+    expect(tenantStorage?.csi?.driver).toBe("gcsfuse.csi.storage.gke.io");
+    expect(tenantStorage?.csi?.volumeAttributes?.bucketName).toBe("opencrane-cloud");
+  });
+
+  it("GCP stateVolume requiresPvc is false", () =>
+  {
+    const stateVolume = gcpAdapter.buildStateVolume("test");
+
+    expect(stateVolume.requiresPvc).toBe(false);
+  });
+
+  it("builds state PVC for on-prem storage", () =>
   {
     const pvc = _BuildStatePvc("local", "default");
 
     expect(pvc.metadata?.name).toBe("openclaw-local-state");
     expect(pvc.spec?.accessModes).toEqual(["ReadWriteOnce"]);
     expect(pvc.spec?.resources?.requests?.storage).toBe("1Gi");
-  });
-
-  it("builds Deployment with csi storage when cloud storage configured", () =>
-  {
-    const tenant = _makeTenant("cloud");
-
-    const deployment = _BuildDeployment(defaultConfig, tenant, "default");
-    const volumes = deployment.spec?.template?.spec?.volumes ?? [];
-    const tenantStorage = volumes.find((v) => v.name === "tenant-storage");
-
-    expect(tenantStorage?.csi?.driver).toBe("gcsfuse.csi.storage.gke.io");
-    expect(tenantStorage?.csi?.volumeAttributes?.bucketName).toBe("opencrane-cloud");
   });
 
   it("hardens Deployment runtime defaults and injects managed runtime env", () =>
@@ -99,7 +120,8 @@ describe("TenantResourceBuilder", () =>
       skillAllowlist: ["company-policy", "deploy-helper"],
     });
 
-    const deployment = _BuildDeployment(defaultConfig, tenant, "default");
+    const stateVolume = onPremAdapter.buildStateVolume("strict");
+    const deployment = _BuildDeployment(defaultConfig, stateVolume, tenant, "default");
     const podSpec = deployment.spec?.template?.spec;
     const container = podSpec?.containers?.[0];
     const envVars = Object.fromEntries((container?.env ?? []).map((entry) => [entry.name ?? "", entry.value ?? ""]));
@@ -133,13 +155,27 @@ describe("TenantResourceBuilder", () =>
     )).toBe(true);
   });
 
-  it("builds Ingress host from tenant domain conventions", () =>
+  it("builds Ingress with nginx class on-prem", () =>
   {
     const tenant = _makeTenant("sarah");
+    const ingressBinding = onPremAdapter.buildIngressBinding();
 
-    const ingress = _BuildIngress(defaultConfig, tenant, "default");
+    const ingress = _BuildIngress(defaultConfig, ingressBinding, tenant, "default");
     const host = ingress.spec?.rules?.[0]?.host;
 
     expect(host).toBe("sarah.opencrane.local");
+    expect(ingress.spec?.ingressClassName).toBe("nginx");
+    expect(ingress.metadata?.annotations).toEqual({});
+  });
+
+  it("builds Ingress with gce class and annotation on GCP", () =>
+  {
+    const tenant = _makeTenant("sarah");
+    const ingressBinding = gcpAdapter.buildIngressBinding();
+
+    const ingress = _BuildIngress(gcpConfig, ingressBinding, tenant, "default");
+
+    expect(ingress.spec?.ingressClassName).toBe("gce");
+    expect(ingress.metadata?.annotations?.["kubernetes.io/ingress.class"]).toBe("gce");
   });
 });

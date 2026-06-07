@@ -1,5 +1,6 @@
 import type * as k8s from "@kubernetes/client-node";
 
+import type { TenantStateVolume } from "../../hosting/index.js";
 import type { OperatorConfig } from "../../config.js";
 import type { Tenant } from "../models/tenant.interface.js";
 import { _BuildTenantLabels } from "./tenant-labels.js";
@@ -15,8 +16,11 @@ import { _BuildTenantLabels } from "./tenant-labels.js";
  * control-plane effective-contract endpoint and re-pulled by the pod at each
  * agentic-loop boundary. The contract is advisory; the ingress planes (Obot
  * MCP Gateway and Skill Registry) are the live authz boundary.
+ *
+ * @param stateVolume - Pre-computed state volume from the hosting adapter.
+ *   The adapter decides whether the volume is a CSI mount (cloud) or PVC ref (on-prem).
  */
-export function _BuildDeployment(config: OperatorConfig, tenant: Tenant, namespace: string): k8s.V1Deployment
+export function _BuildDeployment(config: OperatorConfig, stateVolume: TenantStateVolume, tenant: Tenant, namespace: string): k8s.V1Deployment
 {
   const name = tenant.metadata!.name!;
   const image = tenant.spec.openclawImage ?? config.tenantDefaultImage;
@@ -74,12 +78,12 @@ export function _BuildDeployment(config: OperatorConfig, tenant: Tenant, namespa
     });
   }
 
-  // 2. Volume mounts — keep only explicit writable paths mounted read-write;
-  //    everything else stays read-only so the container can run with a
-  //    read-only root filesystem.
+  // 2. Volume mounts — the state volume mount comes from the adapter;
+  //    everything else is provider-agnostic and stays read-only where possible.
   //    Skills are now pulled per-entitlement from the Skill Registry via
   //    projected token; there is no shared-skills PVC mount.
   const volumeMounts: k8s.V1VolumeMount[] = [
+    stateVolume.volumeMount,
     { name: "config", mountPath: "/config", readOnly: true },
     { name: "pod-secrets", mountPath: "/data/secrets" },
     { name: "encryption-key", mountPath: "/etc/openclaw/encryption-key", readOnly: true },
@@ -87,7 +91,9 @@ export function _BuildDeployment(config: OperatorConfig, tenant: Tenant, namespa
     { name: "tmp", mountPath: "/tmp" },
   ];
 
+  // 3. Volumes — state volume comes from the adapter; rest are provider-agnostic.
   const volumes: k8s.V1Volume[] = [
+    stateVolume.volume,
     { name: "config", configMap: { name: `openclaw-${name}-config` } },
     { name: "pod-secrets", emptyDir: { medium: "Memory", sizeLimit: "10Mi" } },
     { name: "encryption-key", secret: { secretName: `openclaw-${name}-encryption-key` } },
@@ -114,31 +120,6 @@ export function _BuildDeployment(config: OperatorConfig, tenant: Tenant, namespa
     },
     { name: "tmp", emptyDir: {} },
   ];
-
-  // 3. Tenant state storage — choose cloud-backed CSI storage when the platform
-  //    is configured for it, otherwise fall back to the per-tenant PVC path used
-  //    by local and non-cloud installs.
-  if (config.storageProvider && config.csiDriver)
-  {
-    volumeMounts.unshift({ name: "tenant-storage", mountPath: "/data/openclaw" });
-    volumes.unshift({
-      name: "tenant-storage",
-      csi: {
-        driver: config.csiDriver,
-        volumeAttributes: {
-          bucketName: `${config.bucketPrefix}-${name}`,
-        },
-      },
-    } as k8s.V1Volume);
-  }
-  else
-  {
-    volumeMounts.unshift({ name: "tenant-storage", mountPath: "/data/openclaw" });
-    volumes.unshift({
-      name: "tenant-storage",
-      persistentVolumeClaim: { claimName: `openclaw-${name}-state` },
-    });
-  }
 
   return {
     apiVersion: "apps/v1",

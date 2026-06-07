@@ -944,9 +944,10 @@ Phase 5 is executed in five sequential steps. Each step must be complete before 
    - Introduce `HostingAdapter` interface + `OnPremHostingAdapter` (Null Object default) in `apps/operator/src/hosting/`.
    - Refactor `operator.ts` and all deploy builders to call the adapter; remove `storageProvider`/`csiDriver`/`crossplaneEnabled` config branches.
    - Implement `GcpHostingAdapter` with in-operator GCS bucket provisioning via `@google-cloud/storage` + Workload Identity; delete the Crossplane `BucketClaim` path.
+   - Keep cloud SDKs out of the default footprint: each cloud SDK is an `optionalDependency`, imported only as `import type` and loaded via dynamic `import()` at the operation boundary, so an on-prem image (`pnpm install --no-optional`) ships and runs with no cloud SDK present.
    - Split Terraform: carve `terraform/core/` (cloud-agnostic) from `terraform/cloud/gcp/`; remove the Crossplane module.
-   - Add `platform/helm/opencrane/values/gcp.yaml` override; set on-prem defaults in `values.yaml` so zero cloud vars are required for a plain cluster install.
-   - Exit criterion: k3d e2e passes unchanged (on-prem adapter); GCP adapter unit tests pass against a fake bucket client; import-boundary rule enforced.
+   - Add `platform/helm/values/gcp.yaml` override; set on-prem defaults in `values.yaml` so zero cloud vars are required for a plain cluster install.
+   - Exit criterion: k3d e2e passes unchanged (on-prem adapter); GCP adapter unit tests pass against a fake bucket client; on-prem path builds and runs with the GCS SDK absent; import-boundary rule enforced.
 
 **Step 2 — API surface hardening + OpenAPI**
    - Annotate all routers; emit `openapi.json` from the control-plane build.
