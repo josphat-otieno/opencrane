@@ -1,23 +1,21 @@
 import type { AccessPolicy } from "../policies/types.js";
-import type { OperatorConfig } from "../config.js";
+import type { OpenClawTenantOperatorConfig } from "../config.js";
+import { HostingProvider } from "../config.js";
 import type { Tenant } from "../tenants/models/tenant.interface.js";
 import { TenantStatusPhase } from "../tenants/models/tenant-status.interface.js";
+import { OnPremHostingAdapter } from "../hosting/adapters/onprem/onprem-hosting.adapter.js";
+import { GcpHostingAdapter } from "../hosting/adapters/gcp/gcp-hosting.adapter.js";
+import type { GcsBucketOperations } from "../hosting/adapters/gcp/gcp-bucket.client.js";
 
 /**
- * Shared operator config fixture used across all unit test suites.
- * Represents a fully-configured GCP environment.
+ * Shared operator config fixture — on-prem baseline (no cloud fields required).
  */
-export const defaultConfig: OperatorConfig = {
+export const defaultConfig: OpenClawTenantOperatorConfig = {
   watchNamespace: "default",
   tenantDefaultImage: "ghcr.io/opencrane/tenant:latest",
   ingressDomain: "opencrane.local",
-  ingressClassName: "nginx",
   gatewayPort: 18789,
-  storageProvider: "gcs",
-  bucketPrefix: "opencrane",
-  gcpProject: "my-gcp-project",
-  csiDriver: "gcsfuse.csi.storage.gke.io",
-  crossplaneEnabled: true,
+  hostingProvider: HostingProvider.OnPrem,
   idleTimeoutMinutes: 30,
   idleCheckIntervalSeconds: 60,
   liteLlmEnabled: false,
@@ -28,6 +26,37 @@ export const defaultConfig: OperatorConfig = {
   skillRegistryUrl: "http://skill-registry.opencrane-system.svc:5000",
   projectedTokenTtlSeconds: 600,
 };
+
+/**
+ * GCP-flavoured config fixture for tests that exercise cloud paths.
+ */
+export const gcpConfig: OpenClawTenantOperatorConfig = {
+  ...defaultConfig,
+  hostingProvider: HostingProvider.Gcp,
+  gcp: {
+    projectId: "my-gcp-project",
+    bucketPrefix: "opencrane",
+    csiDriver: "gcsfuse.csi.storage.gke.io",
+  },
+};
+
+/** On-prem hosting adapter instance shared across tests. */
+export const onPremAdapter = new OnPremHostingAdapter();
+
+/** Fake GCS bucket client that records calls without hitting the network. */
+export const fakeGcsBuckets: GcsBucketOperations & { provisioned: string[] } = {
+  provisioned: [],
+  async ensureBucket(bucketName: string): Promise<void>
+  {
+    fakeGcsBuckets.provisioned.push(bucketName);
+  },
+};
+
+/** GCP hosting adapter backed by the fake bucket client. */
+export const gcpAdapter = new GcpHostingAdapter(
+  { projectId: "my-gcp-project", bucketPrefix: "opencrane", csiDriver: "gcsfuse.csi.storage.gke.io" },
+  fakeGcsBuckets,
+);
 
 /**
  * Create a minimal Tenant fixture with the given name and optional

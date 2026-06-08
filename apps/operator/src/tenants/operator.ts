@@ -2,6 +2,8 @@ import * as k8s from "@kubernetes/client-node";
 import type { Logger } from "pino";
 
 import type { OpenClawTenantOperatorConfig } from "../config.js";
+import type { HostingAdapter } from "../hosting/index.js";
+import { _BuildHostingAdapter } from "../hosting/index.js";
 
 import type { Tenant } from "./models/tenant.interface.js";
 import { TenantPolicyResolutionState, TenantStatusPhase } from "./models/tenant-status.interface.js";
@@ -9,7 +11,6 @@ import { TenantPolicyResolutionState, TenantStatusPhase } from "./models/tenant-
 import { _K8sApplyResource } from "../infra/k8s.js";
 import { _RunWatchLoop, K8sWatchEventType } from "../shared/watch-runner.js";
 import { OPENCRANE_API_GROUP, OPENCRANE_API_VERSION, TENANT_CRD_PLURAL } from "../shared/crd-constants.js";
-import { _BuildGCPBucketClaim } from "../storage/provider.js";
 import { _BuildConfigMap, _BuildDeployment, _BuildIngress, _BuildIngressHost, _BuildService, _BuildServiceAccount, _BuildStatePvc } from "./deploy/index.js";
 import { TenantCleanup } from "./destroy/tenant-cleanup.js";
 
@@ -31,10 +32,10 @@ export class TenantOperator
   /** Watch client for streaming Tenant CR events. */
   private watch: k8s.Watch;
 
-  /** Client for custom resources (e.g., BucketClaim). */
+  /** Client for custom resources (AccessPolicy, status subresource). */
   private customApi: k8s.CustomObjectsApi;
 
-  /** Client for CoreV1 resources (ServiceAccount, Secret, ConfigMap, Service). */
+  /** Client for CoreV1 resources (ServiceAccount, Secret, ConfigMap, Service, PVC). */
   private coreApi: k8s.CoreV1Api;
 
   /** Client for AppsV1 resources (Deployment). */
@@ -48,6 +49,9 @@ export class TenantOperator
 
   /** Operator runtime configuration loaded from environment. */
   private config: OpenClawTenantOperatorConfig;
+
+  /** Hosting adapter — provides cloud-specific storage, identity, and ingress behaviour. */
+  private hosting: HostingAdapter;
 
   /** Helper for removing tenant-owned resources during delete flows. */
   private cleanup: TenantCleanup;
@@ -72,6 +76,7 @@ export class TenantOperator
               networkingApi: k8s.NetworkingV1Api,
               log: Logger,
               config: OpenClawTenantOperatorConfig,
+              hosting: HostingAdapter,
               cleanup: TenantCleanup,
               statusWriter: TenantStatusWriter,
               encryptionKeys: TenantEncryptionKeys,
@@ -84,6 +89,7 @@ export class TenantOperator
     this.networkingApi = networkingApi;
     this.log = log;
     this.config = config;
+    this.hosting = hosting;
     this.cleanup = cleanup;
     this.statusWriter = statusWriter;
     this.encryptionKeys = encryptionKeys;
@@ -165,7 +171,7 @@ export class TenantOperator
     const name = tenant.metadata!.name!;
     const namespace = tenant.metadata!.namespace ?? "default";
 
-    this.log.info({ name }, "reconciling tenant");
+    this.log.info({ name, provider: this.hosting.provider }, "reconciling tenant");
 
     try
     {
@@ -196,20 +202,13 @@ export class TenantOperator
         },
       };
 
-      // 1. ServiceAccount — grants the tenant pod a GCP service account identity
-      //    via Workload Identity, scoped to this tenant's GCS bucket and IAM bindings.
-      await _K8sApplyResource(this.coreApi, _BuildServiceAccount(this.config, effectiveTenant, namespace), this.log);
+      // 1. ServiceAccount — identity annotations come from the adapter; empty on-prem,
+      //    Workload Identity annotation on GKE, IRSA on EKS, etc.
+      await _K8sApplyResource(this.coreApi, _BuildServiceAccount(this.hosting, effectiveTenant, namespace), this.log);
 
-      // 2. BucketClaim — requests a per-tenant GCS bucket via Crossplane.
-      //    Skipped when cloud storage or Crossplane is not configured (PVC fallback).
-      if (this.config.storageProvider && this.config.crossplaneEnabled)
-      {
-        await _K8sApplyResource(
-          this.customApi,
-          _BuildGCPBucketClaim(name, namespace, this.config.bucketPrefix),
-          this.log,
-        );
-      }
+      // 2. External storage — provision per-cloud via the adapter SDK (GCS bucket etc).
+      //    No-op on-prem; idempotent so safe to call on every reconcile.
+      await this.hosting.provisionTenantStorage({ tenantName: name, namespace });
 
       // 3. Encryption key Secret — generates a random 32-byte AES key on first reconcile
       //    and stores it as a K8s Secret. Idempotent: existing secrets are not rotated.
@@ -217,8 +216,7 @@ export class TenantOperator
 
       // 4. LiteLLM key Secret — creates a per-tenant virtual key in LiteLLM and stores
       //    it in a tenant Secret mounted through env var. Skipped when LiteLLM is disabled.
-      //    This step is best-effort so transient LiteLLM backend issues do not block
-      //    tenant startup in environments where the pod can still run without a key.
+      //    Best-effort so transient LiteLLM backend issues do not block tenant startup.
       try
       {
         await this.liteLlmKeys.ensureLiteLlmKeySecret(effectiveTenant, namespace);
@@ -232,22 +230,26 @@ export class TenantOperator
       //    spec.configOverrides the tenant author provided.
       await _K8sApplyResource(this.coreApi, _BuildConfigMap(this.config, effectiveTenant, namespace, policyResolution.effectivePolicy), this.log);
 
-      // 6. Tenant state PVC — used only when cloud storage is disabled.
-      if (!this.config.storageProvider)
+      // 6. State volume — adapter decides CSI mount (cloud) vs PVC (on-prem).
+      //    Create the PVC only when the adapter requests it (on-prem path).
+      const stateVolume = this.hosting.buildStateVolume(name);
+      if (stateVolume.requiresPvc)
       {
         await _K8sApplyResource(this.coreApi, _BuildStatePvc(name, namespace), this.log);
       }
 
       // 7. Deployment — single-replica pod running the tenant's OpenClaw gateway.
-      //    Mounts the ConfigMap, encryption key, GCS volume (or PVC), and shared skills.
-      await _K8sApplyResource(this.appsApi, _BuildDeployment(this.config, effectiveTenant, namespace), this.log);
+      //    Mounts the ConfigMap, encryption key, state volume, and projected identity tokens.
+      await _K8sApplyResource(this.appsApi, _BuildDeployment(this.config, stateVolume, effectiveTenant, namespace), this.log);
 
       // 8. Service — ClusterIP that makes the gateway reachable inside the cluster
       //    on the configured gateway port.
       await _K8sApplyResource(this.coreApi, _BuildService(this.config, effectiveTenant, namespace), this.log);
 
       // 9. Ingress — routes external HTTPS traffic for {tenant}.{domain} to the Service.
-      await _K8sApplyResource(this.networkingApi, _BuildIngress(this.config, effectiveTenant, namespace), this.log);
+      //    Ingress class and annotations come from the adapter (nginx on-prem, gce on GKE).
+      const ingressBinding = this.hosting.buildIngressBinding();
+      await _K8sApplyResource(this.networkingApi, _BuildIngress(this.config, ingressBinding, effectiveTenant, namespace), this.log);
 
       // 10. Status — write the observed Running state back to the Tenant CR so that
       //    kubectl, the control-plane API, and the UI all see the current phase.
@@ -283,7 +285,8 @@ export class TenantOperator
 
     this.log.info({ name }, "suspending tenant");
 
-    const deployment = _BuildDeployment(this.config, tenant, namespace);
+    const stateVolume = this.hosting.buildStateVolume(name);
+    const deployment = _BuildDeployment(this.config, stateVolume, tenant, namespace);
     deployment.spec!.replicas = 0;
     await _K8sApplyResource(this.appsApi, deployment, this.log);
 
@@ -295,7 +298,7 @@ export class TenantOperator
 
   /**
    * Remove child resources for a deleted tenant.
-   * Retains: BucketClaim and encryption key Secret.
+   * Retains: external storage bucket and encryption key Secret.
    */
   private async cleanupTenant(tenant: Tenant): Promise<void>
   {
@@ -306,7 +309,7 @@ export class TenantOperator
 
     await this.cleanup.cleanupTenant(name, namespace);
 
-    this.log.info({ name }, "tenant cleanup complete (bucket + encryption key retained)");
+    this.log.info({ name }, "tenant cleanup complete (storage + encryption key retained)");
   }
 
 }
@@ -335,12 +338,15 @@ export function _CreateTenantOperator(kc: k8s.KubeConfig, config: OpenClawTenant
   // 2. Scoped logger — child-scoped here so all tenant-operator log lines share the label.
   const log = baseLog.child({ component: "tenant-operator" });
 
-  // 3. K8s helpers — each receives only the API clients it actually calls.
+  // 3. Hosting adapter — selected once at startup; defaults to on-prem with no cloud config.
+  const hosting = _BuildHostingAdapter(config);
+  log.info({ provider: hosting.provider }, "hosting adapter initialised");
+
+  // 4. K8s helpers — each receives only the API clients it actually calls.
   const cleanup = new TenantCleanup(objectApi, log);
   const statusWriter = new TenantStatusWriter(customApi, log);
   const encryptionKeys = new TenantEncryptionKeys(coreApi, objectApi, log);
   const liteLlmKeys = new TenantLiteLlmKeys(config, coreApi, objectApi, log);
 
-  return new TenantOperator(watch, customApi, coreApi, appsApi, networkingApi, log, config, cleanup, statusWriter, encryptionKeys, liteLlmKeys);
+  return new TenantOperator(watch, customApi, coreApi, appsApi, networkingApi, log, config, hosting, cleanup, statusWriter, encryptionKeys, liteLlmKeys);
 }
-

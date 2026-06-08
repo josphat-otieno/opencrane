@@ -1,6 +1,6 @@
 import type * as k8s from "@kubernetes/client-node";
 
-import type { OperatorConfig } from "../../config.js";
+import type { OpenClawTenantOperatorConfig } from "../../config.js";
 import type { Tenant } from "../models/tenant.interface.js";
 import { _BuildTenantLabels } from "./tenant-labels.js";
 
@@ -11,7 +11,7 @@ import { _BuildTenantLabels } from "./tenant-labels.js";
  * rules and any cluster-local callers can target the tenant without coupling
  * to pod IPs or rollout churn.
  */
-export function _BuildService(config: OperatorConfig, tenant: Tenant, namespace: string): k8s.V1Service
+export function _BuildService(config: OpenClawTenantOperatorConfig, tenant: Tenant, namespace: string): k8s.V1Service
 {
   const name = tenant.metadata!.name!;
   return {

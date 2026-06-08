@@ -1,0 +1,38 @@
+# GCP-specific value overrides for OpenCrane on GKE.
+# Usage: helm install opencrane platform/helm -f platform/helm/values/gcp.yaml
+#
+# Set GCP_PROJECT_ID, GCP_BUCKET_PREFIX per environment.
+
+global:
+  environment: prod
+
+hosting:
+  provider: gcp
+  gcp:
+    projectId: "replace-with-gcp-project-id"
+    bucketPrefix: opencrane
+    csiDriver: gcsfuse.csi.storage.gke.io
+
+ingress:
+  className: gce
+
+controlPlane:
+  database:
+    existingSecret: opencrane-db
+    secretKey: DATABASE_URL
+
+litellm:
+  enabled: true
+  endpoint: http://litellm:4000
+  existingSecret: opencrane-litellm
+  generateMasterKey: false
+  existingDatabaseSecret: opencrane-db
+  databaseSecretKey: DATABASE_URL
+
+externalSecrets:
+  enabled: true
+  provider: gcp-secret-manager
+
+observability:
+  cloudLogging: true
+  cloudErrorReporting: true

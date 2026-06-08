@@ -3,7 +3,7 @@ import { Buffer } from "node:buffer";
 import * as k8s from "@kubernetes/client-node";
 import type { Logger } from "pino";
 
-import type { OperatorConfig } from "../../config.js";
+import type { OpenClawTenantOperatorConfig } from "../../config.js";
 import { _K8sApplyResource } from "../../infra/k8s.js";
 import { _BuildTenantLabels } from "../deploy/tenant-labels.js";
 import type { Tenant } from "../models/tenant.interface.js";
@@ -15,7 +15,7 @@ import type { Tenant } from "../models/tenant.interface.js";
 export class TenantLiteLlmKeys
 {
   /** Operator runtime configuration loaded from environment. */
-  private config: OperatorConfig;
+  private config: OpenClawTenantOperatorConfig;
 
   /** Client for core Kubernetes API operations (Secrets). */
   private coreApi: k8s.CoreV1Api;
@@ -30,7 +30,7 @@ export class TenantLiteLlmKeys
    * Create a new LiteLLM key helper bound to the operator dependencies.
    */
   constructor(
-    config: OperatorConfig,
+    config: OpenClawTenantOperatorConfig,
     coreApi: k8s.CoreV1Api,
     objectApi: k8s.KubernetesObjectApi,
     log: Logger,

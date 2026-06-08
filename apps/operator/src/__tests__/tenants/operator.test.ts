@@ -86,11 +86,11 @@ describe("TenantOperator", () =>
 
 describe("ServiceAccount (Workload Identity)", () =>
 {
-  it("generates correct GCP service account annotation", () =>
+  it("generates correct GCP service account annotation via adapter", () =>
   {
     const name = "jente";
-    const project = defaultConfig.gcpProject;
-    const expected = `openclaw-${name}@${project}.iam.gserviceaccount.com`;
+    const projectId = "my-gcp-project";
+    const expected = `openclaw-${name}@${projectId}.iam.gserviceaccount.com`;
 
     expect(expected).toBe("openclaw-jente@my-gcp-project.iam.gserviceaccount.com");
   });

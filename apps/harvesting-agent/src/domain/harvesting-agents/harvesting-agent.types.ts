@@ -1,7 +1,7 @@
 /**
  * Types shared across harvesting-agent connectors and ingestion pipeline flows.
- * Each type is defined in its own file; this module re-exports them all for
- * backward-compatible single-import access.
+ * Each type is defined in its own file; this module re-exports them all as the
+ * domain's single type-import entry point.
  */
 
 export type { DocumentScope, NormalizedDocument } from "./normalized-document.js";

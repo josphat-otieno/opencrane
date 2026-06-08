@@ -1,7 +1,3 @@
-import { existsSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-
 import * as k8s from "@kubernetes/client-node";
 
 import pino from "pino";
@@ -14,6 +10,7 @@ import { ___AuthRouter } from "./infra/auth/auth.router.js";
 import { ___CreateOidcAuthService } from "./infra/auth/oidc.service.js";
 import { ___CreatePrismaClient } from "./infra/db/db.js";
 import { ___AuthMiddleware } from "./infra/middleware/auth.middleware.js";
+import { _ErrorHandler } from "./middleware/error-handler.js";
 
 import { _RegisterRoutes } from "./routes.js";
 
@@ -38,28 +35,14 @@ export function createApp(prisma: PrismaClient, customApi: k8s.CustomObjectsApi,
   app.use(express.json());
   app.use(pinoHttp({ logger: log }));
   app.use(authService.createSessionMiddleware());
-  app.use("/api/auth", ___AuthRouter(authService));
+  app.use("/api/v1/auth", ___AuthRouter(authService));
   app.use(___AuthMiddleware());
 
   // Register API routes
   _RegisterRoutes(app, prisma, customApi, coreApi);
 
-  const currentDirectory = dirname(fileURLToPath(import.meta.url));
-  const packageDirectory = resolve(currentDirectory, "..");
-  const uiDirectory = resolve(packageDirectory, "../control-plane-ui/dist/control-plane-ui/browser");
-  const hasUiBuild = existsSync(uiDirectory);
-
-  if (hasUiBuild)
-  {
-    log.info({ uiDirectory }, "serving control-plane UI static assets");
-    app.use(express.static(uiDirectory));
-    app.get(/^(?!\/api|\/healthz).*/, function _spaFallback(req, res)
-    {
-      res.sendFile(join(uiDirectory, "index.html"));
-    });
-  }
-  else
-    log.warn({ uiDirectory }, "control-plane UI build directory not found; serving API routes only");
+  // Global error handler — must be registered after all routes.
+  app.use(_ErrorHandler(log));
 
   return app;
 }

@@ -1,7 +1,7 @@
 import * as k8s from "@kubernetes/client-node";
 import type { Logger } from "pino";
 
-import type { OperatorConfig } from "../config.js";
+import type { OpenClawTenantOperatorConfig } from "../config.js";
 import type { AccessPolicy } from "./types.js";
 import { _K8sApplyResource, _K8sDeleteResource } from "../infra/k8s.js";
 import { ACCESS_POLICY_CRD_PLURAL, OPENCRANE_API_GROUP, OPENCRANE_API_VERSION } from "../shared/crd-constants.js";
@@ -27,7 +27,7 @@ export class PolicyOperator
   private log: Logger;
 
   /** Operator runtime configuration loaded from environment. */
-  private config: OperatorConfig;
+  private config: OpenClawTenantOperatorConfig;
 
   /** Builder for policy-managed network resources. */
   private resourceBuilder: PolicyResourceBuilder;
@@ -35,7 +35,7 @@ export class PolicyOperator
   /**
    * Create a new PolicyOperator bound to the given KubeConfig.
    */
-  constructor(kc: k8s.KubeConfig, config: OperatorConfig, log: Logger)
+  constructor(kc: k8s.KubeConfig, config: OpenClawTenantOperatorConfig, log: Logger)
   {
     this.objectApi = k8s.KubernetesObjectApi.makeApiClient(kc);
     this.customApi = kc.makeApiClient(k8s.CustomObjectsApi);

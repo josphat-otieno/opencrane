@@ -1,7 +1,7 @@
 import * as k8s from "@kubernetes/client-node";
 import type { Logger } from "pino";
 
-import type { OperatorConfig } from "../../config.js";
+import type { OpenClawTenantOperatorConfig } from "../../config.js";
 import { OPENCRANE_API_GROUP, OPENCRANE_API_VERSION, TENANT_CRD_PLURAL } from "../../shared/crd-constants.js";
 import { _ComputeLastActivityMs, _ListIdleCandidates, _ShouldSuspend } from "./idle-policy.js";
 import type { Tenant } from "../models/tenant.interface.js";
@@ -29,7 +29,7 @@ export class IdleChecker
   private log: Logger;
 
   /** Operator runtime configuration. */
-  private config: OperatorConfig;
+  private config: OpenClawTenantOperatorConfig;
 
   /** Handle returned by setInterval so the loop can be stopped. */
   private intervalHandle: ReturnType<typeof setInterval> | null = null;
@@ -37,7 +37,7 @@ export class IdleChecker
   /**
    * Create a new IdleChecker.
    */
-  constructor(kc: k8s.KubeConfig, config: OperatorConfig, log: Logger)
+  constructor(kc: k8s.KubeConfig, config: OpenClawTenantOperatorConfig, log: Logger)
   {
     this.customApi = kc.makeApiClient(k8s.CustomObjectsApi);
     this.appsApi = kc.makeApiClient(k8s.AppsV1Api);
