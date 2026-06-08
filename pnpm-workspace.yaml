@@ -2,6 +2,5 @@ packages:
   - libs/contracts
   - apps/operator
   - apps/control-plane
-  - apps/control-plane-ui
   - apps/harvesting-agent
   - apps/cli
