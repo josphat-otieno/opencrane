@@ -1,6 +1,6 @@
 import type * as k8s from "@kubernetes/client-node";
 
-import type { OperatorConfig } from "../../config.js";
+import type { OpenClawTenantOperatorConfig } from "../../config.js";
 import type { AccessPolicy } from "../../policies/types.js";
 import type { Tenant } from "../models/tenant.interface.js";
 import { _BuildTenantLabels } from "./tenant-labels.js";
@@ -16,7 +16,7 @@ import { _BuildTenantLabels } from "./tenant-labels.js";
  *   description of the platform context it is running under so later runtime
  *   behavior can key off a stable contract instead of inferred env vars.
  */
-export function _BuildConfigMap(config: OperatorConfig, tenant: Tenant, namespace: string, effectivePolicy?: AccessPolicy): k8s.V1ConfigMap
+export function _BuildConfigMap(config: OpenClawTenantOperatorConfig, tenant: Tenant, namespace: string, effectivePolicy?: AccessPolicy): k8s.V1ConfigMap
 {
   const name = tenant.metadata!.name!;
 

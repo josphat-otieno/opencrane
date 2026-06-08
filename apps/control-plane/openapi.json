@@ -515,7 +515,7 @@
                   "resources": {
                     "type": "object"
                   },
-                  "skills": {
+                  "skillAllowlist": {
                     "type": "array",
                     "items": {
                       "type": "string"
@@ -703,7 +703,7 @@
                   "resources": {
                     "type": "object"
                   },
-                  "skills": {
+                  "skillAllowlist": {
                     "type": "array",
                     "items": {
                       "type": "string"

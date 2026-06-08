@@ -1,4 +1,4 @@
-import type { OperatorConfig } from "../config.js";
+import type { OpenClawTenantOperatorConfig } from "../config.js";
 import { HostingProvider } from "./hosting-adapter.types.js";
 import type { HostingAdapter } from "./hosting-adapter.types.js";
 import { OnPremHostingAdapter } from "./adapters/onprem/onprem-hosting.adapter.js";
@@ -15,7 +15,7 @@ import { GcpBucketClient } from "./adapters/gcp/gcp-bucket.client.js";
  * @param config - Operator configuration.
  * @returns The active hosting adapter.
  */
-export function _BuildHostingAdapter(config: OperatorConfig): HostingAdapter
+export function _BuildHostingAdapter(config: OpenClawTenantOperatorConfig): HostingAdapter
 {
   // 1. Branch once, here, on the configured provider.
   switch (config.hostingProvider)

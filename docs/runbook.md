@@ -68,7 +68,7 @@ gcloud container clusters get-credentials opencrane-prod --region $GOOGLE_CLOUD_
 # 5. Install OpenCrane Helm chart
 helm upgrade --install opencrane platform/helm/ \
   --namespace opencrane --create-namespace \
-  --values platform/helm/values-gcp.yaml \
+  --values platform/helm/values/gcp.yaml \
   --set litellm.existingSecret=opencrane-litellm \
   --wait --timeout 10m
 
@@ -161,12 +161,12 @@ git pull origin main
 # 2. Review changes
 helm diff upgrade opencrane platform/helm/ \
   --namespace opencrane \
-  --values platform/helm/values-gcp.yaml
+  --values platform/helm/values/gcp.yaml
 
 # 3. Apply the upgrade
 helm upgrade opencrane platform/helm/ \
   --namespace opencrane \
-  --values platform/helm/values-gcp.yaml \
+  --values platform/helm/values/gcp.yaml \
   --wait --timeout 10m
 
 # 4. Run database migrations if needed

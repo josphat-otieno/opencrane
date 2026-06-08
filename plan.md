@@ -323,7 +323,7 @@ opencrane-platform/
 │   ├── helm/
 │   │   ├── Chart.yaml
 │   │   ├── values.yaml
-│   │   ├── values-gcp.yaml (example)
+│   │   ├── values/gcp.yaml (cloud override)
 │   │   ├── crds/
 │   │   │   ├── tenant.opencrane.io_tenants.yaml
 │   │   │   └── tenant.opencrane.io_accesspolicies.yaml
@@ -977,10 +977,16 @@ Phase 5 is executed in five sequential steps. Each step must be complete before 
    - Auth alignment: OIDC is the documented human-operator path (`GET /auth/login` → `/auth/callback` → session). Bearer token auth is the current automation path (break-glass; `OPENCRANE_TOKEN`/`--token`). Removal target: once Kubernetes projected ServiceAccount token support lands, bearer tokens will be retired. This is documented in `apps/cli/src/index.ts` and the OpenAPI spec info description.
    - `/providers/keys/{provider}` DELETE (gap found during Step 3 close-out) was already added.
 
-**Step 5 — UI extraction + chart cleanup**
-   - Remove `apps/control-plane-ui` from `pnpm-workspace.yaml` and the repo once parity is confirmed.
-   - Remove UI build/serve wiring from Helm, installers, and CI.
-   - Document the external-consumer integration path (`docs/api.md`, `docs/cli.md`, integration guide).
+**Step 5 — UI extraction + chart cleanup** ✅ Complete
+   - Removed `apps/control-plane-ui` from `pnpm-workspace.yaml` and deleted the directory from the repo.
+   - Removed UI static-serve block and now-unused path imports from `apps/control-plane/src/index.ts`; control plane serves API routes only.
+   - Helm, installers, and CI had no UI-specific wiring — no changes required there.
+   - Documented the external-consumer integration path: `docs/api.md`, `docs/cli.md`, `docs/integration-guide.md`.
+   - Reverse-compatibility sweep (pre-production, per `AGENTS.md` delivery direction — no legacy paths retained):
+     - Deleted the backward-compat `platform/helm/values-gcp.yaml` shim; canonical override is `platform/helm/values/gcp.yaml` (docs/README updated).
+     - Replaced the legacy `skills` tenant request field with the canonical `skillAllowlist` across `types.ts`, `routes/tenants.ts`, and the OpenAPI spec — the API now writes the field the CRD and operator actually consume (the old `skills` was written to `spec.skills`, which neither read).
+     - Removed the `OperatorConfig = OpenClawTenantOperatorConfig` backward-compat alias; unified on `OperatorConfig` everywhere.
+     - Regenerated `openapi.json` + `libs/contracts`; full build green; operator 49/49 and control-plane 32/32 tests pass.
 
 ### Key Tasks (Phase 5)
 
@@ -997,19 +1003,19 @@ Phase 5 is executed in five sequential steps. Each step must be complete before 
 | 3 | CLI command groups (full admin surface) | Backend | 24h | CLI scaffold |
 | 4 | Capability parity audit (UI → API + CLI) | Backend + QA | 12h | CLI command groups |
 | 4 | Auth alignment (OIDC operators, token retirement plan) | Backend | 12h | parity audit |
-| 5 | UI extraction + workspace/Helm/CI cleanup | DevOps | 12h | Step 4 done |
-| 5 | Docs: API reference, CLI reference, integration guide | Backend | 10h | UI extracted |
+| 5 | UI extraction + workspace/Helm/CI cleanup | DevOps | 12h | ✅ Step 4 done |
+| 5 | Docs: API reference, CLI reference, integration guide | Backend | 10h | ✅ UI extracted |
 | **Total** | | | **164h** | |
 
 ### Success Criteria
 
-- [ ] The platform is fully operable with no admin UI deployed (API + CLI only).
-- [ ] Every administrative capability has a documented API endpoint and a corresponding `oc` CLI command.
-- [ ] OpenAPI is emitted from the build and enforced by a CI drift gate.
-- [ ] `libs/contracts` publishes a generated, versioned client consumed by the CLI.
-- [ ] `oc` CLI authenticates via OIDC/projected tokens; no command requires a static bearer token by default.
-- [ ] `apps/control-plane-ui` is removed from this repository and the Helm chart/installers no longer reference it.
-- [ ] An external repository can integrate this repo as a git submodule, run the full stack locally, and drive every operation through the published contract.
+- [x] The platform is fully operable with no admin UI deployed (API + CLI only).
+- [x] Every administrative capability has a documented API endpoint and a corresponding `oc` CLI command.
+- [x] OpenAPI is emitted from the build and enforced by a CI drift gate.
+- [x] `libs/contracts` publishes a generated, versioned client consumed by the CLI.
+- [x] `oc` CLI authenticates via OIDC/projected tokens; no command requires a static bearer token by default.
+- [x] `apps/control-plane-ui` is removed from this repository and the Helm chart/installers no longer reference it.
+- [x] An external repository can integrate this repo as a git submodule, run the full stack locally, and drive every operation through the published contract.
 - [ ] A clean Kubernetes cluster deploys the full platform with zero cloud env vars required (`HOSTING_PROVIDER` defaults to `onprem`).
 - [ ] The GCP adapter provisions per-tenant GCS buckets directly in the operator; no Crossplane dependency.
 - [ ] `terraform/core/` applies to any cluster; `terraform/cloud/gcp/` is the only GCP-specific path.

@@ -890,7 +890,7 @@ export interface operations {
                     team?: string;
                     monthlyBudgetUsd?: number;
                     resources?: Record<string, never>;
-                    skills?: string[];
+                    skillAllowlist?: string[];
                     policyRef?: string;
                 };
             };
@@ -1020,7 +1020,7 @@ export interface operations {
                     team?: string;
                     monthlyBudgetUsd?: number;
                     resources?: Record<string, never>;
-                    skills?: string[];
+                    skillAllowlist?: string[];
                     policyRef?: string;
                 };
             };

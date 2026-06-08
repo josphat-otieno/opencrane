@@ -58,9 +58,6 @@ export interface OpenClawTenantOperatorConfig
   projectedTokenTtlSeconds: number;
 }
 
-/** Backwards-compatible alias used by existing operator modules. */
-export type OperatorConfig = OpenClawTenantOperatorConfig;
-
 /**
  * Load operator configuration from environment variables.
  */

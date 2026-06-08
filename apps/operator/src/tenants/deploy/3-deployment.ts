@@ -1,7 +1,7 @@
 import type * as k8s from "@kubernetes/client-node";
 
 import type { TenantStateVolume } from "../../hosting/index.js";
-import type { OperatorConfig } from "../../config.js";
+import type { OpenClawTenantOperatorConfig } from "../../config.js";
 import type { Tenant } from "../models/tenant.interface.js";
 import { _BuildTenantLabels } from "./tenant-labels.js";
 
@@ -20,7 +20,7 @@ import { _BuildTenantLabels } from "./tenant-labels.js";
  * @param stateVolume - Pre-computed state volume from the hosting adapter.
  *   The adapter decides whether the volume is a CSI mount (cloud) or PVC ref (on-prem).
  */
-export function _BuildDeployment(config: OperatorConfig, stateVolume: TenantStateVolume, tenant: Tenant, namespace: string): k8s.V1Deployment
+export function _BuildDeployment(config: OpenClawTenantOperatorConfig, stateVolume: TenantStateVolume, tenant: Tenant, namespace: string): k8s.V1Deployment
 {
   const name = tenant.metadata!.name!;
   const image = tenant.spec.openclawImage ?? config.tenantDefaultImage;

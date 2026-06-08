@@ -1,5 +1,5 @@
 import type { AccessPolicy } from "../policies/types.js";
-import type { OperatorConfig } from "../config.js";
+import type { OpenClawTenantOperatorConfig } from "../config.js";
 import { HostingProvider } from "../config.js";
 import type { Tenant } from "../tenants/models/tenant.interface.js";
 import { TenantStatusPhase } from "../tenants/models/tenant-status.interface.js";
@@ -10,7 +10,7 @@ import type { GcsBucketOperations } from "../hosting/adapters/gcp/gcp-bucket.cli
 /**
  * Shared operator config fixture — on-prem baseline (no cloud fields required).
  */
-export const defaultConfig: OperatorConfig = {
+export const defaultConfig: OpenClawTenantOperatorConfig = {
   watchNamespace: "default",
   tenantDefaultImage: "ghcr.io/opencrane/tenant:latest",
   ingressDomain: "opencrane.local",
@@ -30,7 +30,7 @@ export const defaultConfig: OperatorConfig = {
 /**
  * GCP-flavoured config fixture for tests that exercise cloud paths.
  */
-export const gcpConfig: OperatorConfig = {
+export const gcpConfig: OpenClawTenantOperatorConfig = {
   ...defaultConfig,
   hostingProvider: HostingProvider.Gcp,
   gcp: {

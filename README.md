@@ -304,7 +304,7 @@ terraform init && terraform apply
 
 # 2. Install the platform
 helm install opencrane helm/opencrane \
-  -f helm/opencrane/values-gcp.yaml \
+  -f helm/opencrane/values/gcp.yaml \
   --set tenant.storage.gcpProject=my-project \
   --set ingress.domain=opencrane.ai \
   --set controlPlane.database.existingSecret=opencrane-cloudsql
