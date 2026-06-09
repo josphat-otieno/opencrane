@@ -39,7 +39,7 @@ export function providerKeysRouter(prisma: PrismaClient): Router
   router.put("/:provider", async function _putProviderKey(req, res)
   {
     const provider = String(req.params.provider ?? "").toLowerCase();
-    const keyValue = String(req.body.value ?? "").trim();
+    const keyValue = String(req.body.apiKey ?? "").trim();
 
     if (!provider || !keyValue)
     {

@@ -29,8 +29,9 @@ export function _RegisterProviders(parent: Command, getConfig: () => CliConfig):
     .action(async function _set(provider: string, key: string)
     {
       const client = _MakeClient(getConfig());
-      const { error } = await client.PUT("/providers/keys", {
-        body: { provider, apiKey: key },
+      const { error } = await client.PUT("/providers/keys/{provider}", {
+        params: { path: { provider } },
+        body: { apiKey: key },
       });
       if (error) _PrintApiError("providers set", error);
       _PrintSuccess(`Provider key for "${provider}" updated`);

@@ -2148,12 +2148,24 @@
             }
           }
         }
-      },
+      }
+    },
+    "/providers/keys/{provider}": {
       "put": {
         "operationId": "upsertProviderKey",
         "summary": "Create or update a provider API key",
         "tags": [
           "Provider Keys"
+        ],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "requestBody": {
           "required": true,
@@ -2162,13 +2174,9 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "provider",
                   "apiKey"
                 ],
                 "properties": {
-                  "provider": {
-                    "type": "string"
-                  },
                   "apiKey": {
                     "type": "string"
                   }
@@ -2189,9 +2197,7 @@
             }
           }
         }
-      }
-    },
-    "/providers/keys/{provider}": {
+      },
       "delete": {
         "operationId": "deleteProviderKey",
         "summary": "Delete a configured provider API key",

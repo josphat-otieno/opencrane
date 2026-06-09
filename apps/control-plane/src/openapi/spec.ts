@@ -921,18 +921,24 @@ export const spec = {
           200: ok("Provider key status list.", { type: "array", items: { $ref: "#/components/schemas/ProviderKey" } }),
         },
       },
+    },
+
+    // @see https://datatracker.ietf.org/doc/html/rfc9110#name-put
+    // The RFC spec which specifies that PUT requires the full resource representation, which in this case is just the provider name 
+    "/providers/keys/{provider}": {
       put: {
         operationId: "upsertProviderKey",
         summary: "Create or update a provider API key",
         tags: ["Provider Keys"],
+        parameters: [{ name: "provider", in: "path", required: true, schema: { type: "string" } }],
         requestBody: {
           required: true,
           content: {
             "application/json": {
               schema: {
                 type: "object",
-                required: ["provider", "apiKey"],
-                properties: { provider: { type: "string" }, apiKey: { type: "string" } },
+                required: ["apiKey"],
+                properties: { apiKey: { type: "string" } },
               },
             },
           },
@@ -941,9 +947,6 @@ export const spec = {
           200: ok("Key updated.", { $ref: "#/components/schemas/ProviderKey" }),
         },
       },
-    },
-
-    "/providers/keys/{provider}": {
       delete: {
         operationId: "deleteProviderKey",
         summary: "Delete a configured provider API key",
