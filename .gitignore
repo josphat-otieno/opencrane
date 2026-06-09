@@ -7,6 +7,9 @@ coverage/
 .DS_Store
 *.tsbuildinfo
 .turbo/
+.vscode/
+.idea/
+*.log
 
-# Angular local build cache
-apps/control-plane-ui/.angular/
+# Dev
+dev/
