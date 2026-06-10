@@ -92,6 +92,56 @@ const names = users.map(user => user.name);
 const total = items.reduce((sum, item) => sum + item.price, 0);
 ```
 
+### Self-Review Before Finishing
+
+After writing or editing any TypeScript file, explicitly verify each item below before moving on.
+Do **not** rely on "it feels right" — check each rule against the actual code you just wrote.
+
+When a coding turn writes or edits `.ts` files, include a compact compliance table in the response:
+
+| File | No standalone `=>` | Imports single-line at top | All declarations JSDoc (incl. properties) | Types in `*.types.ts` | Naming convention |
+|---|---|---|---|---|---|
+| `example.ts` | ✓ | ✓ | ✓ | ✓ | ✓ |
+
+Rules to check:
+
+1. **No standalone arrow functions** — `setInterval`, `Promise`, `new Map()` callbacks must use named `function` expressions, not `() =>`.  Arrow functions are only permitted inside `map`, `filter`, `reduce`, `Array.from` (as a mapper), and equivalent pure functional HOFs.
+2. **Imports: single-line, all at top** — Every import from a given package on one line. No import statements below the first non-import line. Two separate `import ... from "express"` lines is a violation — merge them.
+3. **JSDoc on every declaration, including every interface property and every class field** — not just the enclosing type or class.
+4. **Exported interfaces and type aliases in `*.types.ts`** — not in the implementation file.
+5. **Function naming** — file-private: `_camelCase`; same-package export: `_PascalCase`; same-domain: `__PascalCase`; wide/global: `___PascalCase`.
+
+The compliance table is **not** optional when TypeScript files were modified. If the table would be incomplete, fix the violations first.
+
+### Mandatory Independent Review (Policy-Driven Gate)
+
+The self-review table above is a self-check and is not sufficient on its own. A
+policy-driven `Stop` gate decides — per change — whether an independent review is
+required before the turn can end. When the gate asks for review you must:
+
+1. Delegate to the **`@review` subagent** against the changed files.
+2. Resolve every **Critical** and **High** finding it returns — fix it, or justify in
+   your response why it is not applicable.
+3. Only then finish the turn.
+
+**How the gate decides** (two `Stop` hooks run in parallel):
+
+- `.claude/hooks/require-review.sh` — a free shell pre-filter. It skips the obvious
+  cases (no TypeScript change, trivial size, test/type-only/generated files,
+  already-reviewed) and escalates the rest. It writes `.claude/.review-context.md`
+  for the judge.
+- A **Haiku agent hook** reads that context plus `.claude/review-policy.md` and judges
+  whether the change carries real risk (auth, secrets, network, IAM, money, or
+  non-trivial production control flow). It blocks (`ok:false`) only when warranted.
+
+**`.claude/review-policy.md` is the single tunable surface.** If review fires too often
+and burns tokens — or misses something — edit that file (threshold, `always-review`
+keywords, `never-review-paths`, or the judgment guidance) and record it in its tuning log.
+
+The gate blocks **at most once per stop sequence** (loop-safety via `stop_hook_active`),
+so it can never trap a turn — but skipping the review when it fires defeats the purpose.
+Treat a block as a hard requirement, not a suggestion.
+
 ### Inline Step Comments
 
 Every function with 3 or more sequential steps must have a numbered inline comment before each step.
@@ -125,7 +175,7 @@ async function provision(tenant: Tenant): Promise<void>
 
 ### JSDoc Documentation
 
-All declarations must have JSDoc comments.
+All declarations must have JSDoc comments. This includes **every interface property and class field**, not just the containing type or class.
 
 ```typescript
 /** Service for managing tenant lifecycle */
@@ -152,6 +202,30 @@ interface OperatorConfig
 	watchNamespace: string;
 	/** Default container image for tenant pods */
 	tenantDefaultImage: string;
+}
+```
+
+**WRONG — properties undocumented:**
+```typescript
+interface McpServerEntry
+{
+	id: string;
+	name: string;
+	endpoint: string;
+}
+```
+
+**CORRECT — every property documented:**
+```typescript
+/** A registered MCP server entry returned by the catalog API. */
+interface McpServerEntry
+{
+	/** Stable identifier used for deduplication across polls. */
+	id: string;
+	/** Human-readable name shown in the UI. */
+	name: string;
+	/** Fully-qualified URL of the MCP server endpoint. */
+	endpoint: string;
 }
 ```
 
@@ -189,6 +263,53 @@ export function _Resolve(): ResolveResult
 {
 	return { status: "ok" };
 }
+```
+
+### Internal Routes Without Auth Middleware
+
+When a route is intentionally excluded from `___AuthMiddleware` and relies on Kubernetes NetworkPolicy for access control instead, the router function must:
+
+1. State this explicitly in its JSDoc with a bolded note.
+2. Include a `@see` tag pointing to the Helm NetworkPolicy template that enforces the restriction.
+3. Include a second `@see` pointing to the deployment template that wires the caller.
+
+```typescript
+/**
+ * Internal router for widget delivery.
+ *
+ * **This router is NOT behind `___AuthMiddleware`.**
+ * Access is enforced by Kubernetes NetworkPolicy.
+ *
+ * @see platform/helm/templates/networkpolicy-planes.yaml — policy restricting
+ *   which pods can reach the control-plane service.
+ * @see platform/helm/templates/widget-consumer-deployment.yaml — deployment
+ *   that sets WIDGET_URL to this endpoint.
+ */
+export function _RegisterInternalWidgets(prisma: PrismaClient): Router { ... }
+```
+
+### Custom HTTP Response Headers
+
+Non-standard response headers (the `X-*` prefix convention) must include an inline comment that explains:
+
+1. **Why** the header is being set — what the receiver does with it.
+2. **Which standard or convention** it follows, with a `@see` URL.
+
+The `X-` prefix was deprecated for IANA registration by RFC 6648 but remains the standard practice for private/internal headers.
+
+```typescript
+// Content-Type: standard HTTP header (RFC 9110 §8.3) — tells the consumer
+// how to parse the response body.
+// @see https://www.rfc-editor.org/rfc/rfc9110#section-8.3
+res.setHeader("Content-Type", bundle.contentType ?? "text/markdown");
+
+// X-Widget-Name / X-Widget-Digest: proprietary identification headers using
+// the informal X- prefix (RFC 6648 deprecated IANA use but convention remains
+// standard for private headers).  Allow the receiver to cache and forward
+// identity without parsing the URL.
+// @see https://www.rfc-editor.org/rfc/rfc6648
+res.setHeader("X-Widget-Name", widget.name);
+res.setHeader("X-Widget-Digest", digest);
 ```
 
 ### Function Naming Conventions

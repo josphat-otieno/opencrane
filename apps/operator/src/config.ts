@@ -54,6 +54,15 @@ export interface OpenClawTenantOperatorConfig
   /** In-cluster skill registry delivery URL exposed to tenant runtimes. */
   skillRegistryUrl: string;
 
+  /** In-cluster control-plane base URL used by tenant pods to re-pull the effective contract. */
+  controlPlaneInternalUrl: string;
+
+  /** Kubernetes Deployment name for the Obot MCP Gateway managed by this operator. */
+  obotDeploymentName: string;
+
+  /** Kubernetes Deployment name for the Skill Registry managed by this operator. */
+  skillRegistryDeploymentName: string;
+
   /** Projected ServiceAccount token TTL in seconds for ingress-plane audiences. */
   projectedTokenTtlSeconds: number;
 }
@@ -88,6 +97,9 @@ export function _LoadOperatorConfig(): OpenClawTenantOperatorConfig
     defaultTenantPolicyRef: _readEnvValue<string>("DEFAULT_TENANT_POLICY_REF", "string", false, ""),
     mcpGatewayUrl: _readEnvValue<string>("MCP_GATEWAY_URL", "string", false, "http://obot-gateway.opencrane-system.svc:8080"),
     skillRegistryUrl: _readEnvValue<string>("SKILL_REGISTRY_URL", "string", false, "http://skill-registry.opencrane-system.svc:5000"),
+    controlPlaneInternalUrl: _readEnvValue<string>("CONTROL_PLANE_INTERNAL_URL", "string", false, "http://opencrane-control-plane.opencrane.svc:3000"),
+    obotDeploymentName: _readEnvValue<string>("OBOT_DEPLOYMENT_NAME", "string", false, "opencrane-mcp-gateway"),
+    skillRegistryDeploymentName: _readEnvValue<string>("SKILL_REGISTRY_DEPLOYMENT_NAME", "string", false, "opencrane-skill-registry"),
     projectedTokenTtlSeconds: _readEnvValue<number>("PROJECTED_TOKEN_TTL_SECONDS", "number", false, 600),
   };
 }

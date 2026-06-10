@@ -6,6 +6,9 @@ import { accessTokensRouter } from "./routes/access-tokens.js";
 import { aiBudgetRouter } from "./routes/ai-budget.js";
 import { auditRouter } from "./routes/audit.js";
 import { groupsRouter } from "./routes/groups.js";
+import { _RegisterObotRegistry } from "./routes/internal/obot-registry.js";
+import { _RegisterInternalBundles } from "./routes/internal/skill-bundles.js";
+import { _RegisterInternalTenantContract } from "./routes/internal/tenant-contract.js";
 import { mcpServersRouter } from "./routes/mcp-servers.js";
 import { metricsRouter } from "./routes/metrics.js";
 import { openapiRouter } from "./routes/openapi-route.js";
@@ -23,14 +26,25 @@ import { _CheckDbHealth } from "./infra/db/healtcheck-db.js";
  * All business routes are namespaced under /api/v1/.
  * Infrastructure routes (/healthz, /prom) remain at the root.
  *
- * @param app - Express application to register routes on.
- * @param prisma - Prisma ORM client for database access in route handlers.
+ * @param app       - Express application to register routes on.
+ * @param prisma    - Prisma ORM client for database access in route handlers.
  * @param customApi - Kubernetes Custom Objects API client for tenant and policy management.
- * @param coreApi - Kubernetes Core V1 API client for AI budget management.
+ * @param coreApi   - Kubernetes Core V1 API client for AI budget management.
+ * @param authApi   - Kubernetes Authentication API for tenant contract TokenReview validation.
  * @returns The Express application instance with registered routes.
  */
-export function _RegisterRoutes(app: Express, prisma: PrismaClient, customApi: k8s.CustomObjectsApi, coreApi: k8s.CoreV1Api): Express
+export function _RegisterRoutes(app: Express, prisma: PrismaClient, customApi: k8s.CustomObjectsApi, coreApi: k8s.CoreV1Api, authApi: k8s.AuthenticationV1Api): Express
 {
+  // Internal routes — mounted before ___AuthMiddleware and not behind any token check.
+  // Access is enforced by Kubernetes NetworkPolicy: only the Obot, skill-registry, and
+  // tenant pods can reach the control-plane service on the cluster network.
+  // @see platform/helm/templates/networkpolicy-planes.yaml — runtime-plane policies.
+  // @see platform/helm/templates/obot-mcp-gateway-deployment.yaml — OBOT_SERVER_PROVIDER_REGISTRIES wiring.
+  app.use("/api/internal/obot-registry", _RegisterObotRegistry(prisma));
+  app.use("/api/internal/bundles", _RegisterInternalBundles(prisma));
+  // Note: /api/internal/contract enforces per-tenant identity via TokenReview — not NetworkPolicy-only.
+  app.use("/api/internal/contract", _RegisterInternalTenantContract(prisma, authApi));
+
   app.use("/api/v1/metrics", metricsRouter(customApi, prisma));
   app.use("/api/v1/audit", auditRouter(prisma));
   app.use("/api/v1/tenants", tenantsRouter(customApi, prisma));

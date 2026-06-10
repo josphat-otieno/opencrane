@@ -51,6 +51,15 @@ spec:
               value: {{ printf "http://%s-skill-registry:%v" (include "opencrane.fullname" .) .Values.skillRegistry.service.port | quote }}
             - name: PROJECTED_TOKEN_TTL_SECONDS
               value: {{ .Values.projectedIdentity.ttlSeconds | quote }}
+            # -- In-cluster URL the operator injects into tenant Deployments so the
+            #    contract re-pull loop (P4A.3) can reach the internal contract endpoint.
+            - name: CONTROL_PLANE_INTERNAL_URL
+              value: {{ printf "http://%s-control-plane:%v" (include "opencrane.fullname" .) .Values.controlPlane.service.port | quote }}
+            # -- Kubernetes Deployment names for the runtime-plane drift repairer (P4A.2).
+            - name: OBOT_DEPLOYMENT_NAME
+              value: {{ printf "%s-mcp-gateway" (include "opencrane.fullname" .) | quote }}
+            - name: SKILL_REGISTRY_DEPLOYMENT_NAME
+              value: {{ printf "%s-skill-registry" (include "opencrane.fullname" .) | quote }}
             - name: LITELLM_ENABLED
               value: {{ .Values.litellm.enabled | quote }}
             - name: LITELLM_ENDPOINT

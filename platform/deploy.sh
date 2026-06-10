@@ -257,9 +257,9 @@ docker build \
 docker push "${REGISTRY_URL}/operator:${IMAGE_TAG}"
 docker push "${REGISTRY_URL}/operator:latest"
 
-# ---- Step 6: Terraform apply (full — Crossplane + App + DNS) ----
+# ---- Step 6: Terraform apply (full — App + DNS) ----
 
-log "Step 6/7 — Deploying platform (Crossplane, PostgreSQL, OpenCrane, DNS)..."
+log "Step 6/7 — Deploying platform (PostgreSQL, OpenCrane, DNS)..."
 cd "$TF_DIR"
 terraform apply \
   -var-file="environments/${ENVIRONMENT}/terraform.tfvars" \

@@ -44,6 +44,8 @@ export function _BuildDeployment(config: OpenClawTenantOperatorConfig, stateVolu
     { name: "OPENCRANE_SKILL_REGISTRY_URL", value: config.skillRegistryUrl },
     { name: "OPENCRANE_MCP_GATEWAY_TOKEN_PATH", value: "/var/run/opencrane/tokens/obot-gateway.token" },
     { name: "OPENCRANE_SKILL_REGISTRY_TOKEN_PATH", value: "/var/run/opencrane/tokens/skill-registry.token" },
+    { name: "OPENCRANE_CONTROL_PLANE_URL", value: config.controlPlaneInternalUrl },
+    { name: "OPENCRANE_CONTRACT_TOKEN_PATH", value: "/var/run/opencrane/tokens/control-plane.token" },
     { name: "HOME", value: "/tmp/opencrane-home" },
     { name: "TMPDIR", value: "/tmp" },
     { name: "NPM_CONFIG_CACHE", value: "/tmp/npm-cache" },
@@ -113,6 +115,13 @@ export function _BuildDeployment(config: OpenClawTenantOperatorConfig, stateVolu
               path: "skill-registry.token",
               expirationSeconds: config.projectedTokenTtlSeconds,
               audience: "skill-registry",
+            },
+          },
+          {
+            serviceAccountToken: {
+              path: "control-plane.token",
+              expirationSeconds: config.projectedTokenTtlSeconds,
+              audience: "control-plane",
             },
           },
         ],
