@@ -61,6 +61,16 @@ spec:
       ports:
         - protocol: TCP
           port: {{ .Values.controlPlane.service.port }}
+    # Allow tenant pods to poll /api/internal/contract/:name for runtime contract
+    # re-pull (P4A.3).  Identity is enforced by TokenReview inside the handler;
+    # this policy provides defence-in-depth at the network layer.
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: tenant
+      ports:
+        - protocol: TCP
+          port: {{ .Values.controlPlane.service.port }}
 ---
 {{- end }}
 {{- if and .Values.networkPolicy.enabled .Values.mcpGateway.enabled }}

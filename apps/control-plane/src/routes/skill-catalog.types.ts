@@ -10,6 +10,9 @@ export type SkillCatalogRouteSubjectType = "group" | "tenant" | "user";
 /** Supported publishing states for skill bundles. */
 export type SkillCatalogRouteStatus = "published" | "review" | "draft";
 
+/** Scan lifecycle state for a skill bundle. */
+export type SkillCatalogScanStatus = "pending" | "scanning" | "passed" | "failed" | "skipped";
+
 /** Supported approval states for skill promotion records. */
 export type SkillPromotionRouteStatus = "proposed" | "approved" | "rejected";
 

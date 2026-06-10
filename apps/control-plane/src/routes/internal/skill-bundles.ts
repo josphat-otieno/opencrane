@@ -12,8 +12,9 @@ import { GrantCompilerAccess, GrantCompilerPayloadType } from "../../core/grants
  *   1. Verify the tenant is entitled to the requested digest.
  *   2. Return the bundle content if entitled.
  *
- * **Existence-hiding:** non-existent and non-entitled digests both return 404
- * so callers cannot enumerate the catalog by comparing error codes.
+ * **Existence-hiding:** non-existent and non-entitled digests both return 404.
+ * Scan-failed bundles return 422 `SCAN_FAILED` so the skill-registry can surface
+ * a meaningful reason to the tenant rather than treating it as a missing bundle.
  *
  * **This router is NOT behind `___AuthMiddleware`.**
  * Access is enforced at the network layer: only the skill-registry pod can
@@ -55,19 +56,27 @@ export function _RegisterInternalBundles(prisma: PrismaClient): Router
         return;
       }
 
-      // 2. Fetch the bundle by digest without revealing whether it exists yet —
-      //    the entitlement check must come first to prevent catalog enumeration.
+      // 2. Fetch the bundle by digest. Including scanStatus in the select
+      //    lets us gate delivery without a second round-trip.
       const bundle = await prisma.skillBundle.findFirst({
         where: { digest },
-        select: { id: true, content: true, contentType: true, name: true },
+        select: { id: true, content: true, contentType: true, name: true, scanStatus: true },
       });
 
-      // 3. Run the grant compiler to determine whether this tenant is entitled
-      //    to the requested bundle.  Existence-hiding: missing and non-entitled
-      //    bundles are both reported as 404.
+      // 3. Gate 1 — bundle must exist.
       if (!bundle)
       {
         res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
+        return;
+      }
+
+      // Gate 2 — bundle must have passed its vulnerability scan.
+      //    This route is NetworkPolicy-restricted to the skill-registry only, so
+      //    the distinction is meaningful: the registry can surface a clear reason
+      //    to the tenant rather than treating a scan failure as a missing bundle.
+      if (String(bundle.scanStatus) !== "passed")
+      {
+        res.status(422).json({ error: "Bundle has not passed vulnerability scan", code: "SCAN_FAILED" });
         return;
       }
 

@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { Grant, SkillBundle, SkillPromotion } from "@opencrane/contracts";
 import type { PrismaClient } from "@prisma/client";
 
+import { _ScanBundleContent } from "../core/scanning/scan-bundle.js";
 import type { SkillBundleWriteRequest, SkillEntitlementInput } from "./skill-catalog.types.js";
 
 /**
@@ -57,6 +58,18 @@ export function skillCatalogRouter(prisma: PrismaClient): Router
   router.post("/", async function _createSkillBundle(req, res)
   {
     const body = req.body as SkillBundleWriteRequest;
+
+    // Reject requests that try to create a bundle already marked published —
+    // bundles must pass a scan before promotion to Published.
+    if (body.status === "published")
+    {
+      res.status(422).json({
+        error: "Cannot create a bundle directly in published state; run a scan first",
+        code: "SCAN_REQUIRED",
+      });
+      return;
+    }
+
     const createdBundle = await (prisma as unknown as {
       skillBundle: {
         create: (args: { data: Record<string, unknown> }) => Promise<{ id: string; name: string }>;
@@ -90,10 +103,101 @@ export function skillCatalogRouter(prisma: PrismaClient): Router
     res.status(201).json({ id: createdBundle.id, status: "created" });
   });
 
+  /**
+   * Trigger a vulnerability scan for a skill bundle.
+   *
+   * The bundle's `scanStatus` transitions: Pending → Scanning → Passed|Failed.
+   * Only bundles with `scanStatus: passed` may be promoted to `Published`.
+   */
+  router.post("/:id/scan", async function _scanSkillBundle(req, res)
+  {
+    const bundle = await (prisma as unknown as {
+      skillBundle: {
+        findUnique: (args: { where: { id: string }; select: { id: true; name: true; content: true } }) => Promise<{ id: string; name: string; content: string | null } | null>;
+        update: (args: { where: { id: string }; data: Record<string, unknown> }) => Promise<unknown>;
+      };
+      auditEntry: { create: (args: { data: Record<string, unknown> }) => Promise<unknown> };
+    }).skillBundle.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, name: true, content: true },
+    });
+
+    if (!bundle)
+    {
+      res.status(404).json({ error: "Skill bundle not found", code: "SKILL_BUNDLE_NOT_FOUND" });
+      return;
+    }
+
+    // 1. Mark as scanning immediately so concurrent calls do not re-trigger.
+    await (prisma as unknown as {
+      skillBundle: { update: (args: { where: { id: string }; data: Record<string, unknown> }) => Promise<unknown> };
+    }).skillBundle.update({ where: { id: bundle.id }, data: { scanStatus: "scanning" } });
+
+    const content = bundle.content ?? "";
+    const scanResult = await _ScanBundleContent(bundle.id, content);
+
+    // 2. Persist the scan outcome.
+    await (prisma as unknown as {
+      skillBundle: { update: (args: { where: { id: string }; data: Record<string, unknown> }) => Promise<unknown> };
+    }).skillBundle.update({
+      where: { id: bundle.id },
+      data: {
+        scanStatus: scanResult.passed ? "passed" : "failed",
+        scanFindings: scanResult.findings as unknown as Record<string, unknown>[],
+        scannedAt: new Date(),
+      },
+    });
+
+    await (prisma as unknown as {
+      auditEntry: { create: (args: { data: Record<string, unknown> }) => Promise<unknown> };
+    }).auditEntry.create({
+      data: {
+        action: scanResult.passed ? "ScanPassed" : "ScanFailed",
+        resource: `SkillBundle/${bundle.id}`,
+        message: `Scan ${scanResult.passed ? "passed" : "failed"} for skill bundle ${bundle.name} (scanner: ${scanResult.scanner || "unavailable"})`,
+      },
+    });
+
+    res.json({
+      id: bundle.id,
+      scanStatus: scanResult.passed ? "passed" : "failed",
+      passed: scanResult.passed,
+      scanner: scanResult.scanner,
+      findings: scanResult.findings,
+      ...(!scanResult.passed && scanResult.reason ? { reason: scanResult.reason } : {}),
+    });
+  });
+
   /** Update a skill bundle and fully replace entitlements and promotion history. */
   router.put("/:id", async function _updateSkillBundle(req, res)
   {
     const body = req.body as Partial<SkillBundleWriteRequest>;
+
+    // Gate: promotion to Published requires a passing scan.
+    if (body.status === "published")
+    {
+      const current = await (prisma as unknown as {
+        skillBundle: {
+          findUnique: (args: { where: { id: string }; select: { scanStatus: true } }) => Promise<{ scanStatus: string } | null>;
+        };
+      }).skillBundle.findUnique({ where: { id: req.params.id }, select: { scanStatus: true } });
+
+      if (!current)
+      {
+        res.status(404).json({ error: "Skill bundle not found", code: "SKILL_BUNDLE_NOT_FOUND" });
+        return;
+      }
+
+      if (current.scanStatus !== "passed")
+      {
+        res.status(422).json({
+          error: `Bundle must pass a scan before it can be published (current scan status: ${current.scanStatus})`,
+          code: "SCAN_REQUIRED",
+        });
+        return;
+      }
+    }
+
     await (prisma as unknown as {
       skillBundle: {
         update: (args: { where: { id: string }; data: Record<string, unknown> }) => Promise<unknown>;

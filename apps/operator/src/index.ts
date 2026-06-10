@@ -3,6 +3,7 @@ import pino from "pino";
 
 import { _LoadOperatorConfig } from "./config.js";
 import { ObotHealthChecker } from "./mcp-gateway/obot-health-checker.js";
+import { RuntimePlaneDriftRepairer } from "./runtime-planes/drift-repairer.js";
 import { _CreateTenantOperator, IdleChecker } from "./tenants/index.js";
 import { PolicyOperator } from "./policies/operator.js";
 import { _ReadTenantRolloutConfig, TenantUpdateWithCanaryStrategyController } from "./tenant-rollout/tenant-update-with-canary-strategy.controller.js";
@@ -12,6 +13,9 @@ const log = pino({ name: "opencrane-operator" });
 
 /** Reference to the idle checker, set during startup for shutdown access. */
 let _idleCheckerRef: IdleChecker | null = null;
+
+/** Reference to the drift repairer, set during startup for shutdown access. */
+let _driftRepairerRef: RuntimePlaneDriftRepairer | null = null;
 
 /**
  * Bootstrap and start both the Tenant and Policy operator watch loops,
@@ -79,6 +83,14 @@ async function main(): Promise<void>
     obotHealthChecker.start();
   }
 
+  // Start runtime-plane drift repairer — periodically compares Obot MCP Gateway and
+  // skill-registry Deployment env vars against control-plane intent and patches back
+  // any manual edits so the planes stay wired to the correct control-plane endpoints.
+  const appsApi = kc.makeApiClient(k8s.AppsV1Api);
+  const driftRepairer = new RuntimePlaneDriftRepairer(appsApi, config, log);
+  _driftRepairerRef = driftRepairer;
+  driftRepairer.start();
+
   // Start idle-checker (runs on a timer, non-blocking)
   _idleCheckerRef = idleChecker;
   idleChecker.start();
@@ -94,11 +106,12 @@ function _shutdown(signal: string): void
 {
   log.info({ signal }, "shutting down");
   _idleCheckerRef?.stop();
+  _driftRepairerRef?.stop();
   process.exit(0);
 }
 
-process.on("SIGTERM", () => _shutdown("SIGTERM"));
-process.on("SIGINT", () => _shutdown("SIGINT"));
+process.on("SIGTERM", function _onSigterm() { _shutdown("SIGTERM"); });
+process.on("SIGINT", function _onSigint() { _shutdown("SIGINT"); });
 
 main().catch(function (err)
 {

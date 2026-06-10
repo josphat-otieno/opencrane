@@ -7,8 +7,16 @@ SECRETS_DIR="${OPENCLAW_SECRETS_DIR:-/data/secrets}"
 SHARED_SKILLS="${OPENCRANE_SHARED_SKILLS_DIR:-/shared-skills}"
 CONFIG_SOURCE="${OPENCRANE_CONFIG_SOURCE_PATH:-/config/openclaw.json}"
 RUNTIME_CONTRACT_PATH="${OPENCRANE_RUNTIME_CONTRACT_PATH:-/config/opencrane-managed-runtime.json}"
+# Writable copy of the contract — the polling loop writes here; entrypoint reads from here.
+RUNTIME_CONTRACT_WRITABLE="${OPENCRANE_RUNTIME_CONTRACT_WRITABLE:-/tmp/opencrane-managed-runtime.json}"
 SKILLS_DIR="$STATE_DIR/agents/main/skills"
 OPENCLAW_VERSION="${OPENCLAW_VERSION:-latest}"
+# Control-plane re-pull configuration (injected by operator into every tenant Deployment).
+OPENCRANE_CONTROL_PLANE_URL="${OPENCRANE_CONTROL_PLANE_URL:-}"
+OPENCRANE_CONTRACT_TOKEN_PATH="${OPENCRANE_CONTRACT_TOKEN_PATH:-/var/run/opencrane/tokens/control-plane.token}"
+OPENCLAW_TENANT_NAME="${OPENCLAW_TENANT_NAME:-}"
+# Poll interval in seconds for the background contract re-pull loop.
+CONTRACT_POLL_INTERVAL="${OPENCRANE_CONTRACT_POLL_INTERVAL:-30}"
 # MCP policy from AccessPolicy (policy-level enforcement via runtime contract)
 OPENCRANE_ALLOWED_MCP_SERVERS="${OPENCRANE_ALLOWED_MCP_SERVERS:-}"
 OPENCRANE_DENIED_MCP_SERVERS="${OPENCRANE_DENIED_MCP_SERVERS:-}"
@@ -31,12 +39,17 @@ function _csv_contains()
 function _load_mcp_policy()
 {
   local policy_env
+  # Prefer writable refreshed copy; fall back to ConfigMap-mounted original.
+  local contract_file="$RUNTIME_CONTRACT_WRITABLE"
+  if [ ! -f "$contract_file" ]; then
+    contract_file="$RUNTIME_CONTRACT_PATH"
+  fi
 
-  if [ ! -f "$RUNTIME_CONTRACT_PATH" ]; then
+  if [ ! -f "$contract_file" ]; then
     return 0
   fi
 
-  if ! policy_env=$(node - "$RUNTIME_CONTRACT_PATH" <<'EOF'
+  if ! policy_env=$(node - "$contract_file" <<'EOF'
 const fs = require("node:fs");
 
 const contractPath = process.argv[2];
@@ -150,6 +163,59 @@ function _link_shared_skills()
   echo "$success_message"
 }
 
+function _contract_poll_loop()
+{
+  local tenant_name="$1"
+  local control_plane_url="$2"
+  local token_path="$3"
+  local writable_path="$4"
+  local interval="$5"
+  local openclaw_pid="$6"
+
+  while true; do
+    sleep "$interval"
+
+    # Skip poll if token file is not readable yet (projected tokens populate asynchronously).
+    if [ ! -r "$token_path" ]; then
+      continue
+    fi
+
+    local token
+    token=$(cat "$token_path" 2>/dev/null) || continue
+
+    local url="${control_plane_url}/api/internal/contract/${tenant_name}"
+    local tmp_path="${writable_path}.tmp"
+
+    if curl -sf -m 10 \
+        -H "Authorization: Bearer ${token}" \
+        -H "Accept: application/json" \
+        -o "$tmp_path" \
+        "$url"; then
+      # Compare checksums — only update and reload if the contract actually changed.
+      local new_sum old_sum
+      new_sum=$(sha256sum "$tmp_path" 2>/dev/null | cut -d' ' -f1)
+      old_sum=$(sha256sum "$writable_path" 2>/dev/null | cut -d' ' -f1)
+
+      if [ "$new_sum" != "$old_sum" ]; then
+        mv "$tmp_path" "$writable_path"
+        echo "[opencrane] Contract updated (sha256: ${new_sum}); reloading MCP policy" >&2
+
+        # Re-source the updated policy into local variables, then signal OpenClaw
+        # to restart so the new policy takes effect without a full pod restart.
+        # SIGHUP is used for graceful reload; if OpenClaw exits, the outer wait
+        # loop in _main will restart it.
+        if [ -n "$openclaw_pid" ] && kill -0 "$openclaw_pid" 2>/dev/null; then
+          kill -HUP "$openclaw_pid" 2>/dev/null || true
+        fi
+      else
+        rm -f "$tmp_path"
+      fi
+    else
+      rm -f "$tmp_path"
+    fi
+  done
+}
+
 function _main()
 {
   _load_mcp_policy
@@ -198,8 +264,32 @@ function _main()
       "[opencrane] Skipping team skills for $OPENCRANE_TEAM; MCP policy blocks the 'skills' server"
   fi
 
+  # Copy the initial contract to the writable path so the polling loop can update it.
+  if [ -f "$RUNTIME_CONTRACT_PATH" ] && [ ! -f "$RUNTIME_CONTRACT_WRITABLE" ]; then
+    cp "$RUNTIME_CONTRACT_PATH" "$RUNTIME_CONTRACT_WRITABLE"
+  fi
+
   echo "[opencrane] Starting OpenClaw gateway"
-  exec openclaw gateway run --bind lan --port "${OPENCLAW_GATEWAY_PORT:-18789}"
+
+  # Start OpenClaw as a background process (not exec) so the polling loop can
+  # run alongside it and send SIGHUP when the contract changes.
+  openclaw gateway run --bind lan --port "${OPENCLAW_GATEWAY_PORT:-18789}" &
+  OPENCLAW_PID=$!
+
+  # Start the background contract re-pull loop when the control-plane URL is set.
+  if [ -n "$OPENCRANE_CONTROL_PLANE_URL" ] && [ -n "$OPENCLAW_TENANT_NAME" ]; then
+    _contract_poll_loop \
+      "$OPENCLAW_TENANT_NAME" \
+      "$OPENCRANE_CONTROL_PLANE_URL" \
+      "$OPENCRANE_CONTRACT_TOKEN_PATH" \
+      "$RUNTIME_CONTRACT_WRITABLE" \
+      "$CONTRACT_POLL_INTERVAL" \
+      "$OPENCLAW_PID" &
+    echo "[opencrane] Contract re-pull loop started (interval: ${CONTRACT_POLL_INTERVAL}s)"
+  fi
+
+  # Wait for OpenClaw to exit and propagate its exit code.
+  wait $OPENCLAW_PID
 }
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then

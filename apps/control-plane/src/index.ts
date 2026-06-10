@@ -20,12 +20,13 @@ const log = pino({ name: "ctrl" });
 /**
  * Creates and configures the Express application with all middleware and routes.
  * Exported for use in tests with injected dependencies.
- * @param prisma - Prisma ORM client
+ * @param prisma    - Prisma ORM client
  * @param customApi - Kubernetes Custom Objects API client
- * @param coreApi - Kubernetes Core V1 API client
+ * @param coreApi   - Kubernetes Core V1 API client
+ * @param authApi   - Kubernetes Authentication API for tenant contract TokenReview
  * @returns Configured Express application
  */
-export function createApp(prisma: PrismaClient, customApi: k8s.CustomObjectsApi, coreApi: k8s.CoreV1Api): Express
+export function createApp(prisma: PrismaClient, customApi: k8s.CustomObjectsApi, coreApi: k8s.CoreV1Api, authApi: k8s.AuthenticationV1Api): Express
 {
   const app = express();
   const authService = ___CreateOidcAuthService(log);
@@ -46,7 +47,7 @@ export function createApp(prisma: PrismaClient, customApi: k8s.CustomObjectsApi,
   app.use(___AuthMiddleware(prisma));
 
   // Register API routes
-  _RegisterRoutes(app, prisma, customApi, coreApi);
+  _RegisterRoutes(app, prisma, customApi, coreApi, authApi);
 
   // Global error handler — must be registered after all routes.
   app.use(_ErrorHandler(log));
@@ -71,8 +72,11 @@ const customApi = kc.makeApiClient(k8s.CustomObjectsApi);
 /** Kubernetes Core V1 API client. */
 const coreApi = kc.makeApiClient(k8s.CoreV1Api);
 
+/** Kubernetes Authentication API client — used for tenant contract TokenReview validation. */
+const authApi = kc.makeApiClient(k8s.AuthenticationV1Api);
+
 // Build and start app
-const app = createApp(prisma, customApi, coreApi);
+const app = createApp(prisma, customApi, coreApi, authApi);
 
 log.info({ port }, "starting opencrane control plane");
 

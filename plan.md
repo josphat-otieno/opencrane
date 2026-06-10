@@ -30,20 +30,20 @@
 
 ### Track P4-A — Finish Phase 4 runtime-plane enforcement gaps
 
-- [ ] **P4A.1 Ingest scanning (scan → validate → register → entitle).** Add Trivy/Grype
-  scanning to the third-party/skill ingest path before a bundle becomes `published`/entitled.
-  Anchor: control-plane ingest routes + `SkillBundle` lifecycle. Acceptance: a bundle failing
-  a scan cannot be promoted or pulled; scan result persisted and surfaced via API/CLI.
-- [ ] **P4A.2 Runtime-plane drift repair (operator config-slaving).** Extend the operator so
-  manual edits to the Obot gateway / skill-registry config are reverted to control-plane intent.
-  Anchor: `apps/operator` reconcile loop; existing drift logic is detect-only for DB projections
-  (`routes/internal/projection-repair.ts`). Acceptance: an out-of-band edit to a managed plane
-  config is reconciled back without a pod restart; covered by a test.
-- [ ] **P4A.3 Tenant-side contract re-pull loop.** Verify/implement the tenant-pod path that
-  re-pulls `GET /tenants/:name/effective-contract` at agentic-loop boundaries so grant changes
-  take effect without restart. Anchor: `apps/tenant` + `2-config-map.ts` advisory contract.
-  Acceptance: removing a grant denies the next MCP call / skill pull (audited, no restart);
-  adding a grant becomes usable after the next re-pull. Add an integration test.
+- [x] **P4A.1 Ingest scanning (scan → validate → register → entitle).** Added `SkillBundleScanStatus`
+  enum + `scanStatus`/`scanFindings`/`scannedAt` fields (migration 0007). `POST /api/v1/skills/catalog/:id/scan`
+  triggers Grype/Trivy scan (falls back `scanner-unavailable` gracefully). PUT gate rejects promotion
+  to `published` when `scanStatus ≠ passed`. Internal delivery (`/api/internal/bundles`) only serves
+  bundles with `scanStatus = passed`. 7 tests added; build + tests pass.
+- [x] **P4A.2 Runtime-plane drift repair (operator config-slaving).** Added `RuntimePlaneDriftRepairer`
+  (`apps/operator/src/runtime-planes/drift-repairer.ts`) — 60s interval compares Obot MCP gateway and
+  skill-registry Deployment env vars against expected config, patches back in-place (preserving
+  `valueFrom.secretKeyRef` refs). Wired into `operator/src/index.ts`. 3 tests added; build + tests pass.
+- [x] **P4A.3 Tenant-side contract re-pull loop.** Added `/api/internal/contract/:name` endpoint with
+  TokenReview identity enforcement (tenant can only pull its own contract). Operator injects
+  `OPENCRANE_CONTROL_PLANE_URL` + `control-plane` projected SA token into tenant Deployments.
+  `entrypoint.sh` background polling loop (30s) calls the endpoint, diffs SHA256, updates writable
+  contract copy, sends SIGHUP to OpenClaw when contract changes. 6 tests added; build + tests pass.
 
 ### Track P4-B — Fleet Organizational Awareness (NOT STARTED — largest remaining effort)
 
