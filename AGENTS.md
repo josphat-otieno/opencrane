@@ -92,6 +92,56 @@ const names = users.map(user => user.name);
 const total = items.reduce((sum, item) => sum + item.price, 0);
 ```
 
+### Self-Review Before Finishing
+
+After writing or editing any TypeScript file, explicitly verify each item below before moving on.
+Do **not** rely on "it feels right" — check each rule against the actual code you just wrote.
+
+When a coding turn writes or edits `.ts` files, include a compact compliance table in the response:
+
+| File | No standalone `=>` | Imports single-line at top | All declarations JSDoc (incl. properties) | Types in `*.types.ts` | Naming convention |
+|---|---|---|---|---|---|
+| `example.ts` | ✓ | ✓ | ✓ | ✓ | ✓ |
+
+Rules to check:
+
+1. **No standalone arrow functions** — `setInterval`, `Promise`, `new Map()` callbacks must use named `function` expressions, not `() =>`.  Arrow functions are only permitted inside `map`, `filter`, `reduce`, `Array.from` (as a mapper), and equivalent pure functional HOFs.
+2. **Imports: single-line, all at top** — Every import from a given package on one line. No import statements below the first non-import line. Two separate `import ... from "express"` lines is a violation — merge them.
+3. **JSDoc on every declaration, including every interface property and every class field** — not just the enclosing type or class.
+4. **Exported interfaces and type aliases in `*.types.ts`** — not in the implementation file.
+5. **Function naming** — file-private: `_camelCase`; same-package export: `_PascalCase`; same-domain: `__PascalCase`; wide/global: `___PascalCase`.
+
+The compliance table is **not** optional when TypeScript files were modified. If the table would be incomplete, fix the violations first.
+
+### Mandatory Independent Review (Policy-Driven Gate)
+
+The self-review table above is a self-check and is not sufficient on its own. A
+policy-driven `Stop` gate decides — per change — whether an independent review is
+required before the turn can end. When the gate asks for review you must:
+
+1. Delegate to the **`@review` subagent** against the changed files.
+2. Resolve every **Critical** and **High** finding it returns — fix it, or justify in
+   your response why it is not applicable.
+3. Only then finish the turn.
+
+**How the gate decides** (two `Stop` hooks run in parallel):
+
+- `.claude/hooks/require-review.sh` — a free shell pre-filter. It skips the obvious
+  cases (no TypeScript change, trivial size, test/type-only/generated files,
+  already-reviewed) and escalates the rest. It writes `.claude/.review-context.md`
+  for the judge.
+- A **Haiku agent hook** reads that context plus `.claude/review-policy.md` and judges
+  whether the change carries real risk (auth, secrets, network, IAM, money, or
+  non-trivial production control flow). It blocks (`ok:false`) only when warranted.
+
+**`.claude/review-policy.md` is the single tunable surface.** If review fires too often
+and burns tokens — or misses something — edit that file (threshold, `always-review`
+keywords, `never-review-paths`, or the judgment guidance) and record it in its tuning log.
+
+The gate blocks **at most once per stop sequence** (loop-safety via `stop_hook_active`),
+so it can never trap a turn — but skipping the review when it fires defeats the purpose.
+Treat a block as a hard requirement, not a suggestion.
+
 ### Inline Step Comments
 
 Every function with 3 or more sequential steps must have a numbered inline comment before each step.
