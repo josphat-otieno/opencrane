@@ -30,8 +30,8 @@ export async function _ReviewToken(authApi: k8s.AuthenticationV1Api, token: stri
     review.spec.token = token;
     review.spec.audiences = ["skill-registry"];
 
-    const result = await authApi.createTokenReview({ body: review });
-    response = result;
+    const result = await authApi.createTokenReview(review);
+    response = result.body;
   }
   catch (err)
   {
@@ -42,6 +42,14 @@ export async function _ReviewToken(authApi: k8s.AuthenticationV1Api, token: stri
   if (!response.status?.authenticated)
   {
     return { ok: false, reason: response.status?.error ?? "token not authenticated" };
+  }
+
+  // Explicitly verify the Kubernetes API confirmed the "skill-registry" audience.
+  // The API only authenticates when the token carries the requested audience, but
+  // we check here to make the contract visible and catch any unexpected API changes.
+  if (!response.status.audiences?.includes("skill-registry"))
+  {
+    return { ok: false, reason: "token audience does not include skill-registry" };
   }
 
   // Subject format: system:serviceaccount:<namespace>:<name>
