@@ -1,697 +1,77 @@
-# OpenCrane Implementation Plan
+# OpenCrane — Active Plan
 
-## Executive Summary
+## Current State (2026-06-10)
 
-This is an updated roadmap for shipping OpenCrane, the enterprise multi-tenant AI agent platform. The plan is updated with grounding in a competitive audit.
-
-**Current state**: Phase 1 baseline is now complete for go-live smoke validation. Core operator/API/UI, Helm deployments, Docker CI publish workflow, and k3d end-to-end reconciliation tests are in place and passing.
-
-**Live update (2026-04-16)**:
-- Phase II cost-control routing refactor is complete and validated.
-- AI budget/spend/key management is consolidated under `/api/ai-budget`.
-- Dedicated AI-budget router tests were added and are passing.
-- Control-plane UI test pipeline is now fixed (Karma/Jasmine deps + spec config + baseline spec).
-- Full workspace validation currently passes: `pnpm test` and `pnpm build`.
-
-**Live update (2026-04-26)**:
-- k3d end-to-end smoke test now passes via `platform/tests/k3d-e2e.sh`.
-- Tenant reconciliation was stabilized for local-storage mode:
-   - Added per-tenant state PVC creation before Deployment reconciliation.
-   - Added operator RBAC permissions for `persistentvolumeclaims`.
-   - Handled PVC immutability by skipping replace on `AlreadyExists` conflicts.
-- Kubernetes API client usage was corrected:
-   - Built-in resources now use typed clients (`CoreV1Api`, `AppsV1Api`, `NetworkingV1Api`).
-   - BucketClaim CRD apply path now uses custom-resource client handling.
-- Tenant status subresource patching now uses JSON Patch payload shape.
-- Invalid default OpenClaw config field (`agents.defaults.thinking`) was removed from generated tenant config.
-- Phase 2 execution started:
-   - Added in-chart LiteLLM resources (`Deployment`, `Service`, and managed `Secret`) as baseline setup for cost routing.
-   - Set chart defaults so cost routing is enabled by default, with production override guidance for master key handling.
-   - Added Helm validation guard: non-dev installs fail fast if LiteLLM uses a placeholder/empty master key without `litellm.existingSecret`.
-
-**Live update (2026-05-14)**:
-- Removed duplicate LiteLLM rendering from the Helm chart so the root chart templates are the only deployment path.
-- Added a full local k3d bootstrap path with PostgreSQL, control-plane, LiteLLM, and Prisma migrations.
-- Added a `strict` local profile to exercise prod-style Helm validation and explicit LiteLLM secret wiring locally.
-- Captured a parity checklist clarifying that local validates core stack wiring, while GCP remains the only path that exercises cloud identity, GCS, External Secrets, GCE ingress, and DNS. (Crossplane is superseded by the GoF Adapter hosting architecture — see `docs/hosting-architecture.md`.)
-- Implemented deterministic tenant `policyRef` precedence in the operator: explicit `policyRef` wins, then single selector match, then configured default, with conflict and missing-policy error states written to Tenant status.
-- Added detect-only drift reporting for Tenant and AccessPolicy CRDs versus PostgreSQL projection rows in the control-plane as the first P0 dual-write visibility slice.
-- Published resolved AccessPolicy MCP allow/deny data into the tenant managed-runtime contract so runtime enforcement can consume concrete policy inputs instead of only a policy name.
-- Enforced the managed-runtime MCP policy in the tenant entrypoint for shared skills, so a denied `skills` server now prevents org/team skill linking at startup.
-- Implemented projection repair for Tenant and AccessPolicy rows: `POST /tenants/repair` and `POST /policies/repair` read CRDs as source of truth and upsert drifted PostgreSQL rows; dry-run by default, apply on `?dryRun=false`.
-- Added `GET /api/metrics/projection-drift` so dashboards can poll detect-only Tenant and AccessPolicy mismatch counts from the existing drift detector.
-- Added configurable threshold evaluation to `GET /api/metrics/projection-drift` so the API now exposes basic drift alert state alongside mismatch counts.
-- Added projection lag metrics to `GET /api/metrics/projection-drift`, derived from drifted row `updatedAt` timestamps so dashboards can estimate how stale current mismatches are.
-
-**Live update (2026-05-25)**:
-- Memory architecture direction is now set: OpenClaw remains the source-system integration layer and writes through to Cognee for tenant-scoped memory orchestration.
-- The earlier "uncertain strict tenancy fit" concern is retired for Cognee. Tenancy and RBAC are treated as supported via Cognee's dataset-level EBAC model.
-- Memory adoption gate is now explicit: dataset granularity choice, AccessPolicy-to-Cognee permission mapping, source-permission propagation, and freshness invalidation strategy are mandatory before production cutover. Self-hosted audit parity is tracked as an operational hardening item.
-- `docs/memory.md` is now the canonical target-state design for the memory layer.
-
-**Live update (2026-06-09) — plan reconciled against code**:
-- **Phase 5 (headless API + CLI + hosting adapter) shipped and is the current branch.** `oc` CLI, emitted OpenAPI, generated `libs/contracts` client, and removal of `apps/control-plane-ui` are all in place.
-- **Phase 5 is not fully closed:** Crossplane was never torn down. The Terraform `modules/crossplane/` module, `crossplane-provider.yaml` Helm template, and `values.yaml` references still exist, so the "no Crossplane / clean on-prem cluster / Terraform-only-GCP" exit criteria remain open.
-- **Phase 4 was paused mid-flight, not completed.** Built: org-index schema v2 metadata, Slack lineage/freshness, projected-token Deployment migration, and the control-plane MCP/Skills/third-party **management layer** (Prisma models + CRUD routes + `effective-contract` endpoint). Not built: the runtime enforcement planes (Obot gateway deploy, skill registry service, operator config-slaving + drift repair, real grant compilation) and the entire fleet-awareness track (Org Context SDK, awareness contract, eval harness, skills-sharing protocol).
-- **Phase 5 deleted the admin UI that Phase 4 partially targeted**, so Phase 4 success criteria referencing `control-plane-ui` are re-scoped to API + CLI parity.
-- Section-level reconciliation notes added inline to Phase 4 (progress, reality check, success criteria) and Phase 5 (Step 1, success criteria).
-
-**Strategic approach**: OpenCrane differentiates by combining:
-- **Architectural advantages**: GCS Fuse CSI + Workload Identity (cloud-native isolation), dual-write pattern (CRDs + PostgreSQL), policy-first governance (AccessPolicy CRDs → CiliumNetworkPolicy).
-- **Tactical features**: Cost control (LiteLLM), self-service UX (web portal), memory cutover (Cognee write-through).
-
-**Next move**: Execute a dual-track Phase 2 (LiteLLM governance + retrieval/org-knowledge foundation), while keeping Phase 1 regression checks green in CI.
-
-**Effort**: ~282 hours over 7–9 weeks (2 engineers + 1 ops), assuming clear architecture decisions upfront.
+- **Phases 1–3**: complete and validated.
+- **Phase 5** (headless API + CLI + hosting adapter): code-complete. Two deploy-validation runs pending (P5.2 on-prem, P5.3 GCP). See Open Backlog.
+- **Phase 4 Track A** (MCP & Skills runtime planes): ~90% built and wired. Three narrow gaps remain (P4A.1–P4A.3). See Open Backlog.
+- **Phase 4 Track B** (fleet organizational awareness): not started. Blocked on product decisions (P4B.0). See Phase 4 Decisions below before building anything in Track B.
+- **Branch**: `phase-4-5-fixes`, 6 commits ahead of `main`.
 
 ---
 
-## Goal
-
-Ship a production-grade multi-tenant OpenClaw platform that is:
-1. **Architecturally differentiated**: GCS + IAM isolation, dual-write pattern, Crossplane-driven.
-2. **Feature-complete for org rollout**: Cost control (LiteLLM), self-service UI, memory upgrade.
-3. **Operationally sound**: Observability, role-based access, policy-driven governance.
-
----
-
-## README Realization Track (2026-05-12)
-
-This section translates the current README narrative into explicit delivery scope so roadmap execution and public messaging stay aligned.
-
-### Vision-to-Execution Mapping
-
-| README promise | Delivery status | Delivery phase |
-|----------------|-----------------|----------------|
-| Every employee gets an isolated assistant | Baseline in place | Phase 1 complete + hardening backlog |
-| Cost governance and budget controls | In progress | Phase 2 |
-| Retrieval plugin with RBAC-filtered org context | Foundation only today | Phase 2-3 |
-| Company-wide harvesting agents + org index | Not shipped | Phase 2-3 |
-| Self-service provisioning (web portal) | In progress | Phase 3 |
-| Memory orchestration cutover (Cognee write-through) | Planned | Phase 3 |
-
-### Steering Rule For Docs And Pitch
-
-Use three labels consistently across README/pitch/sales material:
-- **Available now**: only Phase 1 validated and currently passing capabilities.
-- **In progress**: Phase 2 deliverables under active implementation.
-- **Planned**: Phase 3+ items not yet validated in CI/e2e.
-
-No feature should move to "Available now" until success criteria are met and the go-live checklist remains green.
-
-### Delivery Workstreams Required To Realize README
-
-1. **Platform trust**: close deferred hardening, dual-write safety, and CI release gates.
-2. **Economic control**: complete LiteLLM keying/spend enforcement and budget visibility.
-3. **Organizational intelligence**: ship retrieval SDK, org index schema, and harvesting-agent MVP.
-4. **Self-service adoption**: deliver tenant provisioning UX with clear auth and audit path.
-5. **Memory adoption**: cut over from PostgreSQL-only retrieval to Cognee write-through memory orchestration.
-
-### Exit Criteria For "README Realized" (Production Narrative)
-
-- Retrieval plugin returns RBAC-filtered organization context from a live org index.
-- At least one company data source ingestion pipeline is running continuously.
-- Self-service tenant provisioning works end-to-end with auditable approval/auth path.
-- Cost policy, spend telemetry, and budget enforcement are visible per tenant.
-- Release gates (CI e2e, migration rollout, ingress verification, runbook) are green.
-
----
-
-## Current Status: Phase 1 Audit (Go-Live Baseline Complete)
-
-### ✅ Already Built
-
-**Operator** (apps/operator/src/)
-- TenantOperator class with full reconcile loop (ServiceAccount, ConfigMap, Deployment, Service, Ingress, encryption key)
-- PolicyOperator watching AccessPolicy CRDs → CiliumNetworkPolicy generation
-- Functional tenant deploy resource builders for K8s resource generation
-- TenantStatusWriter, TenantCleanup helpers
-- IdleChecker for auto-suspend on inactivity
-- Config loading, helpers (TenantDomains)
-- Unit + integration tests (operator.test.ts, policy tests)
-
-**Control Plane API** (apps/control-plane/src/)
-- Express server with bearer token auth middleware
-- Full CRUD routes for Tenants, Policies, Skills, Audit, Metrics, Token Usage, Access Tokens, Provider Keys
-- Consolidated AI budget routes (`/api/ai-budget`) for global/account budgets, tenant spend, and LiteLLM key management
-- Dual-write pattern: K8s CRDs + PostgreSQL via Prisma
-- Prisma schema extended with LiteLLM key metadata tracking
-
-**Control Plane UI** (apps/control-plane-ui/src/)
-- Angular 20 app with PrimeNG components
-- Feature pages: stats, token usage, access tokens, provider keys
-- Shared component structure
-- Test tooling now wired and passing (spec config + baseline component spec)
-
-**Infrastructure & CRDs**
-- Helm chart skeleton with values (operator, control-plane, tenant defaults, network policy)
-- CRD definitions (Tenant, AccessPolicy) present in platform/helm/crds/
-- Terraform modules for GKE, networking, Crossplane, artifact registry
-- Shared skills directory structure
-
-### ✅ Phase 1 Completion Checklist
-
-| Item | Status | Evidence |
-|------|--------|----------|
-| **Helm templates** (operator/control-plane + RBAC/services) | ✅ Complete | Deploys successfully in k3d via chart install |
-| **Docker image CI publish workflow** | ✅ Complete | `.github/workflows/docker.yml` builds/tests/e2e and publishes on `main` |
-| **Prisma migrations present** | ✅ Complete | `apps/control-plane/prisma/migrations/0001_init` committed |
-| **Tenant runtime image + entrypoint** | ✅ Complete | `apps/tenant/deploy/Dockerfile` + `entrypoint.sh` exercised in k3d e2e |
-| **k3d end-to-end smoke test** | ✅ Complete | `platform/tests/k3d-e2e.sh` passes and validates tenant reconcile |
-
-### 📋 Phase 1 Exit Notes
-
-1. Phase 1 go-live baseline is complete and validated with build + k3d smoke test.
-2. The k3d smoke script now includes Docker health and free-disk preflight checks to reduce false failures.
-3. Deterministic tenant `policyRef` resolution is complete in the operator: explicit `policyRef` wins, then single selector match, then configured default, with conflict and missing-policy errors surfaced in Tenant status.
-4. Remaining work should be tracked under Phase 2+ hardening and production rollout tasks, not Phase 1 blockers.
-
-### Local vs GCP Parity Checklist (2026-05-14)
-
-| Capability | Local `default` | Local `strict` | GCP deploy |
-|------------|-----------------|-------------------|------------|
-| Operator + control-plane + LiteLLM + PostgreSQL | ✅ | ✅ | ✅ |
-| Prisma migration job | ✅ | ✅ | ✅ |
-| Production-style LiteLLM validation rules | ❌ | ✅ | ✅ |
-| Explicit `opencrane-litellm` Secret control flow | ❌ | ✅ | ✅ |
-| In-cluster database secret (`opencrane-db`) | ✅ | ✅ | ✅ |
-| Tenant PVC fallback flow | ✅ | ✅ | ❌ |
-| Workload Identity annotation path | ❌ | ❌ | ✅ |
-| Crossplane `BucketClaim` provisioning | ❌ | ❌ | ✅ |
-| External Secrets / Secret Manager path | ❌ | ❌ | ✅ |
-| GCE ingress + static IP + DNS wiring | ❌ | ❌ | ✅ |
-
-Interpretation:
-- Local `default` is the fastest end-to-end developer stack.
-- Local `strict` is the preferred parity check for core app wiring and stricter chart validation.
-- GCP is still the only environment that validates cloud-native identity, storage, ingress, and secret-management integrations.
-
-### Deferred While Starting Phase II
-
-These items are intentionally deferred. They are grouped by what is actually blocking them.
-
-#### Needs e2e validation only (no open decisions)
-
-These items are code-complete. The only blocker is a working k3d or GCP cluster run to confirm no hidden runtime incompatibilities.
-
-**Runtime hardening baseline** — securityContext defaults, non-root user/group, dropped capabilities, seccomp, read-only root filesystem. All defaults are now injected into tenant Deployments. Unblock by running the k3d e2e with a tenant pod and verifying it starts cleanly.
-
-**Stronger least-privilege and file access limits** — read-only root filesystem and explicit writable paths (`/data/openclaw`, `/data/secrets`, `/tmp`) are in place. Unblock alongside the hardening validation above.
-
-#### Requires Phase 2 decisions before implementation
-
-**Suspend logic aware of scheduled/background work** — needs a durable scheduler contract and state model. Blocked on Phase 2 harvesting agent and background job decisions (see Phase 2 open decision 8).
-
-**Managed runtime awareness contract** — baseline env/config contract and policy metadata are injected. The remaining capability endpoint/payload shape depends on Phase 2 retrieval API and scheduling decisions (see Phase 2 open decisions 7 and 8).
-
-**Dual-write alert delivery and single-writer ownership** — detect-only drift reporting, on-demand repair, mismatch metrics, and basic threshold evaluation now exist. Remaining work is external alert delivery and deciding the long-term single-writer owner (control-plane request handlers, operator sidecar, or dedicated projector service). Write-path simplification (retire request-path dual-write in favour of a watcher-fed projector) is a larger architectural change tracked under Phase 3.
-
----
-
-## Phase 1: Core Platform (Shipped Baseline)
-
-### Architecture Retrospective: Phase 1 Decisions
-
-These decisions are now effectively locked in by the current implementation and should be treated as the Phase 1 baseline unless a later phase explicitly revisits them.
-
-1. **Helm Chart Structure**
-   - The main OpenCrane chart owns LiteLLM deployment directly; there is no longer a separate LiteLLM subchart.
-   - PostgreSQL is consumed via `DATABASE_URL` Secret wiring in the chart, while local and GCP installers can provision the backing database outside the chart.
-
-2. **Operator Deployment**
-   - Operator deployment is single-replica in the current baseline.
-   - RBAC and env wiring for storage provider, ingress, LiteLLM, and idle reconciliation are part of the shipped chart baseline.
-   - Runtime hardening beyond the current baseline remains a deferred hardening item, not a Phase 1 blocker.
-
-3. **Tenant Pod Isolation**
-   - On-prem path (the default) uses PVC fallback; both `default` and `strict` k3d profiles validate this path.
-   - GCP path uses GCS/Workload Identity. Crossplane is superseded: per-tenant bucket provisioning moves into the operator via the GCP hosting adapter (see `docs/hosting-architecture.md`).
-   - Baseline network policy is created by chart install; richer policy enforcement remains operator/policy work.
-
-4. **Control Plane Deployment**
-   - Control-plane remains on the current API/auth baseline, with bearer-token and OIDC evolution deferred to later product phases.
-   - Local and GCP both use PostgreSQL-backed deployment flows; local now provisions an in-cluster database for full-stack bring-up.
-
-5. **Terraform & IaC**
-   - Terraform owns cloud infrastructure provisioning (GKE, Artifact Registry, in-cluster PostgreSQL, app deploy, DNS). Layout is being migrated to `terraform/core/` (cloud-agnostic) + `terraform/cloud/gcp/` (GCP-specific) per `docs/hosting-architecture.md`. The Crossplane module is retired.
-   - Local full-stack install is handled by the k3d bootstrap script, not Terraform.
-
-**Action**: Treat Phase 1 as closed. Any remaining changes here should be tracked as hardening, parity, or Phase 2+ work rather than reopening Phase 1 design questions.
-
----
-
-### Deliverables
-
-1. **Operator** (deployed as K8s Deployment)
-   - Watches Tenant CRD; reconciles per-tenant:
-     - ServiceAccount (with Workload Identity annotation)
-     - BucketClaim (via Crossplane)
-     - Encryption key Secret
-     - ConfigMap (base config + spec overrides)
-     - Deployment (tenant pod + GCS Fuse mount)
-     - Service (ClusterIP on gateway port)
-     - Ingress (subdomain routing)
-   - Watches AccessPolicy CRD; reconciles CiliumNetworkPolicy per tenant.
-   - Status writer patches Tenant.status with phase, ingress host, last reconciled.
-
-2. **Helm Chart** (platform/helm/)
-   - Values for all components: operator, control-plane, shared skills PVC, CRDs.
-   - Namespace creation, RBAC (operator ClusterRole, control-plane Role).
-   - CRD templates (Tenant, AccessPolicy, BucketClaim).
-   - Database integration via `DATABASE_URL` Secret wiring, with installer-specific database provisioning outside the chart.
-
-3. **Terraform Modules** (terraform/modules/)
-   - `gke/`: GKE cluster, node pool, workload identity setup.
-   - `cloud-sql/`: Cloud SQL instance, database, user.
-   - `networking/`: VPC, subnet, Cloud NAT, Firewall rules.
-   - `artifact-registry/`: Container registry for images.
-   - ~~`crossplane/`~~ — retired; bucket provisioning moves into the operator GCP adapter (see `docs/hosting-architecture.md`).
-
-4. **Docker Images**
-   - `tenant`: Node 22 + OpenClaw npm + entrypoint script (mount GCS, link skills, start gateway).
-   - `operator`: TypeScript compiled + runtime (next.js runner).
-   - `control-plane`: Express API server.
-
-5. **CRD Definitions** (platform/helm/crds/)
-   - `Tenant`: spec (displayName, email, team, openclawVersion, resources, policyRef, configOverrides), status (phase, ingressHost, podName).
-   - `AccessPolicy`: spec (tenantSelector, domains, egressRules, mcpServers), status (lastReconciled).
-   - Validation rules (no empty names, valid email, CIDR format).
-
-### File Structure
-
-```
-opencrane-platform/
-├── apps/
-│   ├── operator/
-│   │   ├── src/
-│   │   │   ├── index.ts          # entry point
-│   │   │   ├── config.ts          # OperatorConfig
-│   │   │   ├── infra/k8s.ts       # K8s client wrappers
-│   │   │   ├── tenants/
-│   │   │   │   ├── operator.ts    # TenantOperator class ✅ (already have)
-│   │   │   │   ├── types.ts       # Tenant CRD type
-│   │   │   │   ├── tenant-resource-builder.ts
-│   │   │   │   ├── tenant-status-writer.ts
-│   │   │   │   ├── tenant-cleanup.ts
-│   │   │   │   └── idle-checker.ts
-│   │   │   ├── policies/
-│   │   │   │   ├── operator.ts    # AccessPolicy operator
-│   │   │   │   ├── types.ts       # AccessPolicy CRD type
-│   │   │   │   └── policy-resource-builder.ts  # → CiliumNetworkPolicy
-│   │   │   ├── storage/provider.ts
-│   │   │   └── shared/watch-runner.ts
-│   │   ├── deploy/Dockerfile
-│   │   └── package.json
-│   ├── control-plane/
-│   │   ├── src/
-│   │   │   ├── index.ts                    # Express app factory
-│   │   │   ├── routes/
-│   │   │   │   ├── tenants.ts             # CRUD tenants ✅
-│   │   │   │   ├── policies.ts            # CRUD policies ✅
-│   │   │   │   └── ...other routes
-│   │   │   ├── middleware/auth.ts         # Bearer token ✅
-│   │   │   └── db.ts
-│   │   ├── prisma/schema.prisma
-│   │   ├── deploy/Dockerfile
-│   │   └── package.json
-│   ├── control-plane-ui/
-│   │   ├── src/app/
-│   │   │   ├── features/
-│   │   │   │   ├── tenants/
-│   │   │   │   ├── policies/
-│   │   │   │   └── audit/
-│   │   │   └── shared/components/
-│   │   └── package.json
-│   └── tenant/
-│       ├── deploy/Dockerfile
-│       ├── deploy/entrypoint.sh  # install OpenClaw, link skills, start
-│       └── config/base-openclaw-config.json
-├── platform/
-│   ├── helm/
-│   │   ├── Chart.yaml
-│   │   ├── values.yaml
-│   │   ├── values/gcp.yaml (cloud override)
-│   │   ├── crds/
-│   │   │   ├── tenant.opencrane.io_tenants.yaml
-│   │   │   └── tenant.opencrane.io_accesspolicies.yaml
-│   │   └── templates/
-│   │       ├── operator-deployment.yaml
-│   │       ├── control-plane-deployment.yaml
-│   │       ├── shared-skills-pvc.yaml
-│   │       └── networkpolicy.yaml
-│   ├── terraform/
-│   │   ├── versions.tf
-│   │   ├── main.tf
-│   │   ├── outputs.tf
-│   │   ├── variables.tf
-│   │   ├── environments/
-│   │   │   └── dev/
-│   │   │       ├── terraform.tfvars.example
-│   │   │       └── main.tf (dev overrides)
-│   │   └── modules/
-│   │       ├── gke/
-│   │       ├── cloud-sql/
-│   │       ├── networking/
-│   │       ├── crossplane/
-│   │       └── artifact-registry/
-│   └── deploy.sh
-├── skills/shared/
-│   ├── org/                     # org-wide skills
-│   │   └── company-policy/
-│   └── teams/
-│       └── engineering/
-├── docs/
-│   ├── architecture.md
-│   ├── deployment.md
-│   ├── operator.md
-│   └── crd-reference.md
-├── comparison.md
-└── plan.md (this file)
-```
-
-### Key Tasks (Phase 1)
-
-| Task | Owner | Estimated Effort | Dependency |
-|------|-------|------------------|-----------|
-| Implement TenantOperator.reconcileTenant() | Backend | 20h | CRDs defined |
-| Implement AccessPolicy → CiliumNetworkPolicy builder | Backend | 15h | TenantOperator done |
-| Build operator Helm chart (RBAC, Deployment, CRDs) | DevOps | 10h | Operator code done |
-| Build GKE + Crossplane Terraform modules | DevOps | 20h | GCP project + SA setup |
-| Build tenant Dockerfile + entrypoint | Backend | 10h | s3 integration test |
-| Integration tests (operator reconcile happy path) | QA | 15h | All code done |
-| **Phase 1 Total** | | **90h** | |
-
-### Success Criteria
-
-- [x] Operator reconciles a Tenant CR end-to-end (ServiceAccount → Deployment → Ingress → status).
-- [x] AccessPolicy CRD generation path is implemented and covered by tests.
-- [x] `helm install opencrane platform/helm/` deploys operator + CRDs.
-- [ ] Terraform applies GKE cluster + Crossplane.
-- [x] Tenant pod starts, mounts storage, links skills, starts OpenClaw gateway on port 18789.
-- [ ] Tenant is accessible at `https://{tenant}.opencrane.io` via Ingress.
-
----
-
-## Phase 2: Cost Control + Retrieval Foundation
-
-### Phase 2 Architecture Decisions (Locked 2026-05-28)
-
-All Phase 2 architecture questions are now decided. Decisions are marked with their concrete outcome and rationale.
-
-1. **LiteLLM Deployment Model** — **DECIDED**
-   - **Decision**: LiteLLM deploys in the same namespace (`opencrane`) as the operator and control-plane. No separate namespace until traffic warrants it.
-   - **Decision**: LiteLLM shares the platform PostgreSQL for Phase 2; a dedicated database is a post-Phase-3 upgrade if write throughput requires it.
-   - **Decision**: Master key and database URL remain chart-managed (Secret-backed); LiteLLM model config is installer-managed via a separate ConfigMap that operators update without chart upgrades.
-
-2. **Virtual Key Generation** — **DECIDED**
-   - **Decision**: Operator initiates virtual key creation synchronously during Tenant reconcile (Step 4 of reconcile loop). Reconcile blocks until the key is stored, with the LiteLLM API call retried on transient failures.
-   - **Decision**: Keys are static per tenant (no auto-rotation). Revocation is manual via `POST /api/ai-budget/:tenantName/litellm-key/revoke`.
-   - **Decision**: A pool-based pre-generation path is deferred to a later optimization backlog if reconcile latency becomes a problem.
-
-3. **Spend Tracking** — **DECIDED**
-   - **Decision**: Spend is tracked per tenant (primary) and per model (secondary). The `/api/ai-budget/:tenantName/spend` route queries LiteLLM usage API in real time and augments with local budget metadata from PostgreSQL.
-   - **Decision**: Hard budget enforcement is handled by LiteLLM (returns 429 when `max_budget` is exceeded). The control-plane exposes a warning at 80% of ceiling via the spend endpoint but does not enforce independently.
-   - **Decision**: A shadow spend table in PostgreSQL is deferred; it becomes relevant only if LiteLLM's API becomes a latency bottleneck for dashboard queries.
-
-4. **Tenant Config Injection** — **DECIDED**
-   - **Decision**: LiteLLM proxy endpoint is injected as `LITELLM_ENDPOINT` env var; the virtual key is injected as `LITELLM_API_KEY` from a tenant Secret. Both are already implemented.
-   - **Decision**: Tenants cannot override the cluster-local proxy endpoint (`http://litellm:4000`). The endpoint is always operator-controlled.
-   - **Decision**: LiteLLM remains mandatory in-cluster for target architecture; there is no tenant-level or cluster-level opt-out path.
-
-5. **Observability & Alerts** — **DECIDED**
-   - **Decision**: LiteLLM health is surfaced in the `GET /api/ai-budget/:tenantName/spend` route — callers receive a 503 when LiteLLM is unreachable. No separate health endpoint for LiteLLM.
-   - **Decision**: An 80% budget alert flag (`budgetAlertState: "warning"`) is returned in the spend payload when usage exceeds 80% of ceiling. External alert delivery (webhook) is implemented via the projection-drift alert path (see item 10).
-   - **Decision**: Monthly budget limits are supported. Weekly budget limits require a follow-up LiteLLM capability verification and are tracked as investigation work.
-
-6. **Org Knowledge Index Model** — **DECIDED**
-   - **Decision**: Minimum canonical schema: `source`, `sourceId`, `owner`, `teamScope`, `sensitivityTags`, `title`, `content`, `contentHash`, `embeddingReady`, `ingestedAt`, `updatedAt`. All fields except `title` and `teamScope` are mandatory.
-   - **Decision**: RBAC filtering uses `owner` and `teamScope`. Sensitivity tags are metadata only for Phase 2; they gate retrieval starting Phase 3.
-   - **Decision**: PostgreSQL-only for current Phase 2 runtime remains in place. To be removed as part of phase 3.
-   - **Decision**: Target memory state for Phase 3+ is Cognee orchestration with OpenClaw write-through ingestion (`docs/memory.md`). OpenClaw remains responsible for source connectors (SharePoint and other enterprise systems).
-   - **Decision**: Dataset granularity is hierarchical: org-wide datasets are shared within tenant boundaries, plus team-wide, project-wide, and personal datasets. Tenant access to project/team/department datasets is bound from the control-plane.
-   - **Decision**: AccessPolicy mapping is controlled by the control-plane, which assigns tenant/user access to project and department datasets and translates policy outcomes to Cognee permission grants.
-   - **Decision**: Source-permission propagation follows user/OpenClaw-initiated copy semantics: content is copied into destination datasets chosen by user action and policy-checked by OpenClaw.
-   - **Decision**: Freshness invalidation uses source version metadata and user-driven revalidation: re-fetch when memory is older than 1 day for the originating user, when explicitly requested, or when source edits are detected through OpenClaw actions.
-   - **Decision**: Self-hosted Cognee audit-log parity is tracked as nice-to-have hardening and follows Cognee's self-hosted roadmap; it is not a hard cutover blocker for the initial rollout.
-   - **Decision**: Memory cutover requires the adoption gate to pass: dataset granularity lock, AccessPolicy mapping, source-permission propagation, and freshness invalidation controls.
-
-7. **Retrieval Authorization Model** — **DECIDED**
-   - **Decision**: AccessPolicy is the sole enforcement source for retrieval allow/deny decisions. No additional ACL layer for Phase 2.
-   - **Decision**: Retrieval failures (policy-denied requests) return `403` with an explicit authorization error body (not silent empty results). Empty results are returned only when the query genuinely matches no documents.
-   - **Decision**: Retrieval is direct from OpenClaw/Clawdbot to Cognee. Control-plane only applies dataset permission mappings to Cognee and audits dataset membership changes.
-
-8. **Harvesting Agent Scope (MVP)** — **DECIDED**
-   - **Decision**: Initial connector implementation exists for Slack, but the source strategy is not locked to Slack-only. Candidate frameworks/connectors for Office 365, SharePoint, Google Workspace, and other enterprise sources must be evaluated before scaling connector coverage.
-   - **Decision**: Ingestion SLOs gating Phase 3 progression: lag < 30 minutes for 95% of messages, failure rate < 1% per sync cycle.
-   - **Decision**: The harvesting agent runs as a standalone Node.js service (`apps/harvesting-agent`) deployed via the Helm chart as an optional workload.
-   - **Reference**: Connector portfolio and integration strategy documented in `harvesting-agents-plan.md` and communication source rationale in `conversation-plan.md`.
-
-**Single-Writer Ownership Decision** — **DECIDED**
-   - **Decision**: The operator sidecar (watch loop) is the authoritative single-writer for Tenant and AccessPolicy PostgreSQL projections going forward. Request-path dual-writes in the control-plane are retained as compatibility shims during Phase 2 and removed in Phase 3 when the projector pattern is fully validated.
-   - **Rationale**: The operator already watches CRD events and is the canonical source of truth for Kubernetes state. Centralising writes there eliminates the split-brain risk from concurrent request-path and watch-path writes.
-   - **Reference**: Additional explanation documented in `single_ownership_decision.md`.
-
----
-
-### Deliverables
-
-1. **LiteLLM Platform Integration**
-   - Maintain the root-chart LiteLLM deployment path.
-   - Keep `LITELLM_MASTER_KEY` and database wiring explicit through secrets/values.
-   - Maintain `litellm:4000` as the in-cluster endpoint unless Phase 2 decisions change the topology.
-   - Evolve routing/config shape without reintroducing duplicate chart ownership.
-
-2. **Operator Enhancement: Virtual Key Generation**
-   - On Tenant reconcile: call `POST http://litellm:4000/key/generate` with tenant name and monthly budget.
-   - Store returned API key in tenant's Config Secret.
-   - Inject as env var or file reference into Deployment spec.
-
-3. **Control Plane Enhancement: Budget/Spend API**
-   - New route `GET /api/spend/:tenantName` → query LiteLLM usage API.
-   - Aggregation: total cost YTD, remaining budget, top models used.
-
-4. **Tenant Config Injection**
-   - Tenant's `openclaw.json` has `llmProxy` section:
-     ```json
-     {
-       "llmProxy": {
-         "endpoint": "http://litellm:4000",
-         "apiKey": "${LITELLM_API_KEY}"
-       }
-     }
-     ```
-   - Operator injects real key on reconcile.
-
-5. **Org Knowledge Index Foundation**
-   - Add initial schema and repository interfaces for organization knowledge documents and source metadata.
-   - Define tenancy and RBAC projection fields required for filtered retrieval.
-   - Add API route surface for retrieval-plugin query and health checks.
-
-6. **Retrieval Plugin SDK (MVP)**
-   - Define plugin contract for query input, tenant identity context, and filtered response payload.
-   - Implement a basic in-cluster client path from tenant runtime to control-plane retrieval endpoint.
-   - Add conformance tests for allow/deny behavior aligned with AccessPolicy constraints.
-
-7. **Harvesting Agent MVP (Single Source)**
-   - Implement one source connector (for example Slack or ticketing) with incremental sync cursoring.
-   - Write normalized documents into the org index with source provenance and timestamps.
-   - Add operational metrics (ingest lag, failures, processed docs).
-
-8. **MCP Tool Allowlist Enforcement**
-   - Enforce `mcpServers.allow/deny` from the resolved AccessPolicy beyond startup-time shared-skill linking.
-   - Block or audit MCP server registration/invocation at the gateway level when a server is denied.
-   - Add deny/audit log events for blocked tool requests.
-   - Add conformance tests for allow and deny paths.
-
-9. **Tenant Skill Distribution Model**
-   - Decide long-term mechanism for per-tenant skill filtering (subdirectory mount, symlink subset, or packaged distribution).
-   - Use durable, auditable per-tenant `skillAllowlist` governance as the single skill distribution path.
-   - Document the canonical UX contract for operators and tenant owners.
-
-10. **Dual-write projection repair and metrics**
-    - ✅ Repair routes implemented: `POST /tenants/repair` and `POST /policies/repair` with dry-run default.
-   - ✅ Mismatch count metrics implemented via `GET /api/metrics/projection-drift` for Tenant and AccessPolicy projections.
-   - ✅ Configurable drift-threshold evaluation is exposed in the metrics payload for dashboard polling.
-   - ✅ Projection lag metrics are exposed in the drift payload from drifted projection-row `updatedAt` timestamps.
-   - Add external alert delivery when drift exceeds a configurable threshold (still open).
-    - Decide single-writer ownership: control-plane request handlers, operator sidecar, or dedicated projector service (still open).
-
-### File Structure Additions
-
-```
-platform/
-├── helm/
-│   ├── templates/
-│   │   ├── litellm-deployment.yaml
-│   │   ├── litellm-service.yaml
-│   │   ├── litellm-secret.yaml
-│   │   └── validate-config.yaml
-│   └── Chart.yaml
-```
-
-### Key Tasks (Phase 2)
-
-| Task | Owner | Effort | Dependency |
-|------|-------|--------|-----------|
-| LiteLLM chart integration hardening | DevOps | 8h | Phase 1 done |
-| Operator: LiteLLM key generation on reconcile | Backend | 10h | LiteLLM chart deployed |
-| Control Plane: /api/spend endpoint | Backend | 8h | LiteLLM chart + schema |
-| Tenant config injection of proxy endpoint | Backend | 5h | Operator enhancement |
-| Org index schema + retrieval API surface | Backend | 14h | Phase 1 done |
-| Retrieval plugin SDK MVP + policy tests | Backend | 16h | Org index schema |
-| Harvesting agent MVP (single source connector) | Backend | 18h | Org index schema |
-| Ingest/retrieval observability + dashboards | DevOps + QA | 8h | SDK + agent MVP |
-| MCP tool allowlist enforcement + audit events | Backend | 10h | Phase 1 entrypoint enforcement |
-| Tenant skill distribution model + UX contract | Backend | 8h | Phase 1 skills filtering |
-| Dual-write projection repair + mismatch metrics | Backend | 12h | Existing drift detector |
-| Tests: key generation, spend queries | QA | 10h | All code |
-| **Phase 2 Total** | | **127h** | |
-
-### Success Criteria
-
-- [x] Helm chart deploys LiteLLM through the root chart with shared PostgreSQL integration.
-- [x] On Tenant CR creation, operator creates a LiteLLM virtual key with monthly budget.
-- [x] Tenant pod receives `LITELLM_API_KEY` and proxy endpoint.
-- [x] Control Plane exposes spend endpoint; shows per-tenant usage + budget.
-- [x] Dashboard can display "You have $X of $Y budget" per tenant (SpendChartComponent in Angular portal).
-- [x] Retrieval path is direct from OpenClaw/Clawdbot to Cognee; control-plane no longer mediates `/api/retrieval/query`.
-- [x] One harvesting connector continuously ingests documents with measurable lag/error metrics (Slack connector in `apps/harvesting-agent` with `/metrics` endpoint).
-- [x] AccessPolicy outcomes are translated into Cognee dataset memberships via `/api/tenants/:name/datasets` and synced to Cognee permissions.
-- [x] MCP server allow/deny is enforced at gateway level beyond startup: tenant CRD `mcpPolicy` field, injected as `OPENCRANE_TENANT_MCP_ALLOW`/`OPENCRANE_TENANT_MCP_DENY` env vars, checked in `entrypoint.sh` before policy-level allow/deny.
-- [ ] Control-plane-managed env updates and propagation path to OpenClaw runtime still need explicit design and implementation notes.
-- [x] Tenant skill distribution model: durable `skillAllowlist` field added to Tenant CRD spec and TypeScript interface; takes precedence over legacy `skills` array.
-- [x] Projection drift is measurable via metrics and repairable via a periodic reconcile job; periodic automation remains open.
-- [x] Projection repair is available on demand via `POST /tenants/repair` and `POST /policies/repair`.
-- [x] External alert delivery: webhook fired when drift count exceeds `OPENCRANE_PROJECTION_DRIFT_ALERT_THRESHOLD` (`OPENCRANE_DRIFT_WEBHOOK_URL` env var).
-
----
-
-## Phase 3: Self-Service Provisioning + Memory Cutover
-
-### Architecture Checkpoint: Portal, Auth, and Memory Rollout
-
-Before finishing this phase, lock the following:
-
-1. **Web Portal Stack**
-   - Portal remains embedded in the existing control-plane-ui (Angular). No separate Next.js app.
-   - Auth baseline for this phase is bearer token.
-   - OIDC is explicitly deferred to future work.
-
-2. **Tenant Provisioning Model**
-   - Self-provisioning creates Tenant CRs directly for Phase 3 scope.
-   - Naming/team constraints and resource defaults are policy-driven by the control-plane.
-   - Version pinning remains supported through the existing OpenClaw version field.
-
-3. **Approval and 2FA Direction**
-   - Approval flow is moved to future work and is not a Phase 3 gate.
-   - When approval flow is enabled later, it uses bearer-token auth initially.
-   - Add an optional 2FA toggle for approval actions as part of that future approval rollout.
-
-4. **Memory Upgrade Rollout**
-   - Move memory cutover into this phase: migrate from PostgreSQL-only retrieval runtime to Cognee write-through orchestration for all tenants.
-   - Use a hard switch rollout (no dual-read fallback window) once migration validation passes.
-   - Keep OpenClaw as source connector and policy enforcement boundary.
-   - Enforce dataset granularity, AccessPolicy mapping, and source-permission propagation as mandatory rollout gates.
-   - Freshness/invalidation is deferred to Sprint 3+ and will be integrated and controlled from Clawdbot.
-
-**Action**: Ship portal + memory cutover in Phase 3 with bearer-token baseline auth. Keep approval workflow and OIDC in future work, and carry optional approval 2FA as a planned extension.
-
----
-
-### Deliverables
-
-1. **Web Portal** (embedded in apps/control-plane-ui)
-   - Angular 20 feature modules in the existing control-plane-ui app.
-   - API calls go through dedicated core services in `core/api/`.
-   - Feature pages:
-     - **Dashboard**: List my tenants, health, spend, last reconciled.
-     - **Provision**: Form (name, email, team, openclawVersion pin, policy).
-     - **Tenant Detail**: Config view, logs, resource usage.
-     - **Admin Panel**: Tenant visibility and audit log visibility.
-    - Add dataset-assignment UI in control-plane-ui for org/team/project/personal dataset membership and visibility.
-   - Auth: bearer token for this phase.
-
-2. **Memory Cutover: Cognee Write-Through**
-   - Replace PostgreSQL-only retrieval runtime path with Cognee orchestration (`docs/memory.md`).
-   - Cut over all tenants in a single hard-switch migration window.
-   - Keep OpenClaw responsible for source ingestion, permission-aware copy semantics, and retrieval mediation.
-   - Implement dataset-level access wiring from AccessPolicy outcomes for org/team/project/personal scopes.
-
-3. **Dual-write write-path simplification**
-   - Migrate projection writes from request-path dual-write to a watcher-fed projector component.
-   - Retire request-path PostgreSQL mutation for dual-written Tenant and AccessPolicy entities.
-   - Add idempotency keys and bounded reconciliation lag objectives.
-
-4. **Future Work (Explicitly Deferred)**
-   - Approval flow routes and CRD fields.
-   - Approval action security with bearer token + optional 2FA toggle.
-   - OIDC migration for portal and control-plane auth.
-   - Freshness/invalidation implementation, integrated and controlled from Clawdbot.
-
-### File Structure Additions
-
-```
-apps/
-├── control-plane-ui/
-│   └── src/app/
-│       ├── core/
-│       │   └── api/
-│       │       ├── tenants.service.ts
-│       │       ├── spend.service.ts
-│       │       └── policies.service.ts
-│       ├── shared/
-│       │   └── components/
-│       │       ├── tenant-form/
-│       │       ├── tenant-card/
-│       │       └── spend-chart/
-│       └── features/
-│           ├── dashboard/
-│           │   ├── dashboard.component.ts
-│           │   └── dashboard.component.html
-│           ├── provision/
-│           │   ├── provision.component.ts
-│           │   └── provision.component.html
-│           ├── tenant-detail/
-│           │   ├── tenant-detail.component.ts
-│           │   └── tenant-detail.component.html
-│           └── admin/
-│               ├── admin.component.ts
-│               └── admin.component.html
-├── control-plane/
-│   └── src/
-│       ├── routes/
-│       │   └── tenants.ts
-│       └── core/
-│           └── memory/
-│               ├── cognee-client.ts
-│               ├── dataset-mapper.ts
-│               └── freshness-policy.ts
-```
-
-### Key Tasks (Phase 3)
-
-| Task | Owner | Effort | Dependency |
-|------|-------|--------|-----------|
-| Angular portal features scaffold + auth | Frontend | 12h | Phase 1 API |
-| Tenant provisioning form + dashboard | Frontend | 15h | Control Plane API |
-| Admin panel (visibility + audit) | Frontend | 8h | Portal routes |
-| Dataset assignment UI in control-plane-ui (org/team/project/personal) | Frontend | 10h | Portal routes |
-| Memory cutover to Cognee write-through | Backend | 20h | Phase 2 retrieval foundation |
-| AccessPolicy -> Cognee dataset permission mapping | Backend | 10h | Memory cutover core |
-| Portal -> control-plane integration | Backend | 8h | Portal code |
-| Tests: provisioning + memory authorization | QA | 14h | All code |
-| **Phase 3 Total** | | **97h** | |
-
-### Success Criteria
-
-- [x] Non-admin user can self-provision tenant via web form (ProvisionPageComponent + TenantApiService implemented).
-- [x] Tenant appears in Kubernetes as Tenant CR within 30s (create route now polls Kubernetes and returns 504 if the CR is not visible within the SLO window).
-- [x] Dashboard shows health, spend, and last reconciled time per tenant (DashboardPageComponent + SpendChartComponent implemented).
-- [x] Retrieval runtime is cut over from PostgreSQL-only path to Cognee write-through for all tenants using a hard switch with direct OpenClaw/Clawdbot to Cognee calls.
-- [x] AccessPolicy-compatible dataset permissions are enforced through control-plane-managed Cognee subject memberships (`/api/tenants/:name/datasets`).
-- [x] control-plane-ui exposes dataset membership controls for org/team/project/personal scopes (Tenant Detail includes reusable Dataset Membership editor backed by `/api/tenants/:name/datasets`).
-- [x] Approval flow remains explicitly deferred; no Phase 3 blocker depends on approval route delivery.
-- [x] Freshness/invalidation is deferred to Sprint 3+ and controlled from Clawdbot.
+## Open Backlog (Execute Next)
+
+> Authoritative, code-verified worklist as of 2026-06-10. Work top-to-bottom.
+> Items marked **[BLOCKED]** need a decision before implementation — do not guess.
+
+### Track P5 — Close Phase 5
+
+- [x] **P5.1 Stale-Crossplane cleanup.** Removed unreachable `bucketclaims` RBAC rule +
+  comment from `platform/helm/templates/operator-rbac.yaml`, removed stale Crossplane comments
+  from `platform/terraform/cloud/gcp/main.tf` and `platform/deploy.sh`.
+  Verified: `grep -ri crossplane platform/` returns nothing.
+- [ ] **P5.2 On-prem clean-cluster deploy validation.** Deploy the chart to a fresh k3d
+  cluster with `hosting.provider: onprem` and **zero cloud env vars**; run
+  `platform/tests/k3d-e2e.sh`. Acceptance: full reconcile passes; captured run log.
+  **[Needs Docker daemon running.]**
+- [ ] **P5.3 GCP adapter deploy validation.** Apply `terraform/cloud/gcp/` + `values/gcp.yaml`;
+  confirm the operator provisions a per-tenant GCS bucket via `GcpHostingAdapter` (no Crossplane).
+  Acceptance: a tenant CR yields a real bucket; evidence captured.
+  **[BLOCKED — needs GCP project + credentials.]**
+
+### Track P4-A — Finish Phase 4 runtime-plane enforcement gaps
+
+- [ ] **P4A.1 Ingest scanning (scan → validate → register → entitle).** Add Trivy/Grype
+  scanning to the third-party/skill ingest path before a bundle becomes `published`/entitled.
+  Anchor: control-plane ingest routes + `SkillBundle` lifecycle. Acceptance: a bundle failing
+  a scan cannot be promoted or pulled; scan result persisted and surfaced via API/CLI.
+- [ ] **P4A.2 Runtime-plane drift repair (operator config-slaving).** Extend the operator so
+  manual edits to the Obot gateway / skill-registry config are reverted to control-plane intent.
+  Anchor: `apps/operator` reconcile loop; existing drift logic is detect-only for DB projections
+  (`routes/internal/projection-repair.ts`). Acceptance: an out-of-band edit to a managed plane
+  config is reconciled back without a pod restart; covered by a test.
+- [ ] **P4A.3 Tenant-side contract re-pull loop.** Verify/implement the tenant-pod path that
+  re-pulls `GET /tenants/:name/effective-contract` at agentic-loop boundaries so grant changes
+  take effect without restart. Anchor: `apps/tenant` + `2-config-map.ts` advisory contract.
+  Acceptance: removing a grant denies the next MCP call / skill pull (audited, no restart);
+  adding a grant becomes usable after the next re-pull. Add an integration test.
+
+### Track P4-B — Fleet Organizational Awareness (NOT STARTED — largest remaining effort)
+
+> This entire track is greenfield. All items are **[BLOCKED]** on P4B.0 — resolve that first.
+
+- [ ] **P4B.0 Lock Phase 4 awareness decisions.** Resolve the open decisions in the
+  "Phase 4 Decisions" section below before building. **[BLOCKED — product decision.]**
+- [ ] **P4B.1 Org Context / Awareness SDK.** New shared lib (`libs/awareness` or similar) that
+  every OpenClaw consumes, pinned to a contract version. Acceptance: tenant pods retrieve org
+  context through the SDK against Cognee with no control-plane retrieval mediation.
+- [ ] **P4B.2 AccessPolicy → Cognee grant compiler.** Wire `Awareness` grants through the grant
+  compiler and propagate AccessPolicy create/update/delete to Cognee grants within an SLO (today
+  only dataset-membership sync exists). Anchor: `core/grants/grant-compiler.ts` (`Awareness` type),
+  `routes/tenants.ts` Cognee sync. Acceptance: an AccessPolicy change reflects in Cognee grants
+  within the defined SLO; covered by a test.
+- [ ] **P4B.3 Awareness contract versioning + canary rollout.** Promote/rollback awareness
+  contract versions across the fleet without tenant downtime. Acceptance: canary cohort + rollback
+  path demonstrated.
+- [ ] **P4B.4 Golden-query / eval harness.** Conformance suite for awareness correctness, policy
+  safety, freshness, and citation quality. Acceptance: suite runs in CI and gates rollout.
+- [ ] **P4B.5 Fleet skills-sharing protocol + participation monitoring.** Cross-tenant skill
+  discovery/consumption protocol; control-plane monitors per-tenant participation, drifted
+  versions, and policy-violating skill executions. (Catalog CRUD + registry delivery already
+  exist; the fleet protocol layer does not.)
+- [ ] **P4B.6 Fleet awareness dashboards + SLOs.** Prometheus metrics + Grafana dashboards +
+  alert thresholds + runbook links for awareness SLOs (current `/prom` metrics have none).
 
 ---
 
@@ -827,36 +207,31 @@ apps/
     - Claws do not self-schedule; schedules survive pod suspension and restarts.
     - Wake/dispatch path guarded: job-scoped token, audited, no broad impersonation.
 
-13. **Control-Plane Frontend (Obot + Skills Admin Surface)**
-   - `apps/control-plane-ui` is the single admin surface for Obot config, MCP install, and skill catalog/entitlement management.
-   - UI must expose promotion/demotion workflows, third-party source install flows, and operator/drift visibility for both ingress planes.
-   - UI actions must map to control-plane APIs only (no direct plane admin), preserving control-plane as sole authority.
+13. **Control-Plane Admin Surface (API + CLI)**
+    - Every Obot/MCP/skill admin action reachable via the published API + `oc` CLI.
+    - UI parity (if desired) is an external-consumer concern; `apps/control-plane-ui` was removed from this repo in Phase 5.
 
 ### Current Implementation Progress
 
-> **Reconciled against code 2026-06-09.** Phase 4 was paused mid-flight to deliver Phase 5 (headless API/CLI + hosting adapter). The control-plane **management/data layer** for MCP & Skills is further along than this section previously claimed; the **runtime enforcement planes** and the **fleet-awareness track** are not started. The Phase 5 UI removal also invalidated the earlier control-plane-ui progress item.
+> **Reconciled against code 2026-06-10.**
 
-- [x] Org index schema v2 metadata fields now exist in the harvesting pipeline and control-plane persistence model for department/project scope, confidentiality, jurisdiction, retention class, ACL lineage, freshness markers, and ingest cursor tracking.
-- [x] Slack harvesting now emits the required lineage/freshness metadata, and ingestion rejects non-conformant org index records before they enter the shared awareness corpus.
-- [x] Operator tenant Deployment projected-token migration for `aud=obot-gateway` and `aud=skill-registry` is implemented (`apps/operator/src/tenants/deploy/3-deployment.ts`).
-- [~] Managed runtime contract Phase 4 scaffolding (`contractVersion`, `mcp.gateway`, `mcp.servers`, `skills.registry`, `skills.entitled`) exists in `apps/operator/src/tenants/deploy/2-config-map.ts`, **but `mcp.servers`/`skills.entitled` are explicitly advisory stubs** — real grant compilation at `GET /tenants/:name/effective-contract` is not wired into the runtime planes yet.
-- [x] Control-plane MCP/Skills/third-party **management surface** is implemented: Prisma models (`McpServer`, `McpServerGrant`, `McpServerCredential`, `SkillBundle`, `SkillEntitlement`, `SkillPromotion`, `ThirdPartySource`, `ThirdPartySourceItem`) plus CRUD routes (`routes/mcp-servers.ts`, `routes/skill-catalog.ts`, `routes/third-party-sources.ts`) and a `GET /tenants/:name/effective-contract` endpoint in the OpenAPI spec.
-- [⛔] ~~Control-plane UI Phase 4 slice (MCP servers, skill catalog, schedules pages + components)~~ — **removed by Phase 5.** `apps/control-plane-ui` no longer exists in this repo; admin surfaces are now API + `oc` CLI only. Any external admin UI lives in a consumer repo.
-- [ ] Connector rollout beyond Slack and the final conformance enforcement bar remain blocked on the open Phase 4 connector-adoption and department-scope decisions.
+- [x] Org index schema v2 metadata fields: department/project scope, confidentiality, jurisdiction, retention class, ACL lineage, freshness markers, ingest cursor tracking.
+- [x] Slack harvesting emits lineage/freshness metadata; ingestion rejects non-conformant org index records.
+- [x] Projected-token migration: `aud=obot-gateway` and `aud=skill-registry` implemented in `apps/operator/src/tenants/deploy/3-deployment.ts`.
+- [x] Real grant compilation: `apps/control-plane/src/core/grants/grant-compiler.ts` (scope precedence: priority → deny-over-allow → newest). `GET /tenants/:name/effective-contract` compiles Awareness/McpServer/SkillBundle grants. The `mcp.servers`/`skills.entitled` fields in `2-config-map.ts` are **intentionally advisory stubs** — authoritative grant is the effective-contract endpoint.
+- [x] Control-plane MCP/Skills/third-party management surface: Prisma models + CRUD routes (`routes/mcp-servers.ts`, `routes/skill-catalog.ts`, `routes/third-party-sources.ts`) + `GET /tenants/:name/effective-contract` in OpenAPI spec.
+- [⛔] ~~Control-plane UI Phase 4 slice~~ — removed by Phase 5; admin surfaces are API + `oc` CLI only.
+- [ ] Connector rollout beyond Slack blocked on open Phase 4 connector-adoption and department-scope decisions.
 
 ### Phase 4 Reality Check (Current Gaps)
 
-- [ ] **Obot MCP Gateway is not correctly implemented** (verified 2026-06-09). The Helm deployment (`obot-mcp-gateway-deployment.yaml`) is a non-functional placeholder:
-  - Image `ghcr.io/opencrane/obot-mcp-gateway:latest` is never built/published (registry returns 401; no in-repo Dockerfile or source).
-  - Env vars `OBOT_ADMIN_ENABLED` / `OBOT_HEADLESS` are **invented** — real Obot (`github.com/obot-platform/obot`) uses `OBOT_SERVER_ENABLE_AUTHENTICATION`, `OBOT_BOOTSTRAP_TOKEN`, `OBOT_SERVER_AUTH_OWNER_EMAILS`/`ADMIN_EMAILS`, requires a **PostgreSQL backend**, and an OIDC/auth config. None of that is wired.
-  - No config-slaving: the operator does not push the MCP server registry/grants to Obot, and there is no `aud=obot-gateway` projected-token validation or RFC 8693 downstream-credential brokering.
-  - **Decision (2026-06-09): MCP uses Obot (off-the-shelf, not self-built).** Action: deploy the real upstream Obot image with a correct config contract (Postgres, bootstrap token, auth), then build the operator reconcile path that slaves Obot's MCP server registry to the control-plane `McpServer` rows + compiled grants, and the projected-token / credential-broker integration.
-- [ ] **Skill Registry & Delivery service must be built in-house** (decision 2026-06-09 — *self-made*, unlike MCP). No in-repo service exists; `skill-registry-deployment.yaml` points at the never-published `ghcr.io/opencrane/skill-registry:latest`. Build a new `apps/skill-registry` (OCI/ORAS over Zot per Phase 4 design): per-read entitlement enforcement, `get-by-entitled-digest` only (no list/search on the pod-facing endpoint), existence-hiding 404s, `aud=skill-registry` projected-token validation, and Trivy/Grype ingest scanning. It consumes the existing control-plane `SkillBundle`/`SkillEntitlement` grant compiler output via the effective-contract.
-- [ ] Operator reconcile logic has **not** been updated for MCP + skills plane config/grants and drift repair — `apps/operator/src/tenants/operator.ts` reconcile contains no plane config-slaving or drift-repair path.
-- [x] Control-plane MCP/skills CRUD and third-party ingest routes **are** implemented (see Current Implementation Progress above). What remains is wiring these grants to the live planes and enforcing entitlement at the registry boundary, not the routes themselves.
-- [⛔] ~~Control-plane frontend CRUD/install flows~~ — out of scope after Phase 5 UI removal; delivered (if at all) by an external consumer UI against the published API.
-- [x] Helm manifests/NetworkPolicies/CRDs for both ingress planes are now scaffolded under `platform/helm/`, including plane services, plane deployments, ingress NetworkPolicies, and the `MCPServer`/`SkillRegistry`/`Schedule` CRDs.
-- [ ] Fleet-awareness track (Org Context SDK, awareness contract + versioned rollout, AccessPolicy→Cognee compiler, fleet evaluation harness, awareness SLO dashboards, skills-sharing protocol runtime) — **not started.**
+- [x] **Obot MCP Gateway deploy is real** (verified 2026-06-10). `obot-mcp-gateway-deployment.yaml` runs `ghcr.io/obot-platform/obot` with a PostgreSQL DSN and real `OBOT_SERVER_*` env, wired to poll `/api/internal/obot-registry`. `ObotHealthChecker` in `apps/operator/src/mcp-gateway/` monitors availability. **Remaining: `aud=obot-gateway` projected-token validation + RFC 8693 downstream-credential brokering not yet proven — fold into P4A.3.**
+- [x] **Skill Registry & Delivery service is built** (verified 2026-06-10). `apps/skill-registry/`: `aud=skill-registry` projected-token validation via Kubernetes TokenReview, get-by-digest only, existence-hiding 404s, per-read entitlement via `/api/internal/bundles/:digest/content`. **Note:** content served from control-plane DB, not yet OCI/ORAS-over-Zot. **Trivy/Grype scanning not implemented — P4A.1.**
+- [~] Operator drift repair: management/grant layer + Obot catalog sync are in place, but no path reverts manual edits to Obot or skill-registry config — detect-only, DB-projection-scoped. **P4A.2.**
+- [x] Control-plane MCP/skills CRUD and third-party ingest routes implemented; entitlement enforced at registry boundary. Residual: ingest scanning (P4A.1).
+- [⛔] ~~Control-plane frontend CRUD/install flows~~ — out of scope after Phase 5 UI removal.
+- [x] Helm manifests/NetworkPolicies/CRDs for both ingress planes scaffolded under `platform/helm/`.
+- [ ] Fleet-awareness track — not started.
 
 ### Key Tasks (Phase 4)
 
@@ -883,7 +258,6 @@ apps/
 | Helm templates + NetworkPolicies for both ingress planes | DevOps | 10h | Gateway + registry deployment |
 | CRDs: `MCPServer`, `ObotConfig`, `SkillBundle`, `SkillRegistry`, `Schedule` | Backend + DevOps | 8h | Phase 3 CRD baseline |
 | Central per-tenant scheduler (dispatch as tenant identity) | Backend | 12h | Projected-token identity |
-| Control-plane UI: MCP install, skill catalog, permission management, schedules | Frontend | 20h | MCP + skill + scheduler routes |
 | Tenant-cohort canary rollout and rollback playbook | DevOps | 10h | Feature flags + evaluation harness |
 | **Phase 4 Total** | | **324h** | |
 
@@ -903,144 +277,54 @@ apps/
 - [ ] Tenant pods authenticate to both planes via projected ServiceAccount tokens only; no static bearer tokens remain.
 - [ ] A tenant cannot obtain or read another tenant's gateway/downstream token (no shared/guessable credential anywhere).
 - [ ] Tenant pod filesystem/env contains no MCP downstream secret; secrets live only in Obot token store.
-- [ ] A tenant pod cannot enumerate or pull any skill outside its compiled entitlement, including by direct digest or search against the registry.
-- [ ] Removing a grant denies the next MCP call / skill pull (audited) without a pod restart.
-- [ ] Adding a grant becomes usable after the next contract re-pull, no restart.
-- [ ] Manual edits to either plane's config are reverted by operator drift reconcile.
-- [ ] MCP servers are manageable via control-plane CRUD with per-scope entitlement grants.
-- [ ] Third-party MCP servers and skills can be installed from upstream sources via the ingest pipeline (scan → validate → register → entitle).
+- [x] A tenant pod cannot enumerate or pull any skill outside its compiled entitlement. **Verified: skill-registry is get-by-digest-only, entitlement compiled per request, existence-hiding 404s, `aud=skill-registry` projected-token validation.**
+- [~] Removing a grant denies the next MCP call / skill pull (audited) without a pod restart. **Grant compiler + effective-contract recompute exist; tenant-side re-pull loop unverified — P4A.3.**
+- [~] Adding a grant becomes usable after the next contract re-pull, no restart. **Same — P4A.3.**
+- [ ] Manual edits to either plane's config are reverted by operator drift reconcile. **Not met: detect-only — P4A.2.**
+- [x] MCP servers are manageable via control-plane CRUD with per-scope entitlement grants.
+- [~] Third-party MCP servers and skills installable via the ingest pipeline. **Register/entitle exists; scan step missing — P4A.1.**
 - [ ] Skill catalog supports authoring, promotion/demotion with admin review, and Cognee-backed semantic search.
-- [⛔] ~~Control-plane UI supports Obot config, MCP install, skill catalog/entitlements, and third-party source installation~~ — **superseded by Phase 5:** the admin UI was removed from this repo. Re-scope this criterion to "every Obot/MCP/skill admin action is reachable via the published API + `oc` CLI"; UI parity (if desired) is an external-consumer concern.
+- [⛔] ~~Control-plane UI supports Obot config, MCP install, skill catalog/entitlements~~ — superseded by Phase 5. Re-scoped: every admin action reachable via API + `oc` CLI.
 - [ ] Per-tenant schedules survive pod suspension and restarts; claws run no self-owned cron.
 - [ ] All new code conforms to `AGENTS.md`.
 
-> **Phase 4 reconciliation note (2026-06-09):** All success criteria above except the projected-token Deployment migration and org-index-schema-v2 metadata remain unmet. The control-plane management/data layer (models + CRUD routes + effective-contract endpoint) exists, but no criterion here is satisfied by it alone — they require the live planes, grant compilation, and enforcement that are still open.
+> **Phase 4 status (2026-06-10):** Track A ~90% built (P4A.1–P4A.3 remaining). Track B greenfield, gated on P4B.0 decisions.
 
 ---
 
-## Phase 5: Headless Control Plane (API-First + CLI)
+## Phase 4 Decisions (Lock Before Execution of Track B)
 
-### Architecture Checkpoint: One Contract, Many Surfaces
+> All items below must be resolved before Track B implementation starts. Confirmed items are marked [x].
 
-OpenCrane's control plane becomes a **fully headless, API-first system**. The administrative experience is decoupled from the platform: the embedded Angular admin UI (`apps/control-plane-ui`) is extracted into a dedicated consumer repository. This repository ships the platform, its public API, and a first-class CLI — and nothing UI-specific.
+- [ ] Awareness SDK ownership model (single package vs per-domain modules).
+- [ ] Contract version rollout strategy (global vs tenant cohort waves).
+- [ ] Minimum required citation format in OpenClaw responses.
+- [ ] Fleet SLO thresholds for freshness, latency, and policy safety.
+- [ ] Connector conformance bar for org index schema v2 adoption.
+- [ ] Skills sharing scope rules (org/department/project/personal) and precedence model.
+- [ ] Protocol transport and delivery guarantees for claw participation events.
+- [ ] Monitoring severity model for non-participating claws and policy-violating executions.
+- [ ] Department scope semantics versus team scope migration rules.
+- [ ] Promotion and demotion authorization rules and required approvers per scope boundary.
+- [ ] OCI artifact naming, tagging, and digest pinning policy for skill versions.
+- [x] MCP credential custody: central broker (Obot holds downstream creds; pod never receives them). **Confirmed.**
+- [x] Skill substrate: build thin over OCI/ORAS + Cognee (not a ClawHub fork). **Confirmed.**
+- [ ] Obot MCP Gateway version and deployment topology (single replica vs HA).
+- [ ] Skill registry OCI store: Zot vs alternative OCI-compliant registry.
+- [ ] Third-party source auto-sync interval defaults and rate-limit policy.
+- [ ] Scheduler dispatch identity model: job-scoped token TTL and audience.
+- [ ] ClawdBot bootstrap injection content (BOOTSTRAP.MD, SOUL.MD) review and sign-off.
 
-1. **API as the single boundary**
-   - Every administrative and operational capability is reachable through the versioned HTTP API (`/api/v1`). No capability may be UI-only or CLI-only.
-   - The control-plane emits a machine-readable **OpenAPI** description as the source of truth for the contract.
-   - `libs/contracts` graduates from hand-written shared types to the **published API contract package**: generated TypeScript client + DTOs, consumed by the CLI and by any external surface.
+---
 
-2. **CLI as a first-class surface**
-   - A new `oc` CLI (`apps/cli`) wraps the same API and covers the full administrative surface (tenants, policies, datasets, MCP servers, skills, schedules, budgets, audit, contract/rollout operations).
-   - The CLI authenticates through the IAM/OIDC and projected-token paths defined in `AGENTS.md`; static bearer tokens remain a break-glass path only.
+## Go-Live Checklist (Open Items)
 
-3. **UI decoupling**
-   - `apps/control-plane-ui` is removed from this repository once API + CLI parity is verified, and continues life in an external consumer repository.
-   - The Helm chart and installers no longer build, bundle, or serve an admin UI. External consumers deploy their own admin surface against the API.
-   - The platform stays operable end-to-end with **zero UI present** (API + CLI only).
+| Item | Status | Done Criteria |
+|------|--------|---------------|
+| GCP installer smoke (`./platform/install.sh gcp`) | Not yet revalidated | Fresh GCP project deploys end-to-end; control-plane endpoint reachable; test tenant reconciles successfully. |
+| DNS + ingress verification | Not started | Domain and TLS resolve correctly; control-plane and tenant subdomains accessible externally. |
 
-4. **Hosting adapter migration** (co-deliverable with Phase 5)
-   - The scattered `storageProvider`/`csiDriver`/`crossplaneEnabled` config flags and cloud branches are replaced by the GoF Adapter pattern described in `docs/hosting-architecture.md`.
-   - On-prem (PVC + plain ServiceAccounts) becomes the explicit default. GCP, Azure, and AWS are opt-in adapters in `hosting/adapters/<cloud>/`.
-   - Terraform layout migrates to `terraform/core/` (cloud-agnostic) + `terraform/cloud/gcp/` (GCP-specific). The Crossplane module is removed.
-   - Helm gains `values/gcp.yaml` (and future `values/azure.yaml`, `values/aws.yaml`) overrides; `values.yaml` defaults to on-prem with no cloud vars required.
-
-### Decisions (Lock Before Execution)
-
-- [ ] API versioning scheme and deprecation policy (`/api/v1` + sunset headers).
-- [ ] OpenAPI generation approach (route annotations vs schema-first) and CI drift gate.
-- [ ] `libs/contracts` publication model (in-repo workspace package vs published artifact for external consumers).
-- [ ] CLI distribution (npm package, single-binary, or container) and auth/token storage model.
-- [ ] Parity bar required before UI removal (every current UI action has an audited API + CLI equivalent).
-- [ ] Auth migration sequencing (OIDC for human operators; projected tokens for automation; bearer retirement timeline).
-
-### Deliverables
-
-Phase 5 is executed in five sequential steps. Each step must be complete before the next starts.
-
-**Step 1 — Hosting adapter migration** (see `docs/hosting-architecture.md` for full design)
-   - Introduce `HostingAdapter` interface + `OnPremHostingAdapter` (Null Object default) in `apps/operator/src/hosting/`.
-   - Refactor `operator.ts` and all deploy builders to call the adapter; remove `storageProvider`/`csiDriver`/`crossplaneEnabled` config branches.
-   - Implement `GcpHostingAdapter` with in-operator GCS bucket provisioning via `@google-cloud/storage` + Workload Identity; delete the Crossplane `BucketClaim` path.
-   - Keep cloud SDKs out of the default footprint: each cloud SDK is an `optionalDependency`, imported only as `import type` and loaded via dynamic `import()` at the operation boundary, so an on-prem image (`pnpm install --no-optional`) ships and runs with no cloud SDK present.
-   - Split Terraform: carve `terraform/core/` (cloud-agnostic) from `terraform/cloud/gcp/`; remove the Crossplane module.
-   - Add `platform/helm/values/gcp.yaml` override; set on-prem defaults in `values.yaml` so zero cloud vars are required for a plain cluster install.
-   - Exit criterion: k3d e2e passes unchanged (on-prem adapter); GCP adapter unit tests pass against a fake bucket client; on-prem path builds and runs with the GCS SDK absent; import-boundary rule enforced.
-
-   > **Reconciled 2026-06-09 — partially complete.** The operator *code* path is migrated to the hosting adapter (`apps/operator/src/hosting/`), the Terraform split (`terraform/core/` + `terraform/cloud/gcp/`) exists, and `values/gcp.yaml` + on-prem defaults are in place. **However, Crossplane is NOT yet removed:** `platform/terraform/modules/crossplane/` still exists and is referenced from `terraform/main.tf`, `terraform/cloud/gcp/main.tf`, and `modules/app-deploy/main.tf`; `platform/helm/templates/crossplane-provider.yaml` is still a rendered template; and `platform/helm/values.yaml` + the k3d test values still carry Crossplane settings. The "remove the Crossplane module" exit item and the clean-cluster / GCP-adapter validation remain open.
-
-**Step 2 — API surface hardening + OpenAPI** ✅ Complete
-   - All business routes re-namespaced to `/api/v1/`. Infrastructure routes (`/healthz`, `/prom`) unchanged.
-   - Auth router moved to `/api/v1/auth`. SPA fallback regex updated to match new prefix.
-   - Consistent error envelopes: every `4xx`/`5xx` response now includes `{ error, code }` (e.g. `TENANT_NOT_FOUND`, `VALIDATION_ERROR`, `UPSTREAM_ERROR`).
-   - Global error handler middleware added (`src/middleware/error-handler.ts`); catches unhandled throws → 500 `INTERNAL_ERROR` envelope.
-   - Cursor-based keyset pagination implemented for `GET /api/v1/audit` (returns `{ data, pagination: { limit, hasMore, nextCursor? } }`).
-   - `openapi.json` emitted from the control-plane build (`pnpm build` runs `tsx scripts/emit-openapi.mts`).
-   - OpenAPI 3.1 spec covers all 50+ endpoints with request/response schemas, error envelope schema, pagination schema, and `securitySchemes`.
-   - `GET /api/v1/openapi.json` serves the spec at runtime.
-   - CI drift gate: `pnpm emit-openapi && git diff --exit-code openapi.json` — fails if spec is stale after a route change.
-
-**Step 3 — Contract / SDK package + `oc` CLI** ✅ Complete
-   - `openapi-typescript` generates typed `paths` from `openapi.json` into `libs/contracts/src/generated/api.ts`.
-   - `createControlPlaneClient(baseUrl, token?)` factory in `libs/contracts/src/client.ts` wraps `openapi-fetch`; fully typed against the generated paths.
-   - New `apps/cli` package (`oc` binary) with Commander; command groups: `tenants`, `policies`, `mcp`, `skills`, `budget`, `audit`, `tokens`, `providers`.
-   - Human and machine output modes (`--output table|json`); bearer-token auth via `OPENCRANE_TOKEN`/`--token`; `OPENCRANE_URL`/`--url` for server target.
-   - Non-interactive automation: every destructive command is non-interactive (no confirmation prompts); `--output json` + exit code semantics for scripting.
-   - `/providers/keys/{provider}` DELETE endpoint added to spec, route, and CLI.
-
-**Step 4 — Capability parity audit + auth alignment** ✅ Complete
-   - Audit of `control-plane-ui` API calls revealed four gaps: `/metrics/server`, `/auth/me`, `/auth/login`, `/auth/callback`, `/auth/logout` — all implemented in the backend but undocumented.
-   - All five endpoints added to the OpenAPI spec with full schemas (tags: Metrics, Auth; `security: []` on auth endpoints).
-   - `oc metrics server` and `oc metrics drift` commands added to the CLI.
-   - `oc auth me` (session introspection) and `oc auth logout` commands added to the CLI.
-   - The UI uses `/api/...` paths; the backend now exposes all routes at `/api/v1/...` (path migration from Step 2). The UI is intentionally broken — Step 5 removes it.
-   - Auth alignment: OIDC is the documented human-operator path (`GET /auth/login` → `/auth/callback` → session). Bearer token auth is the current automation path (break-glass; `OPENCRANE_TOKEN`/`--token`). Removal target: once Kubernetes projected ServiceAccount token support lands, bearer tokens will be retired. This is documented in `apps/cli/src/index.ts` and the OpenAPI spec info description.
-   - `/providers/keys/{provider}` DELETE (gap found during Step 3 close-out) was already added.
-
-**Step 5 — UI extraction + chart cleanup** ✅ Complete
-   - Removed `apps/control-plane-ui` from `pnpm-workspace.yaml` and deleted the directory from the repo.
-   - Removed UI static-serve block and now-unused path imports from `apps/control-plane/src/index.ts`; control plane serves API routes only.
-   - Helm, installers, and CI had no UI-specific wiring — no changes required there.
-   - Documented the external-consumer integration path: `docs/api.md`, `docs/cli.md`, `docs/integration-guide.md`.
-   - Reverse-compatibility sweep (pre-production, per `AGENTS.md` delivery direction — no legacy paths retained):
-     - Deleted the backward-compat `platform/helm/values-gcp.yaml` shim; canonical override is `platform/helm/values/gcp.yaml` (docs/README updated).
-     - Replaced the legacy `skills` tenant request field with the canonical `skillAllowlist` across `types.ts`, `routes/tenants.ts`, and the OpenAPI spec — the API now writes the field the CRD and operator actually consume (the old `skills` was written to `spec.skills`, which neither read).
-     - Removed the `OperatorConfig = OpenClawTenantOperatorConfig` backward-compat alias; unified on `OperatorConfig` everywhere.
-     - Regenerated `openapi.json` + `libs/contracts`; full build green; operator 49/49 and control-plane 32/32 tests pass.
-
-### Key Tasks (Phase 5)
-
-| Step | Task | Owner | Effort | Dependency |
-|------|------|-------|--------|-----------|
-| 1 | `HostingAdapter` interface + `OnPremHostingAdapter` + operator refactor | Backend | 10h | — |
-| 1 | `GcpHostingAdapter` + `GcpBucketClient`; remove Crossplane path | Backend | 12h | seam in place |
-| 1 | Terraform `core/` + `cloud/gcp/` split; remove Crossplane module | DevOps | 10h | GCP adapter |
-| 1 | Helm `values/gcp.yaml` + on-prem defaults; update installers | DevOps | 6h | Terraform split |
-| 2 | OpenAPI emission + `/api/v1` namespace + error/pagination conventions | Backend | 18h | Step 1 done |
-| 2 | CI contract-drift gate (routes ↔ OpenAPI) | Backend + QA | 8h | OpenAPI emission |
-| 3 | `libs/contracts` SDK generation + versioning | Backend | 14h | OpenAPI emission |
-| 3 | `oc` CLI scaffold + auth (OIDC/projected token) | Backend | 16h | SDK package |
-| 3 | CLI command groups (full admin surface) | Backend | 24h | CLI scaffold |
-| 4 | Capability parity audit (UI → API + CLI) | Backend + QA | 12h | CLI command groups |
-| 4 | Auth alignment (OIDC operators, token retirement plan) | Backend | 12h | parity audit |
-| 5 | UI extraction + workspace/Helm/CI cleanup | DevOps | 12h | ✅ Step 4 done |
-| 5 | Docs: API reference, CLI reference, integration guide | Backend | 10h | ✅ UI extracted |
-| **Total** | | | **164h** | |
-
-### Success Criteria
-
-- [x] The platform is fully operable with no admin UI deployed (API + CLI only).
-- [x] Every administrative capability has a documented API endpoint and a corresponding `oc` CLI command.
-- [x] OpenAPI is emitted from the build and enforced by a CI drift gate.
-- [x] `libs/contracts` publishes a generated, versioned client consumed by the CLI.
-- [x] `oc` CLI authenticates via OIDC/projected tokens; no command requires a static bearer token by default.
-- [x] `apps/control-plane-ui` is removed from this repository and the Helm chart/installers no longer reference it.
-- [x] An external repository can integrate this repo as a git submodule, run the full stack locally, and drive every operation through the published contract.
-- [ ] A clean Kubernetes cluster deploys the full platform with zero cloud env vars required (`HOSTING_PROVIDER` defaults to `onprem`).
-- [ ] The GCP adapter provisions per-tenant GCS buckets directly in the operator; no Crossplane dependency.
-- [ ] `terraform/core/` applies to any cluster; `terraform/cloud/gcp/` is the only GCP-specific path.
-- [ ] All new code conforms to `AGENTS.md`.
-
-> **Phase 5 reconciliation note (2026-06-09):** The API/CLI/contract/UI-removal criteria (first 7) are met. The final three (clean-cluster deploy, no-Crossplane GCP adapter, Terraform-only-GCP path) remain open because the Crossplane Terraform module + Helm template + values references were never deleted (see Step 1 note above). Phase 5 is therefore **"done except Crossplane teardown + cloud-path validation"**, not fully closed.
+All other checklist items (local baseline, k3d e2e, Helm chart, Docker CI publish, Prisma migrations, CI e2e gate, runbook) are complete. See `plan-done.md` for the full table.
 
 ---
 
@@ -1062,18 +346,6 @@ Phase 5 is executed in five sequential steps. Each step must be complete before 
 
 ---
 
-## Effort Summary
-
-| Phase | Effort | Timeline | Start |
-|-------|--------|----------|-------|
-| **Phase 1** (Core) | 90h | 3 weeks (2 eng + 1 ops) | Week 1 |
-| **Phase 2** (Cost control + retrieval foundation) | 127h | 2-3 weeks (parallel to Phase 1 end) | Week 2 |
-| **Phase 3** (Self-service + memory cutover) | 97h | 3 weeks (after Phase 2) | Week 4 |
-| **Phase 4** (Fleet organizational awareness + MCP & skills platform) | 324h | 8-10 weeks (after Phase 3) | Week 7 |
-| **Total** | **638h** | **16–20 weeks** | |
-
----
-
 ## Risk Mitigations
 
 | Risk | Mitigation |
@@ -1085,190 +357,3 @@ Phase 5 is executed in five sequential steps. Each step must be complete before 
 | Retrieval returns data outside tenant scope | Enforce AccessPolicy-filtered query path, deny-by-default checks, and conformance tests for allow/deny behavior |
 | Harvesting agent ingestion drift or stale context | Cursor-based sync with checkpoints, lag/error SLO alerts, and replay-capable ingest jobs |
 | Update rollback fails | Manual rollback instructions, `kubectl patch Tenant` to change version |
-
----
-
-## How to Use This Plan
-
-Each phase begins with an **Architecture Checkpoint**—a set of clarification questions. **Before starting a phase:**
-
-1. **Read the checkpoint questions** for that phase.
-2. **Answer them as a team** (product, engineering, ops).
-3. **Document decisions** (even if brief—e.g., "Use async key generation with retry loop, 30-second timeout").
-4. **Proceed with implementation** using the documented decisions.
-
-This avoids rework and ensures alignment across teams.
-
----
-
-## Phase-by-Phase Decisions Needed
-
-### Phase 1 Decisions (Closed)
-- [x] Helm chart owns LiteLLM directly; no separate subchart remains.
-- [x] Operator baseline is single-replica.
-- [x] Tenant isolation supports both GCS/Crossplane and PVC fallback.
-- [x] Local full-stack install supports PostgreSQL-backed bring-up.
-- [ ] Deferred hardening decisions remain open under the hardening backlog, not Phase 1.
-
-### Phase 2 Decisions (Locked 2026-05-28)
-- [x] LiteLLM namespace: same namespace as operator (decided — no separate namespace for Phase 2).
-- [x] Virtual key generation: sync (block reconcile) — implemented in operator reconcile step 4.
-- [x] Spend tracking: real-time from LiteLLM API, augmented with local budget metadata.
-- [x] Hard budget enforcement: LiteLLM rejects on overage (429); control-plane warns at 80%.
-- [x] Proxy optional: no — LiteLLM is cluster-wide; opt-out is not allowed.
-- [x] Org index storage profile: PostgreSQL-only for MVP; pgvector deferred to Phase 3+.
-- [x] Retrieval authorization source: AccessPolicy only — no additional ACL layer for Phase 2.
-- [x] Retrieval failure behavior: explicit 403 authorization errors (not silent empty results).
-- [x] First harvesting connector: Slack with cursor-based batch pull (15-minute interval).
-- [x] Ingestion SLO thresholds: lag < 30 minutes p95, failure rate < 1% per sync cycle.
-- [x] Single-writer ownership: operator sidecar owns PostgreSQL projection writes; request-path dual-writes retire in Phase 3.
-
-### Phase 3 Decisions (Complete by Week 4)
-- [x] Portal: embedded in Angular control-plane-ui (decided — no separate Next.js app)
-- [x] Auth baseline: bearer token for Phase 3 delivery.
-- [ ] OIDC migration plan: deferred to future work.
-- [x] Slack bot scope removed from roadmap scope.
-- [x] Approval workflow deferred to future work (not a Phase 3 gate).
-- [x] Future approval security direction: bearer token + optional 2FA toggle.
-- [x] Memory upgrade moved into Phase 3 required scope.
-- [x] Memory cutover wave: all tenants.
-- [x] Cutover mode: hard switch.
-- [x] Dataset granularity: org, team, project, personal.
-- [x] Dataset control surface: included in control-plane-ui.
-- [x] Tenant CR SLO target: 30 seconds.
-- [x] Freshness/invalidation: deferred to Sprint 3+ under Clawdbot control.
-
-### Phase 4 Decisions (Lock Before Execution)
-- [ ] Awareness SDK ownership model (single package vs per-domain modules).
-- [ ] Contract version rollout strategy (global vs tenant cohort waves).
-- [ ] Minimum required citation format in OpenClaw responses.
-- [ ] Fleet SLO thresholds for freshness, latency, and policy safety.
-- [ ] Connector conformance bar for org index schema v2 adoption.
-- [ ] Skills sharing scope rules (org/department/project/personal) and precedence model.
-- [ ] Protocol transport and delivery guarantees for claw participation events.
-- [ ] Monitoring severity model for non-participating claws and policy-violating executions.
-- [ ] Department scope semantics versus team scope migration rules.
-- [ ] Promotion and demotion authorization rules and required approvers per scope boundary.
-- [ ] OCI artifact naming, tagging, and digest pinning policy for skill versions.
-- [x] MCP credential custody: central broker (Obot holds downstream creds; pod never receives them). **Confirmed.**
-- [x] Skill substrate: build thin over OCI/ORAS + Cognee (not a ClawHub fork). **Confirmed.**
-- [ ] Obot MCP Gateway version and deployment topology (single replica vs HA).
-- [ ] Skill registry OCI store: Zot vs alternative OCI-compliant registry.
-- [ ] Third-party source auto-sync interval defaults and rate-limit policy.
-- [ ] Scheduler dispatch identity model: job-scoped token TTL and audience.
-- [ ] ClawdBot bootstrap injection content (BOOTSTRAP.MD, SOUL.MD) review and sign-off.
-
-#### Phase 3 Decision Lock: AccessPolicy -> Cognee Mapping
-
-- AccessPolicy remains the sole authorization source for retrieval decisions.
-- Dataset scopes are enforced as org/team/project/personal, with deny-by-default behavior.
-- Explicit deny always overrides allow on scope conflicts.
-- Retrieval path grants read access only to datasets explicitly allowed by effective policy.
-- Write/share/delete permissions are disabled by default and require explicit policy authorization.
-- Every retrieval authorization outcome must be audit-logged with principal, dataset scope, action, decision, and policy reason.
-
-#### Phase 3 Closure Rule: Deferred Approvals
-
-- Approval flow remains a Sprint 3+ deliverable and is not a blocker for Phase 3 closure.
-- Phase 3 is considered complete only if no success criterion depends on approval route delivery.
-- Future approval implementation baseline remains bearer token auth with optional 2FA toggle.
-
----
-
-## Go-Live Checklist (Deployable + Testable)
-
-This checklist is the execution bridge from current progress to a repeatable production deployment.
-
-| Item | Owner | Status | Done Criteria |
-|------|-------|--------|---------------|
-| Local baseline green (`pnpm install`, `pnpm test`, `pnpm build`) | Backend | Complete (validated 2026-04-16) | Commands pass locally after repository fixes. |
-| Local platform e2e (`platform/tests/k3d-e2e.sh`) | Backend + QA | Complete (validated 2026-04-26) | Helm install succeeds; tenant reconcile smoke test passes in k3d. |
-| Local full-stack bootstrap (`platform/tests/k3d-local.sh`) | Backend + DevOps | Complete (validated 2026-05-14 at script/render level) | Local path provisions PostgreSQL, control-plane, LiteLLM, migrations, and supports `default` + `strict` profiles. |
-| Helm chart completion (`platform/helm/templates`) | DevOps | Complete for Phase 1 baseline | Operator and control-plane deploy cleanly with required env/volumes/RBAC for the current baseline. |
-| GCP installer smoke (`./platform/install.sh gcp` or wizard) | DevOps | Not yet revalidated against latest parity changes | Fresh GCP project deploys end-to-end; control-plane endpoint reachable; test tenant reconciles successfully. |
-| Docker image publish automation | DevOps | Complete | CI builds/tests/e2e and publishes images on `main`. |
-| Prisma migration rollout (`prisma migrate deploy`) | Backend | Complete baseline | Migrations are committed and installer paths include migration execution. |
-| CI e2e gate | QA + DevOps | Complete baseline | CI runs the k3d smoke path and blocks regressions for the validated baseline. |
-| DNS + ingress verification | DevOps | Not started | Domain and TLS resolve correctly; control-plane and tenant subdomains accessible externally. |
-| Runbook + rollback docs | Backend + DevOps | ✅ Complete (2026-05-28) | `docs/runbook.md` covers install, verify, upgrade, rollback, and incident-response steps. |
-
-### Go/No-Go Criteria
-
-- Go when all checklist items are complete and at least one full non-interactive GCP install succeeds in a clean project.
-- No-Go if CI e2e gate, migration rollout, or external ingress verification is missing.
-
-### Recommended Execution Order
-
-1. Stabilize local baseline and k3d e2e.
-2. Complete Helm templates and migration automation.
-3. Add CI image publish and CI e2e gate.
-4. Run GCP smoke in a clean project and validate DNS/ingress.
-5. Finalize runbook and promote to production.
-
----
-
-## Implementation Status Update (2026-05-28)
-
-All major Phase 2 items are now implemented. The following sessions were completed in this cycle:
-
-### Session 1 — Phase 2 architecture decisions locked
-All open Phase 2 decisions resolved with concrete outcomes (see decision table above).
-
-### Session 2 — LiteLLM governance
-Already complete from previous cycle. Key generation, budget enforcement, spend endpoint, and tenant injection are all validated.
-
-### Session 3 — Retrieval foundation
-- `OrgDocument` and `HarvestingCursor` models added to Prisma schema (migration `0002_retrieval_foundation`).
-- Retrieval mediation in control-plane is superseded; retrieval now goes directly from OpenClaw/Clawdbot to Cognee.
-- Control-plane retains dataset membership and Cognee permission synchronization via `/api/tenants/:name/datasets`.
-
-### Session 4 — Harvesting-agent MVP
-- `apps/harvesting-agent` workspace package created with Slack source connector.
-- Cursor-based incremental sync: loads/saves `HarvestingCursor` between cycles.
-- Normalizes Slack messages to `NormalizedDocument` and upserts to `org_documents` via `_IngestDocuments`.
-- `/metrics` and `/healthz` HTTP endpoints for monitoring.
-- Configurable sync interval (default 15 minutes via `SLACK_SYNC_INTERVAL_MS`).
-
-### Session 5 — MCP + tenant skill governance
-- `skillAllowlist` field added to Tenant CRD and `TenantSpec` interface for durable, auditable skill governance.
-- `mcpPolicy` field added to Tenant CRD and `TenantSpec` for per-tenant invocation-level MCP enforcement.
-- `channels` field added to Tenant CRD for Slack/WhatsApp configuration (credential injection remains deferred).
-- Operator deployment builder injects `OPENCRANE_TENANT_MCP_ALLOW` and `OPENCRANE_TENANT_MCP_DENY` env vars.
-- `entrypoint.sh` updated: tenant CRD deny wins over policy-level allow; audit log messages on each decision.
-
-### Session 6 — Projection drift alerting + ownership
-- Webhook delivery added to `GET /api/metrics/projection-drift`: fires to `OPENCRANE_DRIFT_WEBHOOK_URL` when threshold exceeded.
-- Single-writer ownership decision documented: operator sidecar is the authoritative projector; request-path dual-writes retire in Phase 3.
-
-### Session 7 — runbook.md
-- `docs/runbook.md` written with install, verification, upgrade, rollback, and incident-response procedures.
-- Covers: LiteLLM key lifecycle, tenant lifecycle operations, projection drift remediation, observability reference.
-
-### Session 8 — Angular portal features
-- `TenantApiService` and `SpendApiService` added to `core/api/`.
-- `TenantSummary`, `TenantSpend`, `CreateTenantPayload`, and tenant phase enums split into dedicated `core/models/*` files.
-- Shared components: `TenantCardComponent`, `SpendChartComponent`.
-- Feature pages: `DashboardPageComponent`, `ProvisionPageComponent`, `TenantDetailPageComponent`, `AdminPanelPageComponent`.
-- App routes updated: `/dashboard`, `/provision`, `/tenants/:name`, `/admin`.
-
-### Session 9 — Operational maturity foundation
-- `TenantUpdateWithCanaryStrategyController` implemented in `apps/operator/src/tenant-rollout/` with npm release polling and canary rollout strategy.
-- Prometheus-format `/prom/metrics` endpoint added to control-plane with tenant phase gauges, org document count, audit entry counter, and process metrics.
-- `channels` model is being shifted toward adapter-oriented configuration rather than provider-specific inline schema.
-
-### Session 10 — Dataset membership controls + retrieval authorization
-- Added tenant dataset membership API endpoints: `GET /api/tenants/:name/datasets`, `PUT /api/tenants/:name/datasets` (Tenant CR annotation-backed).
-- Added reusable `DatasetMembershipEditorComponent` in control-plane-ui Tenant Detail page for org/team/project/personal controls.
-- Retrieval route now enforces dataset scope membership (`datasetScope`, `datasetId`) with explicit `DATASET_DENIED` responses and audit metadata.
-- Added conformance tests for dataset allow/deny retrieval paths and tenant dataset endpoint coverage.
-
-### Remaining work (not yet implemented)
-- Approval flow routes (future work) — `POST /api/tenants/approve/:name` and `spec.approvalRequired` CRD field, with bearer-token auth and optional 2FA toggle.
-- Channel credential injection into tenant pods (needs Secret reference wiring in deployment builder).
-- GCS snapshot before canary rollback.
-- Memory cutover implementation from PostgreSQL-only retrieval to Cognee write-through (`docs/memory.md`) with AccessPolicy-compatible authorization.
-- Dataset granularity baseline is now implemented for org/team/project/personal membership controls in control-plane + control-plane-ui; source-permission propagation migration for source-restricted content remains open.
-- Optional hardening: verify self-hosted Cognee audit completeness against OpenCrane incident and compliance requirements.
-- Freshness/invalidation implementation using source ETag/version metadata and age-based revalidation.
-- GCP smoke re-validation after Phase 2 changes.
-- DNS + ingress verification.
