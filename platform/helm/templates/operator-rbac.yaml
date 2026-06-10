@@ -38,10 +38,6 @@ rules:
   - apiGroups: ["cilium.io"]
     resources: ["ciliumnetworkpolicies"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-  # Crossplane bucket claims (optional, if Crossplane is installed)
-  - apiGroups: ["storage.opencrane.io"]
-    resources: ["bucketclaims"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   # Events for audit trail
   - apiGroups: [""]
     resources: ["events"]

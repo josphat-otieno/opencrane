@@ -4,8 +4,8 @@
 # Provisions networking, GKE, Artifact Registry, Cloud DNS, and then applies
 # the cloud-agnostic core module onto the resulting cluster.
 #
-# Crossplane is NOT included. Bucket provisioning is handled in-operator via
-# GcpHostingAdapter + @google-cloud/storage + Workload Identity.
+# Bucket provisioning is handled in-operator via GcpHostingAdapter +
+# @google-cloud/storage + Workload Identity.
 #
 # Usage:
 #   cd platform/terraform/cloud/gcp
@@ -72,7 +72,6 @@ module "artifact_registry"
 }
 
 # ---- Phase 4: Application (OpenCrane core + DB migration) ----
-# Crossplane module removed; bucket provisioning is now in-operator (GcpHostingAdapter).
 
 module "app_deploy"
 {
