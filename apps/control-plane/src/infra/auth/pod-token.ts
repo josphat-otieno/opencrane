@@ -8,7 +8,7 @@ import type { PodTokenMintParams, PodTokenResult } from "./pod-token.types.js";
  * This is the IAM-native counterpart to the kubelet-projected ServiceAccount
  * tokens the pod itself uses: instead of issuing a custom-signed JWT, the
  * control-plane asks the Kubernetes API server (TokenRequest subresource) for a
- * token bound to the tenant pod's ServiceAccount and the Obot gateway audience.
+ * token bound to the tenant pod's ServiceAccount.
  *
  * Requires `create` on `serviceaccounts/token` for the control-plane SA — see
  * `platform/helm/templates/control-plane-rbac.yaml`.
