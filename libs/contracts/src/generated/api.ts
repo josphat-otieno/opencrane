@@ -407,8 +407,7 @@ export interface paths {
         };
         /** List configured provider API keys (configured status only, never the key value) */
         get: operations["listProviderKeys"];
-        /** Create or update a provider API key */
-        put: operations["upsertProviderKey"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -424,7 +423,8 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put?: never;
+        /** Create or update a provider API key */
+        put: operations["upsertProviderKey"];
         post?: never;
         /** Delete a configured provider API key */
         delete: operations["deleteProviderKey"];
@@ -619,6 +619,26 @@ export interface paths {
         get: operations["getAuthStatus"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/pod-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Exchange the current OIDC session for a short-lived token to the caller's OpenClaw pod
+         * @description Single sign-on across the control plane and the tenant pod: requires an established OIDC session (cookie) and returns a short-lived, audience-bound token minted via the Kubernetes TokenRequest API for the caller's tenant. The token targets the OpenClaw pod's session audience (reachable at `ingressHost`) — it is NOT an `obot-gateway` token; Obot is called only from inside the pod. The tenant is resolved solely from the session's verified email, so a caller cannot obtain a token for another user's pod. Re-call before `expiresAt`; re-login only when the session itself expires. Returns 401 without a session, 403 when no tenant matches the session email, 409 when the pod has no ingress host yet or when the email maps to more than one tenant.
+         */
+        post: operations["exchangePodToken"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2103,13 +2123,14 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                provider: string;
+            };
             cookie?: never;
         };
         requestBody: {
             content: {
                 "application/json": {
-                    provider: string;
                     apiKey: string;
                 };
             };
@@ -2498,6 +2519,76 @@ export interface operations {
                             email?: string;
                             name?: string;
                         } | null;
+                    };
+                };
+            };
+        };
+    };
+    exchangePodToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Short-lived pod access token. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description Short-lived bearer token bound to the OpenClaw pod session audience. */
+                        token: string;
+                        /**
+                         * Format: date-time
+                         * @description ISO-8601 expiry reported by the API server.
+                         */
+                        expiresAt: string;
+                        /** @description Resolved tenant (pod) name. */
+                        tenant: string;
+                        /** @description Host to reach the tenant's OpenClaw pod session API. */
+                        ingressHost: string;
+                        /** @description Audience the token is bound to (the OpenClaw pod session, not obot-gateway). */
+                        audience: string;
+                    };
+                };
+            };
+            /** @description No authenticated session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error?: string;
+                        code?: string;
+                    };
+                };
+            };
+            /** @description Session has no email claim, or no tenant is provisioned for it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error?: string;
+                        code?: string;
+                    };
+                };
+            };
+            /** @description The tenant pod has no ingress host yet. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error?: string;
+                        code?: string;
                     };
                 };
             };
