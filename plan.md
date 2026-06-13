@@ -7,7 +7,7 @@
 - **Phase 4 Track A** (MCP & Skills runtime planes): complete. P4A.1–P4A.3 implemented, tested, and Helm/NetworkPolicy wired (2026-06-10).
 - **Phase 4 Track B** (fleet organizational awareness): not started. Blocked on product decisions (P4B.0). See Phase 4 Decisions below before building anything in Track B.
 - **Track P4-C** (agent identity & personalisation via OpenClaw workspace files): scoped, design decisions locked. P4C.1–P4C.5 in Open Backlog; not yet started.
-- **Track CONN** (OpenClaw connection auth & session security): pairing-broker endpoint implemented (2026-06-13); connection-security posture **decided = Option B** (short-lived re-brokered credentials + per-user kill-switch; control plane stays connection-stateless). Full trade-off in `docs/claw-security-considerations.md`. Remaining hardening / kill-switch items in Open Backlog; proxy (Option C) deferred as a contingent vision.
+- **Track CONN** (OpenClaw connection auth & session security): pairing-broker endpoint implemented (2026-06-13); connection-security posture **decided = Option B** (short-lived re-brokered credentials + per-user kill-switch; control plane stays connection-stateless). Full trade-off in `docs/claw-security-considerations.md`. Transport hardening (HSTS, fail-closed `Secure` cookie, `wss://`-only broker, opt-in HTTP→HTTPS redirect) landed 2026-06-13 (CONN.2). Remaining kill-switch / provisioning items in Open Backlog; proxy (Option C) deferred as a contingent vision.
 - **Branch**: `phase-4-5-fixes`, 6 commits ahead of `main`.
 
 ---
@@ -154,14 +154,19 @@ standing per-frame audit choke point are **not** in scope → that is the proxy
   as fallback, returns `bootstrapToken:null` once paired. Session required; email→tenant
   resolution fail-closed on ambiguity. Tests: `auth-pod-token.test.ts` (7) +
   `openclaw-pairing.test.ts` (5); `tsc --noEmit` clean, 57/57 control-plane tests pass.
-- [ ] **CONN.2 Transport hardening (do regardless).** HSTS
-  (`max-age=63072000; includeSubDomains; preload`) via `helmet` **or** confirmed at the
-  ingress; force `Secure` cookie in prod (today `cookieSecure` is *inferred* from the
-  `OIDC_REDIRECT_URI` scheme — make it explicit/fail-closed, consider `__Host-` prefix);
-  HTTP→HTTPS redirect; reject non-`wss://` gateway URLs in the broker. Anchors:
-  `infra/auth/oidc.service.ts` (cookie block), `infra/auth/oidc.config.ts` (`cookieSecure`),
-  `infra/auth/openclaw-pairing.ts`, `index.ts`. Acceptance: HSTS header present; cookie
-  `Secure` in prod regardless of redirect-URI scheme; broker refuses `ws://`. (security doc §10–§11)
+- [x] **CONN.2 Transport hardening (do regardless).** (2026-06-13) Dependency-free
+  `_TransportSecurity` middleware (`infra/middleware/transport-security.middleware.ts`,
+  wired first in `index.ts`) emits HSTS `max-age=63072000; includeSubDomains; preload` on
+  forwarded-HTTPS responses and offers an opt-in (`OPENCRANE_FORCE_HTTPS`) 308 HTTP→HTTPS
+  redirect for safe methods — off by default so internal plain-HTTP health probes are not
+  bounced (ingress normally enforces TLS). `cookieSecure` is now `_resolveCookieSecure`
+  (`infra/auth/oidc.config.ts`): explicit `OIDC_COOKIE_SECURE` wins, else **forced `true`
+  in production** regardless of redirect-URI scheme, else inferred for dev. Broker
+  `_ResolveOpenClawPairing` (`infra/auth/openclaw-pairing.ts`) now rejects any non-`wss://`
+  stored gateway URL and falls back to `wss://<ingressHost>` (or null). Tests:
+  `transport-security.test.ts` (6) + `oidc-config.test.ts` (3) + 2 added wss-guard cases;
+  build + `tsc --noEmit` clean, 68/68 control-plane tests pass. (`__Host-` cookie prefix not adopted — it
+  requires path `/` + no Domain and is deferred to CONN.6 doc review.) (security doc §10–§11)
 - [ ] **CONN.3 Pairing-link provisioning + short bootstrap.** Populate
   `configOverrides.openclaw.{gatewayUrl,bootstrapToken}` when the operator provisions a
   tenant pod, and mint/rotate **single-use, ~30–60s** bootstrap tokens. **[BLOCKED]** —

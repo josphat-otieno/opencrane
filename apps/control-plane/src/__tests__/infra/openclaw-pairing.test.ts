@@ -33,4 +33,15 @@ describe("_ResolveOpenClawPairing", function _suite()
 		expect(_ResolveOpenClawPairing("not-an-object", "pod.example.com")?.gatewayUrl).toBe("wss://pod.example.com");
 		expect(_ResolveOpenClawPairing({ openclaw: 42 }, null)).toBeNull();
 	});
+
+	it("rejects a non-wss stored gateway URL, falling back to wss ingress", function _rejectsWs()
+	{
+		const pairing = _ResolveOpenClawPairing({ openclaw: { gatewayUrl: "ws://pod/gateway", bootstrapToken: "boot" } }, "pod.example.com");
+		expect(pairing).toEqual({ gatewayUrl: "wss://pod.example.com", bootstrapToken: "boot" });
+	});
+
+	it("returns null when the stored URL is non-wss and there is no ingress host", function _rejectsWsNoFallback()
+	{
+		expect(_ResolveOpenClawPairing({ openclaw: { gatewayUrl: "https://pod/gateway" } }, null)).toBeNull();
+	});
 });

@@ -1,18 +1,4 @@
-/**
- * Resolved OpenClaw pairing details for a tenant pod, derived from the pod's
- * pairing link (`{ url, bootstrapToken }`).
- */
-export interface OpenClawPairing
-{
-  /** Gateway WebSocket URL (`wss://…`) the browser connects to. */
-  gatewayUrl: string;
-
-  /**
-   * One-time bootstrap token for first pairing, or null once a device has been
-   * paired (the client then reconnects with its persisted device token).
-   */
-  bootstrapToken: string | null;
-}
+import type { OpenClawPairing } from "./openclaw-pairing.types.js";
 
 /** Shape we read out of `Tenant.configOverrides.openclaw`. */
 interface _StoredPairing
@@ -36,8 +22,12 @@ export function _ResolveOpenClawPairing(configOverrides: unknown, ingressHost: s
 {
   const stored = _ReadStoredPairing(configOverrides);
 
-  const gatewayUrl = typeof stored?.gatewayUrl === "string" && stored.gatewayUrl.length > 0
-    ? stored.gatewayUrl
+  // Only ever hand the browser an encrypted `wss://` endpoint. A stored `ws://`
+  // (or any non-wss) URL is rejected and we fall back to the `wss://<ingressHost>`
+  // form — never downgrade the transport, even if the column is misconfigured.
+  const storedUrl = typeof stored?.gatewayUrl === "string" ? stored.gatewayUrl : "";
+  const gatewayUrl = storedUrl.startsWith("wss://")
+    ? storedUrl
     : ingressHost
       ? `wss://${ingressHost}`
       : null;
@@ -54,7 +44,12 @@ export function _ResolveOpenClawPairing(configOverrides: unknown, ingressHost: s
   return { gatewayUrl, bootstrapToken };
 }
 
-/** Safely extract the `openclaw` block from the `configOverrides` JSON. */
+/**
+ * Safely extract the `openclaw` block from the `configOverrides` JSON.
+ *
+ * @param configOverrides - The tenant's `configOverrides` column (unknown shape).
+ * @returns The stored pairing block, or null when missing/malformed.
+ */
 function _ReadStoredPairing(configOverrides: unknown): _StoredPairing | null
 {
   if (typeof configOverrides !== "object" || configOverrides === null)

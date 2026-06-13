@@ -10,6 +10,7 @@ import { ___AuthRouter } from "./infra/auth/auth.router.js";
 import { ___CreateOidcAuthService } from "./infra/auth/oidc.service.js";
 import { ___CreatePrismaClient } from "./infra/db/db.js";
 import { ___AuthMiddleware } from "./infra/middleware/auth.middleware.js";
+import { _TransportSecurity } from "./infra/middleware/transport-security.middleware.js";
 import { _ErrorHandler } from "./middleware/error-handler.js";
 
 import { _RegisterRoutes } from "./routes.js";
@@ -33,6 +34,9 @@ export function createApp(prisma: PrismaClient, customApi: k8s.CustomObjectsApi,
 
   // Middleware
   app.set("trust proxy", 1);
+  // Transport security first: HSTS on HTTPS responses + optional HTTP→HTTPS redirect,
+  // before any body parsing or session handling.
+  app.use(_TransportSecurity());
   app.use(express.json());
   app.use(pinoHttp({ logger: log }));
   app.use(authService.createSessionMiddleware());

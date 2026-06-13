@@ -1,42 +1,4 @@
-/** Runtime configuration for OIDC-backed control-plane sessions. */
-export interface OidcAuthConfig
-{
-  /** Whether OIDC is enabled for human login flows. */
-  enabled: boolean;
-
-  /** Issuer URL used for OIDC discovery. */
-  issuerUrl: string;
-
-  /** Registered OAuth client identifier. */
-  clientId: string;
-
-  /** Optional confidential-client secret. */
-  clientSecret?: string;
-
-  /** Callback URI registered with the identity provider. */
-  redirectUri: string;
-
-  /** OIDC scopes requested during login. */
-  scopes: string;
-
-  /** Secret used to sign the local session cookie. */
-  sessionSecret: string;
-
-  /** Session cookie name. */
-  cookieName: string;
-
-  /** Whether the session cookie must be HTTPS-only. */
-  cookieSecure: boolean;
-
-  /** Session lifetime in milliseconds. */
-  sessionMaxAgeMs: number;
-
-  /** Lowercased allowlist of email domains. */
-  allowedEmailDomains: string[];
-
-  /** Lowercased allowlist of full email addresses. */
-  allowedEmails: string[];
-}
+import type { OidcAuthConfig } from "./oidc.config.types.js";
 
 /** Load OIDC session auth configuration from environment variables. */
 export function ___LoadOidcAuthConfig(): OidcAuthConfig
@@ -86,11 +48,40 @@ export function ___LoadOidcAuthConfig(): OidcAuthConfig
     scopes: process.env.OIDC_SCOPES?.trim() || "openid email profile",
     sessionSecret,
     cookieName: process.env.OIDC_COOKIE_NAME?.trim() || "opencrane_oidc",
-    cookieSecure: _readBoolean(process.env.OIDC_COOKIE_SECURE, redirectUri.startsWith("https://")),
+    cookieSecure: _resolveCookieSecure(process.env.OIDC_COOKIE_SECURE, redirectUri),
     sessionMaxAgeMs: _readNumber(process.env.OIDC_SESSION_MAX_AGE_SECONDS, 12 * 60 * 60) * 1000,
     allowedEmailDomains: _readCsv(process.env.OIDC_ALLOWED_EMAIL_DOMAINS),
     allowedEmails: _readCsv(process.env.OIDC_ALLOWED_EMAILS),
   };
+}
+
+/**
+ * Resolve whether the session cookie must be HTTPS-only, fail-closed for prod.
+ *
+ * An explicit `OIDC_COOKIE_SECURE` always wins (set `=false` for local http dev).
+ * Otherwise production forces `Secure` regardless of the redirect-URI scheme, so a
+ * misconfigured `OIDC_REDIRECT_URI` can never silently downgrade the cookie to be
+ * sent over plain HTTP. Non-production falls back to inferring from the redirect URI.
+ *
+ * @param rawValue    - The raw `OIDC_COOKIE_SECURE` value, if set.
+ * @param redirectUri - The configured OIDC redirect URI.
+ */
+function _resolveCookieSecure(rawValue: string | undefined, redirectUri: string): boolean
+{
+  // 1. Explicit override wins — the only way to disable Secure (e.g. local http dev).
+  if (rawValue && rawValue.trim() !== "")
+  {
+    return _readBoolean(rawValue, false);
+  }
+
+  // 2. Fail-closed in production — require Secure cookies whatever the redirect scheme.
+  if ((process.env.NODE_ENV ?? "").trim().toLowerCase() === "production")
+  {
+    return true;
+  }
+
+  // 3. Dev convenience — infer from the redirect URI scheme so http dev works.
+  return redirectUri.startsWith("https://");
 }
 
 /** Parse a boolean environment variable with a fallback default. */
