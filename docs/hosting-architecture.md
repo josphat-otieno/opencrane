@@ -1,6 +1,11 @@
 # Hosting Architecture — On-Prem Core with Cloud Adapters
 
-> **Status:** proposed (architecture). Supersedes the scattered `storageProvider` / `crossplaneEnabled` branching in the operator and the GCP-only Terraform layout. Implementation is sequenced in §9.
+> **Status:** implemented (Phase 5). The `HostingAdapter` seam, `OnPremHostingAdapter`
+> (default) + `GcpHostingAdapter`, the Terraform `core/` + `cloud/gcp/` split, and the
+> Crossplane removal are all live. The scattered `storageProvider` / `crossplaneEnabled`
+> branching this superseded is gone. §9 records the (completed) migration sequence; the
+> Azure/AWS adapters remain agreed extension points, not yet built. TLS issuance for the
+> tenant ingress is being wired via cert-manager (§6.3, plan CONN.8).
 
 ## 1. Goals & Principles
 
@@ -376,8 +381,13 @@ Explicit, not implied. A blank cell means "not implemented" — the provider is 
 | External storage provisioning | n/a (PVC) | `@google-cloud/storage` (in-operator) | Blob SDK | S3 SDK |
 | Workload identity | Kubernetes SA only | GKE Workload Identity | AKS Workload Identity | EKS IRSA |
 | Ingress class | nginx | gce | azure/application-gateway | alb |
+| Ingress TLS | cert-manager wildcard (§6.3) | cert-manager wildcard (§6.3) | cert-manager wildcard | cert-manager wildcard |
 | Secrets backing | in-cluster Secret | in-cluster Secret (ESO optional) | in-cluster Secret (ESO optional) | in-cluster Secret (ESO optional) |
 | DNS | external-dns / manual | Cloud DNS (infra layer) | Azure DNS | Route 53 |
+
+TLS is provider-agnostic on purpose: a single k8s-native mechanism (cert-manager
+issuing a wildcard cert via ACME DNS-01) works the same on every substrate, rather
+than per-cloud managed certs. See §6.3.
 
 GCP is the first fully-built cloud adapter. Azure/AWS folders exist as the agreed extension points; they ship only when their cells are real.
 
@@ -408,9 +418,11 @@ platform/terraform/
 ### 6.2 Helm
 
 ```
-platform/helm/opencrane/
+platform/helm/
+├── Chart.yaml
 ├── values.yaml                # ON-PREM DEFAULTS: hosting.provider=onprem, storage.mode=pvc,
-│                              #   ingress.className=nginx, NO cloud blocks set.
+│                              #   ingress.className=nginx, ingress.tls.enabled=false,
+│                              #   certManager.enabled=false, NO cloud blocks set.
 └── values/
     ├── gcp.yaml               # hosting.provider=gcp, gcsfuse CSI, gce ingress, workloadIdentity
     ├── azure.yaml             # (future)
@@ -420,13 +432,37 @@ platform/helm/opencrane/
 Install examples:
 ```bash
 # On-prem / self-hosted (default — no override file needed)
-helm install opencrane platform/helm/opencrane
+helm install opencrane platform/helm
 
 # GCP
-helm install opencrane platform/helm/opencrane -f platform/helm/opencrane/values/gcp.yaml
+helm install opencrane platform/helm -f platform/helm/values/gcp.yaml
 ```
 
 The chart's `hosting` block maps 1:1 onto the operator's `hostingProvider` + per-cloud config, so the Helm value selects the adapter.
+
+### 6.3 Ingress TLS (cert-manager wildcard — plan CONN.8)
+
+TLS is deliberately **k8s-native and provider-agnostic** rather than per-cloud managed
+certs, so the same mechanism works on-prem and on any cloud:
+
+- **cert-manager** issues one **wildcard `*.<ingress.domain>` (+ apex) certificate** via
+  ACME **DNS-01** (wildcards require DNS-01) into the `ingress.tls.secretName` Secret
+  (default `opencrane-wildcard-tls`). One cert covers every `<tenant>.<domain>` pod, so
+  adding a tenant needs no new issuance.
+- The chart renders a `ClusterIssuer` + wildcard `Certificate`
+  (`platform/helm/templates/cluster-issuer.yaml`) when `certManager.enabled=true` —
+  `mode: selfSigned` for dev/local, `mode: acme` with a DNS-01 solver for production.
+- The operator adds a `tls:` block to each tenant Ingress (referencing the shared
+  wildcard Secret) when `ingress.tls.enabled=true`, driven by `INGRESS_TLS_ENABLED` /
+  `INGRESS_TLS_SECRET_NAME` env. Default off → no behaviour change.
+- **Constraint:** TLS Secrets are namespace-scoped, so `certManager.certificateNamespace`
+  must equal the namespace tenant Ingresses run in (the operator `watchNamespace`). The
+  one-label-per-tenant, apex-as-SAN, host-only-cookie, and delegated-DNS-subzone rules
+  live in plan CONN.8.
+
+Remaining CONN.8 follow-ups: a DNS-provider onboarding CLI/API (`oc platform dns set`),
+cross-namespace cert distribution if tenants ever split across namespaces, dev wildcard
+hostnames via `sslip.io`/`nip.io`, and a live ACME end-to-end check.
 
 ## 7. Configuration Model
 
@@ -456,16 +492,17 @@ Per the prior investigation, Crossplane never actually provisioned buckets (no C
 - The `BucketClaim` builder, `crossplaneEnabled` flag, `crossplane-provider.yaml`, and the Terraform `crossplane` module are deleted from the core path.
 - Crossplane remains *available* as an optional, GCP-scoped component under `cloud/gcp/` for teams that prefer a Composition-based model — but it is never installed for on-prem and never on the critical path.
 
-## 9. Migration Plan
+## 9. Migration Plan (completed in Phase 5)
 
-Additive first, cutover last, so the build stays green throughout.
+Executed additive-first, cutover-last, so the build stayed green throughout. Steps 1–5
+are **done**; step 6 (Azure/AWS) remains a future extension that needs no core change.
 
-1. **Introduce the seam (additive).** Add `hosting/` with the interface, DTOs, `OnPremHostingAdapter`, and the factory. Add `hostingProvider` to config defaulting to `onprem`. Nothing consumes it yet. Build + tests stay green.
-2. **Route the on-prem path through the adapter.** Refactor `operator.ts` and the deploy builders to consume `HostingAdapter` for SA identity, state volume, and ingress. With the default adapter this reproduces today's PVC/local behaviour exactly. Update operator unit tests to assert against the adapter output.
-3. **Build the GCP adapter.** Implement `GcpHostingAdapter` + `GcpBucketClient` (in-operator bucket provisioning) + `gcp-hosting.types.ts`. Add `values/gcp.yaml`. Delete the Crossplane `BucketClaim` path and `crossplaneEnabled`.
-4. **Split infra folders.** Carve `terraform/core/` out of `main.tf`; move GCP modules under `cloud/gcp/`; drop the `crossplane` module from `core`. Update installers (`platform/install.sh`, `deploy.sh`) to call `core` for on-prem and `cloud/gcp` for GCP.
-5. **Remove legacy flags + docs.** Delete `storageProvider`/`csiDriver`/`gcpProject`/`crossplaneEnabled`; update README architecture and `plan.md` parity tables to describe on-prem-default + cloud-override.
-6. **(Future) Azure/AWS adapters.** New folders only; no core change required — the proof the seam is correct.
+1. ✅ **Introduce the seam (additive).** Add `hosting/` with the interface, DTOs, `OnPremHostingAdapter`, and the factory. Add `hostingProvider` to config defaulting to `onprem`. Nothing consumes it yet. Build + tests stay green.
+2. ✅ **Route the on-prem path through the adapter.** `operator.ts` and the deploy builders consume `HostingAdapter` for SA identity, state volume, and ingress; with the default adapter this reproduces the PVC/local behaviour exactly. Operator unit tests assert against the adapter output.
+3. ✅ **Build the GCP adapter.** `GcpHostingAdapter` + `GcpBucketClient` (in-operator bucket provisioning) + `gcp-hosting.types.ts` + `values/gcp.yaml`. The Crossplane `BucketClaim` path and `crossplaneEnabled` are deleted.
+4. ✅ **Split infra folders.** `terraform/core/` carved out; GCP modules under `cloud/gcp/`; `crossplane` module dropped from `core`. Installers (`platform/install.sh`, `deploy.sh`) call `core` for on-prem and `cloud/gcp` for GCP.
+5. ✅ **Remove legacy flags + docs.** `storageProvider`/`csiDriver`/`gcpProject`/`crossplaneEnabled` deleted; README + `plan.md` describe on-prem-default + cloud-override.
+6. ⬜ **(Future) Azure/AWS adapters.** New folders only; no core change required — the proof the seam is correct.
 
 ## 10. Testing
 

@@ -1,14 +1,34 @@
-# OpenCrane Memory Layer (Target State)
+# OpenCrane Memory Layer (Cognee retrieval)
 
 ## Purpose
 
-This document defines the desired memory architecture for OpenCrane based on the decisions captured in `memory-plan-brief.md`.
+This document defines OpenCrane's **organizational memory / retrieval** architecture —
+the Cognee-backed knowledge layer that tenant agents query during the agentic loop.
 
-The memory layer must provide:
+The memory layer provides:
 - Tenant-safe retrieval for agent workflows.
 - Deterministic write-through memory from source reads.
 - AccessPolicy-compatible authorization behavior.
 - Freshness controls to reduce stale-memory responses.
+
+> **Not to be confused with** the per-agent workspace `MEMORY.md` file (an L2 tenant
+> workspace doc seeded into the pod — see the agent-identity track / [obot.md](./obot.md)
+> for the workspace layering). *This* document is about the **Cognee retrieval plane**,
+> a different thing entirely: org knowledge, not the agent's own scratch notes.
+
+## Current state (2026-06)
+
+The core path is **cut over and live**; some controls remain deferred:
+
+- ✅ Retrieval is **direct** from the OpenClaw/Clawdbot runtime to Cognee; the control
+  plane is *not* in the retrieval request path.
+- ✅ The control plane translates **AccessPolicy outcomes into Cognee dataset
+  memberships/grants** (with projection-drift detection + repair routes).
+- ✅ Memory path cut over from PostgreSQL-only retrieval to **Cognee write-through**.
+- ⏸️ **Deferred:** the full freshness/invalidation implementation (§Freshness below),
+  source-permission propagation hardening, and self-hosted Cognee audit-log parity.
+
+The sections below describe the full design; treat ⏸️-noted parts as target behavior.
 
 ## Architecture Summary
 
