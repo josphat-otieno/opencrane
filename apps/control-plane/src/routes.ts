@@ -23,6 +23,7 @@ import { OciBundleStore } from "./core/oci/oci-bundle-store.js";
 import { _BuildGatewayAdmin } from "./core/connections/gateway-admin.js";
 import { _BuildDocMergeReconciler } from "./core/personalisation/reconciler.js";
 import { companyDocsRouter } from "./routes/company-docs.js";
+import { platformDnsRouter } from "./routes/platform-dns.js";
 import { _CheckDbHealth } from "./infra/db/healtcheck-db.js";
 
 /**
@@ -84,6 +85,7 @@ export function _RegisterRoutes(app: Express, prisma: PrismaClient, customApi: k
   app.use("/api/v1/skills/catalog", skillCatalogRouter(prisma, ociBundleStore));
   app.use("/api/v1/third-party-sources", thirdPartySourcesRouter(prisma));
   app.use("/api/v1/org/workspace-docs", companyDocsRouter(prisma, _BuildDocMergeReconciler()));
+  app.use("/api/v1/platform/dns", platformDnsRouter(customApi, coreApi));
   app.use("/api/v1/access-tokens", accessTokensRouter(prisma));
   app.use("/api/v1/providers/keys", providerKeysRouter(prisma));
   app.use("/api/v1/openapi.json", openapiRouter());

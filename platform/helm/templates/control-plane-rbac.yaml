@@ -35,6 +35,18 @@ rules:
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get", "list", "delete", "deletecollection"]
+  # Onboarding TLS issuance (CONN.8a): the `oc platform dns set` endpoint upserts
+  # a cert-manager ACME DNS-01 ClusterIssuer (cluster-scoped) and the DNS-provider
+  # credentials Secret it references. `clusterissuers` is inherently cluster-wide;
+  # `secrets` write is needed because cert-manager reads ClusterIssuer solver
+  # Secrets from its own controller namespace. Tighten the secrets rule to a
+  # namespaced Role in the cert-manager namespace if cluster-wide write is too broad.
+  - apiGroups: ["cert-manager.io"]
+    resources: ["clusterissuers"]
+    verbs: ["get", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "update", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

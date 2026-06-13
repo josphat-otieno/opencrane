@@ -7,7 +7,7 @@
 - **Phase 4 Track A** (MCP & Skills runtime planes): complete. P4A.1–P4A.3 implemented, tested, and Helm/NetworkPolicy wired (2026-06-10).
 - **Phase 4 Track B** (fleet organizational awareness): **decision-unblocked 2026-06-13** (P4B.0 closed — all Phase 4 Decisions resolved/defaulted). Build not yet started; greenfield, ~324h (P4B.1–P4B.6). See Phase 4 Decisions for the locked choices.
 - **Track P4-C** (agent identity & personalisation via OpenClaw workspace files): **P4C.1–P4C.5 landed** (2026-06-13). Workspace bootstrap/seeding, contract-derived TOOLS.md, company-doc API + immutable versioning + L0 guard, agent-driven reconciliation (deterministic merger; LiteLLM agent merge is the seam) producing approve/reject proposals, and version-gated delivery into the pod via the re-pull loop. Whole track testable spine complete; live LiteLLM merge quality is the remaining upgrade.
-- **Track CONN** (OpenClaw connection auth & session security): pairing-broker endpoint implemented (2026-06-13); connection-security posture **decided = Option B** (short-lived re-brokered credentials + per-user kill-switch; control plane stays connection-stateless). Full trade-off in `docs/claw-security-considerations.md`. Transport hardening landed 2026-06-13 (CONN.2); `docs/auth.md` rewritten for the pairing broker (CONN.6); **CONN.8 wildcard TLS** first slice landed (operator Ingress `tls:` + cert-manager ClusterIssuer/Certificate Helm scaffold, dev selfSigned + prod ACME DNS-01) with onboarding-CLI/API + cross-namespace + dev-host + live-e2e as follow-ups. **Kill-switch chain landed 2026-06-13 (CONN.3 persistence+decode, CONN.4 device registry, CONN.5 cut + RBAC)** — testable spine complete; the gateway per-device revoke + CP-held operator device + in-pod mint exec are the remaining live-infra seams. Proxy (Option C) deferred as a contingent vision.
+- **Track CONN** (OpenClaw connection auth & session security): pairing-broker endpoint implemented (2026-06-13); connection-security posture **decided = Option B** (short-lived re-brokered credentials + per-user kill-switch; control plane stays connection-stateless). Full trade-off in `docs/claw-security-considerations.md`. Transport hardening landed 2026-06-13 (CONN.2); `docs/auth.md` rewritten for the pairing broker (CONN.6); **CONN.8 wildcard TLS** landed (operator Ingress `tls:` + cert-manager ClusterIssuer/Certificate Helm scaffold, dev selfSigned + prod ACME DNS-01; **onboarding CLI/API `oc platform dns set` + dev sslip.io hosts landed 2026-06-13**) with cross-namespace + live-ACME-e2e as the remaining (cluster-bound) follow-ups. **Kill-switch chain landed 2026-06-13 (CONN.3 persistence+decode, CONN.4 device registry, CONN.5 cut + RBAC)** — testable spine complete; the gateway per-device revoke + CP-held operator device + in-pod mint exec are the remaining live-infra seams. Proxy (Option C) deferred as a contingent vision.
 - **Track P4-D** (MCP & Skills platform completion — the two 🔶 gaps): scoped + decisions locked 2026-06-13. P4D.2 OCI/Zot **foundation slice landed** (`OciBundleStore` + gated Zot Helm; runtime cutover deferred to a live-Zot slice). P4D.1 Obot RFC-8693 creds queued. See Open Backlog → Track P4-D.
 - **Review discipline** (2026-06-13): the `review` agent (`.claude/agents/review.md`) now has a mandatory **"verify every finding before reporting"** step — re-trace the cited code and construct a concrete repro before asserting; unconfirmed concerns go under *Open questions*, not *Findings*. Added after a review surfaced a finding that did not survive verification.
 - **Branch**: `phase-4-5-fixes`, 6 commits ahead of `main`.
@@ -354,14 +354,29 @@ standing per-frame audit choke point are **not** in scope → that is the proxy
     (`*.<domain>` + apex), gated by `certManager.enabled`; operator-deployment env + `values.yaml`
     `certManager` block added. Tests: 2 ingress-TLS cases (operator 56/56); `helm template`
     validated for selfSigned, acme+cloudflare-DNS-01, the fail-guard, and operator env.
-  - **Remaining (CONN.8 follow-ups):** (a) **onboarding CLI + API** (`oc platform dns set …` +
-    control-plane method) to capture the DNS-provider `{ provider, zone, credentialsRef }` and
-    render the solver/Secret — currently set via Helm values only; (b) **cross-namespace cert
-    distribution** if tenants run outside the Certificate's namespace (cert-manager
-    reflector / per-namespace Certificates) — current template assumes one shared namespace;
-    (c) **dev wildcard hostnames** via `sslip.io`/`nip.io` wired into the k3d values
-    (`platform/tests/values-k3d-local.yaml`) + optional `mkcert`; (d) **live ACME e2e**
-    (needs a cluster + real DNS — cannot be unit-validated).
+  - **Landed (2026-06-13, follow-ups a + c):**
+    - (a) **onboarding CLI + API.** `PUT/GET /api/v1/platform/dns` (`routes/platform-dns.ts`)
+      captures `{ provider, zone, email, server?, issuerName?, apiToken?, solverConfig? }` and
+      **upserts the cert-manager DNS-01 `ClusterIssuer` + credentials Secret via the K8s API**
+      (`core/platform-dns/`: pure `_RenderDns01ClusterIssuer`/`_RenderDnsCredentialsSecret`
+      builders — cloudflare/digitalocean token-based + a verbatim `solverConfig` passthrough for
+      route53/rfc2136 — and an idempotent `_ApplyPlatformDnsConfig` create-then-replace-on-409).
+      CLI `oc platform dns set|show` (`apps/cli/src/commands/platform.ts`; token read from
+      `--token-file`, never on argv). OpenAPI spec + regenerated contracts client types. RBAC adds
+      `cert-manager.io/clusterissuers` + `secrets` (get/create/update/patch) to the control-plane
+      ClusterRole (documented for tightening to a namespaced Role). Tests: renderers (8) + apply
+      orchestration incl. 409-conflict replace (3); control-plane 117/117, contracts+CLI build clean.
+    - (c) **dev wildcard hostnames.** `platform/tests/values-k3d-local.yaml` now uses
+      `domain: 127.0.0.1.sslip.io` + `ingress.tls.enabled` + `certManager.enabled mode=selfSigned`,
+      so k3d gets real (self-signed) wildcard TLS with no `/etc/hosts`/manual cert steps —
+      `wss://`/CONN.2 hardening intact, only the trust anchor differs. `helm template` validated
+      (renders the selfSigned ClusterIssuer + `*.127.0.0.1.sslip.io`+apex Certificate).
+  - **Remaining (CONN.8 follow-ups):** (b) **cross-namespace cert distribution** if tenants run
+    outside the Certificate's namespace (cert-manager reflector / per-namespace Certificates) —
+    current template assumes one shared namespace; (d) **live ACME e2e** (needs a cluster + real
+    DNS — cannot be unit-validated; the runtime ClusterIssuer apply is code-tested with mocked K8s,
+    but cert-manager actually issuing the wildcard is the unverified seam). Optional `mkcert` root
+    for warning-free dev browser trust.
 
 ### Track P4-D — MCP & Skills platform completion (the two 🔶 gaps)
 

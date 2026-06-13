@@ -26,6 +26,7 @@ import { _RegisterAuth } from "./commands/auth.js";
 import { _RegisterBudget } from "./commands/budget.js";
 import { _RegisterMcpServers } from "./commands/mcp-servers.js";
 import { _RegisterMetrics } from "./commands/metrics.js";
+import { _RegisterPlatform } from "./commands/platform.js";
 import { _RegisterPolicies } from "./commands/policies.js";
 import { _RegisterProviders } from "./commands/providers.js";
 import { _RegisterSkills } from "./commands/skills.js";
@@ -68,6 +69,7 @@ _RegisterAudit(program, _getConfig);
 _RegisterTokens(program, _getConfig);
 _RegisterProviders(program, _getConfig);
 _RegisterMetrics(program, _getConfig);
+_RegisterPlatform(program, _getConfig);
 _RegisterAuth(program, _getConfig);
 
 program.parseAsync(process.argv).catch(function _onError(err: unknown)

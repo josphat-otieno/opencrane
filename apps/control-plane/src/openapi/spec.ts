@@ -317,6 +317,67 @@ export const spec = {
   paths: {
 
     // ------------------------------------------------------------------
+    // Platform DNS / TLS issuance (CONN.8a)
+    // ------------------------------------------------------------------
+
+    "/platform/dns": {
+      get: {
+        operationId: "getPlatformDns",
+        summary: "Show the configured platform DNS-01 ClusterIssuer",
+        tags: ["Platform DNS"],
+        parameters: [{ name: "issuerName", in: "query", required: false, schema: { type: "string" } }],
+        responses: {
+          200: ok("Current issuer status.", {
+            type: "object",
+            properties: {
+              configured: { type: "boolean" },
+              issuerName: { type: "string" },
+              provider: { type: "string", nullable: true },
+              email: { type: "string", nullable: true },
+              server: { type: "string", nullable: true },
+            },
+          }),
+        },
+      },
+      put: {
+        operationId: "setPlatformDns",
+        summary: "Configure the platform DNS-01 ClusterIssuer for wildcard TLS",
+        tags: ["Platform DNS"],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["provider", "zone", "email"],
+                properties: {
+                  provider: { type: "string" },
+                  zone: { type: "string" },
+                  email: { type: "string" },
+                  server: { type: "string" },
+                  issuerName: { type: "string" },
+                  apiToken: { type: "string" },
+                  solverConfig: { type: "object", additionalProperties: true },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: ok("Issuer configured.", {
+            type: "object",
+            properties: {
+              status: { type: "string" },
+              issuerName: { type: "string" },
+              provider: { type: "string" },
+              zone: { type: "string" },
+              secretName: { type: "string", nullable: true },
+            },
+          }),
+        },
+      },
+    },
+
     // Tenants
     // ------------------------------------------------------------------
 

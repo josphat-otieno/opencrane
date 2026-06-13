@@ -4,6 +4,24 @@
  */
 
 export interface paths {
+    "/platform/dns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Show the configured platform DNS-01 ClusterIssuer */
+        get: operations["getPlatformDns"];
+        /** Configure the platform DNS-01 ClusterIssuer for wildcard TLS */
+        put: operations["setPlatformDns"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenants": {
         parameters: {
             query?: never;
@@ -945,6 +963,74 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getPlatformDns: {
+        parameters: {
+            query?: {
+                issuerName?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current issuer status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        configured?: boolean;
+                        issuerName?: string;
+                        provider?: string | null;
+                        email?: string | null;
+                        server?: string | null;
+                    };
+                };
+            };
+        };
+    };
+    setPlatformDns: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    provider: string;
+                    zone: string;
+                    email: string;
+                    server?: string;
+                    issuerName?: string;
+                    apiToken?: string;
+                    solverConfig?: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description Issuer configured. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status?: string;
+                        issuerName?: string;
+                        provider?: string;
+                        zone?: string;
+                        secretName?: string | null;
+                    };
+                };
+            };
+        };
+    };
     listTenants: {
         parameters: {
             query?: never;
