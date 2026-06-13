@@ -7,6 +7,7 @@
 - **Phase 4 Track A** (MCP & Skills runtime planes): complete. P4A.1–P4A.3 implemented, tested, and Helm/NetworkPolicy wired (2026-06-10).
 - **Phase 4 Track B** (fleet organizational awareness): not started. Blocked on product decisions (P4B.0). See Phase 4 Decisions below before building anything in Track B.
 - **Track P4-C** (agent identity & personalisation via OpenClaw workspace files): scoped, design decisions locked. P4C.1–P4C.5 in Open Backlog; not yet started.
+- **Track CONN** (OpenClaw connection auth & session security): pairing-broker endpoint implemented (2026-06-13); connection-security posture **decided = Option B** (short-lived re-brokered credentials + per-user kill-switch; control plane stays connection-stateless). Full trade-off in `docs/claw-security-considerations.md`. Remaining hardening / kill-switch items in Open Backlog; proxy (Option C) deferred as a contingent vision.
 - **Branch**: `phase-4-5-fixes`, 6 commits ahead of `main`.
 
 ---
@@ -131,6 +132,62 @@
   is notified and can view the change (e.g. a `BOOT.md`/`HEARTBEAT.md` note or system message + the
   diff). Acceptance: approving delivers the doc without a pod restart and the agent surfaces/can view
   the change; rejecting leaves the tenant doc untouched.
+
+### Track CONN — OpenClaw connection auth & session security (Option B)
+
+> Scoped 2026-06-13. How the SaaS-operator browser reaches a tenant's OpenClaw pod
+> gateway, brokered by the control plane. **Posture decided = Option B** — full A/B/C
+> trade-off, threat model (MITM/airport, two-clocks, K8s force-disconnect) and the
+> accepted compromises are in `docs/claw-security-considerations.md`.
+
+**Locked decision (2026-06-13):** Option B — short-lived, re-brokered credentials
+(no long-lived token in the browser) + a **per-user** central kill-switch (OpenClaw
+`device.token.revoke`/`pair.remove` + Kubernetes force-disconnect), plus transport
+hardening. Control plane stays *connection*-stateless. Per-session cutting and a
+standing per-frame audit choke point are **not** in scope → that is the proxy
+(CONN.7), deferred.
+
+- [x] **CONN.1 Pairing-broker endpoint.** `POST /auth/pod-token` returns the pod's
+  pairing link `{ gatewayUrl, bootstrapToken, tenant, ingressHost }` instead of the
+  old `aud=openclaw` K8s-SA mint. `_ResolveOpenClawPairing` (`infra/auth/openclaw-pairing.ts`)
+  reads `configOverrides.openclaw.{gatewayUrl,bootstrapToken}`, derives `wss://<ingressHost>`
+  as fallback, returns `bootstrapToken:null` once paired. Session required; email→tenant
+  resolution fail-closed on ambiguity. Tests: `auth-pod-token.test.ts` (7) +
+  `openclaw-pairing.test.ts` (5); `tsc --noEmit` clean, 57/57 control-plane tests pass.
+- [ ] **CONN.2 Transport hardening (do regardless).** HSTS
+  (`max-age=63072000; includeSubDomains; preload`) via `helmet` **or** confirmed at the
+  ingress; force `Secure` cookie in prod (today `cookieSecure` is *inferred* from the
+  `OIDC_REDIRECT_URI` scheme — make it explicit/fail-closed, consider `__Host-` prefix);
+  HTTP→HTTPS redirect; reject non-`wss://` gateway URLs in the broker. Anchors:
+  `infra/auth/oidc.service.ts` (cookie block), `infra/auth/oidc.config.ts` (`cookieSecure`),
+  `infra/auth/openclaw-pairing.ts`, `index.ts`. Acceptance: HSTS header present; cookie
+  `Secure` in prod regardless of redirect-URI scheme; broker refuses `ws://`. (security doc §10–§11)
+- [ ] **CONN.3 Pairing-link provisioning + short bootstrap.** Populate
+  `configOverrides.openclaw.{gatewayUrl,bootstrapToken}` when the operator provisions a
+  tenant pod, and mint/rotate **single-use, ~30–60s** bootstrap tokens. **[BLOCKED]** —
+  needs the OpenClaw pod provisioning / bootstrap-mint contract (does the pod emit a setup
+  code? is bootstrap-TTL settable?). Anchor: operator pod provisioning + `routes/tenants.ts`.
+- [ ] **CONN.4 CP-held operator device + device registry.** OpenCrane holds one
+  `operator.pairing`-scoped device per pod (paired server-side, key in a Secret), and a
+  `BrokeredDevice` Prisma model + migration recording devices brokered per tenant.
+  Acceptance: every broker call records the device; CP can authenticate to a pod gateway
+  with `operator.pairing`. (Prereq for CONN.5; depends on CONN.3 / B1 signature scheme.)
+- [ ] **CONN.5 "Cut tenant" kill-switch + RBAC.** Admin action + self-serve "sign out my
+  other sessions": call `device.token.revoke` + `device.pair.remove`, then a **K8s
+  force-disconnect** — pod-delete (CNI-independent) or a deny `NetworkPolicy` (only if the
+  cluster CNI drops *established* flows — verify, else pod-delete). RBAC: add `networkpolicies`
+  (create/delete) + `pods` (delete) in `platform/helm/templates/control-plane-rbac.yaml`.
+  Acceptance: cutting a tenant severs live sockets **and** blocks re-auth; covered by a test
+  (mocked k8s + gateway client). (security doc §4–§5)
+- [ ] **CONN.6 Rewrite `docs/auth.md` for the pairing broker.** Replace the stale
+  `aud=openclaw` K8s-SA-token description with the pairing-link broker + `connect` handshake;
+  cross-link `docs/claw-security-considerations.md`. (frontend `plan.md` B5)
+- [ ] **CONN.7 Proxy (Option C) — contingent vision.** Control-plane (or, preferred,
+  **Envoy/mesh sidecar**) WebSocket proxy: per-session cut + standing per-frame audit/policy
+  + zero browser credential. **[DEFERRED — revisit only if]** a hard requirement emerges for
+  per-session cutting or per-frame auditing **and** the connection-stateful cost (LB affinity,
+  reconnect storms on deploy, content transiting the CP, ~days build) is judged worth it.
+  CONN.1–CONN.5 are prerequisites, so nothing is wasted. (security doc §6 / §8 / § Decision)
 
 ---
 

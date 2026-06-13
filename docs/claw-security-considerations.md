@@ -1,16 +1,49 @@
 # OpenClaw connection — security considerations
 
-**Status:** decision pending. This document exists so the connection/auth posture
-between **SaaS operator** (browser) and a tenant's **OpenClaw pod**, brokered by the
-**OpenCrane control plane**, can be chosen deliberately. The concern lives in the
-control plane (issuance, revocation, and the Kubernetes substrate), hence this
-doc is here rather than in the frontend repo.
+**Status:** **decided — Option B** (2026-06); see [Decision](#decision-2026-06--option-b).
+This document records the connection/auth posture between the **SaaS operator**
+(browser) and a tenant's **OpenClaw pod**, brokered by the **OpenCrane control
+plane**. The concern lives in the control plane (issuance, revocation, and the
+Kubernetes substrate), hence this doc is here rather than in the frontend repo.
 
 All protocol claims are grounded in the published docs
 ([gateway/protocol](https://docs.openclaw.ai/gateway/protocol),
 [channels/pairing](https://docs.openclaw.ai/channels/pairing)); items we could
 not confirm are flagged **[unconfirmed]**. The SaaS Operator-side implementation +
 roadmap is tracked in that repo's `plan.md` (slices S1–S6, blockers B1–B5).
+
+---
+
+## Decision (2026-06) — Option B
+
+**Chosen: Option B** — short-lived, re-brokered credentials (no long-lived token in
+the browser) + a per-user central kill-switch (OpenClaw revoke + Kubernetes
+force-disconnect), plus the transport hardening in §11. The control plane stays
+**connection-stateless**. This covers credential theft, replay, hostile-network,
+and per-user incident response with no new stateful infra and small effort, and it
+is a strict prerequisite to the proxy anyway.
+
+**Trade-offs we accepted:**
+- Live-session cut is **per-user, not per-session** — incident response cuts *all*
+  of an account's sessions (fine given the one-pod-per-tenant topology), not one
+  device while leaving the user's others up.
+- **No standing per-frame audit/policy choke point** — auditing is at issuance (the
+  broker) plus OpenClaw/K8s events, not on the live message stream.
+- Per-user cut via NetworkPolicy is **CNI-dependent**; pod-delete is the
+  CNI-independent fallback.
+- These are acceptable because the data/availability fears do **not** apply:
+  transcripts live in the pod (no loss on a CP outage), and Postgres covers all
+  durable data — what B preserves is *connection*-statelessness.
+
+**Proxy (Option C) — long-term vision, not adopted now.** Revisit **only if** a hard
+requirement emerges for per-session cutting or a standing per-frame audit/policy
+point, **and** the computational/operational cost is judged worth it (a
+connection-stateful app tier: LB affinity, reconnect storms on every deploy;
+message content transiting the CP; ~days of build). If that day comes, prefer an
+**Envoy/mesh sidecar** over a bespoke control-plane proxy. Option B is a strict
+prerequisite, so nothing built for B is wasted.
+
+Build slices: frontend repo `plan.md` — **S5** (Option B) and **S6** (proxy vision).
 
 ---
 
@@ -154,10 +187,20 @@ others up requires session awareness — i.e., the proxy or a mesh sidecar.
 ### Option C — Control-plane WebSocket proxy *(plan.md S6)*
 - ➕ No browser-held pod credential at all; **per-session** surgical instant cut;
   single standing point to defend / audit / rate-limit; pod lockable to CP-only.
-- ➖ Control plane becomes **stateful, on the critical path** (~2 sockets/user,
-  connection-count scaling, reconnect storms, CP-down = chat-down); message content
-  transits the CP; ~days of build (WS server + Node handshake; cross-repo/AGPL
-  boundary → reimplement or extract a shared MIT package).
+- ➖ The app tier stops being **connection-stateless**: a live WebSocket is a
+  process-bound socket — it **cannot** be offloaded to Postgres, so replicas are no
+  longer fungible (LB affinity required, no drain/autoscale without dropping
+  sockets, a deploy drops every socket it holds → reconnect storm). *Durable data*
+  (registry/audit) is unaffected — that's just rows in Postgres, which the CP
+  already has.
+- ➖ **Availability, not durability:** if the proxy is down, chat is unavailable
+  *during* the outage, but nothing is lost — transcripts live in the pod and the
+  client re-fetches on reconnect. Worst case is an interrupted in-flight turn to
+  re-issue (**[unconfirmed]** whether OpenClaw keeps the agent run going detached
+  from the socket; if it does, even that survives). Cost is uptime during
+  outages/deploys, recoverable.
+- ➖ Message content **transits** the CP; ~days of build (WS server + Node
+  handshake; cross-repo/AGPL boundary → reimplement or extract a shared MIT package).
 - **Verdict:** strongest posture; warranted for per-session control or a standing
   audited choke point. A **mesh/Envoy sidecar (§5)** delivers much of this without
   app code if a mesh is already in play.
@@ -173,10 +216,21 @@ others up requires session awareness — i.e., the proxy or a mesh sidecar.
 | Instant live-session cut | ⚠️ pod-restart only | ✅ per-tenant (revoke + K8s) | ✅ per-session |
 | Cut one of a user's many sessions | ❌ | ❌ | ✅ |
 | Standing choke point / per-frame audit | ❌ | ❌ | ✅ |
-| Control plane stays stateless | ✅ | ✅ | ❌ |
-| Chat survives control-plane outage | ✅ | ✅ | ❌ |
+| App tier stays *connection*-stateless ¹ | ✅ | ✅ | ❌ holds process-bound sockets |
+| Chat available during a CP outage ² | ✅ | ✅ | ⚠️ down during outage, no data loss |
 | Message content avoids our servers | ✅ | ✅ | ➖ transits |
 | Build effort | — (built) | small (+ RBAC/admin action) | moderate (~days) |
+
+¹ *Durable data state is a non-issue for all three — the CP already has Postgres,
+and a device registry/audit is just rows. "Connection-stateless" is the distinct
+property the proxy gives up: an open WebSocket is bound to one process and can't be
+offloaded to the DB, so replicas stop being fungible (LB affinity, no clean
+drain/autoscale, deploy = reconnect storm).*
+
+² *A CP outage with the proxy is an availability gap, not data loss — transcripts
+live in the pod and resume on reconnect; at worst an in-flight turn is re-issued
+(**[unconfirmed]** whether OpenClaw continues a detached agent run). "Repair later"
+is accurate; the cost is uptime during outages/deploys.*
 
 ---
 
@@ -210,6 +264,69 @@ deliberate, scriptable kill-switch.
   `pods` (delete), plus an `operator.pairing`-scoped device per pod for revoke.
 - **Force-disconnect** — no gateway API to drop one live socket; only `shutdown`
   (all), §5 (per-pod), or a proxy/mesh (per-session).
+
+## 10. Man-in-the-middle on a hostile network (e.g. airport WiFi)
+
+Every leg rests on **TLS + the browser's certificate validation**: browser ⇄
+OpenCrane (`POST /auth/pod-token`, OIDC session), browser ⇄ OpenClaw pod gateway
+(WSS), browser ⇄ IdP (OIDC login). A vanilla airport attacker (no certificate the
+browser trusts) **cannot** read or alter any leg — TLS defeats them and the
+browser rejects forged certs.
+
+Note the device nonce-signing in the `connect` handshake is **authentication, not
+channel binding**: it stops replay of a captured signature against a *different*
+nonce, but does **not** stop a real-time relay once TLS is broken. So TLS is the
+whole ballgame, and the realistic attacks are the ones that remove it:
+
+- **(a) SSL-strip / downgrade — the airport classic.** The attacker keeps the
+  victim on `http://` and proxies plaintext, harvesting the OIDC **session cookie**
+  and any **bootstrap token** in flight. Defense: **HSTS** (browser refuses
+  `http://` and refuses cert-error bypass) + never serving HTTP. **Gap — §11: the
+  app does not set HSTS.**
+- **(b) Cert-warning click-through.** HSTS removes the "accept anyway" option for
+  known hosts. A managed device with an attacker/corporate **root CA installed**
+  defeats TLS transparently — out of scope for airport WiFi, real for managed
+  laptops; browser pinning is impractical, so this is an accepted residual.
+- **(c) `ws://` downgrade.** A gateway URL that is `ws://` travels in plaintext.
+  The broker derives `wss://…`; **harden it to reject `ws://`** so a poisoned
+  pairing record can't open a cleartext socket.
+- **(d) Captive portal.** Pre-TLS interception is normal; HSTS defends after the
+  first secure visit, HSTS **preload** even the first.
+
+**Blast radius if TLS is broken on a leg:** browser⇄OpenCrane → session cookie +
+bootstrap token exposed → attacker pairs a device or impersonates the user (worst
+case); browser⇄pod → message content + any handshake token exposed.
+
+**What bounds the damage regardless of transport fixes:** the Option-B posture —
+single-use ~60s bootstrap token and **no long-lived device token in the browser** —
+makes a stripped credential near-useless within a minute, and revoke + K8s cut
+(§5) closes the session. Another reason to adopt B's hardening regardless of A/C.
+
+## 11. Transport hardening — current posture & gaps
+
+OpenCrane terminates TLS at the **ingress** (`app.set("trust proxy", 1)`; the app
+runs HTTP behind it). From the code:
+
+| Control | Status | Where |
+|---|---|---|
+| Session cookie `HttpOnly` | ✅ | `oidc.service.ts` |
+| Session cookie `SameSite=lax` | ✅ | `oidc.service.ts` |
+| Session cookie `Secure` | ⚠️ **conditional** — on only when `OIDC_REDIRECT_URI` is `https://` (or `OIDC_COOKIE_SECURE=true`) | `oidc.config.ts` |
+| **HSTS** (Strict-Transport-Security) | ❌ **not set by the app** (no helmet/HSTS) | — |
+| HTTP→HTTPS redirect | ❌ not in app (relies on ingress) | — |
+| `wss://`-only gateway URLs | ⚠️ derived as `wss://`, not enforced | broker / client |
+
+Recommended (cheap, high-value for the hostile-network case):
+
+1. **Set HSTS** (`max-age=63072000; includeSubDomains; preload`) via `helmet` in the
+   app or confirmed at the ingress — the single most important downgrade fix.
+   **[unconfirmed]** whether the ingress already sets it; verify, don't assume.
+2. **Force `Secure` cookies in production** explicitly (fail closed, not inferred);
+   consider a `__Host-` cookie prefix.
+3. **App- or ingress-level HTTP→HTTPS redirect.**
+4. **Reject non-`wss://`** gateway URLs in the broker and the client.
+5. Adopt the Option-B credential posture so a momentary TLS failure leaks nothing
+   long-lived.
 
 ## Sources
 - OpenClaw Gateway protocol — https://docs.openclaw.ai/gateway/protocol
