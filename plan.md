@@ -7,7 +7,7 @@
 - **Phase 4 Track A** (MCP & Skills runtime planes): complete. P4A.1–P4A.3 implemented, tested, and Helm/NetworkPolicy wired (2026-06-10).
 - **Phase 4 Track B** (fleet organizational awareness): not started. Blocked on product decisions (P4B.0). See Phase 4 Decisions below before building anything in Track B.
 - **Track P4-C** (agent identity & personalisation via OpenClaw workspace files): scoped, design decisions locked. P4C.1–P4C.5 in Open Backlog; not yet started.
-- **Track CONN** (OpenClaw connection auth & session security): pairing-broker endpoint implemented (2026-06-13); connection-security posture **decided = Option B** (short-lived re-brokered credentials + per-user kill-switch; control plane stays connection-stateless). Full trade-off in `docs/claw-security-considerations.md`. Transport hardening (HSTS, fail-closed `Secure` cookie, `wss://`-only broker, opt-in HTTP→HTTPS redirect) landed 2026-06-13 (CONN.2). Remaining kill-switch / provisioning items in Open Backlog, plus **CONN.8 wildcard TLS issuance via cert-manager DNS-01** (k8s-native, any cloud + on-prem; a prerequisite for the wss-only hardening to hold in prod). Proxy (Option C) deferred as a contingent vision.
+- **Track CONN** (OpenClaw connection auth & session security): pairing-broker endpoint implemented (2026-06-13); connection-security posture **decided = Option B** (short-lived re-brokered credentials + per-user kill-switch; control plane stays connection-stateless). Full trade-off in `docs/claw-security-considerations.md`. Transport hardening landed 2026-06-13 (CONN.2); `docs/auth.md` rewritten for the pairing broker (CONN.6); **CONN.8 wildcard TLS** first slice landed (operator Ingress `tls:` + cert-manager ClusterIssuer/Certificate Helm scaffold, dev selfSigned + prod ACME DNS-01) with onboarding-CLI/API + cross-namespace + dev-host + live-e2e as follow-ups. Remaining kill-switch / provisioning items (CONN.3–5) in Open Backlog. Proxy (Option C) deferred as a contingent vision.
 - **Branch**: `phase-4-5-fixes`, 6 commits ahead of `main`.
 
 ---
@@ -113,11 +113,18 @@
   AGENTS.md contains the full platform brief (managed mode, gateway/registry URLs, ownership
   table, platform invariants). TOOLS.md lists live URLs (static for P4C.1).
   L2 seeds are personalised with tenant name and team. 2 tests added; 54/54 operator tests pass.
-- [ ] **P4C.2 Contract-derived `TOOLS.md`.** Extend the effective contract + re-pull loop to render
-  `TOOLS.md` from the tenant's entitled MCP servers + skills; SIGHUP + agent-awareness note on change.
-  Anchor: `routes/internal/tenant-contract.ts`, `entrypoint.sh` poll loop. Acceptance: granting or
-  denying an MCP server updates `TOOLS.md` within one poll interval without a pod restart, and
-  OpenClaw is notified.
+- [x] **P4C.2 Contract-derived `TOOLS.md`.** (2026-06-13) Pure `_RenderToolsMarkdown`
+  (`core/contract/tools-markdown.ts`, sorted/deterministic so the in-pod content diff only
+  fires on real change) renders TOOLS.md from the entitled MCP servers + skills. The internal
+  contract endpoint (`routes/internal/tenant-contract.ts`) resolves display names/descriptions
+  for the allow-decided ids and returns the rendered doc under `workspace["TOOLS.md"]`. The
+  entrypoint poll loop (`apps/tenant/deploy/entrypoint.sh`) writes it to the workspace TOOLS.md
+  on contract change via a `_apply_workspace_docs` node-extract, then SIGHUPs OpenClaw — so a
+  grant/deny reflects within one poll interval with no pod restart. (The operator-mounted
+  bootstrap contract has no workspace docs, so a cold start shows the static L0 TOOLS.md until
+  the first poll refreshes it; the boot-time apply call is forward-compatible for the day the
+  mounted contract embeds them.) Tests: `tools-markdown.test.ts` (3) + contract-route
+  TOOLS.md assertion; control-plane 72/72, build clean; `bash -n` clean.
 - [ ] **P4C.3 Company doc API + versioning (L1).** `companyDoc` / `companyDocVersion` Prisma models
   + migration; CRUD at `/api/v1/org/workspace-docs/:name` with immutable version history + audit;
   an allowlist guard rejecting company docs that carry L0 system-mechanic directives. Acceptance:
@@ -184,16 +191,21 @@ standing per-frame audit choke point are **not** in scope → that is the proxy
   (create/delete) + `pods` (delete) in `platform/helm/templates/control-plane-rbac.yaml`.
   Acceptance: cutting a tenant severs live sockets **and** blocks re-auth; covered by a test
   (mocked k8s + gateway client). (security doc §4–§5)
-- [ ] **CONN.6 Rewrite `docs/auth.md` for the pairing broker.** Replace the stale
-  `aud=openclaw` K8s-SA-token description with the pairing-link broker + `connect` handshake;
-  cross-link `docs/claw-security-considerations.md`. (frontend `plan.md` B5)
+- [x] **CONN.6 Rewrite `docs/auth.md` for the pairing broker.** (2026-06-13) Replaced the
+  stale `aud=openclaw` K8s-SA-token / RFC-8693 token-exchange description with the pairing-link
+  broker + OpenClaw `connect` handshake (challenge → signed device assertion → `hello-ok`):
+  rewrote the end-to-end flow, the credential-types table (bootstrap/device tokens vs projected
+  SA token), the "Tenant pod access" section, added an Option B posture section + transport
+  notes (CONN.2 fail-closed cookie/HSTS, CONN.8 wildcard TLS), and cross-linked
+  `docs/claw-security-considerations.md`. Closes frontend `plan.md` B5. (Docs only.)
 - [ ] **CONN.7 Proxy (Option C) — contingent vision.** Control-plane (or, preferred,
   **Envoy/mesh sidecar**) WebSocket proxy: per-session cut + standing per-frame audit/policy
   + zero browser credential. **[DEFERRED — revisit only if]** a hard requirement emerges for
   per-session cutting or per-frame auditing **and** the connection-stateful cost (LB affinity,
   reconnect storms on deploy, content transiting the CP, ~days build) is judged worth it.
   CONN.1–CONN.5 are prerequisites, so nothing is wasted. (security doc §6 / §8 / § Decision)
-- [ ] **CONN.8 TLS issuance for tenant ingress (wildcard, k8s-native).** *Prerequisite
+- [ ] **CONN.8 TLS issuance for tenant ingress (wildcard, k8s-native).** *First slice landed
+  2026-06-13 — see Landed/Remaining at the end of this item.* *Prerequisite
   for CONN.2 to mean anything in production* — today the operator-built tenant Ingress
   (`apps/operator/src/tenants/deploy/5-ingress.ts`) has **no `tls:` block** and Helm has
   `ingress.tls.enabled: false` with an unwired `opencrane-wildcard-tls` secret slot
@@ -249,6 +261,22 @@ standing per-frame audit choke point are **not** in scope → that is the proxy
     Pairs with CONN.3 (pod provisioning). Anchors: `5-ingress.ts`, `values.yaml`
     (`ingress.tls`), new `cluster-issuer.yaml`, `apps/cli/src/commands`, control-plane API,
     `platform/tests/values-k3d-local.yaml`. (security doc §11)
+  - **Landed (2026-06-13):** operator now wires a config-gated `tls:` block into the tenant
+    Ingress (`5-ingress.ts`, env `INGRESS_TLS_ENABLED`/`INGRESS_TLS_SECRET_NAME` via
+    `config.ts`, default off → no behaviour change) referencing the shared wildcard Secret;
+    Helm renders a `cluster-issuer.yaml` (ClusterIssuer `selfSigned` dev **or** `acme` DNS-01
+    prod, with fail-guards on missing email/provider) + a wildcard `Certificate`
+    (`*.<domain>` + apex), gated by `certManager.enabled`; operator-deployment env + `values.yaml`
+    `certManager` block added. Tests: 2 ingress-TLS cases (operator 56/56); `helm template`
+    validated for selfSigned, acme+cloudflare-DNS-01, the fail-guard, and operator env.
+  - **Remaining (CONN.8 follow-ups):** (a) **onboarding CLI + API** (`oc platform dns set …` +
+    control-plane method) to capture the DNS-provider `{ provider, zone, credentialsRef }` and
+    render the solver/Secret — currently set via Helm values only; (b) **cross-namespace cert
+    distribution** if tenants run outside the Certificate's namespace (cert-manager
+    reflector / per-namespace Certificates) — current template assumes one shared namespace;
+    (c) **dev wildcard hostnames** via `sslip.io`/`nip.io` wired into the k3d values
+    (`platform/tests/values-k3d-local.yaml`) + optional `mkcert`; (d) **live ACME e2e**
+    (needs a cluster + real DNS — cannot be unit-validated).
 
 ---
 

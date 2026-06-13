@@ -157,8 +157,12 @@ certManager:
   mode: selfSigned
   # -- Name of the ClusterIssuer this chart creates and the Certificate references.
   issuerName: opencrane-issuer
-  # -- Namespace the wildcard Certificate (and its Secret) are created in.
-  # Must match the namespace tenant Ingresses run in (TLS Secrets are namespace-scoped).
+  # -- Namespace the wildcard Certificate (and its Secret) are created in. Defaults to
+  # the release namespace. TLS Secrets are namespace-scoped and an Ingress can only
+  # reference a Secret in its OWN namespace, so this MUST equal the namespace tenant
+  # Ingresses run in — i.e. the operator watchNamespace, where Tenant CRs are created.
+  # If tenants are ever split across namespaces, a cert-reflector / per-namespace
+  # Certificate is required instead (CONN.8 follow-up b).
   certificateNamespace: ""
   acme:
     # -- ACME directory URL (Let's Encrypt prod by default).
