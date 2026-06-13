@@ -5,7 +5,7 @@
 - **Phases 1–3**: complete and validated.
 - **Phase 5** (headless API + CLI + hosting adapter): complete. P5.2 (on-prem) and P5.3 (GCP) deploy-validation runs validated by user (2026-06-10).
 - **Phase 4 Track A** (MCP & Skills runtime planes): complete. P4A.1–P4A.3 implemented, tested, and Helm/NetworkPolicy wired (2026-06-10).
-- **Phase 4 Track B** (fleet organizational awareness): **decision-unblocked 2026-06-13** (P4B.0 closed — all Phase 4 Decisions resolved/defaulted). Build not yet started; greenfield, ~324h (P4B.1–P4B.6). See Phase 4 Decisions for the locked choices.
+- **Phase 4 Track B** (fleet organizational awareness): **decision-unblocked 2026-06-13** (P4B.0 closed). **P4B.1 Awareness SDK landed**; greenfield remainder P4B.2–P4B.7 (incl. P4B.7 scope-aware retrieval plugin + CLI/API session→scope binding for anti-spill). See Phase 4 Decisions for the locked choices.
 - **Track P4-C** (agent identity & personalisation via OpenClaw workspace files): **P4C.1–P4C.5 landed** (2026-06-13). Workspace bootstrap/seeding, contract-derived TOOLS.md, company-doc API + immutable versioning + L0 guard, agent-driven reconciliation (deterministic merger; LiteLLM agent merge is the seam) producing approve/reject proposals, and version-gated delivery into the pod via the re-pull loop. Whole track testable spine complete; live LiteLLM merge quality is the remaining upgrade.
 - **Track CONN** (OpenClaw connection auth & session security): pairing-broker endpoint implemented (2026-06-13); connection-security posture **decided = Option B** (short-lived re-brokered credentials + per-user kill-switch; control plane stays connection-stateless). Full trade-off in `docs/claw-security-considerations.md`. Transport hardening landed 2026-06-13 (CONN.2); `docs/auth.md` rewritten for the pairing broker (CONN.6); **CONN.8 wildcard TLS** landed (operator Ingress `tls:` + cert-manager ClusterIssuer/Certificate Helm scaffold, dev selfSigned + prod ACME DNS-01; **onboarding CLI/API `oc platform dns set` + dev sslip.io hosts landed 2026-06-13**) with cross-namespace + live-ACME-e2e as the remaining (cluster-bound) follow-ups. **Kill-switch chain landed 2026-06-13 (CONN.3 persistence+decode, CONN.4 device registry, CONN.5 cut + RBAC)** — testable spine complete; the gateway per-device revoke + CP-held operator device + in-pod mint exec are the remaining live-infra seams. Proxy (Option C) deferred as a contingent vision.
 - **Track P4-D** (MCP & Skills platform completion — the two 🔶 gaps): scoped + decisions locked 2026-06-13. P4D.2 OCI/Zot **foundation slice landed** (`OciBundleStore` + gated Zot Helm; runtime cutover deferred to a live-Zot slice). P4D.1 Obot RFC-8693 creds queued. See Open Backlog → Track P4-D.
@@ -52,7 +52,7 @@
 ### Track P4-B — Fleet Organizational Awareness (STARTED — P4B.1 SDK landed; largest remaining effort)
 
 > Decision-unblocked (P4B.0 locked). **P4B.1 (the `@opencrane/awareness` SDK) landed 2026-06-13** —
-> the foundation P4B.2–P4B.6 build on. Remaining items are greenfield and sequence on the SDK.
+> the foundation P4B.2–P4B.7 build on. Remaining items are greenfield and sequence on the SDK.
 
 - [x] **P4B.0 Lock Phase 4 awareness decisions.** (2026-06-13) All "Phase 4 Decisions" below are
   now resolved (explicit) or defaulted — Track B is **decision-unblocked**. Key locks: single
@@ -90,6 +90,43 @@
   exist; the fleet protocol layer does not.)
 - [ ] **P4B.6 Fleet awareness dashboards + SLOs.** Prometheus metrics + Grafana dashboards +
   alert thresholds + runbook links for awareness SLOs (current `/prom` metrics have none).
+- [ ] **P4B.7 Scope-aware retrieval plugin + session→scope binding (anti-spill).** Stop project
+  context from spilling across chat windows. A chat window is an OpenClaw `sessionKey` multiplexed
+  over one wss connection / one device identity / one pod principal — so nothing in the transport or
+  identity layer distinguishes windows (see [[reference_openclaw_gateway_protocol]]). Bind scope at
+  the `sessionKey` level instead, governed by the control-plane **API** (CLI-first: `oc` and the
+  WeOwnAI frontend are both clients of the same endpoint — the API is the source of truth, never a
+  frontend-only path). Components:
+  1. **CP session→scope binding (API + CLI).** New `SessionScope` registry + endpoint
+     (`PUT/GET/DELETE /api/v1/sessions/:sessionKey/scope`, OpenAPI-spec'd so contracts/CLI types
+     regenerate) + `oc sessions scope set|show|clear` command. The CP **intersects the requested
+     scope with the caller's compiled entitlements** (P4B.2) so a client can never over-scope beyond
+     what grants allow — the frontend/CLI *propose*, the CP *authorises*.
+  2. **Scope-aware OpenClaw retrieval plugin.** Replace the stock single-dataset Cognee plugin
+     (which is `datasetName`-singular, dataset-wide, no scope filtering — confirmed via
+     docs.cognee.ai/integrations/openclaw-integration) with a plugin wrapping `@opencrane/awareness`:
+     per turn it resolves the active `sessionKey`→scope binding (cached; via CP API or contract
+     re-pull) and restricts the Cognee query to those datasets, so other-project context is **never
+     retrieved or auto-injected**. Requires extending the P4B.1 SDK with a `ScopeContext` +
+     most-specific-wins/deny-overrides merge across the active levels.
+  3. **(Separate vector) per-scope memory partitioning.** Scoped retrieval stops *knowledge-base*
+     spill; the pod-global L2 `MEMORY.md` + any cross-session summarisation are a second vector
+     (window A's written notes readable by window B). Partition written memory per scope — track as
+     its own sub-item.
+  - **Guarantee level:** advisory/hygiene by default (other context isn't *retrieved*; the agent is
+    still *entitled* to it). A **hard** boundary (Cognee refuses out-of-scope datasets for the
+    session) is an optional upgrade via a CP-minted **per-`sessionKey` scoped Cognee credential** —
+    build only if need-to-know/compliance/delegation demands it.
+  - **Prerequisites / verifications:** P4B.2 (grants bound the allowed scope set) · the **OpenClaw
+    plugin API** can read the live `sessionKey` + (ideally) client-set session metadata — verify
+    against the OpenClaw plugin SDK; if metadata pass-through exists, the frontend can stamp scope at
+    session-create and skip the per-window CP call · **Cognee per-token scope-subsetting** — only
+    needed for the hard-boundary upgrade; verify against the live Cognee version.
+  - **Acceptance:** a window bound to project X retrieves/injects only X-entitled scopes (org/dept/X/
+    personal), never another project's; the binding is settable + inspectable via `oc` and the API;
+    over-scoping beyond entitlements is rejected by the CP; covered by tests (binding intersect +
+    plugin dataset-scoping). Anchors: control-plane `routes/`, `openapi/spec.ts`, `apps/cli`,
+    `libs/awareness`, the OpenClaw plugin package. Depends on P4B.1 (done) + P4B.2.
 
 ### Track P4-C — Agent Identity & Personalisation (OpenClaw workspace files)
 
