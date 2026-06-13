@@ -34,6 +34,12 @@ spec:
               value: {{ .Values.controlPlane.service.port | quote }}
             - name: INGRESS_DOMAIN
               value: {{ .Values.ingress.domain | quote }}
+            {{- if .Values.certManager.enabled }}
+            # cert-manager namespace the `oc platform dns set` endpoint writes the
+            # DNS-01 credentials Secret into (must match the namespaced RBAC Role).
+            - name: CERT_MANAGER_NAMESPACE
+              value: {{ default "cert-manager" .Values.certManager.namespace | quote }}
+            {{- end }}
             {{- if .Values.skillRegistry.ociStore.enabled }}
             # OCI (Zot) store for skill-bundle content (P4D.2). When set, the control
             # plane pushes published bundles here and serves delivery by digest from it,

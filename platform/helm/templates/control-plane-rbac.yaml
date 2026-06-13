@@ -35,17 +35,12 @@ rules:
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get", "list", "delete", "deletecollection"]
-  # Onboarding TLS issuance (CONN.8a): the `oc platform dns set` endpoint upserts
-  # a cert-manager ACME DNS-01 ClusterIssuer (cluster-scoped) and the DNS-provider
-  # credentials Secret it references. `clusterissuers` is inherently cluster-wide;
-  # `secrets` write is needed because cert-manager reads ClusterIssuer solver
-  # Secrets from its own controller namespace. Tighten the secrets rule to a
-  # namespaced Role in the cert-manager namespace if cluster-wide write is too broad.
+  # Onboarding TLS issuance (CONN.8a): the `oc platform dns set` endpoint upserts a
+  # cert-manager ACME DNS-01 ClusterIssuer (cluster-scoped, so it must be here). The
+  # DNS-provider credentials Secret it references is granted via a namespace-scoped
+  # Role in the cert-manager namespace (below) — NOT cluster-wide secrets write.
   - apiGroups: ["cert-manager.io"]
     resources: ["clusterissuers"]
-    verbs: ["get", "create", "update", "patch"]
-  - apiGroups: [""]
-    resources: ["secrets"]
     verbs: ["get", "create", "update", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -62,3 +57,37 @@ subjects:
   - kind: ServiceAccount
     name: {{ include "opencrane.fullname" . }}-control-plane
     namespace: {{ .Release.Namespace }}
+{{- if .Values.certManager.enabled }}
+---
+# CONN.8a least-privilege: the DNS-provider credentials Secret the control-plane
+# writes for `oc platform dns set` lives in the cert-manager controller namespace
+# (cert-manager reads ClusterIssuer solver Secrets only from its own namespace).
+# Grant secrets write THERE via a namespaced Role — not cluster-wide.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "opencrane.fullname" . }}-control-plane-dns01
+  namespace: {{ default "cert-manager" .Values.certManager.namespace }}
+  labels:
+    {{- include "opencrane.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "opencrane.fullname" . }}-control-plane-dns01
+  namespace: {{ default "cert-manager" .Values.certManager.namespace }}
+  labels:
+    {{- include "opencrane.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "opencrane.fullname" . }}-control-plane-dns01
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "opencrane.fullname" . }}-control-plane
+    namespace: {{ .Release.Namespace }}
+{{- end }}

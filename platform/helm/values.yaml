@@ -157,6 +157,12 @@ certManager:
   mode: selfSigned
   # -- Name of the ClusterIssuer this chart creates and the Certificate references.
   issuerName: opencrane-issuer
+  # -- cert-manager controller namespace. The `oc platform dns set` endpoint writes
+  # the DNS-01 credentials Secret here (cert-manager reads ClusterIssuer solver
+  # Secrets only from its own namespace), and the control-plane gets a namespaced
+  # Role here for that write (see control-plane-rbac.yaml). Wired to the control-plane
+  # as CERT_MANAGER_NAMESPACE so the runtime write target matches the Role.
+  namespace: cert-manager
   # -- Namespace the wildcard Certificate (and its Secret) are created in. Defaults to
   # the release namespace. TLS Secrets are namespace-scoped and an Ingress can only
   # reference a Secret in its OWN namespace, so this MUST equal the namespace tenant

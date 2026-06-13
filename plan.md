@@ -362,10 +362,14 @@ standing per-frame audit choke point are **not** in scope → that is the proxy
       builders — cloudflare/digitalocean token-based + a verbatim `solverConfig` passthrough for
       route53/rfc2136 — and an idempotent `_ApplyPlatformDnsConfig` create-then-replace-on-409).
       CLI `oc platform dns set|show` (`apps/cli/src/commands/platform.ts`; token read from
-      `--token-file`, never on argv). OpenAPI spec + regenerated contracts client types. RBAC adds
-      `cert-manager.io/clusterissuers` + `secrets` (get/create/update/patch) to the control-plane
-      ClusterRole (documented for tightening to a namespaced Role). Tests: renderers (8) + apply
-      orchestration incl. 409-conflict replace (3); control-plane 117/117, contracts+CLI build clean.
+      `--token-file`, never on argv; token never echoed in the API response or GET status).
+      OpenAPI spec + regenerated contracts client types. RBAC is **least-privilege**: the
+      ClusterRole gets only `cert-manager.io/clusterissuers` (cluster-scoped); the DNS-01 credentials
+      `secrets` write is a **namespaced Role+RoleBinding in the cert-manager namespace** (gated on
+      `certManager.enabled`, namespace wired to the control-plane as `CERT_MANAGER_NAMESPACE`).
+      Provider misconfig surfaces as a typed `_DnsProviderConfigError`→422 (not message matching);
+      GET propagates non-404 lookup errors instead of masking them. Tests: renderers (8) + apply
+      incl. 409-conflict replace (3) + route 400/422/GET (6); control-plane 123/123, contracts+CLI clean.
     - (c) **dev wildcard hostnames.** `platform/tests/values-k3d-local.yaml` now uses
       `domain: 127.0.0.1.sslip.io` + `ingress.tls.enabled` + `certManager.enabled mode=selfSigned`,
       so k3d gets real (self-signed) wildcard TLS with no `/etc/hosts`/manual cert steps —

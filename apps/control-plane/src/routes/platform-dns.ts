@@ -109,6 +109,16 @@ export function platformDnsRouter(customApi: k8s.CustomObjectsApi, coreApi: k8s.
 }
 
 /**
+ * Detect a Kubernetes 404 Not Found across the client's error shapes.
+ * @param err - The caught error.
+ */
+function _IsNotFound(err: unknown): boolean
+{
+  const e = err as { code?: number; statusCode?: number; response?: { statusCode?: number } };
+  return e?.code === 404 || e?.statusCode === 404 || e?.response?.statusCode === 404;
+}
+
+/**
  * Extract a non-secret status summary from a ClusterIssuer custom resource.
  * @param issuer     - The raw ClusterIssuer object.
  * @param issuerName - The issuer name queried.
