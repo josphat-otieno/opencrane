@@ -209,6 +209,22 @@ standing per-frame audit choke point are **not** in scope → that is the proxy
     need zero new issuance (no per-tenant latency, no Let's Encrypt rate limits). Wildcards
     require **DNS-01** (HTTP-01 can't issue wildcards). Issue into `opencrane-wildcard-tls`,
     flip `ingress.tls.enabled`, and add a `tls:` block (host + `secretName`) in `5-ingress.ts`.
+  - **Domain & naming constraints (solve once, cleanly).** Tenants live exactly **one DNS
+    label** under the base domain — e.g. base `ai.elewa.ke` → tenant `jente.ai.elewa.ke`,
+    covered by a single `*.ai.elewa.ke` cert. A TLS wildcard matches *exactly one* label, so:
+    (a) **tenant names must be a single label** under the base (no `app.jente.ai.elewa.ke`
+    from one platform wildcard — that would need per-tenant wildcards / multi-level certs;
+    revisit only if a tenant-owned-subdomain feature emerges); (b) the **apex is not covered**
+    by `*.base` — issue one Certificate with both `dnsNames: [base, *.base]` so anything
+    served at the bare base (or needed apex) works; (c) **DNS-01 lands on the base**, not the
+    tenant — the challenge TXT is `_acme-challenge.<base>` (e.g. `_acme-challenge.ai.elewa.ke`),
+    so the DNS token must own that zone — prefer a **delegated `ai.elewa.ke` subzone** (NS
+    delegation) over handing out parent-zone (`elewa.ke`) credentials, to bound blast radius;
+    (d) **cookie scoping is a security invariant** — because all tenants share `*.base`, the
+    control-plane session cookie must stay **host-only** (no `Domain=.base`, which our
+    express-session config already satisfies) or a tenant subdomain could read it; the
+    deferred `__Host-` cookie prefix (CONN.2) would enforce this at the browser and is worth
+    revisiting here.
   - **DNS-provider abstraction (cloud-agnostic + on-prem).** DNS-01 writes an
     `_acme-challenge.<domain>` TXT record, so cert-manager needs DNS-provider credentials.
     Support a small `{ provider, zone, credentialsRef }` config that renders the
