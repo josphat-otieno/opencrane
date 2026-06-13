@@ -15,15 +15,8 @@ interface TestSession
 	authUser?: { sub: string; email?: string };
 }
 
-/** Build a CoreV1Api stub whose TokenRequest returns a fixed token. */
-function _buildCoreApi(token: string | undefined, expiresAt: Date): k8s.CoreV1Api
-{
-	return {
-		createNamespacedServiceAccountToken: vi.fn().mockResolvedValue({
-			status: { token, expirationTimestamp: expiresAt },
-		}),
-	} as unknown as k8s.CoreV1Api;
-}
+/** The Kubernetes client is reserved for future pod ops; the broker doesn't use it. */
+const _CORE_API = {} as k8s.CoreV1Api;
 
 /** Build a Prisma stub whose tenant.findMany returns the given matches. */
 function _buildPrisma(matches: unknown[]): PrismaClient
@@ -34,7 +27,7 @@ function _buildPrisma(matches: unknown[]): PrismaClient
 }
 
 /** Mount the auth router with an injected session for testing. */
-function _buildApp(session: TestSession, prisma: PrismaClient, coreApi: k8s.CoreV1Api): Express
+function _buildApp(session: TestSession, prisma: PrismaClient): Express
 {
 	const app = express();
 	app.use(express.json());
@@ -43,40 +36,47 @@ function _buildApp(session: TestSession, prisma: PrismaClient, coreApi: k8s.Core
 		(req as unknown as { session: TestSession }).session = session;
 		next();
 	});
-	app.use("/auth", ___AuthRouter({} as OidcAuthService, prisma, coreApi));
+	app.use("/auth", ___AuthRouter({} as OidcAuthService, prisma, _CORE_API));
 	return app;
 }
 
-describe("POST /auth/pod-token", function _suite()
+describe("POST /auth/pod-token (OpenClaw pairing broker)", function _suite()
 {
-	const expiry = new Date("2026-06-12T10:10:00.000Z");
-
-	it("mints a pod-scoped token for the caller's tenant", async function _ok()
+	it("returns the stored pairing link for the caller's tenant", async function _ok()
 	{
-		const coreApi = _buildCoreApi("pod-jwt", expiry);
-		const prisma = _buildPrisma([{ name: "alex.oc", ingressHost: "alex.oc.example.com" }]);
-		const app = _buildApp({ authUser: { sub: "u1", email: "Alex@acme.com" } }, prisma, coreApi);
+		const prisma = _buildPrisma([{
+			name: "alex.oc",
+			ingressHost: "alex.oc.example.com",
+			configOverrides: { openclaw: { gatewayUrl: "wss://alex.oc.example.com/gateway", bootstrapToken: "boot-1" } },
+		}]);
+		const app = _buildApp({ authUser: { sub: "u1", email: "Alex@acme.com" } }, prisma);
 
 		const res = await request(app).post("/auth/pod-token");
 
 		expect(res.status).toBe(200);
 		expect(res.body).toMatchObject({
-			token: "pod-jwt",
-			expiresAt: expiry.toISOString(),
+			gatewayUrl: "wss://alex.oc.example.com/gateway",
+			bootstrapToken: "boot-1",
 			tenant: "alex.oc",
 			ingressHost: "alex.oc.example.com",
-			audience: "openclaw",
 		});
+	});
 
-		const mintArgs = (coreApi.createNamespacedServiceAccountToken as ReturnType<typeof vi.fn>).mock.calls[0][0];
-		expect(mintArgs.name).toBe("openclaw-alex.oc");
-		expect(mintArgs.body.spec.audiences).toEqual(["openclaw"]);
-		expect(mintArgs.body.spec.expirationSeconds).toBe(600);
+	it("derives the gateway URL from ingressHost when no pairing is stored", async function _derived()
+	{
+		const prisma = _buildPrisma([{ name: "alex.oc", ingressHost: "alex.oc.example.com", configOverrides: null }]);
+		const app = _buildApp({ authUser: { sub: "u1", email: "alex@acme.com" } }, prisma);
+
+		const res = await request(app).post("/auth/pod-token");
+
+		expect(res.status).toBe(200);
+		expect(res.body.gatewayUrl).toBe("wss://alex.oc.example.com");
+		expect(res.body.bootstrapToken).toBeNull();
 	});
 
 	it("returns 401 without a session", async function _noSession()
 	{
-		const app = _buildApp({}, _buildPrisma([]), _buildCoreApi("x", expiry));
+		const app = _buildApp({}, _buildPrisma([]));
 		const res = await request(app).post("/auth/pod-token");
 		expect(res.status).toBe(401);
 		expect(res.body.code).toBe("UNAUTHORIZED");
@@ -84,7 +84,7 @@ describe("POST /auth/pod-token", function _suite()
 
 	it("returns 403 when the session has no email", async function _noEmail()
 	{
-		const app = _buildApp({ authUser: { sub: "u1" } }, _buildPrisma([]), _buildCoreApi("x", expiry));
+		const app = _buildApp({ authUser: { sub: "u1" } }, _buildPrisma([]));
 		const res = await request(app).post("/auth/pod-token");
 		expect(res.status).toBe(403);
 		expect(res.body.code).toBe("FORBIDDEN");
@@ -92,7 +92,7 @@ describe("POST /auth/pod-token", function _suite()
 
 	it("returns 403 when no tenant matches the session email", async function _noTenant()
 	{
-		const app = _buildApp({ authUser: { sub: "u1", email: "ghost@acme.com" } }, _buildPrisma([]), _buildCoreApi("x", expiry));
+		const app = _buildApp({ authUser: { sub: "u1", email: "ghost@acme.com" } }, _buildPrisma([]));
 		const res = await request(app).post("/auth/pod-token");
 		expect(res.status).toBe(403);
 		expect(res.body.code).toBe("NO_TENANT");
@@ -100,22 +100,20 @@ describe("POST /auth/pod-token", function _suite()
 
 	it("fails closed with 409 when the email maps to more than one tenant", async function _ambiguous()
 	{
-		const coreApi = _buildCoreApi("x", expiry);
 		const prisma = _buildPrisma([
-			{ name: "alex.oc", ingressHost: "a.example.com" },
-			{ name: "alex2.oc", ingressHost: "b.example.com" },
+			{ name: "alex.oc", ingressHost: "a.example.com", configOverrides: null },
+			{ name: "alex2.oc", ingressHost: "b.example.com", configOverrides: null },
 		]);
-		const app = _buildApp({ authUser: { sub: "u1", email: "alex@acme.com" } }, prisma, coreApi);
+		const app = _buildApp({ authUser: { sub: "u1", email: "alex@acme.com" } }, prisma);
 		const res = await request(app).post("/auth/pod-token");
 		expect(res.status).toBe(409);
 		expect(res.body.code).toBe("AMBIGUOUS_TENANT");
-		expect(coreApi.createNamespacedServiceAccountToken).not.toHaveBeenCalled();
 	});
 
-	it("returns 409 when the tenant pod has no ingress host", async function _noIngress()
+	it("returns 409 when the pod is neither paired nor has an ingress host", async function _notReady()
 	{
-		const prisma = _buildPrisma([{ name: "alex.oc", ingressHost: null }]);
-		const app = _buildApp({ authUser: { sub: "u1", email: "alex@acme.com" } }, prisma, _buildCoreApi("x", expiry));
+		const prisma = _buildPrisma([{ name: "alex.oc", ingressHost: null, configOverrides: null }]);
+		const app = _buildApp({ authUser: { sub: "u1", email: "alex@acme.com" } }, prisma);
 		const res = await request(app).post("/auth/pod-token");
 		expect(res.status).toBe(409);
 		expect(res.body.code).toBe("POD_NOT_READY");

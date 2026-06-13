@@ -5,27 +5,12 @@ import type * as k8s from "@kubernetes/client-node";
 
 import type { OidcAuthService } from "./oidc.service.js";
 import { _AuthorizeDeviceGrant, _CreateDeviceGrant, _FindGrantByUserCode, _PollDeviceGrant } from "./device-grant.js";
-import { _MintPodToken } from "./pod-token.js";
-
-/**
- * Audience bound to the token minted here for the **browser/BFF → OpenClaw pod**
- * session — the tenant pod's own inbound session audience.
- *
- * Override via `POD_TOKEN_AUDIENCE`. The exact string the OpenClaw session
- * expects is platform-defined; @see `docs/auth.md` (open question on the pod
- * session API).
- */
-const _POD_TOKEN_AUDIENCE = process.env.POD_TOKEN_AUDIENCE ?? "openclaw";
-
-/** Tenant-pod access token lifetime in seconds (override via POD_TOKEN_TTL_SECONDS). */
-const _POD_TOKEN_TTL_SECONDS = Number(process.env.POD_TOKEN_TTL_SECONDS ?? "600");
-
-/** Namespace tenant ServiceAccounts live in (matches the AI-budget convention). */
-const _TENANT_NAMESPACE = process.env.NAMESPACE ?? "default";
+import { _ResolveOpenClawPairing } from "./openclaw-pairing.js";
 
 /**
  * Build the auth router covering:
  *  - Session introspection (GET /me)
+ *  - OpenClaw pairing broker (POST /pod-token)
  *  - OIDC browser flow (GET /login, GET /callback, POST /logout)
  *  - Device authorization grant for CLI (POST /device, GET /device/activate, GET /device/token)
  *
@@ -34,9 +19,9 @@ const _TENANT_NAMESPACE = process.env.NAMESPACE ?? "default";
  *
  * @param authService - OIDC auth service instance.
  * @param prisma      - Prisma client used to persist device-issued access tokens.
- * @param coreApi     - Kubernetes Core V1 API client, used to mint tenant-pod tokens.
+ * @param _coreApi    - Kubernetes Core V1 API client (reserved for future pod ops).
  */
-export function ___AuthRouter(authService: OidcAuthService, prisma: PrismaClient, coreApi: k8s.CoreV1Api): Router
+export function ___AuthRouter(authService: OidcAuthService, prisma: PrismaClient, _coreApi: k8s.CoreV1Api): Router
 {
   const router = Router();
 
@@ -51,26 +36,25 @@ export function ___AuthRouter(authService: OidcAuthService, prisma: PrismaClient
   });
 
   // --------------------------------------------------------------------------
-  // Tenant-pod token exchange (single sign-on across control plane + pod)
+  // OpenClaw pairing broker (single sign-on across control plane + pod)
   // --------------------------------------------------------------------------
 
   /**
-   * Exchange the caller's OIDC session for a short-lived, audience-bound token
-   * to **their own** OpenClaw pod session — so the user logs in once and the pod
-   * token is derived, never a second login (see `docs/auth.md`).
+   * Hand the caller the connection details for **their own** OpenClaw pod's
+   * Gateway, derived from their OIDC session — so they log in once and the pod
+   * connection follows, never a second login (see `docs/auth.md`).
    *
-   * The token is minted via the Kubernetes TokenRequest API against the tenant's
-   * pod ServiceAccount (`openclaw-<tenant>`), bound to the OpenClaw session
-   * audience (see `_POD_TOKEN_AUDIENCE`) and a ~600s TTL. It lets the browser/BFF
-   * reach the tenant pod at `ingressHost`; the pod validates it via TokenReview.
-   * It is **not** an `obot-gateway` token — Obot is called only from inside the
-   * pod, never from the browser. Clients re-call this before the TTL expires;
-   * only when the OIDC session itself expires is a fresh login required.
+   * OpenClaw authenticates with a **pairing link** (`{ url, bootstrapToken }`):
+   * the gateway WebSocket URL plus a short-lived bootstrap token whose pairing
+   * profile auto-grants a `node` role + bounded `operator` scopes. We return
+   * those so WeOwnAI can run the gateway's `connect` handshake (see plan.md). We
+   * do **not** mint a Kubernetes token — that was a wrong guess at the pod's
+   * auth; the pairing link is OpenClaw's native mechanism.
    *
    * **Cross-tenant safety:** the target tenant is resolved solely from the
    * session's IdP-verified email — there is no request-supplied tenant input —
    * and an email matching more than one tenant fails closed. A caller therefore
-   * cannot mint a token for another user's pod.
+   * cannot obtain another user's pod connection.
    *
    * **This route is mounted before `___AuthMiddleware`** (the whole auth router
    * is public), so it enforces the session check inline.
@@ -97,7 +81,7 @@ export function ___AuthRouter(authService: OidcAuthService, prisma: PrismaClient
 
       const matches = await prisma.tenant.findMany({
         where: { email: { equals: email, mode: "insensitive" } },
-        select: { name: true, ingressHost: true },
+        select: { name: true, ingressHost: true, configOverrides: true },
       });
 
       if (matches.length === 0)
@@ -107,7 +91,7 @@ export function ___AuthRouter(authService: OidcAuthService, prisma: PrismaClient
       }
 
       // Fail closed: an ambiguous email→tenant mapping must never silently pick
-      // one pod, which could hand the caller a token for the wrong tenant.
+      // one pod, which could hand the caller another tenant's connection.
       if (matches.length > 1)
       {
         res.status(409).json({ error: "Multiple OpenClaw pods match this account; contact your administrator", code: "AMBIGUOUS_TENANT" });
@@ -116,27 +100,20 @@ export function ___AuthRouter(authService: OidcAuthService, prisma: PrismaClient
 
       const tenant = matches[0];
 
-      if (!tenant.ingressHost)
+      // 3. Resolve the pod's pairing link (gateway URL + bootstrap token).
+      const pairing = _ResolveOpenClawPairing(tenant.configOverrides, tenant.ingressHost);
+      if (!pairing)
       {
-        res.status(409).json({ error: "OpenClaw pod has no ingress host yet", code: "POD_NOT_READY" });
+        res.status(409).json({ error: "OpenClaw pod is not paired yet", code: "POD_NOT_READY" });
         return;
       }
 
-      // 3. Mint a pod-scoped token bound to the gateway audience.
-      const minted = await _MintPodToken(coreApi, {
-        namespace: _TENANT_NAMESPACE,
-        serviceAccountName: `openclaw-${tenant.name}`,
-        audience: _POD_TOKEN_AUDIENCE,
-        expirationSeconds: _POD_TOKEN_TTL_SECONDS,
-      });
-
-      // 4. Return the token, its expiry, and where to reach the pod.
+      // 4. Return the connection details for the gateway `connect` handshake.
       res.status(200).json({
-        token: minted.token,
-        expiresAt: minted.expiresAt,
+        gatewayUrl: pairing.gatewayUrl,
+        bootstrapToken: pairing.bootstrapToken,
         tenant: tenant.name,
         ingressHost: tenant.ingressHost,
-        audience: _POD_TOKEN_AUDIENCE,
       });
     }
     catch (err)
