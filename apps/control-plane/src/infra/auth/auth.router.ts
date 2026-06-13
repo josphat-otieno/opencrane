@@ -47,7 +47,7 @@ export function ___AuthRouter(authService: OidcAuthService, prisma: PrismaClient
    * OpenClaw authenticates with a **pairing link** (`{ url, bootstrapToken }`):
    * the gateway WebSocket URL plus a short-lived bootstrap token whose pairing
    * profile auto-grants a `node` role + bounded `operator` scopes. We return
-   * those so WeOwnAI can run the gateway's `connect` handshake (see plan.md). We
+   * those so cli can run the gateway's `connect` handshake (see plan.md). We
    * do **not** mint a Kubernetes token — that was a wrong guess at the pod's
    * auth; the pairing link is OpenClaw's native mechanism.
    *
