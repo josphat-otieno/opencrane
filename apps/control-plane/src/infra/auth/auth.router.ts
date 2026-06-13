@@ -123,7 +123,6 @@ export function ___AuthRouter(authService: OidcAuthService, prisma: PrismaClient
       }
       catch (err)
       {
-        // eslint-disable-next-line no-console
         console.warn(`[auth] failed to record brokered device for ${tenant.name}/${subject}:`, err instanceof Error ? err.message : err);
       }
 
