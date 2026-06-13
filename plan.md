@@ -278,6 +278,83 @@ standing per-frame audit choke point are **not** in scope → that is the proxy
     (`platform/tests/values-k3d-local.yaml`) + optional `mkcert`; (d) **live ACME e2e**
     (needs a cluster + real DNS — cannot be unit-validated).
 
+### Track P4-D — MCP & Skills platform completion (the two 🔶 gaps)
+
+> Scoped 2026-06-13. Closes the two known runtime-plane gaps from `docs/obot.md` and
+> `docs/skills-registry.md`. Custody/substrate decisions are **locked** (Phase 4
+> Decisions: MCP creds = central broker in Obot ✅; skill substrate = OCI/ORAS + Cognee ✅).
+>
+> **NEXT EXECUTE CYCLE — scope locked 2026-06-13: P4-D only** (user-chosen). All four P4D
+> design questions are resolved (see P4D.1/P4D.2). Tracks C (P4-B fleet awareness — needs its
+> own 11-decision round) and D (CONN external OpenClaw-contract blockers) are explicitly NOT
+> in this cycle.
+>
+> **Low-stakes infra defaults (apply unless overridden):** Obot topology = single replica
+> (dev) / HA via values (prod); third-party source auto-sync = conservative interval,
+> discover-only (install requires explicit admin); scheduler dispatch = job-scoped token,
+> ~600s TTL, dedicated audience.
+
+- [ ] **P4D.1 Obot downstream-credential brokering.** Today `OBOT_SERVER_ENCRYPTION_PROVIDER=none`
+  and no downstream MCP credentials are brokered — the 🔶 in `docs/obot.md`. Custody is
+  decided (Obot holds creds; the pod never receives them). Build: author downstream
+  credentials in the control plane (`McpServerCredential` model + `routes/mcp-servers.ts`
+  already exist), push them to Obot via the registry-sync/operator-reconcile path, enable
+  Obot encryption-at-rest, and add a NetworkPolicy assertion that the pod cannot reach
+  Obot's DB/token store. Acceptance: a tenant call to a credential-bearing MCP server
+  succeeds with the secret injected **server-side in Obot**; the secret never appears in
+  the pod env/filesystem (covered by a test); encryption-at-rest is on. **DECIDED (2026-06-13):**
+  P4D-Q2 encryption-at-rest = **K8s-Secret-backed key** (`OBOT_SERVER_ENCRYPTION_PROVIDER=custom`,
+  key from an `opencrane-obot-enc` Secret — cloud-agnostic, on-prem-safe).
+  P4D-Q1 brokering mechanism = **per-user RFC 8693 token exchange** (preferred): Obot
+  exchanges the caller identity for a short-lived, user-delegated downstream token per call,
+  rather than injecting a static secret. **Caveat (must design for):** RFC 8693 requires the
+  *upstream* to support OAuth token-exchange/OBO **and** a per-user (≈per-tenant, since
+  tenant≈employee) identity/refresh-token store in Obot; MCP upstreams that don't support OBO
+  cannot use it, so a **static per-tenant/per-server credential fallback** is still required
+  for those. Also: the pod→Obot hop currently carries the *tenant* SA identity
+  (`aud=obot-gateway`), so propagating the *human* identity far enough for a true per-user
+  exchange is an added design step (else "per-user" collapses to per-tenant, which here is
+  per-employee anyway). Build sequences RFC 8693 for OBO-capable upstreams + the static
+  fallback path.
+  Anchors: `mcp-servers.ts`, `obot-registry.ts`, operator drift-repairer, `obot-mcp-gateway-deployment.yaml`,
+  `networkpolicy-planes.yaml`. (Phase 4 Decision: "MCP credential custody" ✅; Deliverable 8.)
+- [ ] **P4D.2 OCI/ORAS (Zot) digest-pinned bundle storage.** Today the Skill Registry serves
+  bundle `content` from the control-plane DB — the 🔶 in `docs/skills-registry.md`. Substrate
+  is decided (OCI/ORAS + Cognee). Build: deploy an in-cluster OCI registry (Helm), push each
+  published `SkillBundle` as an OCI artifact (SKILL.md bundle, semver tag + immutable digest
+  pin) via ORAS on publish, switch `routes/internal/skill-bundles.ts` + the skill-registry
+  delivery app to fetch content **by digest from the registry**, and gate registry access by
+  NetworkPolicy (pod has no path to the OCI store). The `digest` field already pins identity,
+  so the delivery contract is unchanged. Acceptance: publishing a bundle stores an OCI
+  artifact pinned by digest; delivery serves it from the registry; promotion/demotion stays a
+  metadata-only grant move (artifact immutable); covered by tests. **DECIDED (2026-06-13):**
+  P4D-Q3 registry = **Zot** (lightweight, OCI-native, in-cluster Deployment + PVC/object-store);
+  P4D-Q4 delivery = **registry-only — drop `SkillBundle.content` from the DB** (the OCI store
+  becomes the single source of truth, digest already pins identity); artifact naming
+  `skills/<scope>/<name>:<semver>@<digest>`.
+  Anchors: new Helm OCI-registry template, `skill-catalog.ts` (publish), `skill-bundles.ts`
+  (delivery), `apps/skill-registry/src`, `networkpolicy-planes.yaml`. (Phase 4 Decisions:
+  "Skill substrate" ✅, "Skill registry OCI store" + "OCI artifact naming"; Deliverables 7 & 9.)
+  - **Landed (2026-06-13, foundation slice):** `OciBundleStore`
+    (`apps/control-plane/src/core/oci/oci-bundle-store.ts` + `.types.ts`) — OCI Distribution v2
+    push (blob upload + manifest so the blob isn't GC'd) and **digest-verified** pull-by-digest
+    (rejects bytes that don't hash to the requested digest). Hardened per review: idempotent
+    re-push (accepts 2xx / blob-already-exists, not strict 201), `sha256:<64hex>` digest
+    validation before any URL use, same-origin-only upload `Location` (refuses redirects off the
+    registry), and constructor validation of registryUrl/repository. Injectable transport, 8 unit
+    tests (control-plane 80/80). Helm: gated Zot Deployment+Service(+PVC) `skill-oci-store.yaml` +
+    `skillRegistry.ociStore` values block (default **off**); `helm template` validated (renders
+    when enabled, nothing by default). `tsc --noEmit` clean. Non-destructive — no runtime path
+    changed yet.
+  - **Remaining (next slice, needs a live Zot in the loop):** (a) wire bundle **publish** to push
+    to Zot (`skill-catalog.ts` PUT→published); (b) switch **delivery** (`skill-bundles.ts`) to
+    pull-by-digest from Zot with DB-`content` fallback + the `SKILL_OCI_REGISTRY_URL` env/DI
+    through `routes.ts`; (c) backfill existing bundles into Zot, then the **destructive** Prisma
+    migration dropping `SkillBundle.content`; (d) tighten `networkpolicy-planes.yaml` so only the
+    control plane reaches the OCI store; (e) live round-trip e2e. The runtime cutover (a/b) was
+    deliberately deferred from this slice — it changes the entitlement-gated delivery path and
+    should be validated against a running Zot, not shipped blind.
+
 ---
 
 ## Phase 4: Fleet Organizational Awareness + MCP & Skills Platform
@@ -500,6 +577,13 @@ standing per-frame audit choke point are **not** in scope → that is the proxy
 ## Phase 4 Decisions (Lock Before Execution of Track B)
 
 > All items below must be resolved before Track B implementation starts. Confirmed items are marked [x].
+>
+> **Triage (2026-06-13):** the MCP/skills-platform decisions are resolved (see P4-D + the [x]
+> items below) and are in the next build cycle. The remaining `[ ]` items are all **Track B
+> fleet-awareness** product decisions — deferred to a dedicated decision round (they are NOT in
+> the P4-D cycle and are a separate ~324h track). Two further blockers are **external** (not
+> resolvable here): CONN.3/B2 pairing-link + bootstrap-mint provisioning and B1 device-signature
+> scheme — both need OpenClaw-contract facts.
 
 - [ ] Awareness SDK ownership model (single package vs per-domain modules).
 - [ ] Contract version rollout strategy (global vs tenant cohort waves).
@@ -511,11 +595,11 @@ standing per-frame audit choke point are **not** in scope → that is the proxy
 - [ ] Monitoring severity model for non-participating claws and policy-violating executions.
 - [ ] Department scope semantics versus team scope migration rules.
 - [ ] Promotion and demotion authorization rules and required approvers per scope boundary.
-- [ ] OCI artifact naming, tagging, and digest pinning policy for skill versions.
-- [x] MCP credential custody: central broker (Obot holds downstream creds; pod never receives them). **Confirmed.**
+- [x] OCI artifact naming, tagging, and digest pinning policy for skill versions. **`skills/<scope>/<name>:<semver>@<digest>` (2026-06-13).**
+- [x] MCP credential custody: central broker (Obot holds downstream creds; pod never receives them). **Confirmed.** Mechanism (2026-06-13): **per-user RFC 8693** token exchange + static per-tenant/per-server fallback for non-OBO upstreams; encryption-at-rest = K8s-Secret-backed key. (P4D.1)
 - [x] Skill substrate: build thin over OCI/ORAS + Cognee (not a ClawHub fork). **Confirmed.**
-- [ ] Obot MCP Gateway version and deployment topology (single replica vs HA).
-- [ ] Skill registry OCI store: Zot vs alternative OCI-compliant registry.
+- [~] Obot MCP Gateway version and deployment topology (single replica vs HA). **Default (2026-06-13): single replica dev / HA via values prod.**
+- [x] Skill registry OCI store: Zot vs alternative OCI-compliant registry. **Zot (2026-06-13).** (P4D.2)
 - [ ] Third-party source auto-sync interval defaults and rate-limit policy.
 - [ ] Scheduler dispatch identity model: job-scoped token TTL and audience.
 - [ ] ClawdBot bootstrap injection content (BOOTSTRAP.MD, SOUL.MD) review and sign-off.

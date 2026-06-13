@@ -242,6 +242,30 @@ skillRegistry:
     limits:
       cpu: 500m
       memory: 256Mi
+  # -- OCI registry (Zot) for digest-pinned skill-bundle storage (P4D.2). Default off;
+  # enable once the publish/delivery cutover lands. The control plane reaches it via
+  # SKILL_OCI_REGISTRY_URL (wired in the cutover slice).
+  ociStore:
+    enabled: false
+    image:
+      repository: ghcr.io/project-zot/zot-linux-amd64
+      tag: latest
+      pullPolicy: IfNotPresent
+    service:
+      port: 5000
+    # -- Repository path bundles are stored under (registry name).
+    repository: skills
+    persistence:
+      enabled: true
+      size: 10Gi
+      storageClass: ""
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
 
 # -- Audience-bound projected token settings for tenant access into ingress planes
 projectedIdentity:
