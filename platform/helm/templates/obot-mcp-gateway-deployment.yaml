@@ -48,9 +48,25 @@ spec:
               value: "kubernetes"
             - name: OBOT_SERVER_MCPCLUSTER_DOMAIN
               value: "cluster.local"
-            # No credential encryption at rest in the Phase 4 baseline.
+            {{- if .Values.mcpGateway.encryptionAtRest.enabled }}
+            # Encryption-at-rest ENABLED (P4D.1).
+            # ⚠️ ASSUMED knob — provider=custom + key-from-Secret are NOT verified
+            # against a live Obot; this whole block is gated behind
+            # mcpGateway.encryptionAtRest.enabled (default OFF). Confirm the valid
+            # provider value and the exact key env var against the pinned Obot
+            # version before enabling anywhere real.
+            - name: OBOT_SERVER_ENCRYPTION_PROVIDER
+              value: "custom"
+            - name: OBOT_SERVER_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.mcpGateway.encryptionAtRest.secretName }}
+                  key: {{ .Values.mcpGateway.encryptionAtRest.secretKey }}
+            {{- else }}
+            # No credential encryption at rest (baseline; P4D.1 default OFF).
             - name: OBOT_SERVER_ENCRYPTION_PROVIDER
               value: "none"
+            {{- end }}
             # Control-plane registry — Obot polls this endpoint to sync the MCP server catalog
             # with OpenCrane McpServer rows. The control-plane exposes /api/internal/obot-registry
             # in Obot's /v0.1/servers format.

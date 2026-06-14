@@ -50,6 +50,14 @@ function badRequest(description: string)
   };
 }
 
+function conflict(description: string)
+{
+  return {
+    description,
+    content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
+  };
+}
+
 function upstreamError()
 {
   return {
@@ -104,6 +112,37 @@ const PolicySchema = {
   },
 };
 
+const McpServerCredentialSchema = {
+  type: "object" as const,
+  properties: {
+    id: { type: "string", description: "Stable credential identifier." },
+    displayName: { type: "string", description: "Operator-facing label." },
+    brokeringMode: {
+      type: "string",
+      enum: ["static", "obo"],
+      description: "Brokering strategy: 'static' (per-tenant/per-server secret fallback) or 'obo' (per-user RFC 8693 exchange brokered server-side; no static secret).",
+    },
+    secretRef: {
+      type: ["string", "null"],
+      description: "Secret reference for 'static' brokering; null for 'obo'.",
+    },
+  },
+};
+
+const McpServerCredentialInputSchema = {
+  type: "object" as const,
+  required: ["displayName"],
+  properties: {
+    displayName: { type: "string", description: "Operator-facing label." },
+    brokeringMode: {
+      type: "string",
+      enum: ["static", "obo"],
+      description: "Defaults to 'static'. 'static' requires secretRef; 'obo' must omit it.",
+    },
+    secretRef: { type: "string", description: "Required for 'static' brokering; omit for 'obo'." },
+  },
+};
+
 const McpServerSchema = {
   type: "object" as const,
   properties: {
@@ -112,7 +151,7 @@ const McpServerSchema = {
     endpoint: { type: "string" },
     transport: { type: "string", enum: ["streamable-http", "sse", "websocket"] },
     grants: { type: "array", items: { type: "object" } },
-    credentials: { type: "array", items: { type: "object" } },
+    credentials: { type: "array", items: { $ref: "#/components/schemas/McpServerCredential" } },
   },
 };
 
@@ -292,6 +331,7 @@ export const spec = {
       Tenant: TenantSchema,
       Policy: PolicySchema,
       McpServer: McpServerSchema,
+      McpServerCredential: McpServerCredentialSchema,
       Group: GroupSchema,
       SkillBundle: SkillBundleSchema,
       AuditEntry: AuditEntrySchema,
@@ -939,6 +979,50 @@ export const spec = {
       },
     },
 
+    "/mcp-servers/{id}/credentials": {
+      get: {
+        operationId: "listMcpServerCredentials",
+        summary: "List the brokered credentials of an MCP server",
+        tags: ["MCP Servers"],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          200: ok("Credential list.", { type: "array", items: { $ref: "#/components/schemas/McpServerCredential" } }),
+          404: notFound("MCP server not found."),
+        },
+      },
+      post: {
+        operationId: "addMcpServerCredential",
+        summary: "Add a brokered credential to an MCP server (does not touch grants)",
+        tags: ["MCP Servers"],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: McpServerCredentialInputSchema } },
+        },
+        responses: {
+          201: created("Credential added.", { $ref: "#/components/schemas/McpServerCredential" }),
+          400: badRequest("Credential payload violates brokering-mode custody rules."),
+          404: notFound("MCP server not found."),
+        },
+      },
+    },
+
+    "/mcp-servers/{id}/credentials/{credentialId}": {
+      delete: {
+        operationId: "deleteMcpServerCredential",
+        summary: "Remove a single brokered credential from an MCP server",
+        tags: ["MCP Servers"],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "string" } },
+          { name: "credentialId", in: "path", required: true, schema: { type: "string" } },
+        ],
+        responses: {
+          200: ok("Credential deleted.", { type: "object", properties: { id: { type: "string" }, status: { type: "string" } } }),
+          404: notFound("MCP server or credential not found."),
+        },
+      },
+    },
+
     // ------------------------------------------------------------------
     // Groups
     // ------------------------------------------------------------------
@@ -1024,6 +1108,41 @@ export const spec = {
         },
         responses: {
           201: created("Skill bundle created.", { type: "object", properties: { id: { type: "string" }, status: { type: "string" } } }),
+        },
+      },
+    },
+
+    "/skills/catalog/backfill": {
+      post: {
+        operationId: "backfillSkillBundlesToOci",
+        summary: "Backfill all published bundles' content into the OCI store (P4D.2)",
+        tags: ["Skills"],
+        responses: {
+          200: ok("Backfill summary with per-bundle outcomes.", {
+            type: "object",
+            required: ["total", "pushed", "skipped", "failed", "results"],
+            properties: {
+              total: { type: "integer", description: "Published bundles considered." },
+              pushed: { type: "integer", description: "Count pushed to the registry." },
+              skipped: { type: "integer", description: "Count skipped (no DB content)." },
+              failed: { type: "integer", description: "Count failed (push error or digest mismatch)." },
+              results: {
+                type: "array",
+                items: {
+                  type: "object",
+                  required: ["id", "name", "digest", "outcome"],
+                  properties: {
+                    id: { type: "string" },
+                    name: { type: "string" },
+                    digest: { type: "string" },
+                    outcome: { type: "string", enum: ["pushed", "skipped", "failed"] },
+                    reason: { type: "string", description: "Failure detail when outcome is failed." },
+                  },
+                },
+              },
+            },
+          }),
+          409: conflict("OCI store not configured (SKILL_OCI_REGISTRY_URL unset)."),
         },
       },
     },

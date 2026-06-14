@@ -1,24 +1,7 @@
-import {
-  GrantAccess,
-  GrantScope,
-  GrantSubjectType,
-  McpServerStatus,
-  McpServerTransport,
-  type Grant,
-  type McpServer,
-  type McpServerCredential,
-} from "@opencrane/contracts";
+import { GrantAccess, GrantScope, GrantSubjectType, McpCredentialBrokeringMode, McpServerStatus, McpServerTransport, type Grant, type McpServer, type McpServerCredential } from "@opencrane/contracts";
 import { Prisma, type PrismaClient } from "@prisma/client";
 
-import type {
-  McpServerGrantInput,
-  McpServerRouteAccess,
-  McpServerRouteScope,
-  McpServerRouteStatus,
-  McpServerRouteSubjectType,
-  McpServerRouteTransport,
-  McpServerWriteRequest,
-} from "../../routes/mcp-servers.types.js";
+import type { McpServerCredentialInput, McpServerGrantInput, McpServerRouteAccess, McpServerRouteScope, McpServerRouteStatus, McpServerRouteSubjectType, McpServerRouteTransport, McpServerWriteRequest } from "../../routes/mcp-servers.types.js";
 
 type _McpServerRow = Prisma.McpServerGetPayload<{ include: { scopedGrants: true; credentials: true; source: true } }>;
 
@@ -74,6 +57,24 @@ const _PRISMA_MCP_SERVER_STATUS = {
   Degraded: "Degraded",
   Draft: "Draft",
 } as const;
+
+/** Typed Prisma brokering-mode values used during runtime lookups. */
+const _PRISMA_MCP_BROKERING_MODE = {
+  StaticFallback: "StaticFallback",
+  PerUserObo: "PerUserObo",
+} as const;
+
+/** Prisma brokering-mode lookup keyed by route values. */
+const _PRISMA_BROKERING_BY_ROUTE = {
+  static: _PRISMA_MCP_BROKERING_MODE.StaticFallback,
+  obo: _PRISMA_MCP_BROKERING_MODE.PerUserObo,
+};
+
+/** Route (contract) brokering-mode lookup keyed by Prisma enum values. */
+const _ROUTE_BROKERING_BY_PRISMA = {
+  [_PRISMA_MCP_BROKERING_MODE.StaticFallback]: McpCredentialBrokeringMode.StaticFallback,
+  [_PRISMA_MCP_BROKERING_MODE.PerUserObo]: McpCredentialBrokeringMode.PerUserObo,
+};
 
 /** Typed Prisma payload value used for MCP grants persisted in Prisma. */
 const _PRISMA_MCP_SERVER_PAYLOAD_TYPE = "McpServer";
@@ -295,6 +296,161 @@ export async function deleteMcpServer(prisma: PrismaClient, serverId: string): P
 }
 
 /**
+ * List the brokered credentials of a single MCP server.
+ *
+ * @param prisma - Prisma client used for persistence.
+ * @param serverId - Server identifier from the route.
+ * @returns Credential responses, or null when the server does not exist.
+ */
+export async function listMcpServerCredentials(prisma: PrismaClient, serverId: string): Promise<McpServerCredentialResponse[] | null>
+{
+  // 1. Confirm the server exists so a missing server reads as 404, not an
+  //    empty credential list (which would mask a bad identifier).
+  const server = await prisma.mcpServer.findUnique({ where: { id: serverId }, select: { id: true } });
+  if (!server)
+  {
+    return null;
+  }
+
+  // 2. Load and normalise the credential rows for the server.
+  const credentials = await prisma.mcpServerCredential.findMany({ where: { mcpServerId: serverId }, orderBy: { createdAt: "asc" } });
+  return credentials.map(function _mapCredential(credential)
+  {
+    return _MapCredentialResponse(credential);
+  });
+}
+
+/**
+ * Add a single brokered credential to an MCP server without disturbing grants.
+ *
+ * Unlike the full PUT path (which replaces all children), this is an additive
+ * mutation so operators can author one credential at a time via the CLI.
+ *
+ * @param prisma - Prisma client used for persistence.
+ * @param serverId - Server identifier from the route.
+ * @param input - Credential payload to validate and persist.
+ * @returns The created credential response, or null when the server is absent.
+ * @throws {McpCredentialValidationError} When the payload breaks a custody rule.
+ */
+export async function addMcpServerCredential(prisma: PrismaClient, serverId: string, input: McpServerCredentialInput): Promise<McpServerCredentialResponse | null>
+{
+  // 1. Confirm the server exists before validating so a bad identifier reads
+  //    as 404 rather than a misleading custody-validation error.
+  const server = await prisma.mcpServer.findUnique({ where: { id: serverId }, select: { id: true } });
+  if (!server)
+  {
+    return null;
+  }
+
+  // 2. Validate the brokering-mode custody rules and build the persisted row.
+  const row = _NormalizeCredentialInput(serverId, input);
+  const created = await prisma.mcpServerCredential.create({ data: row });
+
+  // 3. Record an audit entry so credential authoring stays traceable.
+  await prisma.auditEntry.create({
+    data: {
+      action: "Created",
+      resource: `McpServerCredential/${created.id}`,
+      message: `MCP credential ${created.displayName} (${input.brokeringMode ?? "static"}) added to server ${serverId}`,
+    },
+  });
+
+  return _MapCredentialResponse(created);
+}
+
+/**
+ * Remove a single brokered credential from an MCP server.
+ *
+ * @param prisma - Prisma client used for persistence.
+ * @param serverId - Server identifier from the route.
+ * @param credentialId - Credential identifier from the route.
+ * @returns Mutation response, or null when the credential is not on the server.
+ */
+export async function deleteMcpServerCredential(prisma: PrismaClient, serverId: string, credentialId: string): Promise<McpServerMutationResponse | null>
+{
+  // 1. Scope the lookup to the owning server so a credential id from another
+  //    server cannot be deleted via a mismatched path.
+  const credential = await prisma.mcpServerCredential.findFirst({ where: { id: credentialId, mcpServerId: serverId }, select: { id: true } });
+  if (!credential)
+  {
+    return null;
+  }
+
+  // 2. Delete the credential row.
+  await prisma.mcpServerCredential.delete({ where: { id: credentialId } });
+
+  // 3. Append an audit record so credential removal remains traceable.
+  await prisma.auditEntry.create({
+    data: {
+      action: "Deleted",
+      resource: `McpServerCredential/${credentialId}`,
+      message: `MCP credential ${credentialId} removed from server ${serverId}`,
+    },
+  });
+
+  return { id: credentialId, status: "deleted" };
+}
+
+/**
+ * Raised when a credential write payload violates the brokering-mode custody
+ * rules (e.g. a static credential without a secret, or an OBO credential that
+ * authors a static secret). Routes translate this into a 400 response.
+ */
+export class McpCredentialValidationError extends Error
+{
+  /**
+   * @param message - Human-readable explanation surfaced to the API caller.
+   */
+  constructor(message: string)
+  {
+    super(message);
+    this.name = "McpCredentialValidationError";
+  }
+}
+
+/**
+ * Validate a credential write payload and build its Prisma createMany row.
+ *
+ * Enforces the P4D.1 custody rules per brokering mode: a `static` credential
+ * must carry a `secretRef` (the per-tenant/per-server fallback secret), while
+ * an `obo` credential must NOT — the gateway brokers a per-user RFC 8693 token,
+ * so no static secret is authored centrally.
+ *
+ * @param serverId - Owning MCP server identifier.
+ * @param credential - Raw credential payload from the route body.
+ * @returns Prisma createMany input for the credential row.
+ * @throws {McpCredentialValidationError} When the payload breaks a custody rule.
+ */
+export function _NormalizeCredentialInput(serverId: string, credential: McpServerCredentialInput): Prisma.McpServerCredentialCreateManyInput
+{
+  // 1. Default the mode so pre-P4D.1 payloads (no brokeringMode) stay valid.
+  const routeMode = credential.brokeringMode ?? "static";
+
+  // 2. Normalise the secret reference, treating blank strings as absent so a
+  //    whitespace-only value can never masquerade as a real static secret.
+  const trimmedSecret = credential.secretRef?.trim();
+  const secretRef = trimmedSecret && trimmedSecret.length > 0 ? trimmedSecret : null;
+
+  // 3. Enforce the per-mode custody invariant before persistence.
+  if (routeMode === "obo" && secretRef !== null)
+  {
+    throw new McpCredentialValidationError(`OBO credential "${credential.displayName}" must not carry a static secretRef; Obot brokers a per-user token`);
+  }
+
+  if (routeMode === "static" && secretRef === null)
+  {
+    throw new McpCredentialValidationError(`static credential "${credential.displayName}" requires a non-empty secretRef`);
+  }
+
+  return {
+    mcpServerId: serverId,
+    displayName: credential.displayName,
+    brokeringMode: _PRISMA_BROKERING_BY_ROUTE[routeMode] as Prisma.McpServerCredentialCreateManyInput["brokeringMode"],
+    secretRef,
+  };
+}
+
+/**
  * Write child credentials and grant rows for an MCP server.
  *
  * @param prisma - Prisma client used for persistence.
@@ -308,11 +464,7 @@ async function _WriteMcpServerChildren(prisma: PrismaClient, serverId: string, b
     await prisma.mcpServerCredential.createMany({
       data: body.credentials.map(function _mapCredential(credential)
       {
-        return {
-          mcpServerId: serverId,
-          displayName: credential.displayName,
-          secretRef: credential.secretRef,
-        };
+        return _NormalizeCredentialInput(serverId, credential);
       }),
     });
   }
@@ -382,12 +534,24 @@ function _MapMcpServerResponse(server: _McpServerRow): McpServerResponse
     }),
     credentials: server.credentials.map(function _mapCredential(credential)
     {
-      return {
-        id: credential.id,
-        displayName: credential.displayName,
-        secretRef: credential.secretRef,
-      };
+      return _MapCredentialResponse(credential);
     }),
+  };
+}
+
+/**
+ * Map a persisted credential row into the route response shape.
+ *
+ * @param credential - Persisted credential row.
+ * @returns Normalized credential response payload.
+ */
+function _MapCredentialResponse(credential: _McpServerRow["credentials"][number]): McpServerCredentialResponse
+{
+  return {
+    id: credential.id,
+    displayName: credential.displayName,
+    brokeringMode: _ROUTE_BROKERING_BY_PRISMA[credential.brokeringMode],
+    secretRef: credential.secretRef,
   };
 }
 

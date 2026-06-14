@@ -111,6 +111,18 @@ export function _RegisterSkills(parent: Command, getConfig: () => CliConfig): vo
     });
 
   skills
+    .command("backfill")
+    .description("Backfill all published bundles' content into the OCI store (idempotent)")
+    .option("-o, --output <format>", "Output format: table|json", "table")
+    .action(async function _backfill(opts: { output: OutputFormat })
+    {
+      const client = _MakeClient(getConfig());
+      const { data, error } = await client.POST("/skills/catalog/backfill", {});
+      if (error) _PrintApiError("skills backfill", error);
+      _Print(data, opts.output);
+    });
+
+  skills
     .command("delete <id>")
     .description("Delete a skill bundle and its linked entitlement grants")
     .action(async function _delete(id: string)

@@ -145,8 +145,36 @@
           "credentials": {
             "type": "array",
             "items": {
-              "type": "object"
+              "$ref": "#/components/schemas/McpServerCredential"
             }
+          }
+        }
+      },
+      "McpServerCredential": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stable credential identifier."
+          },
+          "displayName": {
+            "type": "string",
+            "description": "Operator-facing label."
+          },
+          "brokeringMode": {
+            "type": "string",
+            "enum": [
+              "static",
+              "obo"
+            ],
+            "description": "Brokering strategy: 'static' (per-tenant/per-server secret fallback) or 'obo' (per-user RFC 8693 exchange brokered server-side; no static secret)."
+          },
+          "secretRef": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Secret reference for 'static' brokering; null for 'obo'."
           }
         }
       },
@@ -2131,6 +2159,187 @@
         }
       }
     },
+    "/mcp-servers/{id}/credentials": {
+      "get": {
+        "operationId": "listMcpServerCredentials",
+        "summary": "List the brokered credentials of an MCP server",
+        "tags": [
+          "MCP Servers"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Credential list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/McpServerCredential"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "MCP server not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "addMcpServerCredential",
+        "summary": "Add a brokered credential to an MCP server (does not touch grants)",
+        "tags": [
+          "MCP Servers"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "displayName"
+                ],
+                "properties": {
+                  "displayName": {
+                    "type": "string",
+                    "description": "Operator-facing label."
+                  },
+                  "brokeringMode": {
+                    "type": "string",
+                    "enum": [
+                      "static",
+                      "obo"
+                    ],
+                    "description": "Defaults to 'static'. 'static' requires secretRef; 'obo' must omit it."
+                  },
+                  "secretRef": {
+                    "type": "string",
+                    "description": "Required for 'static' brokering; omit for 'obo'."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Credential added.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpServerCredential"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Credential payload violates brokering-mode custody rules.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "MCP server not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp-servers/{id}/credentials/{credentialId}": {
+      "delete": {
+        "operationId": "deleteMcpServerCredential",
+        "summary": "Remove a single brokered credential from an MCP server",
+        "tags": [
+          "MCP Servers"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "credentialId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Credential deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "MCP server or credential not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/groups": {
       "get": {
         "operationId": "listGroups",
@@ -2372,6 +2581,97 @@
                       "type": "string"
                     }
                   }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/skills/catalog/backfill": {
+      "post": {
+        "operationId": "backfillSkillBundlesToOci",
+        "summary": "Backfill all published bundles' content into the OCI store (P4D.2)",
+        "tags": [
+          "Skills"
+        ],
+        "responses": {
+          "200": {
+            "description": "Backfill summary with per-bundle outcomes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "total",
+                    "pushed",
+                    "skipped",
+                    "failed",
+                    "results"
+                  ],
+                  "properties": {
+                    "total": {
+                      "type": "integer",
+                      "description": "Published bundles considered."
+                    },
+                    "pushed": {
+                      "type": "integer",
+                      "description": "Count pushed to the registry."
+                    },
+                    "skipped": {
+                      "type": "integer",
+                      "description": "Count skipped (no DB content)."
+                    },
+                    "failed": {
+                      "type": "integer",
+                      "description": "Count failed (push error or digest mismatch)."
+                    },
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "name",
+                          "digest",
+                          "outcome"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "digest": {
+                            "type": "string"
+                          },
+                          "outcome": {
+                            "type": "string",
+                            "enum": [
+                              "pushed",
+                              "skipped",
+                              "failed"
+                            ]
+                          },
+                          "reason": {
+                            "type": "string",
+                            "description": "Failure detail when outcome is failed."
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "OCI store not configured (SKILL_OCI_REGISTRY_URL unset).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }

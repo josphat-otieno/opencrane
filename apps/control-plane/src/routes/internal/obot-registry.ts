@@ -1,7 +1,28 @@
 import { Router } from "express";
 import type { PrismaClient } from "@prisma/client";
 
-import type { ObotRegistryItem, ObotRegistryResponse } from "./obot-registry.types.js";
+import type { ObotRegistryItem, ObotRegistryResponse, ObotRegistrySourceRow } from "./obot-registry.types.js";
+
+/**
+ * Map a persisted MCP server row into the Obot registry wire item.
+ *
+ * **Custody invariant (P4D.1):** this is the only shape pushed to Obot's
+ * catalog sync, and it carries *no* credential/secret material. Downstream
+ * credentials are brokered server-side in the gateway plane; they must never
+ * traverse this registry path into a tenant-reachable surface.
+ *
+ * @param server - Minimal MCP server projection (no secret fields).
+ * @returns Obot registry item wrapping the endpoint in a `remotes` array.
+ */
+export function _BuildObotRegistryItem(server: ObotRegistrySourceRow): ObotRegistryItem
+{
+  return {
+    id: server.id,
+    name: server.name,
+    description: server.description,
+    remotes: [{ name: server.name, url: server.endpoint }],
+  };
+}
 
 /**
  * Internal router that exposes the OpenCrane MCP catalog in Obot's
@@ -47,15 +68,11 @@ export function _RegisterObotRegistry(prisma: PrismaClient): Router
       });
 
       // 2. Map each database row to the Obot registry item shape, wrapping
-      //    the endpoint in a `remotes` array as the spec requires.
+      //    the endpoint in a `remotes` array as the spec requires. The mapper
+      //    emits no credential material — secrets stay server-side (P4D.1).
       const items: ObotRegistryItem[] = servers.map(function _mapServer(server)
       {
-        return {
-          id: server.id,
-          name: server.name,
-          description: server.description,
-          remotes: [{ name: server.name, url: server.endpoint }],
-        };
+        return _BuildObotRegistryItem(server);
       });
 
       // 3. Return the paginated envelope; cursor is null because all active

@@ -375,6 +375,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/mcp-servers/{id}/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the brokered credentials of an MCP server */
+        get: operations["listMcpServerCredentials"];
+        put?: never;
+        /** Add a brokered credential to an MCP server (does not touch grants) */
+        post: operations["addMcpServerCredential"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mcp-servers/{id}/credentials/{credentialId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a single brokered credential from an MCP server */
+        delete: operations["deleteMcpServerCredential"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/groups": {
         parameters: {
             query?: never;
@@ -424,6 +459,23 @@ export interface paths {
         put?: never;
         /** Create a new skill bundle */
         post: operations["createSkillBundle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/skills/catalog/backfill": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Backfill all published bundles' content into the OCI store (P4D.2) */
+        post: operations["backfillSkillBundlesToOci"];
         delete?: never;
         options?: never;
         head?: never;
@@ -951,7 +1003,20 @@ export interface components {
             /** @enum {string} */
             transport?: "streamable-http" | "sse" | "websocket";
             grants?: Record<string, never>[];
-            credentials?: Record<string, never>[];
+            credentials?: components["schemas"]["McpServerCredential"][];
+        };
+        McpServerCredential: {
+            /** @description Stable credential identifier. */
+            id?: string;
+            /** @description Operator-facing label. */
+            displayName?: string;
+            /**
+             * @description Brokering strategy: 'static' (per-tenant/per-server secret fallback) or 'obo' (per-user RFC 8693 exchange brokered server-side; no static secret).
+             * @enum {string}
+             */
+            brokeringMode?: "static" | "obo";
+            /** @description Secret reference for 'static' brokering; null for 'obo'. */
+            secretRef?: string | null;
         };
         Group: {
             id?: string;
@@ -2132,6 +2197,126 @@ export interface operations {
             };
         };
     };
+    listMcpServerCredentials: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Credential list. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpServerCredential"][];
+                };
+            };
+            /** @description MCP server not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    addMcpServerCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Operator-facing label. */
+                    displayName: string;
+                    /**
+                     * @description Defaults to 'static'. 'static' requires secretRef; 'obo' must omit it.
+                     * @enum {string}
+                     */
+                    brokeringMode?: "static" | "obo";
+                    /** @description Required for 'static' brokering; omit for 'obo'. */
+                    secretRef?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Credential added. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpServerCredential"];
+                };
+            };
+            /** @description Credential payload violates brokering-mode custody rules. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description MCP server not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteMcpServerCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                credentialId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Credential deleted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id?: string;
+                        status?: string;
+                    };
+                };
+            };
+            /** @description MCP server or credential not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     listGroups: {
         parameters: {
             query?: never;
@@ -2304,6 +2489,53 @@ export interface operations {
                         id?: string;
                         status?: string;
                     };
+                };
+            };
+        };
+    };
+    backfillSkillBundlesToOci: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Backfill summary with per-bundle outcomes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description Published bundles considered. */
+                        total: number;
+                        /** @description Count pushed to the registry. */
+                        pushed: number;
+                        /** @description Count skipped (no DB content). */
+                        skipped: number;
+                        /** @description Count failed (push error or digest mismatch). */
+                        failed: number;
+                        results: {
+                            id: string;
+                            name: string;
+                            digest: string;
+                            /** @enum {string} */
+                            outcome: "pushed" | "skipped" | "failed";
+                            /** @description Failure detail when outcome is failed. */
+                            reason?: string;
+                        }[];
+                    };
+                };
+            };
+            /** @description OCI store not configured (SKILL_OCI_REGISTRY_URL unset). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
         };

@@ -48,6 +48,25 @@ export interface ObotRegistryItem
 }
 
 /**
+ * Minimal MCP server row projected into the Obot registry mapper.
+ *
+ * Deliberately excludes credential/secret fields: the registry-sync wire
+ * format never carries downstream secret material (P4D.1 custody — secrets are
+ * held server-side in the gateway plane, never pushed through this catalog).
+ */
+export interface ObotRegistrySourceRow
+{
+  /** Stable MCP server identifier. */
+  id: string;
+  /** Display name shown in the Obot catalog. */
+  name: string;
+  /** Operator-facing description of the server. */
+  description: string;
+  /** Routable MCP endpoint URL. */
+  endpoint: string;
+}
+
+/**
  * Top-level envelope returned by `GET /v0.1/servers`.
  *
  * Obot expects cursor-based pagination.  The control-plane currently returns

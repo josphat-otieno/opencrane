@@ -212,6 +212,17 @@ mcpGateway:
   replicas: 1
   service:
     port: 8080
+  # -- Encryption-at-rest for Obot's credential/token store (P4D.1). Default OFF.
+  # ⚠️ ASSUMED, NOT verified against a live Obot. When enabled the deployment
+  # sets OBOT_SERVER_ENCRYPTION_PROVIDER=custom and mounts a key from the
+  # `opencrane-obot-enc` Secret. Obot's valid encryption-provider values and the
+  # exact key-mount env var are not in the public docs — confirm against the
+  # pinned Obot version before enabling in any real environment.
+  encryptionAtRest:
+    enabled: false
+    # Secret holding the encryption key (operator-provisioned; not templated here).
+    secretName: opencrane-obot-enc
+    secretKey: encryption-key
   podSecurityContext:
     runAsNonRoot: false
     seccompProfile:

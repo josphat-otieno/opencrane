@@ -263,14 +263,20 @@ model McpServerGrant {
   @@map("mcp_server_grants")
 }
 
+enum McpCredentialBrokeringMode {
+  StaticFallback @map("static_fallback")
+  PerUserObo     @map("per_user_obo")
+}
+
 model McpServerCredential {
-  id          String    @id @default(cuid())
-  mcpServerId String    @map("mcp_server_id")
-  displayName String    @map("display_name")
-  secretRef   String    @map("secret_ref")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
-  mcpServer   McpServer @relation(fields: [mcpServerId], references: [id], onDelete: Cascade)
+  id            String                     @id @default(cuid())
+  mcpServerId   String                     @map("mcp_server_id")
+  displayName   String                     @map("display_name")
+  brokeringMode McpCredentialBrokeringMode @default(StaticFallback) @map("brokering_mode")
+  secretRef     String?                    @map("secret_ref")
+  createdAt     DateTime                   @default(now()) @map("created_at")
+  updatedAt     DateTime                   @updatedAt @map("updated_at")
+  mcpServer     McpServer                  @relation(fields: [mcpServerId], references: [id], onDelete: Cascade)
 
   @@index([mcpServerId])
   @@map("mcp_server_credentials")

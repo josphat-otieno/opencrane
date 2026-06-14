@@ -101,4 +101,60 @@ export function _RegisterMcpServers(parent: Command, getConfig: () => CliConfig)
       if (error) _PrintApiError("mcp delete", error);
       _PrintSuccess(`MCP server "${id}" deleted`);
     });
+
+  // ----------------------------------------------------------------------
+  // Downstream-credential brokering (P4D.1): author per-server credentials.
+  // ----------------------------------------------------------------------
+  const cred = mcp
+    .command("cred")
+    .description("Manage brokered downstream credentials on an MCP server");
+
+  cred
+    .command("list <serverId>")
+    .description("List the brokered credentials of an MCP server")
+    .option("-o, --output <format>", "Output format: table|json", "table")
+    .action(async function _credList(serverId: string, opts: { output: OutputFormat })
+    {
+      const client = _MakeClient(getConfig());
+      const { data, error } = await client.GET("/mcp-servers/{id}/credentials", { params: { path: { id: serverId } } });
+      if (error) _PrintApiError("mcp cred list", error);
+      _Print(data, opts.output, ["id", "displayName", "brokeringMode", "secretRef"]);
+    });
+
+  cred
+    .command("add <serverId>")
+    .description("Add a brokered credential (static secret fallback or per-user OBO)")
+    .requiredOption("--display-name <name>", "Operator-facing credential label")
+    .option("--mode <mode>", "Brokering mode: static|obo", "static")
+    .option("--secret-ref <ref>", "Secret reference (required for --mode static, omit for obo)")
+    .option("-o, --output <format>", "Output format: table|json", "table")
+    .action(async function _credAdd(serverId: string, opts: {
+      displayName: string;
+      mode: string;
+      secretRef?: string;
+      output: OutputFormat;
+    })
+    {
+      const body = {
+        displayName: opts.displayName,
+        brokeringMode: opts.mode as "static" | "obo",
+        ...(opts.secretRef ? { secretRef: opts.secretRef } : {}),
+      };
+
+      const client = _MakeClient(getConfig());
+      const { data, error } = await client.POST("/mcp-servers/{id}/credentials", { params: { path: { id: serverId } }, body });
+      if (error) _PrintApiError("mcp cred add", error);
+      _Print(data, opts.output);
+    });
+
+  cred
+    .command("rm <serverId> <credentialId>")
+    .description("Remove a single brokered credential from an MCP server")
+    .action(async function _credRm(serverId: string, credentialId: string)
+    {
+      const client = _MakeClient(getConfig());
+      const { error } = await client.DELETE("/mcp-servers/{id}/credentials/{credentialId}", { params: { path: { id: serverId, credentialId } } });
+      if (error) _PrintApiError("mcp cred rm", error);
+      _PrintSuccess(`MCP credential "${credentialId}" removed from server "${serverId}"`);
+    });
 }

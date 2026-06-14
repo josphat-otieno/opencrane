@@ -1,8 +1,8 @@
 import { Router } from "express";
 import type { PrismaClient } from "@prisma/client";
 
-import { createMcpServer, deleteMcpServer, getMcpServer, listMcpServers, updateMcpServer } from "../features/mcp-servers/mcp-servers.logic.js";
-import type { McpServerWriteRequest } from "./mcp-servers.types.js";
+import { McpCredentialValidationError, addMcpServerCredential, createMcpServer, deleteMcpServer, deleteMcpServerCredential, getMcpServer, listMcpServerCredentials, listMcpServers, updateMcpServer } from "../features/mcp-servers/mcp-servers.logic.js";
+import type { McpServerCredentialInput, McpServerWriteRequest } from "./mcp-servers.types.js";
 
 /**
  * CRUD router for the MCP server catalog.
@@ -34,23 +34,105 @@ export function mcpServersRouter(prisma: PrismaClient): Router
   });
 
   /** Create a new MCP server plus generic grant rows for the compiler. */
-  router.post("/", async function _createMcpServer(req, res)
+  router.post("/", async function _createMcpServer(req, res, next)
   {
-    const body = req.body as McpServerWriteRequest;
-    res.status(201).json(await createMcpServer(prisma, body));
+    try
+    {
+      const body = req.body as McpServerWriteRequest;
+      res.status(201).json(await createMcpServer(prisma, body));
+    }
+    catch (err)
+    {
+      // Credential custody violations (bad brokering-mode payload) are client
+      // errors, not server faults — surface them as 400 rather than 500.
+      if (err instanceof McpCredentialValidationError)
+      {
+        res.status(400).json({ error: err.message, code: "VALIDATION_ERROR" });
+        return;
+      }
+
+      next(err);
+    }
   });
 
   /** Update an MCP server and fully replace grants and credentials. */
-  router.put("/:id", async function _updateMcpServer(req, res)
+  router.put("/:id", async function _updateMcpServer(req, res, next)
   {
-    const body = req.body as Partial<McpServerWriteRequest>;
-    res.json(await updateMcpServer(prisma, req.params.id, body));
+    try
+    {
+      const body = req.body as Partial<McpServerWriteRequest>;
+      res.json(await updateMcpServer(prisma, req.params.id, body));
+    }
+    catch (err)
+    {
+      // See POST handler: a credential custody violation is a 400, not a 500.
+      if (err instanceof McpCredentialValidationError)
+      {
+        res.status(400).json({ error: err.message, code: "VALIDATION_ERROR" });
+        return;
+      }
+
+      next(err);
+    }
   });
 
   /** Delete an MCP server and its linked grant rows. */
   router.delete("/:id", async function _deleteMcpServer(req, res)
   {
     res.json(await deleteMcpServer(prisma, req.params.id));
+  });
+
+  /** List the brokered credentials of an MCP server. */
+  router.get("/:id/credentials", async function _listMcpServerCredentials(req, res)
+  {
+    const credentials = await listMcpServerCredentials(prisma, req.params.id);
+    if (credentials === null)
+    {
+      res.status(404).json({ error: "MCP server not found", code: "MCP_SERVER_NOT_FOUND" });
+      return;
+    }
+
+    res.json(credentials);
+  });
+
+  /** Add a single brokered credential to an MCP server (additive — grants untouched). */
+  router.post("/:id/credentials", async function _addMcpServerCredential(req, res, next)
+  {
+    try
+    {
+      const credential = await addMcpServerCredential(prisma, req.params.id, req.body as McpServerCredentialInput);
+      if (credential === null)
+      {
+        res.status(404).json({ error: "MCP server not found", code: "MCP_SERVER_NOT_FOUND" });
+        return;
+      }
+
+      res.status(201).json(credential);
+    }
+    catch (err)
+    {
+      // A credential custody violation (bad brokering-mode payload) is a 400.
+      if (err instanceof McpCredentialValidationError)
+      {
+        res.status(400).json({ error: err.message, code: "VALIDATION_ERROR" });
+        return;
+      }
+
+      next(err);
+    }
+  });
+
+  /** Remove a single brokered credential from an MCP server. */
+  router.delete("/:id/credentials/:credentialId", async function _deleteMcpServerCredential(req, res)
+  {
+    const result = await deleteMcpServerCredential(prisma, req.params.id, req.params.credentialId);
+    if (result === null)
+    {
+      res.status(404).json({ error: "MCP credential not found", code: "MCP_CREDENTIAL_NOT_FOUND" });
+      return;
+    }
+
+    res.json(result);
   });
 
   return router;

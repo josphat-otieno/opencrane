@@ -13,13 +13,26 @@ export type McpServerRouteTransport = "streamable-http" | "sse" | "websocket";
 /** Supported rollout states for MCP servers. */
 export type McpServerRouteStatus = "active" | "degraded" | "draft";
 
+/** Brokering strategy selector accepted on the credential write path. */
+export type McpServerRouteBrokeringMode = "static" | "obo";
+
 /** Request body used to create or update a dedicated MCP credential record. */
 export interface McpServerCredentialInput
 {
   /** Operator-facing label for the credential. */
   displayName: string;
-  /** Secret reference consumed by the future gateway reconcile path. */
-  secretRef: string;
+  /**
+   * Brokering strategy. Defaults to `"static"` when omitted for backward
+   * compatibility. `"obo"` selects per-user RFC 8693 exchange (no static
+   * secret); `"static"` requires {@link McpServerCredentialInput.secretRef}.
+   */
+  brokeringMode?: McpServerRouteBrokeringMode;
+  /**
+   * Secret reference consumed by the gateway reconcile path. Required for
+   * `"static"` brokering; must be omitted for `"obo"` (the gateway brokers a
+   * per-user token, so no static secret is authored centrally).
+   */
+  secretRef?: string;
 }
 
 /** Request body used to create or update an MCP server grant. */

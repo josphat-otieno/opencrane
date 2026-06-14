@@ -3,6 +3,7 @@ import type { Grant, SkillBundle, SkillPromotion } from "@opencrane/contracts";
 import type { PrismaClient } from "@prisma/client";
 
 import { _ScanBundleContent } from "../core/scanning/scan-bundle.js";
+import { _BackfillBundlesToOci } from "../core/oci/oci-backfill.js";
 import type { OciBundleStore } from "../core/oci/oci-bundle-store.js";
 import type { SkillBundleWriteRequest, SkillEntitlementInput } from "./skill-catalog.types.js";
 
@@ -137,6 +138,40 @@ export function skillCatalogRouter(prisma: PrismaClient, ociStore: OciBundleStor
     });
 
     res.status(201).json({ id: createdBundle.id, status: "created" });
+  });
+
+  /**
+   * Backfill all published bundles' DB content into the OCI store (P4D.2).
+   *
+   * This is the prerequisite tooling for the parked live-Zot backfill: it populates
+   * the registry from the still-authoritative DB `content` so the registry-only end
+   * state can later be cut over. Idempotent — safe to re-run.
+   */
+  router.post("/backfill", async function _backfillSkillBundles(req, res)
+  {
+    // 1. Backfill is meaningless without a registry to push into — refuse clearly when
+    //    delivery is DB-only so an operator does not mistake a no-op for success.
+    if (!ociStore)
+    {
+      res.status(409).json({ error: "OCI store not configured; set SKILL_OCI_REGISTRY_URL", code: "OCI_STORE_NOT_CONFIGURED" });
+      return;
+    }
+
+    // 2. Push every published bundle's content into the registry (per-bundle reporting).
+    const summary = await _BackfillBundlesToOci(prisma, ociStore);
+
+    // 3. Audit the maintenance action with the aggregate counts for the change log.
+    await (prisma as unknown as {
+      auditEntry: { create: (args: { data: Record<string, unknown> }) => Promise<unknown> };
+    }).auditEntry.create({
+      data: {
+        action: "OciBackfill",
+        resource: "SkillBundle",
+        message: `OCI backfill: ${summary.pushed} pushed, ${summary.skipped} skipped, ${summary.failed} failed (of ${summary.total})`,
+      },
+    });
+
+    res.json(summary);
   });
 
   /**

@@ -8,7 +8,7 @@
 - **Phase 4 Track B** (fleet organizational awareness): **decision-unblocked 2026-06-13** (P4B.0 closed). **P4B.1 Awareness SDK landed**; greenfield remainder P4B.2–P4B.7 (incl. P4B.7 scope-aware retrieval plugin + CLI/API session→scope binding for anti-spill). See Phase 4 Decisions for the locked choices.
 - **Track P4-C** (agent identity & personalisation via OpenClaw workspace files): **P4C.1–P4C.5 landed** (2026-06-13). Workspace bootstrap/seeding, contract-derived TOOLS.md, company-doc API + immutable versioning + L0 guard, agent-driven reconciliation (deterministic merger; LiteLLM agent merge is the seam) producing approve/reject proposals, and version-gated delivery into the pod via the re-pull loop. Whole track testable spine complete; live LiteLLM merge quality is the remaining upgrade.
 - **Track CONN** (OpenClaw connection auth & session security): pairing-broker endpoint implemented (2026-06-13); connection-security posture **decided = Option B** (short-lived re-brokered credentials + per-user kill-switch; control plane stays connection-stateless). Full trade-off in `docs/claw-security-considerations.md`. Transport hardening landed 2026-06-13 (CONN.2); `docs/auth.md` rewritten for the pairing broker (CONN.6); **CONN.8 wildcard TLS** landed (operator Ingress `tls:` + cert-manager ClusterIssuer/Certificate Helm scaffold, dev selfSigned + prod ACME DNS-01; **onboarding CLI/API `oc platform dns set` + dev sslip.io hosts landed 2026-06-13**) with cross-namespace + live-ACME-e2e as the remaining (cluster-bound) follow-ups. **Kill-switch chain landed 2026-06-13 (CONN.3 persistence+decode, CONN.4 device registry, CONN.5 cut + RBAC)** — testable spine complete; the gateway per-device revoke + CP-held operator device + in-pod mint exec are the remaining live-infra seams. Proxy (Option C) deferred as a contingent vision.
-- **Track P4-D** (MCP & Skills platform completion — the two 🔶 gaps): scoped + decisions locked 2026-06-13. P4D.2 OCI/Zot **foundation slice landed** (`OciBundleStore` + gated Zot Helm; runtime cutover deferred to a live-Zot slice). P4D.1 Obot RFC-8693 creds queued. See Open Backlog → Track P4-D.
+- **Track P4-D** (MCP & Skills platform completion — the two 🔶 gaps): scoped + decisions locked 2026-06-13. P4D.2 OCI/Zot **foundation slice landed** (`OciBundleStore` + gated Zot Helm; runtime cutover deferred to a live-Zot slice). P4D.1 **brokering-model slice landed** (credential brokering-mode + custody validation + API/CLI + gated encryption-at-rest Helm; live OBO push/exchange parked). See Open Backlog → Track P4-D.
 - **Review discipline** (2026-06-13): the `review` agent (`.claude/agents/review.md`) now has a mandatory **"verify every finding before reporting"** step — re-trace the cited code and construct a concrete repro before asserting; unconfirmed concerns go under *Open questions*, not *Findings*. Added after a review surfaced a finding that did not survive verification.
 - **Branch**: `phase-4-5-fixes`, 6 commits ahead of `main`.
 
@@ -577,6 +577,34 @@ standing per-frame audit choke point are **not** in scope → that is the proxy
     **config surface** (how an admin registers the OAuth client/token-endpoint/scopes) or the
     **encryption-at-rest/vault** mechanism — confirming this item stays parked until tested
     against a running Obot of the pinned version.
+  - **Landed (2026-06-14, headless brokering-model slice):** the control-plane half of the
+    custody model, built with the live-Obot seam gated/flagged.
+    (a) **Brokering mode** added to the credential model — additive Prisma migration `0013`:
+    `McpCredentialBrokeringMode` enum (`StaticFallback` / `PerUserObo`) + `brokering_mode`
+    column (default `static_fallback`); `secret_ref` relaxed to nullable (OBO authors no static
+    secret). Contract `McpCredentialBrokeringMode` + `McpServerCredential.brokeringMode`
+    (`@opencrane/contracts`).
+    (b) **Custody validation** — `_NormalizeCredentialInput` enforces: `static` requires a
+    non-empty `secretRef` (per-tenant/per-server fallback for non-OBO upstreams); `obo` must
+    NOT carry one (Obot brokers a per-user RFC 8693 token). Violations → 400 on POST/PUT.
+    (c) **API + CLI-first** — additive credential sub-routes `GET/POST /mcp-servers/:id/credentials`
+    and `DELETE /mcp-servers/:id/credentials/:credentialId` (do not disturb grants, unlike the
+    full PUT); openapi spec + regenerated client; `oc mcp cred list|add|rm` CLI.
+    (d) **Custody regression test** — `_BuildObotRegistryItem` extracted + asserted to emit NO
+    credential/secret material on the Obot registry-sync wire format (secrets stay server-side).
+    (e) **Encryption-at-rest** wired in Helm behind `mcpGateway.encryptionAtRest.enabled`
+    (**default OFF**): when on, sets `OBOT_SERVER_ENCRYPTION_PROVIDER=custom` + mounts a key
+    from the `opencrane-obot-enc` Secret. ⚠️ **ASSUMED knob, NOT verified** — flagged in values,
+    template, and JSDoc; gated off so it never ships blind. Tests: control-plane 187/187 (8 new),
+    contracts + control-plane + CLI `tsc` clean, `helm template` validated both ways.
+  - **Parked — needs LIVE Obot (do not ship blind):** (f) the **push-to-Obot auth-config surface**
+    — how an admin registers the OAuth client / token-endpoint / scopes for an OBO upstream so
+    Obot performs the exchange — is undocumented; the brokering *model* is authored centrally but
+    the reconcile/push of OBO config into Obot is not built. (g) **confirming the encryption-at-rest
+    knob** (provider value + exact key env var) against the pinned Obot version before enabling.
+    (h) the **end-to-end OBO round-trip** (tenant call → Obot exchange → downstream) needs a live
+    Obot + an OBO-capable upstream. The static-fallback authoring path is fully built and testable
+    headlessly; only the live exchange/push remains.
 - [ ] **P4D.2 OCI/ORAS (Zot) digest-pinned bundle storage.** Today the Skill Registry serves
   bundle `content` from the control-plane DB — the 🔶 in `docs/skills-registry.md`. Substrate
   is decided (OCI/ORAS + Cognee). Build: deploy an in-cluster OCI registry (Helm), push each
@@ -616,10 +644,24 @@ standing per-frame audit choke point are **not** in scope → that is the proxy
     no-store / neither. control-plane 85/85, `tsc` clean, `helm template` validated (env + policy
     render when enabled, nothing by default). Safe: the DB `content` fallback means the
     entitlement-gated delivery path is unchanged until Zot is populated + verified.
-  - **Parked — needs LIVE infrastructure (do not ship blind):** (e) backfill existing bundles
-    into a running Zot, then the **destructive** Prisma migration dropping `SkillBundle.content`
-    (the registry-only end state); (f) live round-trip e2e against a real Zot. **P4D.1** (Obot
-    RFC-8693 token exchange) is likewise parked — it needs a live Obot/upstream to test OBO.
+  - **Backfill tooling landed (2026-06-14):** idempotent backfill that pushes every **published**
+    bundle's DB `content` into the OCI store via the existing `OciBundleStore.pushBundle`.
+    Core `_BackfillBundlesToOci` (`core/oci/oci-backfill.ts` + `.types.ts`) iterates published
+    bundles, pushes each, and reports per-bundle **pushed / skipped (no content) / failed**, with a
+    **digest-mismatch guard** (content that hashes to ≠ the recorded `digest` is reported failed,
+    never silently orphaned, because delivery looks up the recorded digest). API-first per house
+    rule: `POST /skills/catalog/backfill` (`skill-catalog.ts`, returns the summary + writes an
+    `OciBackfill` audit entry, **409 `OCI_STORE_NOT_CONFIGURED`** when `SKILL_OCI_REGISTRY_URL`
+    unset) + `oc skills backfill` CLI. Tests: 5 core (push / skip / mismatch-fail / error-isolation /
+    empty) + 2 route (409-unconfigured / push+summary+audit). control-plane 179/179, `tsc` clean,
+    OpenAPI + `@opencrane/contracts` regenerated, CLI builds. Non-destructive: reads DB content,
+    only writes to the registry. This is the prerequisite tooling for the parked live backfill (e).
+  - **Parked — needs LIVE infrastructure (do not ship blind):** (e) **running** the backfill against
+    a live Zot (tooling above is ready; the *run* needs real infra), then the **destructive** Prisma
+    migration dropping `SkillBundle.content` (the registry-only end state — no migration SQL authored,
+    stays parked pending a verified live backfill); (f) live round-trip e2e against a real Zot.
+    **P4D.1** (Obot RFC-8693 token exchange) is likewise parked — it needs a live Obot/upstream to
+    test OBO.
 
 ---
 
