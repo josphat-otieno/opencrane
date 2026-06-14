@@ -3,6 +3,7 @@ import { Router } from "express";
 import type { PrismaClient } from "@prisma/client";
 
 import type { CreatePolicyRequest } from "../types.js";
+import { _PropagatePolicyToCognee, _ResolvePolicyAffectedTenants } from "../core/grants/cognee-awareness-sync.js";
 import { _DetectPolicyProjectionDrift } from "./internal/projection-drift.js";
 import { _RepairPolicyProjection } from "./internal/projection-repair.js";
 import { OPENCRANE_API_GROUP, OPENCRANE_API_VERSION, POLICY_CRD_PLURAL } from "./internal/crd-constants.js";
@@ -19,6 +20,39 @@ export function policiesRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCl
 {
   const router = Router();
   const namespace = process.env.NAMESPACE ?? "default";
+
+  /**
+   * Best-effort propagation of an AccessPolicy change to Cognee awareness grants
+   * (P4B.2). Resolves the affected tenants and re-syncs their compiled grants so
+   * Cognee's retrieval ACL converges. Never throws: a Cognee outage must not fail
+   * the policy write, since PostgreSQL is the source of truth and the next change
+   * (or a tenant contract re-pull) reconciles. Pass pre-resolved tenants on delete.
+   *
+   * @param policyName    - The changed policy.
+   * @param tenants       - Affected tenants (resolve before delete; null → resolve now).
+   * @param authorization - Inbound authorization header (string or array form).
+   */
+  async function _propagateToCognee(policyName: string, tenants: string[] | null, authorization: string | string[] | undefined): Promise<void>
+  {
+    try
+    {
+      const auth = typeof authorization === "string" ? authorization : undefined;
+      const affected = tenants ?? await _ResolvePolicyAffectedTenants(prisma, policyName);
+      if (affected.length === 0)
+      {
+        return;
+      }
+      const result = await _PropagatePolicyToCognee(prisma, policyName, affected, auth);
+      if (result.failures > 0)
+      {
+        console.warn(`[policies] Cognee awareness propagation for ${policyName}: ${result.failures}/${affected.length} tenant(s) failed`);
+      }
+    }
+    catch (err)
+    {
+      console.warn(`[policies] Cognee awareness propagation for ${policyName} errored:`, err instanceof Error ? err.message : err);
+    }
+  }
 
   /**
    * Report detect-only drift between AccessPolicy CRDs and PostgreSQL projection rows.
@@ -88,6 +122,8 @@ export function policiesRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCl
   {
     const body = req.body as CreatePolicyRequest;
 
+    // 1. Build the AccessPolicy CR — the K8s side of the dual-write that the
+    //    operator reconciles against tenant pods.
     const policyCr = {
       apiVersion: `${OPENCRANE_API_GROUP}/${OPENCRANE_API_VERSION}`,
       kind: "AccessPolicy",
@@ -101,6 +137,7 @@ export function policiesRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCl
       },
     };
 
+    // 2. Create the CRD so cluster-side reconciliation sees the new policy.
     await customApi.createNamespacedCustomObject({
       group: OPENCRANE_API_GROUP,
       version: OPENCRANE_API_VERSION,
@@ -109,6 +146,7 @@ export function policiesRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCl
       body: policyCr,
     });
 
+    // 3. Persist the PostgreSQL projection — the API/UI source of truth.
     await prisma.accessPolicy.create({
       data: {
         name: body.name,
@@ -120,6 +158,7 @@ export function policiesRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCl
       },
     });
 
+    // 4. Audit the change so policy mutations are attributable.
     await prisma.auditEntry.create({
       data: {
         action: "Created",
@@ -127,6 +166,9 @@ export function policiesRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCl
         message: `Access policy ${body.name} created`,
       },
     });
+
+    // 5. Propagate to Cognee awareness grants for affected tenants (best-effort).
+    await _propagateToCognee(body.name, null, req.headers.authorization);
 
     res.status(201).json({ name: body.name, status: "created" });
   });
@@ -137,6 +179,7 @@ export function policiesRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCl
     const name = req.params.name;
     const body = req.body as Partial<CreatePolicyRequest>;
 
+    // 1. Patch the CRD so the cluster-side policy matches the new spec.
     await customApi.patchNamespacedCustomObject({
       group: OPENCRANE_API_GROUP,
       version: OPENCRANE_API_VERSION,
@@ -146,6 +189,7 @@ export function policiesRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCl
       body: { spec: body },
     });
 
+    // 2. Update the PostgreSQL projection (only the fields the request supplied).
     await prisma.accessPolicy.update({
       where: { name },
       data: {
@@ -157,6 +201,7 @@ export function policiesRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCl
       },
     });
 
+    // 3. Audit the change.
     await prisma.auditEntry.create({
       data: {
         action: "Updated",
@@ -164,6 +209,9 @@ export function policiesRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCl
         message: `Access policy ${name} updated`,
       },
     });
+
+    // 4. Propagate to Cognee awareness grants for affected tenants (best-effort).
+    await _propagateToCognee(name, null, req.headers.authorization);
 
     res.json({ name, status: "updated" });
   });
@@ -173,6 +221,16 @@ export function policiesRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCl
   {
     const name = req.params.name;
 
+    // 1. Resolve affected tenants BEFORE deleting — the selector is needed to
+    //    resolve them, and after delete the row (and its selector) is gone. Best-effort:
+    //    a resolution hiccup must not block the delete (propagation is downstream).
+    const affectedTenants = await _ResolvePolicyAffectedTenants(prisma, name).catch(function _onResolveErr(err)
+    {
+      console.warn(`[policies] could not resolve affected tenants for ${name} before delete:`, err instanceof Error ? err.message : err);
+      return [] as string[];
+    });
+
+    // 2. Delete the CRD so cluster-side reconciliation drops the policy.
     await customApi.deleteNamespacedCustomObject({
       group: OPENCRANE_API_GROUP,
       version: OPENCRANE_API_VERSION,
@@ -181,6 +239,7 @@ export function policiesRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCl
       name,
     });
 
+    // 3. Audit the deletion.
     await prisma.auditEntry.create({
       data: {
         action: "Deleted",
@@ -189,7 +248,12 @@ export function policiesRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCl
       },
     });
 
+    // 4. Delete the PostgreSQL projection row.
     await prisma.accessPolicy.delete({ where: { name } });
+
+    // 5. Propagate removal to Cognee awareness grants for the pre-resolved tenants
+    //    (their compiled grants now reflect the policy's absence). Best-effort.
+    await _propagateToCognee(name, affectedTenants, req.headers.authorization);
 
     res.json({ name, status: "deleted" });
   });

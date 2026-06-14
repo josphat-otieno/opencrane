@@ -74,11 +74,22 @@
   transport (6) = 13; lib build + tests clean. **Seam:** wiring the SDK into the live OpenClaw pod
   runtime (skill/sidecar) + live Cognee `/v1/search` is the remaining live-infra step — the SDK is
   the testable core and is consumption-ready.
-- [ ] **P4B.2 AccessPolicy → Cognee grant compiler.** Wire `Awareness` grants through the grant
-  compiler and propagate AccessPolicy create/update/delete to Cognee grants within an SLO (today
-  only dataset-membership sync exists). Anchor: `core/grants/grant-compiler.ts` (`Awareness` type),
-  `routes/tenants.ts` Cognee sync. Acceptance: an AccessPolicy change reflects in Cognee grants
-  within the defined SLO; covered by a test.
+- [x] **P4B.2 AccessPolicy → Cognee grant compiler.** (2026-06-13) `core/grants/cognee-awareness-sync.ts`:
+  `_SyncTenantAwarenessGrants` compiles a tenant's `Awareness` grants through the existing grant
+  compiler (priority → deny-over-allow → newest) and PUTs the allow/deny decisions to Cognee
+  (`/v1/permissions/tenants/:tenant/awareness-grants`), SLO-bounded (`COGNEE_PERMISSIONS_TIMEOUT_MS`,
+  default 5s) via an injectable transport. `_PropagatePolicyToCognee` re-syncs affected tenants;
+  wired into `routes/policies.ts` **create/update/delete** (delete resolves affected tenants
+  *pre-delete*) — **best-effort: a Cognee outage never blocks the policy write** (Postgres is source
+  of truth; next change / contract re-pull reconciles). `_ResolvePolicyAffectedTenants` resolves
+  tenants from DB-resolvable selector criteria (`matchTeam` / `opencrane.io/team` / `opencrane.io/tenant`);
+  arbitrary-label selectors aren't in the DB projection → resolved pod-side (operator effective-policy),
+  logged not guessed. Tests: 7 (compile→push, failure-capture, selector resolution incl. team/name/
+  non-resolvable/missing, propagation failure count); control-plane 130/130, build clean.
+  ⚠️ **Verify (Cognee API seam):** the `/awareness-grants` endpoint + grant-level ACL shape are the
+  assumed Cognee permissions API (mirrors the existing `/subjects` sync) — confirm against the live
+  Cognee version; this is also where the **dataset-vs-node-set** question for P4B.7's hard-boundary
+  upgrade gets answered.
 - [ ] **P4B.3 Awareness contract versioning + canary rollout.** Promote/rollback awareness
   contract versions across the fleet without tenant downtime. Acceptance: canary cohort + rollback
   path demonstrated.
