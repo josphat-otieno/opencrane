@@ -5,6 +5,8 @@ import type { PrismaClient } from "@prisma/client";
 import { compile } from "../../core/grants/grant-compiler.js";
 import { GrantCompilerAccess, GrantCompilerPayloadType } from "../../core/grants/grant-compiler.types.js";
 import { _RenderToolsMarkdown } from "../../core/contract/tools-markdown.js";
+import { _LoadAwarenessRollout } from "../../core/awareness/rollout-store.js";
+import { _ResolveAwarenessVersion } from "../../core/awareness/rollout.js";
 
 /** Expected audience on the projected token the tenant pod uses to call this endpoint. */
 const _EXPECTED_AUDIENCE = "control-plane";
@@ -118,7 +120,7 @@ export function _RegisterInternalTenantContract(prisma: PrismaClient, authApi: k
       // 4. Verify the tenant exists before compiling grants.
       const tenant = await prisma.tenant.findUnique({
         where: { name },
-        select: { name: true, team: true },
+        select: { name: true, team: true, awarenessWave: true },
       });
 
       if (!tenant)
@@ -172,6 +174,13 @@ export function _RegisterInternalTenantContract(prisma: PrismaClient, authApi: k
         return { file: `${doc.docName}.md`, content: doc.content, version: doc.lastReconciledVersion };
       });
 
+      // 7c. Resolve this tenant's awareness contract version from the fleet rollout
+      //     (P4B.3): the tenant's wave determines target-vs-stable, delivered via
+      //     this re-pull so a fleet promotion/rollback reflects with no pod restart.
+      //     The pod's awareness SDK refuses an incompatible major (see @opencrane/awareness).
+      const rollout = await _LoadAwarenessRollout(prisma);
+      const awareness = _ResolveAwarenessVersion(rollout, tenant.awarenessWave);
+
       // 8. Return a contract that the polling loop writes over the ConfigMap-mounted file.
       res.json({
         version: "opencrane-runtime/v1alpha1",
@@ -204,6 +213,12 @@ export function _RegisterInternalTenantContract(prisma: PrismaClient, authApi: k
         // bump so approved company reconciliations land without a restart while the
         // tenant's between-bump in-pod edits are preserved.
         managedDocs,
+        // Awareness contract version this tenant runs under the fleet rollout (P4B.3).
+        awareness: {
+          contractVersion: awareness.version,
+          shadow: awareness.shadow,
+          wave: awareness.wave,
+        },
       });
     }
     catch (err)

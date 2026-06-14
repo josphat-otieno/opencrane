@@ -15,6 +15,7 @@ model Tenant {
   phase              String                    @default("Pending")
   ingressHost        String?                   @map("ingress_host")
   configOverrides    Json?                     @map("config_overrides")
+  awarenessWave      String?                   @map("awareness_wave")
   createdAt          DateTime                  @default(now()) @map("created_at")
   updatedAt          DateTime                  @updatedAt @map("updated_at")
   auditEntries       AuditEntry[]
@@ -521,6 +522,34 @@ model HarvestingCursor {
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   @@map("harvesting_cursors")
+}
+
+/// Fleet-wide awareness contract rollout state (P4B.3). Singleton (`id="default"`).
+///
+/// Promotes a `targetVersion` across tenant-cohort canary waves
+/// (personal→project→department→org) while un-promoted waves stay on
+/// `stableVersion` — no fleet downtime. `promotedWaves` is the advancing
+/// frontier; clearing it is the one-step rollback. A tenant's wave is
+/// `Tenant.awarenessWave` (null → the final/most-conservative wave).
+model AwarenessRollout {
+  /// Singleton key.
+  id            String   @id @default("default")
+  /// The contract version being rolled out to promoted waves.
+  targetVersion String   @map("target_version")
+  /// The contract version un-promoted waves continue to run.
+  stableVersion String   @map("stable_version")
+  /// Ordered canary waves (narrow→wide); JSON string array.
+  waves         Json
+  /// Waves promoted to `targetVersion` so far; JSON string array (the frontier).
+  promotedWaves Json     @map("promoted_waves")
+  /// When true, promoted waves compute the target but still serve stable (shadow).
+  shadowMode    Boolean  @default(false) @map("shadow_mode")
+  /// When the rollout was created.
+  createdAt     DateTime @default(now()) @map("created_at")
+  /// When the rollout was last changed (promote/rollback/redefine).
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("awareness_rollouts")
 }
 
 /// Lifecycle of a per-tenant company→tenant doc reconciliation proposal (P4C.5).

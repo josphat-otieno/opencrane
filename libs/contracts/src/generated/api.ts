@@ -22,6 +22,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/awareness/rollout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Show the fleet awareness contract rollout state */
+        get: operations["getAwarenessRollout"];
+        /** Define (or redefine) the awareness rollout; resets the frontier */
+        put: operations["setAwarenessRollout"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/awareness/rollout/promote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Advance the rollout frontier (one wave, or up to a named wave) */
+        post: operations["promoteAwarenessRollout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/awareness/rollout/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** One-step rollback: return every wave to the stable version */
+        post: operations["rollbackAwarenessRollout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/awareness/rollout/resolve/{tenant}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Resolve the awareness contract version a tenant runs */
+        get: operations["resolveAwarenessVersion"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tenants": {
         parameters: {
             query?: never;
@@ -897,6 +966,14 @@ export interface components {
             /** Format: date-time */
             updatedAt?: string;
         };
+        AwarenessRollout: {
+            targetVersion?: string;
+            stableVersion?: string;
+            waves?: string[];
+            promotedWaves?: string[];
+            shadowMode?: boolean;
+            nextWave?: string | null;
+        };
         DatasetMembership: {
             org: string[];
             team: string[];
@@ -1027,6 +1104,138 @@ export interface operations {
                         zone?: string;
                         secretName?: string | null;
                     };
+                };
+            };
+        };
+    };
+    getAwarenessRollout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current rollout state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AwarenessRollout"];
+                };
+            };
+        };
+    };
+    setAwarenessRollout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    targetVersion: string;
+                    stableVersion?: string;
+                    waves?: string[];
+                    shadowMode?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Rollout defined. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AwarenessRollout"];
+                };
+            };
+        };
+    };
+    promoteAwarenessRollout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    wave?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Frontier advanced. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AwarenessRollout"];
+                };
+            };
+        };
+    };
+    rollbackAwarenessRollout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Rolled back. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AwarenessRollout"];
+                };
+            };
+        };
+    };
+    resolveAwarenessVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Resolved version. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        tenant?: string;
+                        version?: string;
+                        promoted?: boolean;
+                        shadow?: boolean;
+                        wave?: string;
+                    };
+                };
+            };
+            /** @description Tenant not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
         };

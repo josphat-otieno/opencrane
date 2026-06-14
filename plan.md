@@ -52,7 +52,8 @@
 ### Track P4-B — Fleet Organizational Awareness (STARTED — P4B.1 SDK landed; largest remaining effort)
 
 > Decision-unblocked (P4B.0 locked). **P4B.1 (the `@opencrane/awareness` SDK) landed 2026-06-13** —
-> the foundation P4B.2–P4B.7 build on. Remaining items are greenfield and sequence on the SDK.
+> the foundation it builds on. **P4B.2** (AccessPolicy→Cognee grant sync) and **P4B.3** (contract
+> versioning + canary rollout) landed; P4B.4–P4B.7 remain greenfield and sequence on these.
 
 - [x] **P4B.0 Lock Phase 4 awareness decisions.** (2026-06-13) All "Phase 4 Decisions" below are
   now resolved (explicit) or defaulted — Track B is **decision-unblocked**. Key locks: single
@@ -90,9 +91,25 @@
   assumed Cognee permissions API (mirrors the existing `/subjects` sync) — confirm against the live
   Cognee version; this is also where the **dataset-vs-node-set** question for P4B.7's hard-boundary
   upgrade gets answered.
-- [ ] **P4B.3 Awareness contract versioning + canary rollout.** Promote/rollback awareness
-  contract versions across the fleet without tenant downtime. Acceptance: canary cohort + rollback
-  path demonstrated.
+- [x] **P4B.3 Awareness contract versioning + canary rollout.** (2026-06-13) Fleet rollout state
+  machine: `core/awareness/rollout.ts` (pure) promotes a `targetVersion` across canary waves
+  (`personal→project→department→org`, the locked order) via an advancing `promotedWaves` frontier
+  while un-promoted waves stay on `stableVersion` — **no fleet downtime**; `_Rollback` clears the
+  frontier in **one step**. `_ResolveAwarenessVersion` maps a tenant's `Tenant.awarenessWave`
+  (null → final/most-conservative wave) to target-vs-stable, with optional **shadow mode**
+  (promoted waves compute target, still serve stable). Singleton `AwarenessRollout` model + migration
+  `0010`; shared `rollout-store.ts` load/save. **API + CLI** (CLI-first, see [[feedback_api_cli_first]]):
+  `GET/PUT /api/v1/awareness/rollout`, `POST …/promote`, `POST …/rollback`, `GET …/resolve/:tenant`
+  + `oc awareness rollout show|set|promote|rollback|resolve` (OpenAPI-spec'd, contracts/CLI types
+  regenerated). **Delivery:** the internal contract endpoint resolves each tenant's version from the
+  rollout and emits `awareness:{contractVersion,shadow,wave}` so a promotion/rollback reflects via the
+  re-pull loop **with no pod restart**; the pod's `@opencrane/awareness` SDK refuses an incompatible
+  major (`___AssertContractCompatible`). Control-plane now depends on `@opencrane/awareness` for the
+  pinned default version. Tests: 9 engine (canary resolve / unassigned→final / shadow / promote-next /
+  promote-to / rollback / normalize) + 4 route (default / set+400 / promote→resolve→rollback flow /
+  error paths); control-plane 143/143, contracts + CLI build clean. **Acceptance met** (canary cohort +
+  one-step rollback demonstrated). Live wiring of the pod SDK to consume `awareness.contractVersion`
+  is the remaining seam (shared with P4B.1).
 - [ ] **P4B.4 Golden-query / eval harness.** Conformance suite for awareness correctness, policy
   safety, freshness, and citation quality. Acceptance: suite runs in CI and gates rollout.
 - [ ] **P4B.5 Fleet skills-sharing protocol + participation monitoring.** Cross-tenant skill

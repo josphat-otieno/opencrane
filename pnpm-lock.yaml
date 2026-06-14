@@ -32,6 +32,9 @@ importers:
       '@kubernetes/client-node':
         specifier: ^1.0.0
         version: 1.4.0(encoding@0.1.13)
+      '@opencrane/awareness':
+        specifier: workspace:*
+        version: link:../../libs/awareness
       '@opencrane/contracts':
         specifier: workspace:*
         version: link:../../libs/contracts

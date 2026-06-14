@@ -23,6 +23,7 @@ import { Command } from "commander";
 import { type CliConfig, _ResolveConfig } from "./config.js";
 import { _RegisterAudit } from "./commands/audit.js";
 import { _RegisterAuth } from "./commands/auth.js";
+import { _RegisterAwareness } from "./commands/awareness.js";
 import { _RegisterBudget } from "./commands/budget.js";
 import { _RegisterMcpServers } from "./commands/mcp-servers.js";
 import { _RegisterMetrics } from "./commands/metrics.js";
@@ -70,6 +71,7 @@ _RegisterTokens(program, _getConfig);
 _RegisterProviders(program, _getConfig);
 _RegisterMetrics(program, _getConfig);
 _RegisterPlatform(program, _getConfig);
+_RegisterAwareness(program, _getConfig);
 _RegisterAuth(program, _getConfig);
 
 program.parseAsync(process.argv).catch(function _onError(err: unknown)

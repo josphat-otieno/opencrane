@@ -26,10 +26,12 @@ function _buildAuthApi(opts: {
 
 /** Build a mock Prisma client for contract endpoint tests. */
 function _buildPrismaStub(overrides: {
-  tenant?: { name: string; team: string | null } | null;
+  tenant?: { name: string; team: string | null; awarenessWave?: string | null } | null;
+  rollout?: Record<string, unknown> | null;
 } = {}): PrismaClient
 {
   const tenant = "tenant" in overrides ? overrides.tenant : { name: "team-alpha", team: null };
+  const rollout = "rollout" in overrides ? overrides.rollout : null;
 
   return {
     tenant: {
@@ -52,6 +54,9 @@ function _buildPrismaStub(overrides: {
     },
     tenantWorkspaceDoc: {
       findMany: vi.fn().mockResolvedValue([]),
+    },
+    awarenessRollout: {
+      findUnique: vi.fn().mockResolvedValue(rollout),
     },
   } as unknown as PrismaClient;
 }
@@ -139,6 +144,32 @@ describe("_RegisterInternalTenantContract GET /:name", () =>
     expect(res.body.tenant.team).toBe("alpha");
     expect(res.body.policy.mcpServers).toBeDefined();
     expect(res.body.skills.entitled).toBeInstanceOf(Array);
+    // P4B.3: awareness contract version delivered on every pull. With no rollout
+    // defined and an unassigned tenant, it resolves to the pinned version, no shadow,
+    // and the final (most-conservative) wave.
+    expect(typeof res.body.awareness.contractVersion).toBe("string");
+    expect(res.body.awareness.contractVersion.length).toBeGreaterThan(0);
+    expect(res.body.awareness).toMatchObject({ shadow: false, wave: "org" });
+  });
+
+  it("delivers the rollout target version for a tenant in a promoted wave (P4B.3)", async () =>
+  {
+    const prisma = _buildPrismaStub({
+      tenant: { name: "team-alpha", team: null, awarenessWave: "personal" },
+      rollout: {
+        id: "default", targetVersion: "awareness/v2alpha1", stableVersion: "awareness/v1alpha1",
+        waves: ["personal", "project", "department", "org"], promotedWaves: ["personal"], shadowMode: false,
+      },
+    });
+    const app = _buildApp(prisma, _validAuthApi);
+
+    const res = await request(app)
+      .get("/api/internal/contract/team-alpha")
+      .set("Authorization", "Bearer valid");
+
+    expect(res.status).toBe(200);
+    // The tenant's "personal" wave is promoted → it runs the target version.
+    expect(res.body.awareness).toMatchObject({ contractVersion: "awareness/v2alpha1", shadow: false, wave: "personal" });
   });
 
   it("includes MCP server policy arrays in the response", async () =>
