@@ -1,16 +1,10 @@
-# Create your first tenant
+# Create & manage tenants
 
-A **UserTenant** is one employee's isolated OpenClaw assistant. You can create one
-through the `oc` CLI (recommended) or by applying a `Tenant` CRD directly.
+A **tenant** is one person's private AI assistant. Creating a tenant provisions an
+isolated OpenClaw assistant — with its own encrypted storage and its own URL — for
+that employee.
 
-## Point the CLI at your control plane
-
-```bash
-export OPENCRANE_URL=https://admin.opencrane.ai
-export OPENCRANE_TOKEN=<your-access-token>
-```
-
-## Create a tenant via the CLI
+## Create a tenant
 
 ```bash
 oc tenants create \
@@ -19,12 +13,10 @@ oc tenants create \
   --email jente@example.com
 ```
 
-The operator provisions the per-tenant resources — a GCS bucket (on GCP), a
-Workload Identity service account, an encryption key, a Deployment, a Service, and
-one Ingress for the UserTenant gateway. The assistant becomes reachable at
-`https://jente.<ClusterTenant-domain>` under the wildcard cert.
+OpenCrane provisions the assistant and exposes it at
+`https://jente.<your-domain>`. The person can now [connect to it](/guide/connect).
 
-## Or apply a CRD directly
+You can also create one declaratively:
 
 ```yaml
 apiVersion: opencrane.io/v1alpha1
@@ -40,33 +32,33 @@ spec:
 kubectl apply -f tenant.yaml
 ```
 
-## Pin an OpenClaw version
+## Manage tenants
 
-Without `openclawVersion`, tenants install `latest` on first boot and can
-self-update via `openclaw update`. To pin:
+```bash
+oc tenants list             # everyone's assistants
+oc tenants get jente        # inspect one
+oc tenants suspend jente    # scale to zero (pause)
+oc tenants resume jente     # bring it back
+oc tenants delete jente     # remove it
+```
+
+## Pin a version
+
+By default a tenant installs the latest OpenClaw on first boot and can self-update.
+To pin a specific version:
 
 ```yaml
-apiVersion: opencrane.io/v1alpha1
-kind: Tenant
-metadata:
-  name: jente
 spec:
   displayName: Jente
   email: jente@example.com
   openclawVersion: "2026.3.15"
 ```
 
-## Inspect and manage
+## What's next
 
-```bash
-oc tenants list             # list all tenants
-oc tenants get jente        # inspect a tenant
-oc tenants suspend jente    # scale to zero
-oc tenants resume jente     # bring back
-oc budget spend jente       # current spend
-oc audit list --tenant jente --limit 50
-```
+- [Connect to OpenClaw](/guide/connect) — how the person reaches their assistant
+- [Control access](/guide/permissions) — decide what this assistant can see and do
+- [Budgets & cost](/guide/budgets) — set a spend limit for this assistant
+- [Audit log](/guide/audit) — review changes
 
-See the [CLI reference](/reference/cli) for the full command surface, and
-[Access policies & grants](/concepts/access-policies) to control what knowledge,
-skills, and MCP servers the tenant can reach.
+See the full command set in the [CLI reference](/reference/cli).

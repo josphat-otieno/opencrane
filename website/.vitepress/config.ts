@@ -28,9 +28,19 @@ export default defineConfig({
     search: { provider: 'local' },
 
     nav: [
-      { text: 'Introduction', link: '/guide/introduction' },
-      { text: 'Getting Started', link: '/guide/getting-started' },
-      { text: 'Concepts', link: '/concepts/tenancy' },
+      { text: 'Get started', link: '/guide/introduction' },
+      {
+        text: 'Guides',
+        items: [
+          { text: 'Create & manage tenants', link: '/guide/first-tenant' },
+          { text: 'Connect to OpenClaw', link: '/guide/connect' },
+          { text: 'Control access', link: '/guide/permissions' },
+          { text: 'Add skills', link: '/guide/skills' },
+          { text: 'Connect tools', link: '/guide/tools' },
+          { text: 'Organizational knowledge', link: '/guide/knowledge' },
+          { text: 'Budgets & cost', link: '/guide/budgets' },
+        ],
+      },
       {
         text: 'Reference',
         items: [
@@ -44,52 +54,25 @@ export default defineConfig({
 
     sidebar: [
       {
-        text: 'Introduction',
+        text: 'Getting started',
         items: [
           { text: 'What is OpenCrane?', link: '/guide/introduction' },
-          { text: 'Architecture overview', link: '/guide/architecture' },
-        ],
-      },
-      {
-        text: 'Getting Started',
-        items: [
-          { text: 'Prerequisites & install', link: '/guide/getting-started' },
-          { text: 'Local & GCP deployment', link: '/guide/deployment' },
+          { text: 'Install OpenCrane', link: '/guide/getting-started' },
           { text: 'Create your first tenant', link: '/guide/first-tenant' },
+          { text: 'Connect to OpenClaw', link: '/guide/connect' },
         ],
       },
       {
-        text: 'Concepts',
+        text: 'Guides',
         items: [
-          { text: 'ClusterTenant vs UserTenant', link: '/concepts/tenancy' },
-          { text: 'The five planes & IAM-first identity', link: '/concepts/iam' },
-          { text: 'Access policies & grants', link: '/concepts/access-policies' },
-          { text: 'Awareness contract & retrieval', link: '/concepts/awareness' },
-        ],
-      },
-      {
-        text: 'Operators',
-        items: [
-          { text: 'Hosting architecture', link: '/operators/hosting' },
-          { text: 'Multi-instance', link: '/operators/multi-instance' },
-          { text: 'Runbook', link: '/operators/runbook' },
-          { text: 'Awareness SLOs', link: '/operators/awareness-slos' },
-        ],
-      },
-      {
-        text: 'Integrators',
-        items: [
-          { text: 'MCP gateway (Obot)', link: '/integrators/mcp-gateway' },
-          { text: 'Skill registry & delivery', link: '/integrators/skill-registry' },
-          { text: 'Retrieval & memory (Cognee)', link: '/integrators/retrieval-memory' },
-          { text: 'Contracts SDK', link: '/integrators/contracts-sdk' },
-        ],
-      },
-      {
-        text: 'Security',
-        items: [
-          { text: 'Identity & connection auth', link: '/security/identity' },
-          { text: 'Connection security model', link: '/security/connection-security' },
+          { text: 'Create & manage tenants', link: '/guide/first-tenant' },
+          { text: 'Connect to OpenClaw', link: '/guide/connect' },
+          { text: 'Control access', link: '/guide/permissions' },
+          { text: 'Add skills', link: '/guide/skills' },
+          { text: 'Connect tools (MCP)', link: '/guide/tools' },
+          { text: 'Organizational knowledge', link: '/guide/knowledge' },
+          { text: 'Budgets & cost', link: '/guide/budgets' },
+          { text: 'Audit log', link: '/guide/audit' },
         ],
       },
       {
@@ -98,6 +81,34 @@ export default defineConfig({
           { text: 'CLI reference', link: '/reference/cli' },
           { text: 'API reference (interactive)', link: '/reference/api' },
           { text: 'API overview', link: '/reference/api-overview' },
+          { text: 'Contracts SDK', link: '/integrators/contracts-sdk' },
+        ],
+      },
+      {
+        text: 'Operating OpenCrane',
+        items: [
+          { text: 'Hosting & deployment', link: '/operators/hosting' },
+          { text: 'Identity & connection auth', link: '/security/identity' },
+          { text: 'Connection security', link: '/security/connection-security' },
+          { text: 'Runbook', link: '/operators/runbook' },
+          { text: 'Awareness SLOs', link: '/operators/awareness-slos' },
+        ],
+      },
+      {
+        text: 'Deep dives',
+        collapsed: true,
+        items: [
+          { text: 'MCP gateway (Obot)', link: '/integrators/mcp-gateway' },
+          { text: 'Skill registry & delivery', link: '/integrators/skill-registry' },
+          { text: 'Retrieval & memory (Cognee)', link: '/integrators/retrieval-memory' },
+        ],
+      },
+      {
+        text: 'Advanced',
+        collapsed: true,
+        items: [
+          { text: 'Architecture', link: '/advanced/architecture' },
+          { text: 'Running multiple instances', link: '/advanced/multi-instance' },
         ],
       },
     ],

@@ -1,46 +1,54 @@
-# Prerequisites & install
+# Install OpenCrane
 
-This page gets a development checkout of OpenCrane building and tested. For
-deploying to a cluster, see [Local & GCP deployment](/guide/deployment).
+OpenCrane runs on your own Kubernetes cluster. This page gets the platform up and
+running so you can [create your first tenant](/guide/first-tenant).
 
 ## Prerequisites
 
-- **Node 22+** and **pnpm 10+**
-- **Kubernetes 1.28+** (GKE recommended for cloud; k3d/kind for local)
+- **Kubernetes 1.28+** (a local k3d/kind cluster is fine to start; GKE for cloud)
 - **Helm 3**
-- **Terraform 1.5+** (for GCP deployment)
-- **PostgreSQL 15+** (Cloud SQL or local)
+- **PostgreSQL 15+** (in-cluster for local; managed for production)
+- A **domain** you control (for production), e.g. `opencrane.example.com`
+- **Node 22+ / pnpm 10+** only if you're building from source
 
-## Build & test the monorepo
+## Try it locally
 
-OpenCrane is a TypeScript/pnpm monorepo (operator, control plane, CLI, skill
-registry, harvesting agent, and shared libraries).
-
-```bash
-pnpm install
-pnpm build
-pnpm test
-```
-
-`pnpm build` generates the Prisma client and builds every package; it also emits
-the OpenAPI spec (`apps/control-plane/openapi.json`) that powers the
-[interactive API reference](/reference/api).
-
-## Run the docs site locally
-
-This documentation site is itself a workspace package:
+The fastest way to see OpenCrane working:
 
 ```bash
-pnpm docs:dev       # live preview at http://localhost:5173
-pnpm docs:build     # production build (fails on dead links)
-pnpm docs:preview   # serve the production build locally
+# operator + control plane + LiteLLM + in-cluster PostgreSQL
+./platform/install.sh local
 ```
 
-The API reference is generated from `apps/control-plane/openapi.json`;
-`docs:dev` / `docs:build` sync it automatically.
+That's enough to create tenants and explore the API and CLI on your machine.
 
-## Next steps
+## Install on a cluster
 
-- [Local & GCP deployment](/guide/deployment) — stand up the platform.
-- [Create your first tenant](/guide/first-tenant) — issue an assistant.
-- [CLI reference](/reference/cli) — the full `oc` surface.
+```bash
+helm install opencrane platform/helm \
+  --set ingress.domain=opencrane.example.com \
+  --set controlPlane.database.existingSecret=opencrane-db
+```
+
+`ingress.domain` is **your OpenCrane domain**. The control plane lives at the apex
+(`opencrane.example.com` / `admin.opencrane.example.com`) and each person's
+assistant gets a subdomain like `jente.opencrane.example.com`.
+
+TLS is issued automatically by cert-manager as a wildcard certificate. Full
+deployment options (cloud adapters, storage, DNS) are in
+[Hosting & deployment](/operators/hosting).
+
+## Point the CLI at your control plane
+
+Everything below uses the `oc` CLI:
+
+```bash
+export OPENCRANE_URL=https://admin.opencrane.example.com
+export OPENCRANE_TOKEN=<your-access-token>
+
+oc auth me      # confirm you're connected
+```
+
+## Next
+
+→ **[Create your first tenant](/guide/first-tenant)**

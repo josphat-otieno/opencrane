@@ -448,7 +448,7 @@ The chart's `hosting` block maps 1:1 onto the operator's `hostingProvider` + per
 Both examples above are **single-install** (one instance + its CRDs, applied in one step).
 To run **multiple isolated instances in one cluster**, the CRDs are installed once
 cluster-wide and each per-instance release is installed with `--skip-crds`. See
-[`docs/multi-instance.md`](/operators/multi-instance) for the procedure and the CRD-version
+[`docs/multi-instance.md`](/advanced/multi-instance) for the procedure and the CRD-version
 compatibility contract.
 
 ### 6.3 Ingress TLS (cert-manager wildcard — plan CONN.8)

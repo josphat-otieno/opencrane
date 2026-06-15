@@ -1,4 +1,11 @@
-# Multi-Instance OpenCrane
+# Running multiple instances
+
+::: warning Advanced — most deployments don't need this
+A normal OpenCrane install already gives every employee an isolated assistant. You
+only need this page if you must run **several completely separate OpenCrane
+instances in one Kubernetes cluster** — for example, hosting multiple distinct
+customers or business units side by side. If that's not you, skip it.
+:::
 
 Run **N strictly-isolated OpenCrane instances in one cluster**, each owning its own
 namespace(s), RBAC, and per-instance control plane and operator. Multi-instance mode is
