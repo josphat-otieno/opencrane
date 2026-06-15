@@ -66,3 +66,46 @@
   transform: none;
   border-radius: 12px;
 }
+
+/* Architecture diagrams (inline, theme-aware SVG). */
+.oc-diagram {
+  margin: 28px auto;
+  padding: 18px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 14px;
+  background: var(--vp-c-bg-soft);
+}
+.oc-diagram svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* Diagram element classes (kept in global CSS — VitePress rejects <style> inside
+   page SVG, since each page compiles to a Vue component). */
+/* — system overview — */
+.oc-l { font: 600 15px ui-sans-serif, system-ui, sans-serif; fill: var(--vp-c-text-1); }
+.oc-s { font: 400 11.5px ui-sans-serif, system-ui, sans-serif; fill: var(--vp-c-text-2); }
+.oc-h { font: 600 12px ui-sans-serif, system-ui, sans-serif; fill: var(--vp-c-text-2); }
+.oc-grp { fill: var(--vp-c-bg); stroke: var(--vp-c-divider); stroke-width: 1.5; }
+.oc-box { fill: var(--vp-c-bg); stroke: var(--vp-c-brand-1); stroke-width: 1.5; }
+.oc-cp { fill: #14a8c4; }
+.oc-op { fill: rgba(20, 168, 196, .12); stroke: #14a8c4; stroke-width: 1.5; }
+.oc-arr { stroke: #8a94a6; stroke-width: 2; fill: none; marker-end: url(#oc-ah); }
+.oc-al { font: 500 11px ui-sans-serif, system-ui, sans-serif; fill: var(--vp-c-text-2); }
+/* — sign-in flow — */
+.f-l { font: 600 14px ui-sans-serif, system-ui, sans-serif; fill: var(--vp-c-text-1); }
+.f-s { font: 400 11.5px ui-sans-serif, system-ui, sans-serif; fill: var(--vp-c-text-2); }
+.f-box { fill: var(--vp-c-bg); stroke: var(--vp-c-brand-1); stroke-width: 1.5; }
+.f-cp { fill: #14a8c4; }
+.f-arr { stroke: #14a8c4; stroke-width: 2.5; fill: none; marker-end: url(#f-ah); }
+.f-al { font: 600 11.5px ui-sans-serif, system-ui, sans-serif; fill: #0e8aa3; }
+/* — access model — */
+.g-l { font: 600 14px ui-sans-serif, system-ui, sans-serif; fill: var(--vp-c-text-1); }
+.g-box { fill: var(--vp-c-bg); stroke: var(--vp-c-brand-1); stroke-width: 1.5; }
+.g-as { fill: #14a8c4; }
+.g-arr { stroke: #8a94a6; stroke-width: 2; fill: none; marker-end: url(#g-ah); }
+.g-pill { fill: rgba(242, 129, 31, .14); stroke: #f2811f; stroke-width: 1.5; }
+.g-pt { font: 600 11px ui-sans-serif, system-ui, sans-serif; fill: #c2620f; }
+.g-s { font: 400 11.5px ui-sans-serif, system-ui, sans-serif; fill: var(--vp-c-text-2); }
+.dark .g-pt { fill: #f2a05a; }
