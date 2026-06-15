@@ -309,7 +309,37 @@
 >   a built-in `SharedClusterProvisioner`; external backends are invoked **over an HTTP/RPC webhook**
 >   (contract published in the MIT `libs/contracts`), never linked in-process. See CT.6.
 
-- [ ] **CT.1 `ClusterTenant` resource — contract + CRD + storage.** Define `ClusterTenant` in
+#### Execution chain (parallelised)
+
+Dependencies are driven by **compile-time type coupling** and **file/package contention**, not
+logical affinity — items in the same wave touch disjoint packages and can run concurrently.
+
+```
+            ┌─> CT.2 (control-plane API) ─────> CT.3 (oc CLI) ─┐
+CT.1 ───────┼─> CT.6 (provisioner seam) ───────────────────────┼─> CT.7 (gating+docs+conformance)
+(keystone)  └─> CT.4 (operator reparent) ─> CT.5 (enforcement) ┘
+```
+
+- **Wave 0 — keystone (serial):** **CT.1**. The `ClusterTenant` type + CRD + Prisma model. Nothing
+  else compiles without it. CT.1 must also land the **provisioner webhook DTOs + registry interface
+  signature** in `libs/contracts` (the `isTierAvailable(tier)` shape CT.2 calls and CT.6 implements)
+  so Wave 1 lanes don't block on each other.
+- **Wave 1 — 3 parallel lanes (all depend only on CT.1):**
+  - **Lane A · control-plane API — CT.2.** `routes/cluster-tenants.ts(+.types.ts)`, `openapi/spec.ts`.
+  - **Lane B · provisioner — CT.6.** `core/cluster-tenants/provisioner.ts(+.types.ts)`, MIT DTOs.
+    CT.2↔CT.6 share only the registry interface fixed in CT.1 → *coordinate, don't serialise*.
+  - **Lane C · operator — CT.4.** `apps/operator/src/tenants/operator.ts`, Tenant CRD. Separate
+    package from A/B → zero contention.
+- **Wave 2 — 2 parallel lanes:**
+  - **Lane A · CT.3** (`oc cluster-tenant` CLI) — needs CT.2's regenerated `libs/contracts` client.
+  - **Lane C · CT.5** (namespace + ResourceQuota/LimitRange + scheduling) — needs CT.4's parent
+    resolution; `apps/operator/.../deploy/3-deployment.ts` + quota builders.
+- **Wave 3 — integration (serial):** **CT.7**. Opt-in gating, docs, conformance — depends on all.
+
+**Critical path:** CT.1 → {CT.2→CT.3 ∥ CT.4→CT.5} → CT.7 (depth 4). Max width 3 (Wave 1).
+With one agent per lane, wall-clock ≈ 4 sequential slices instead of 7.
+
+- [ ] **CT.1 `ClusterTenant` resource — contract + CRD + storage.** _(Wave 0 · keystone)_ Define `ClusterTenant` in
   `libs/contracts` (`cluster-tenant.types.ts`): `name`/`displayName`, `isolationTier`
   (`shared`|`dedicatedNodes`|`dedicatedCluster`), `compute` (`mode: shared|dedicated`, `nodePool?`),
   `resources.quota` (`cpu`/`memory`/`pods`/`storage`/`gpu?`), `status` (`phase:
@@ -320,7 +350,7 @@
   `libs/contracts/src/cluster-tenant.types.ts`, `platform/helm/crds/`, `apps/control-plane/prisma/`.
   **Headless-buildable.**
 
-- [ ] **CT.2 Management API — `/api/v1/cluster-tenants` (API-first).** CRUD + status read in the
+- [ ] **CT.2 Management API — `/api/v1/cluster-tenants` (API-first).** _(Wave 1 · Lane A)_ CRUD + status read in the
   control-plane, dual-writing the CRD + Postgres. `isolationTier`/`compute`/`resources.quota`
   validated; `dedicatedCluster` rejected `422 TIER_UNAVAILABLE` unless an external provisioner is
   registered for it (CT.6). Update `openapi/spec.ts` → regenerate `openapi.json` + the `libs/contracts`
@@ -328,13 +358,13 @@
   error; control-plane tests. **Anchors:** `apps/control-plane/src/routes/cluster-tenants.ts(+.types.ts)`,
   `apps/control-plane/src/openapi/spec.ts`, `libs/contracts/src/generated/api.ts`. **Headless-buildable.**
 
-- [ ] **CT.3 `oc cluster-tenant` CLI.** `create|list|show|update|delete` with
+- [ ] **CT.3 `oc cluster-tenant` CLI.** _(Wave 2 · Lane A — after CT.2)_ `create|list|show|update|delete` with
   `--tier`/`--compute`/`--node-pool`/`--quota-*` flags, consuming the generated client (just another
   client, no privileged path). **Acceptance:** commands round-trip against the control-plane; `--help`
   documented; a CLI e2e. **Anchors:** `apps/cli/src/commands/cluster-tenants.ts`, `apps/cli/src/index.ts`.
   **Headless-buildable.**
 
-- [ ] **CT.4 Reparent openclaw (`Tenant`) under ClusterTenant + back-compat default.** Add optional
+- [ ] **CT.4 Reparent openclaw (`Tenant`) under ClusterTenant + back-compat default.** _(Wave 1 · Lane C)_ Add optional
   `spec.clusterTenantRef` to the `Tenant`/openclaw CRD; the operator resolves the parent to get the
   target namespace + compute/quota policy. **Single-install default:** with multi-tenancy off, a
   synthetic "default" ClusterTenant binds the install namespace and ref-less openclaws attach to it —
@@ -343,7 +373,7 @@
   Tenant type + CRD, `apps/operator/src/tenants/operator.ts`. **Headless-buildable.**
 
 - [ ] **CT.5 Native isolation enforcement — namespace-per-ClusterTenant + quota + scheduling
-  (the hardening).** When opt-in, provision a per-ClusterTenant namespace labelled
+  (the hardening).** _(Wave 2 · Lane C — after CT.4)_ When opt-in, provision a per-ClusterTenant namespace labelled
   `pod-security.kubernetes.io/enforce: restricted`, with a `ResourceQuota` + `LimitRange` derived from
   `resources.quota`, and stamp `nodeSelector` + `tolerations` from `compute` onto the openclaw pod
   spec. Off by default (single-install unchanged). **Acceptance:** rendered/operator test shows
@@ -354,7 +384,7 @@
   quota/PSA enforcement is the cluster seam).
 
 - [ ] **CT.6 `ClusterTenantProvisioner` seam + built-in shared provisioner + AGPL-clean external
-  delegation.** Define a generic `ClusterTenantProvisioner` interface (`provision`/`deprovision`/
+  delegation.** _(Wave 1 · Lane B)_ Define a generic `ClusterTenantProvisioner` interface (`provision`/`deprovision`/
   `getStatus`/`getKubeconfigRef`) in the control-plane, with a built-in `SharedClusterProvisioner`
   serving `shared`/`dedicatedNodes` (maps a ClusterTenant to a `multiInstance`-profile namespace).
   External backends are reached by an **`ExternalWebhookProvisioner`** that POSTs a generic
@@ -368,7 +398,7 @@
   `apps/control-plane/src/core/cluster-tenants/provisioner.ts(+.types.ts)`, MIT `libs/contracts`
   webhook DTOs, `docs/enterprise-needs.md`. **Headless-buildable.**
 
-- [ ] **CT.7 Opt-in gating + docs + conformance.** Gate all ClusterTenant machinery behind the
+- [ ] **CT.7 Opt-in gating + docs + conformance.** _(Wave 3 · integration — after all)_ Gate all ClusterTenant machinery behind the
   existing opt-in (single-install remains the zero-config default and renders none of it). Document
   the ClusterTenant model + the provisioner webhook contract (extend `docs/multi-instance.md`,
   cross-link `docs/enterprise-needs.md`); document the "one customer = one ClusterTenant = one
