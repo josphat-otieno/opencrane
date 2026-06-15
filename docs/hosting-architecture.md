@@ -440,6 +440,12 @@ helm install opencrane platform/helm -f platform/helm/values/gcp.yaml
 
 The chart's `hosting` block maps 1:1 onto the operator's `hostingProvider` + per-cloud config, so the Helm value selects the adapter.
 
+Both examples above are **single-install** (one instance + its CRDs, applied in one step).
+To run **multiple isolated instances in one cluster**, the CRDs are installed once
+cluster-wide and each per-instance release is installed with `--skip-crds`. See
+[`docs/multi-instance.md`](multi-instance.md) for the procedure and the CRD-version
+compatibility contract.
+
 ### 6.3 Ingress TLS (cert-manager wildcard — plan CONN.8)
 
 TLS is deliberately **k8s-native and provider-agnostic** rather than per-cloud managed
