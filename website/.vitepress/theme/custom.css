@@ -25,12 +25,13 @@
   --vp-button-brand-text: #ffffff;
   --vp-button-brand-hover-text: #ffffff;
 
-  /* Home hero: gradient wordmark + a teal→orange glow behind the logo. */
+  /* Home hero: gradient wordmark (used if a text name is shown). */
   --vp-home-hero-name-color: transparent;
   --vp-home-hero-name-background: -webkit-linear-gradient(120deg, #2bc0de 30%, #1e6f9e);
 
-  --vp-home-hero-image-background-image: linear-gradient(-45deg, #1bb0c9 45%, #f2811f 95%);
-  --vp-home-hero-image-filter: blur(48px);
+  /* The hero image is the full OpenCrane lockup, so no glow blob behind it. */
+  --vp-home-hero-image-background-image: transparent;
+  --vp-home-hero-image-filter: none;
 }
 
 .dark {
@@ -40,22 +41,27 @@
   --vp-c-brand-soft: rgba(36, 184, 214, 0.16);
 
   --vp-home-hero-name-background: -webkit-linear-gradient(120deg, #5bd2ec 30%, #5aa9d8);
-  --vp-home-hero-image-background-image: linear-gradient(-45deg, #14a8c4 45%, #f2811f 95%);
 }
 
-@media (min-width: 640px) {
-  :root {
-    --vp-home-hero-image-filter: blur(56px);
-  }
+/* The hero image is a wide lockup (≈1.8:1), not a square mark — let it run wider
+   than VitePress's default 320px square and size to its natural aspect ratio. */
+.VPHero .image-container {
+  width: auto;
+  height: auto;
+  transform: none;
 }
-
+.VPHero .image-bg {
+  display: none;
+}
+.VPHero img.image-src {
+  position: static;
+  width: 100%;
+  max-width: 480px;
+  max-height: none;
+  border-radius: 12px;
+}
 @media (min-width: 960px) {
-  :root {
-    --vp-home-hero-image-filter: blur(68px);
+  .VPHero img.image-src {
+    max-width: 520px;
   }
-}
-
-/* A subtle orange underline accent on the hero tagline, echoing the wordmark. */
-.VPHero .text {
-  position: relative;
 }

@@ -2,15 +2,14 @@
 layout: home
 
 hero:
-  name: OpenCrane
   text: A control plane for organizational AI
   tagline: >-
     Self-hosted, Kubernetes-native. Issue a private AI assistant to every
     employee while keeping your skills, knowledge, and conversations on your own
     infrastructure.
   image:
-    src: /logo.svg
-    alt: OpenCrane
+    src: /opencrane-logo.png
+    alt: OpenCrane — self-hosted organizational AI control plane
   actions:
     - theme: brand
       text: What is OpenCrane?
