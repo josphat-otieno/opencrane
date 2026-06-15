@@ -293,11 +293,16 @@ docker push "${REGISTRY_URL}/operator:${IMAGE_TAG}"
 docker push "${REGISTRY_URL}/operator:latest"
 
 # ---- Step 6: Terraform apply (full — App + DNS) ----
+#
+# enable_app_deploy=true switches on the Helm-chart install (off by default so a
+# manual `terraform apply` only ever provisions the cluster). The cluster already
+# exists from Step 4, so the kubernetes/helm providers bootstrap cleanly here.
 
 log "Step 6/7 — Deploying platform (PostgreSQL, OpenCrane, DNS)..."
 cd "$TF_DIR"
 terraform apply \
   -var-file="environments/${ENVIRONMENT}/terraform.tfvars" \
+  -var enable_app_deploy=true \
   -auto-approve
 
 # ---- Step 7: Output summary ----

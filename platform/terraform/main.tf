@@ -1,15 +1,19 @@
 # -----------------------------------------------------------------------------
 # OpenCrane GCP Infrastructure
 #
-# DEFAULT FLOW (plain-k8s on GKE): ensure a GKE cluster on the project's default
-# VPC, deploy in-cluster PostgreSQL + the OpenCrane Helm chart, and print the
-# ingress IP for manual DNS. Custom VPC/NAT, Artifact Registry, Cloud DNS, and
-# GCS-backed tenant storage are all OPT-IN (see variables.tf).
+# DEFAULT FLOW (plain-k8s on GKE): a single `terraform apply` provisions just a
+# GKE cluster on the project's default VPC — nothing else required. You then
+# install OpenCrane the standard way: `helm install opencrane platform/helm`.
+# Custom VPC/NAT, Artifact Registry, Cloud DNS, GCS-backed storage, and even
+# installing the Helm chart via Terraform (enable_app_deploy) are all OPT-IN
+# (see variables.tf).
 #
-# Usage:
+# Easiest start — only the project id is required:
 #   cd platform/terraform
 #   terraform init
-#   terraform apply -var-file=environments/dev/terraform.tfvars
+#   terraform apply -var project_id=YOUR_GCP_PROJECT
+#   eval "$(terraform output -raw kubeconfig_command)"
+#   helm install opencrane ../helm --set ingress.domain=YOUR_DOMAIN
 # -----------------------------------------------------------------------------
 
 data "google_client_config" "default" {}
@@ -87,11 +91,17 @@ locals
   registry_url = var.enable_artifact_registry ? module.artifact_registry[0].repository_url : var.registry_url
 }
 
-# ---- Phase 4: Application (PostgreSQL + OpenCrane + DB migration) ----
+# ---- Phase 4: Application (OPT-IN: PostgreSQL + OpenCrane + DB migration) ----
+#
+# Disabled by default so a bare `terraform apply` provisions only the cluster and
+# never has to bootstrap the kubernetes/helm providers from a cluster created in
+# the same run. Install the app afterwards with `helm install` (recommended), or
+# set enable_app_deploy=true to have Terraform install the chart too.
 
 module "app_deploy"
 {
   source = "./modules/app-deploy"
+  count  = var.enable_app_deploy ? 1 : 0
 
   project_id         = var.project_id
   registry_url       = local.registry_url
@@ -111,11 +121,13 @@ module "app_deploy"
 module "dns"
 {
   source = "./modules/dns"
-  count  = var.enable_cloud_dns ? 1 : 0
+  # Cloud DNS records point at the app's ingress IP, so this requires the app to
+  # be deployed by Terraform too.
+  count = (var.enable_cloud_dns && var.enable_app_deploy) ? 1 : 0
 
   project_id = var.project_id
   domain     = var.domain
-  ingress_ip = module.app_deploy.ingress_ip
+  ingress_ip = one(module.app_deploy[*].ingress_ip)
 
   depends_on = [module.app_deploy]
 }

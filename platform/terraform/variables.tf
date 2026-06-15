@@ -79,6 +79,18 @@ variable "enable_gcs_storage"
   default     = false
 }
 
+# Install the OpenCrane Helm chart with Terraform. When false (default), Terraform
+# provisions the cluster ONLY — so a single `terraform apply` always succeeds (no
+# provider bootstrap problem) and you install the app afterwards with the standard
+# `helm install` (k8s-native). Set true to also deploy the chart via Terraform; the
+# guided deploy.sh handles the required two-step bootstrap automatically.
+variable "enable_app_deploy"
+{
+  description = "Also install the OpenCrane Helm chart via Terraform. When false (default), Terraform creates the cluster only — run `helm install` afterwards."
+  type        = bool
+  default     = false
+}
+
 # GKE
 variable "cluster_name"
 {
@@ -87,11 +99,13 @@ variable "cluster_name"
   default     = "opencrane-cluster"
 }
 
-# Domain & DNS
+# Domain & DNS. Optional — bring the cluster up first and wire DNS later. Used for
+# ingress hostnames and, when enable_cloud_dns=true, the managed DNS records.
 variable "domain"
 {
-  description = "Base domain for tenant subdomains (e.g. opencrane.example.com)"
+  description = "Base domain for tenant subdomains (e.g. opencrane.example.com). Optional."
   type        = string
+  default     = ""
 }
 
 # Container images
