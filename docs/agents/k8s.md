@@ -6,6 +6,11 @@
 > [`architecture.md`](./architecture.md). Helm/Terraform ownership of these resources is described
 > in [`infra.md`](./infra.md).
 
+> **Full cluster topology** — physical cluster, Helm template inventory, plane wiring, namespace
+> model, network topology, isolation tiers, and multi-instance shape — is in
+> [`cluster-architecture.md`](./cluster-architecture.md). This file covers the coding rules and the
+> operator's runtime behaviour.
+
 ## Cluster Architecture Context
 
 How the operator actually shapes the cluster (verified June 2026):

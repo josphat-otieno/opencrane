@@ -4,26 +4,28 @@
 
 This is the per-package map. The general TypeScript rules ([`typescript.md`](./typescript.md)) and
 identity rules ([`architecture.md`](./architecture.md), [`k8s.md`](./k8s.md)) apply to all of them.
-Build/test a single package with `pnpm --filter <name> build|test`.
+Build/test a single package with `pnpm --filter <name> build|test`. **Each package has a deep-dive doc
+linked below** — read it before non-trivial work in that package. The whole-cluster picture is in
+[`cluster-architecture.md`](./cluster-architecture.md).
 
 ## Apps (`apps/`)
 
-| Path | Package | Responsibility | Key entry / notes |
-|------|---------|----------------|-------------------|
-| `apps/operator` | `@opencrane/operator` | K8s operator — reconciles Tenant/ClusterTenant/AccessPolicy CRs into namespaces, pods, NetworkPolicies, storage. | `src/index.ts` boots `TenantOperator`, `PolicyOperator`, `IdleChecker`, canary controller. Hosting behaviour is pluggable via `src/hosting/adapters/` (GCP vs on-prem). Reconcile flow: see [`k8s.md`](./k8s.md). |
-| `apps/control-plane` | `@opencrane/control-plane` | API-first management surface — source of truth for tenants, grants, MCP servers, skills. | **Express 5** + Prisma + `@kubernetes/client-node`. `src/routes.ts` mounts ~35 routers under `/api/v1`; `src/infra/middleware/auth.middleware.ts` is `___AuthMiddleware`. Dual-writes CRDs + Postgres. |
-| `apps/cli` | `@opencrane/cli` | The `oc` CLI — a **thin typed wrapper**, no business logic; proxies to control-plane via the contracts client. | `src/index.ts` registers command groups (`_RegisterTenants`, `_RegisterClusterTenants`, …). Auth via OIDC device flow → cached token; `--output table|json`. |
-| `apps/skill-registry` | `@opencrane/skill-registry` | Entitlement-gated skill-bundle delivery plane. | Validates caller projected SA token (`aud=skill-registry`) via TokenReview, proxies to control-plane `/api/internal/bundles/:digest/content`. Non-entitled **and** non-existent → `404` (existence-hiding). |
-| `apps/harvesting-agent` | `@opencrane/harvesting-agent` | Background ingestion worker (not API-first). | Slack connector, cursor-based sync → `OrgDocument` rows in Postgres. Standalone HTTP service (`/healthz`, `/metrics`). |
-| `apps/tenant` | _(no package.json)_ | Tenant-side assets / templates (not a workspace package). | |
+| Package | Deep-dive | One-liner |
+|---------|-----------|-----------|
+| `@opencrane/operator` | [apps/operator.md](./apps/operator.md) | K8s operator — resilient watch loops reconciling Tenant/ClusterTenant/AccessPolicy CRs into namespaces, pods, NetworkPolicies, storage. Pluggable hosting adapters (GCP/on-prem). |
+| `@opencrane/control-plane` | [apps/control-plane.md](./apps/control-plane.md) | API-first hub (**Express 5** + Prisma + K8s client). Source of truth for tenants/grants/MCP/skills; OIDC broker; dual-writes CRDs ↔ Postgres. Listens `:8080`. |
+| `@opencrane/cli` | [apps/cli.md](./apps/cli.md) | The `oc` CLI — a **thin typed wrapper** over the contracts client, no business logic. OIDC device-flow login; `--output table|json`. |
+| `@opencrane/skill-registry` | [apps/skill-registry.md](./apps/skill-registry.md) | Entitlement-gated skill delivery (`:5000`). TokenReview (`aud=skill-registry`) → proxy to control-plane; non-entitled **and** non-existent → `404` (existence-hiding). |
+| `@opencrane/harvesting-agent` | [apps/harvesting-agent.md](./apps/harvesting-agent.md) | Background ingestion worker (not API-first). Slack → normalise → Cognee; cursor in Postgres. `/healthz`, `/metrics`. |
+| _(apps/tenant)_ | — | Tenant-side assets / templates (not a workspace package). |
 
 ## Libs (`libs/`)
 
-| Path | Package | Responsibility | Notes |
-|------|---------|----------------|-------|
-| `libs/contracts` | `@opencrane/contracts` | **The keystone** — single source of truth for cross-package types, CRD enums/DTOs, and the generated typed API client. | One barrel (`src/index.ts`); domain `*.types.ts` files; `___CreateControlPlaneClient` + `paths` map emitted from the control-plane OpenAPI spec. Import shared types from here, never redefine per app. |
-| `libs/awareness` | `@opencrane/awareness` | In-pod SDK for tenant workloads to query org context (Cognee) directly — no control-plane mediation. | `AwarenessClient` + pluggable transport; results carry guaranteed citations + contract-version stamp for fleet-rollout gating. |
-| `libs/onboarding` | _(no package.json)_ | **Empty placeholder** — not in `pnpm-workspace.yaml`, no code yet. | Future tenant-onboarding scaffolding. |
+| Package | Deep-dive | One-liner |
+|---------|-----------|-----------|
+| `@opencrane/contracts` | [libs/contracts.md](./libs/contracts.md) | **The keystone** — shared CRD enums/DTOs + the generated typed control-plane client (`___CreateControlPlaneClient`, `paths`). Import from the barrel; never redefine types per app. |
+| `@opencrane/awareness` | [libs/awareness.md](./libs/awareness.md) | In-pod SDK to query org context (Cognee) directly. Enforces citations + contract-version stamping; golden-suite gates the rollout. |
+| _(libs/onboarding)_ | — | **Empty placeholder** — not in `pnpm-workspace.yaml`, no code yet. |
 
 ## API-First / CLI-First Rule
 
