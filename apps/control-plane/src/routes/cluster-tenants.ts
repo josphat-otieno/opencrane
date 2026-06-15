@@ -66,6 +66,15 @@ function _isComputeMode(value: unknown): value is ClusterTenantComputeMode
   return value === ClusterTenantComputeMode.Shared || value === ClusterTenantComputeMode.Dedicated;
 }
 
+/** RFC-1123-ish DNS domain: lowercase labels, ≥1 dot, alpha TLD, ≤253 chars. */
+const _BASE_DOMAIN_PATTERN = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/;
+
+/** Whether a string is a syntactically valid customer base domain. */
+function _isValidBaseDomain(value: string): boolean
+{
+  return _BASE_DOMAIN_PATTERN.test(value);
+}
+
 /**
  * Validate a compute block: a dedicated mode requires a node pool, otherwise the
  * operator could place pods on no machines at all.
@@ -113,6 +122,7 @@ function _toContract(row: ClusterTenantRow): ClusterTenant
   return {
     name: row.name,
     displayName: row.displayName,
+    ...(row.baseDomain ? { baseDomain: row.baseDomain } : {}),
     isolationTier: _fromPrismaTier(row.isolationTier as unknown as string),
     compute: {
       mode: _fromPrismaCompute(row.computeMode as unknown as string),
@@ -191,6 +201,11 @@ export function clusterTenantsRouter(prisma: PrismaClient, registry: ClusterTena
       res.status(400).json({ error: "isolationTier must be 'shared', 'dedicatedNodes', or 'dedicatedCluster'.", code: "VALIDATION_ERROR" });
       return;
     }
+    if (body.baseDomain !== undefined && body.baseDomain.trim() && !_isValidBaseDomain(body.baseDomain.trim()))
+    {
+      res.status(400).json({ error: "baseDomain must be a valid lowercase DNS domain (e.g. ai.client-company.com).", code: "VALIDATION_ERROR" });
+      return;
+    }
 
     // 2. Validate compute placement and resource gating — a dedicated pool needs
     //    a node-pool name, and a quota ceiling must always be supplied.
@@ -220,6 +235,7 @@ export function clusterTenantsRouter(prisma: PrismaClient, registry: ClusterTena
       data: {
         name: body.name.trim(),
         displayName: body.displayName.trim(),
+        baseDomain: body.baseDomain?.trim() || null,
         isolationTier: _toPrismaTier(body.isolationTier),
         computeMode: _toPrismaCompute(body.compute.mode),
         nodePool: body.compute.nodePool?.trim() || null,
@@ -252,6 +268,19 @@ export function clusterTenantsRouter(prisma: PrismaClient, registry: ClusterTena
         return;
       }
       data.displayName = body.displayName.trim();
+    }
+
+    // 1b. Apply base-domain change when present; an empty string clears it (back to
+    //     the per-instance ingress.domain fallback), a non-empty value must be valid.
+    if (body.baseDomain !== undefined)
+    {
+      const trimmed = body.baseDomain.trim();
+      if (trimmed && !_isValidBaseDomain(trimmed))
+      {
+        res.status(400).json({ error: "baseDomain must be a valid lowercase DNS domain (e.g. ai.client-company.com).", code: "VALIDATION_ERROR" });
+        return;
+      }
+      data.baseDomain = trimmed || null;
     }
 
     // 2. Re-validate and re-gate the isolation tier when it changes — a customer
