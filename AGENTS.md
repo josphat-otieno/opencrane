@@ -20,6 +20,10 @@ This file is the canonical agent instruction file for the repository.
 - Keep `plan.md` updated as implementation progresses.
 - When a roadmap item changes state due to code, validation, or a discovered blocker, update `plan.md` in the same work cycle.
 - Do not leave completed or partially implemented backlog items stale in `plan.md` after landing the corresponding code.
+- When a track or phase is **fully complete**, move it out of `plan.md` into `plan-done.md` (the historical record) and leave a one-line `✅ COMPLETE (see plan-done.md)` pointer in its place.
+- **When a phase or track completes, update `CHANGELOG.md` in the same work cycle**, version by version (sections map to git tags; in-progress work goes under `## [Unreleased]`). Never let a release/tag land without a corresponding changelog entry.
+  - Write entries in **functional, capability-first terms** — *what an operator/tenant/integrator can now do, or do differently, that they couldn't before* — never a restatement of commits. Name a mechanism (flag, endpoint, `oc` command) only when it helps the reader use the feature. Collapse many commits into the single capability they deliver.
+  - Delegate this to the **`changelog` agent** (`.claude/agents/changelog.md`, runs on Sonnet), which encodes this style; or follow that file's rules if writing the entry inline.
 
 ## Commit Messages
 
