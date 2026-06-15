@@ -8,6 +8,9 @@ global:
 # -- Native multi-instance mode (run N strictly-isolated OpenCrane instances in
 #    one cluster). Off by default → the legacy single-install path is unchanged.
 #    When enabled, the chart flips the isolation-safe defaults below.
+#    Per-instance releases must be installed with `--skip-crds`; the shared CRD
+#    bundle is installed once cluster-wide. See docs/multi-instance.md (CRD
+#    lifecycle + version compatibility contract, blocker B3).
 multiInstance:
   # -- Turn on the per-instance isolation defaults (namespaced RBAC, fail-closed watch).
   enabled: false
@@ -21,6 +24,73 @@ multiInstance:
   # -- When true the operator fails closed (refuses to start) if WATCH_NAMESPACE is
   #    empty, so an instance can never reconcile another instance's Tenants (brief B2).
   requireWatchNamespace: true
+  # -- Cert issuance scope (brief B4): `cluster` renders a cluster-singleton
+  #    ClusterIssuer (legacy default — shared across instances) or `namespaced`
+  #    renders a per-instance-namespace Issuer so instances never collide on one
+  #    issuer. Only honoured when `enabled`; legacy installs always get a ClusterIssuer.
+  certIssuer: cluster
+  # -- External-secrets store scope (brief B4): `cluster` renders a cluster-singleton
+  #    ClusterSecretStore (legacy default) or `namespaced` renders a per-instance-namespace
+  #    SecretStore. Only honoured when `enabled`; legacy installs always get a ClusterSecretStore.
+  secretStore: cluster
+
+# -- Per-component instance-vs-shared scope (multi-instance blocker B5).
+#    Sharing is an explicit, documented OPT-IN. The default for every component is
+#    `instance`, which preserves today's behaviour exactly: each component is
+#    deployed release-locally and referenced through release-prefixed names
+#    (`{{ include "opencrane.fullname" . }}-…`), so two instances in one cluster
+#    never collide.
+#
+#    Set a component to `shared` only when an external, centrally-operated endpoint
+#    serves every instance. ⚠️ ISOLATION/TRUST IMPLICATION: a shared component sits
+#    OUTSIDE this instance's isolation boundary. Every instance pointed at it trusts
+#    the same backend, so a shared endpoint can leak data or budget across instances
+#    unless the shared component itself enforces per-instance tenancy (separate DBs,
+#    scoped credentials, per-instance auth). The chart cannot enforce that for you —
+#    only flip to `shared` for components you have verified are multi-tenant-safe.
+sharedPlatform:
+  # -- LiteLLM cost-routing gateway scope.
+  litellm:
+    # -- `instance` (default): use the release-local LiteLLM Deployment + Service.
+    #    `shared`: reference an external LiteLLM at `shared.endpoint` and skip the
+    #    in-release Deployment/Service. The master-key Secret still resolves via the
+    #    existing `litellm.existingSecret` path (a shared LiteLLM needs a shared key).
+    mode: instance
+    shared:
+      # -- Base endpoint of the shared LiteLLM (e.g. http://litellm.platform.svc:4000).
+      #    Required when mode=shared; consumed by the operator as LITELLM_ENDPOINT.
+      endpoint: ""
+  # -- Skill-registry delivery plane scope.
+  skillRegistry:
+    # -- `instance` (default): use the release-local skill-registry Deployment + Service.
+    #    `shared`: reference an external skill-registry at `shared.url` and skip the
+    #    in-release Deployment/Service/RBAC.
+    mode: instance
+    shared:
+      # -- Base URL of the shared skill-registry (e.g. http://skill-registry.platform.svc:5000).
+      #    Required when mode=shared; consumed by the operator as SKILL_REGISTRY_URL.
+      url: ""
+  # -- Obot MCP gateway plane scope.
+  mcpGateway:
+    # -- `instance` (default): use the release-local Obot Deployment + Service.
+    #    `shared`: reference an external Obot at `shared.url` and skip the in-release
+    #    Deployment/Service.
+    mode: instance
+    shared:
+      # -- Base URL of the shared Obot gateway (e.g. http://mcp-gateway.platform.svc:8080).
+      #    Required when mode=shared; consumed by the operator as MCP_GATEWAY_URL.
+      url: ""
+  # -- External Secrets Operator integration scope.
+  externalSecrets:
+    # -- `instance` (default): render this release's own ClusterSecretStore +
+    #    ExternalSecret. `shared`: reference an externally-managed ClusterSecretStore
+    #    by name at `shared.secretStoreName` and skip rendering the store here (the
+    #    per-instance ExternalSecret still targets this release's `orgSecrets.secretName`).
+    mode: instance
+    shared:
+      # -- Name of the externally-provided ClusterSecretStore to bind ExternalSecrets to.
+      #    Required when mode=shared.
+      secretStoreName: ""
 
 # -- Operator settings
 operator:
@@ -80,7 +150,9 @@ controlPlane:
 litellm:
   # -- Cost routing is enabled by default as part of platform setup.
   enabled: true
-  endpoint: http://litellm:4000
+  # NOTE: the LiteLLM endpoint is no longer set here. It is derived per scope by the
+  # `opencrane.litellmEndpoint` helper — release-prefixed in-cluster Service in
+  # instance mode, or `sharedPlatform.litellm.shared.endpoint` in shared mode.
   # -- Existing Secret containing LITELLM_MASTER_KEY for operator and control-plane
   existingSecret: ""
   secretKey: LITELLM_MASTER_KEY
@@ -216,8 +288,10 @@ certManager:
       config: {}
 
 # -- Obot MCP gateway plane settings.
-# Uses the upstream obot-platform/obot image. Requires an `opencrane-obot` k8s Secret
-# with key `dsn` containing the PostgreSQL DSN for Obot's own database.
+# Uses the upstream obot-platform/obot image. Requires a per-instance, release-prefixed
+# `<release>-obot` k8s Secret (resolved by the `opencrane.obotSecretName` helper) with
+# key `dsn` containing the PostgreSQL DSN for Obot's own database. The release prefix
+# stops two instances in one cluster colliding on a fixed `opencrane-obot` name (B5).
 # Authentication is disabled; access is controlled by NetworkPolicy (in-cluster only).
 # Obot polls the control-plane /api/internal/obot-registry endpoint to sync the MCP catalog.
 mcpGateway:
