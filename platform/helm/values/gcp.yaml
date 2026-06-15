@@ -23,7 +23,7 @@ controlPlane:
 
 litellm:
   enabled: true
-  endpoint: http://litellm:4000
+  # endpoint is derived by opencrane.litellmEndpoint (see platform/helm/values.yaml).
   existingSecret: opencrane-litellm
   generateMasterKey: false
   existingDatabaseSecret: opencrane-db

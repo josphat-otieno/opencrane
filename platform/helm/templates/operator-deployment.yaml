@@ -23,6 +23,13 @@ spec:
           image: "{{ .Values.operator.image.repository }}:{{ .Values.operator.image.tag }}"
           imagePullPolicy: {{ .Values.operator.image.pullPolicy }}
           env:
+            # -- This pod's own namespace (downward API). Used only as the safe
+            #    fallback host for runtime-plane URLs when their env is unset, so a
+            #    fallback never points at another instance's namespace (B5).
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
             - name: WATCH_NAMESPACE
               value: {{ .Values.operator.watchNamespace | quote }}
             # -- Multi-instance fail-closed guard (brief B2): when true the operator
@@ -54,10 +61,13 @@ spec:
               value: {{ .Values.operator.idleTimeoutMinutes | quote }}
             - name: IDLE_CHECK_INTERVAL_SECONDS
               value: {{ .Values.operator.idleCheckIntervalSeconds | quote }}
+            # -- Runtime-plane endpoints injected into tenant Deployments. Resolved via
+            #    sharedPlatform scope (B5): instance mode → release-prefixed in-cluster
+            #    Service; shared mode → the externally-provided endpoint.
             - name: MCP_GATEWAY_URL
-              value: {{ printf "http://%s-mcp-gateway:%v" (include "opencrane.fullname" .) .Values.mcpGateway.service.port | quote }}
+              value: {{ include "opencrane.mcpGatewayUrl" . | quote }}
             - name: SKILL_REGISTRY_URL
-              value: {{ printf "http://%s-skill-registry:%v" (include "opencrane.fullname" .) .Values.skillRegistry.service.port | quote }}
+              value: {{ include "opencrane.skillRegistryUrl" . | quote }}
             - name: PROJECTED_TOKEN_TTL_SECONDS
               value: {{ .Values.projectedIdentity.ttlSeconds | quote }}
             # -- In-cluster URL the operator injects into tenant Deployments so the
@@ -71,8 +81,11 @@ spec:
               value: {{ printf "%s-skill-registry" (include "opencrane.fullname" .) | quote }}
             - name: LITELLM_ENABLED
               value: {{ .Values.litellm.enabled | quote }}
+            # -- LiteLLM base endpoint, resolved via sharedPlatform scope (B5):
+            #    instance mode → release-prefixed in-cluster Service; shared mode →
+            #    sharedPlatform.litellm.shared.endpoint.
             - name: LITELLM_ENDPOINT
-              value: {{ .Values.litellm.endpoint | quote }}
+              value: {{ include "opencrane.litellmEndpoint" . | quote }}
             - name: LITELLM_DEFAULT_MONTHLY_BUDGET_USD
               value: {{ .Values.litellm.defaultMonthlyBudgetUsd | quote }}
             {{- if .Values.litellm.enabled }}

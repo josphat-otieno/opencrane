@@ -1,4 +1,7 @@
-{{- if .Values.mcpGateway.enabled }}
+{{- /* Render the release-local Obot Deployment only when enabled AND instance-scoped.
+       When sharedPlatform.mcpGateway.mode=shared the operator points tenants at an
+       external Obot (opencrane.mcpGatewayUrl), so no in-release workload is created. */ -}}
+{{- if and .Values.mcpGateway.enabled (ne (include "opencrane.mcpGatewayShared" .) "true") }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -31,11 +34,14 @@ spec:
             - name: http
               containerPort: {{ .Values.mcpGateway.service.port }}
           env:
-            # Database — Obot requires a PostgreSQL DSN. Provide via the opencrane-obot secret.
+            # Database — Obot requires a PostgreSQL DSN. Provide via the per-instance,
+            # release-prefixed `<fullname>-obot` Secret (B5: a fixed `opencrane-obot`
+            # name would collide across instances in one cluster). Provisioned
+            # out-of-band (operator/installer), not by this chart.
             - name: OBOT_SERVER_DSN
               valueFrom:
                 secretKeyRef:
-                  name: opencrane-obot
+                  name: {{ include "opencrane.obotSecretName" . }}
                   key: dsn
             # Hostname — used by Obot for OAuth callbacks; set to the in-cluster service URL.
             - name: OBOT_SERVER_HOSTNAME

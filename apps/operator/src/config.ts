@@ -88,6 +88,16 @@ export function _LoadOperatorConfig(): OpenClawTenantOperatorConfig
   // 1. Resolve hosting provider first; GCP block is conditionally required.
   const hostingProvider = _readHostingProvider();
 
+  // 2. Resolve this operator's own namespace for the runtime-plane URL fallbacks.
+  //    The Helm chart always sets MCP_GATEWAY_URL / SKILL_REGISTRY_URL /
+  //    CONTROL_PLANE_INTERNAL_URL to release-prefixed values, so these defaults are a
+  //    safety net only. They derive from POD_NAMESPACE (downward API) so an unset env
+  //    resolves to THIS instance's namespace — never a hard-coded shared namespace
+  //    like `opencrane-system`, which would be a latent cross-instance footgun (B5).
+  const ownNamespace = _readOwnNamespace();
+
+  // 3. Build the typed config from env, applying namespace-derived fallbacks for the
+  //    runtime-plane URLs so no value silently points at another instance.
   const config: OpenClawTenantOperatorConfig = {
     watchNamespace: _readEnvValue<string>("WATCH_NAMESPACE", "string"),
     requireWatchNamespace: _readEnvValue<boolean>("REQUIRE_WATCH_NAMESPACE", "boolean", false, false),
@@ -111,15 +121,15 @@ export function _LoadOperatorConfig(): OpenClawTenantOperatorConfig
     liteLlmMasterKey: _readEnvValue<string>("LITELLM_MASTER_KEY", "string", false, ""),
     liteLlmDefaultMonthlyBudgetUsd: _readEnvValue<number>("LITELLM_DEFAULT_MONTHLY_BUDGET_USD", "number"),
     defaultTenantPolicyRef: _readEnvValue<string>("DEFAULT_TENANT_POLICY_REF", "string", false, ""),
-    mcpGatewayUrl: _readEnvValue<string>("MCP_GATEWAY_URL", "string", false, "http://obot-gateway.opencrane-system.svc:8080"),
-    skillRegistryUrl: _readEnvValue<string>("SKILL_REGISTRY_URL", "string", false, "http://skill-registry.opencrane-system.svc:5000"),
-    controlPlaneInternalUrl: _readEnvValue<string>("CONTROL_PLANE_INTERNAL_URL", "string", false, "http://opencrane-control-plane.opencrane.svc:3000"),
+    mcpGatewayUrl: _readEnvValue<string>("MCP_GATEWAY_URL", "string", false, `http://opencrane-mcp-gateway.${ownNamespace}.svc:8080`),
+    skillRegistryUrl: _readEnvValue<string>("SKILL_REGISTRY_URL", "string", false, `http://opencrane-skill-registry.${ownNamespace}.svc:5000`),
+    controlPlaneInternalUrl: _readEnvValue<string>("CONTROL_PLANE_INTERNAL_URL", "string", false, `http://opencrane-control-plane.${ownNamespace}.svc:3000`),
     obotDeploymentName: _readEnvValue<string>("OBOT_DEPLOYMENT_NAME", "string", false, "opencrane-mcp-gateway"),
     skillRegistryDeploymentName: _readEnvValue<string>("SKILL_REGISTRY_DEPLOYMENT_NAME", "string", false, "opencrane-skill-registry"),
     projectedTokenTtlSeconds: _readEnvValue<number>("PROJECTED_TOKEN_TTL_SECONDS", "number", false, 600),
   };
 
-  // 2. Fail closed in multi-instance mode: refuse to watch the whole cluster when
+  // 4. Fail closed in multi-instance mode: refuse to watch the whole cluster when
   //    this instance must be scoped to its own namespace(s) (brief B2). Without
   //    this, an unscoped operator would reconcile every instance's Tenants.
   if (config.requireWatchNamespace && config.watchNamespace.trim().length === 0)
@@ -130,6 +140,23 @@ export function _LoadOperatorConfig(): OpenClawTenantOperatorConfig
   }
 
   return config;
+}
+
+/**
+ * Resolve the namespace this operator pod runs in, used only as the fallback host
+ * for the runtime-plane URLs (MCP gateway, skill registry, control plane).
+ *
+ * Reads POD_NAMESPACE, which the Helm operator Deployment populates from the
+ * downward API (`metadata.namespace`). Falls back to `default` when unset (e.g. in
+ * unit tests) so the fallback never points at a hard-coded shared namespace such as
+ * `opencrane-system`, which would be a latent cross-instance footgun (B5).
+ *
+ * @returns The operator's own namespace, or `default` when POD_NAMESPACE is unset.
+ */
+function _readOwnNamespace(): string
+{
+  const raw = process.env["POD_NAMESPACE"]?.trim();
+  return raw && raw.length > 0 ? raw : "default";
 }
 
 /**

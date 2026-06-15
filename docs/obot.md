@@ -32,7 +32,8 @@ oc CLI / API ──▶ Control plane (McpServer rows + grants)
 - **Workload:** `platform/helm/templates/obot-mcp-gateway-deployment.yaml` +
   `mcp-gateway-service.yaml`; configured by the `mcpGateway` block in
   `platform/helm/values.yaml` (image `ghcr.io/obot-platform/obot`, 1 replica, port
-  8080). Requires an `opencrane-obot` Secret with key `dsn` for Obot's own Postgres.
+  8080). Requires a per-instance, release-prefixed `<release>-obot` Secret (resolved by
+  the `opencrane.obotSecretName` Helm helper) with key `dsn` for Obot's own Postgres.
 - **Auth disabled, network-gated.** `OBOT_SERVER_ENABLE_AUTHENTICATION=false` — Obot
   itself runs no auth. Access is enforced at the network layer: the
   `mcp-gateway-ingress` policy in `platform/helm/templates/networkpolicy-planes.yaml`

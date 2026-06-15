@@ -60,4 +60,24 @@ describe("_LoadOperatorConfig multi-instance fail-closed guard (MI.1 / brief B2)
 		expect(config.watchNamespace).toBe("");
 		expect(config.requireWatchNamespace).toBe(false);
 	});
+
+	it("derives runtime-plane URL fallbacks from POD_NAMESPACE, not a shared namespace (B5)", function _podNamespaceFallback()
+	{
+		process.env.WATCH_NAMESPACE = "oc-acme";
+		process.env.POD_NAMESPACE = "oc-acme";
+		// Runtime-plane URL env vars are intentionally unset so the fallbacks are exercised.
+		const config = _LoadOperatorConfig();
+		expect(config.mcpGatewayUrl).toBe("http://opencrane-mcp-gateway.oc-acme.svc:8080");
+		expect(config.skillRegistryUrl).toBe("http://opencrane-skill-registry.oc-acme.svc:5000");
+		expect(config.controlPlaneInternalUrl).toBe("http://opencrane-control-plane.oc-acme.svc:3000");
+	});
+
+	it("falls back to the `default` namespace when POD_NAMESPACE is unset", function _defaultNamespaceFallback()
+	{
+		process.env.WATCH_NAMESPACE = "oc-acme";
+		// POD_NAMESPACE unset → fallback host is `default`, never `opencrane-system`.
+		const config = _LoadOperatorConfig();
+		expect(config.mcpGatewayUrl).toBe("http://opencrane-mcp-gateway.default.svc:8080");
+		expect(config.controlPlaneInternalUrl).toContain(".default.svc:");
+	});
 });

@@ -19,7 +19,7 @@ import type { Logger } from "pino";
  */
 export class ObotHealthChecker
 {
-  /** Base URL of the Obot gateway (e.g. `http://opencrane-obot:8080`). */
+  /** Base URL of the Obot gateway (e.g. `http://<release>-mcp-gateway:8080`). */
   private readonly _gatewayUrl: string;
 
   /** Scoped logger that tags every message with `component: obot-health-checker`. */
