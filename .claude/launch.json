@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "docs-theme",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "cd /Users/jenterosseel/Documents/GitHub/opencrane-docs-theme/website && exec pnpm exec vitepress dev --port 5199"],
+      "port": 5199
+    }
+  ]
+}

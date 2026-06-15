@@ -1077,6 +1077,8 @@ export interface components {
             name: string;
             /** @description Human-readable customer name. */
             displayName: string;
+            /** @description Customer-owned base domain serving this tenant's UserTenant gateways (<user>.<baseDomain>); falls back to the per-instance ingress.domain when unset. */
+            baseDomain?: string;
             /**
              * @description Isolation strength chosen for this customer.
              * @enum {string}
@@ -1104,6 +1106,8 @@ export interface components {
             name: string;
             /** @description Human-readable customer name. */
             displayName: string;
+            /** @description Customer-owned base domain (e.g. ai.client-company.com); optional, falls back to the per-instance ingress.domain. */
+            baseDomain?: string;
             /** @enum {string} */
             isolationTier: "shared" | "dedicatedNodes" | "dedicatedCluster";
             compute: {

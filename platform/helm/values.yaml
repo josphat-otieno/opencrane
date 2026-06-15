@@ -229,12 +229,15 @@ ingress:
   enabled: true
   # -- Ingress class is set by the hosting adapter; override here only for custom setups.
   className: nginx
-  # -- Base domain for tenant subdomains (tenant.domain)
+  # -- The ClusterTenant base domain for this instance. Per-user UserTenant gateways
+  #    are exposed as subdomains under it (<usertenant>.domain). See
+  #    docs/agents/cluster-architecture.md → "Tenancy Model — ClusterTenant vs UserTenant".
   domain: opencrane.local
   annotations: {}
   tls:
     enabled: false
-    # -- Secret name for wildcard TLS cert (*.domain)
+    # -- Secret name for the wildcard TLS cert (*.domain) covering every UserTenant
+    #    gateway host under the ClusterTenant base domain.
     secretName: opencrane-wildcard-tls
 
 # -- cert-manager TLS issuance (CONN.8). When enabled, renders a ClusterIssuer +

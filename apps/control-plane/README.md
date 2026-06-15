@@ -45,7 +45,7 @@ prisma/
 | `PORT` | `8080` | HTTP listen port |
 | `DATABASE_URL` | — | PostgreSQL connection string (`postgresql://user:pass@host/db`) |
 | `KUBECONFIG` / in-cluster | — | Kubernetes API access (auto-detected) |
-| `INGRESS_DOMAIN` | `opencrane.local` | Used to derive tenant ingress hosts |
+| `INGRESS_DOMAIN` | `opencrane.local` | The ClusterTenant base domain; used to derive per-user UserTenant gateway hosts (`{usertenant}.{domain}`). See [Tenancy Model](../../docs/agents/cluster-architecture.md#tenancy-model--clustertenant-vs-usertenant). |
 | `AUTH_TOKEN` | `""` | Bearer token for API access (empty = dev bypass) |
 | `NODE_ENV` | `development` | Set to `production` to enforce auth |
 

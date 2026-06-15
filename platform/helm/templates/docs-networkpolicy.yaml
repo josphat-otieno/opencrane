@@ -1,0 +1,32 @@
+{{- if and .Values.networkPolicy.enabled .Values.docs.enabled }}
+# Ingress policy for the optional docs site.
+#
+# The docs pod serves a static, public VitePress build over HTTP. Under the
+# multi-instance cross-instance default-deny posture (networkpolicy-multi-instance.yaml)
+# every pod is deny-by-default for ingress, so this re-allows the one source that
+# needs to reach it: the cluster ingress controller forwarding external traffic.
+# It needs no egress (no upstreams).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "opencrane.fullname" . }}-docs-ingress
+  labels:
+    {{- include "opencrane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: docs
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "opencrane.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: docs
+  policyTypes:
+    - Ingress
+  ingress:
+    # Allow the cluster ingress controller to forward external requests.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.ingressNamespace | default "ingress-nginx" }}
+      ports:
+        - protocol: TCP
+          port: 8080
+{{- end }}

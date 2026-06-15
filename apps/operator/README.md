@@ -2,6 +2,8 @@
 
 Kubernetes operator that watches `Tenant` and `AccessPolicy` custom resources and creates the Kubernetes objects needed to match them.
 
+> **Terminology:** the `Tenant` CRD here is a **UserTenant** — a per-user OpenClaw agent gateway. "UserTenant" is the canonical doc name; the CRD kind is still `Tenant` in code. Each UserTenant runs inside the namespace of its **ClusterTenant** (the customer / isolation unit), which owns the base domain and a `ResourceQuota`/`LimitRange`. See [Tenancy Model — ClusterTenant vs UserTenant](../../docs/agents/cluster-architecture.md#tenancy-model--clustertenant-vs-usertenant).
+
 ## Why this exists
 
 In Kubernetes, you describe what you *want* (a `Tenant` resource with a name, an email, a team), and something else is responsible for making reality match that description. That "something else" is an operator.
@@ -101,7 +103,7 @@ src/
 |----------|---------|-------------|
 | `WATCH_NAMESPACE` | `""` (all) | Namespace to scope the watch to |
 | `TENANT_DEFAULT_IMAGE` | `ghcr.io/opencrane/tenant:latest` | Fallback container image for tenant pods |
-| `INGRESS_DOMAIN` | `opencrane.local` | Base domain for `{tenant}.{domain}` ingress hosts |
+| `INGRESS_DOMAIN` | `opencrane.local` | The **ClusterTenant base domain** for this instance. Each per-user UserTenant gateway is exposed at `{usertenant}.{domain}`. See [Tenancy Model](../../docs/agents/cluster-architecture.md#tenancy-model--clustertenant-vs-usertenant). |
 | `INGRESS_CLASS_NAME` | `nginx` | Kubernetes ingress class name |
 | `GATEWAY_PORT` | `18789` | OpenClaw gateway port inside tenant pods |
 | `STORAGE_PROVIDER` | `""` | Cloud storage: `gcs`, `azure-blob`, `s3`, or empty for PVC fallback |
@@ -121,7 +123,7 @@ Tenant CR created/updated
   │     4. ConfigMap     (merged base config + spec.configOverrides)
   │     5. Deployment    (1 replica, GCS Fuse CSI or PVC storage)
   │     6. Service       (ClusterIP on gatewayPort)
-  │     7. Ingress       ({name}.{domain})
+  │     7. Ingress       (UserTenant gateway host {name}.{domain}, under the ClusterTenant base domain)
   │     8. Status → Running
   │
   └── suspended: true   →  suspendTenant()

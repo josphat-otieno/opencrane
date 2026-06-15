@@ -6,22 +6,33 @@
 The Kubernetes operator: a set of resilient watch loops that reconcile OpenCrane CRs into running
 workloads. Pure `@kubernetes/client-node` + a custom watch runner — no controller-runtime framework.
 
+**Two distinct roles** (terminology per
+[`cluster-architecture.md` → Tenancy Model](../cluster-architecture.md#tenancy-model--clustertenant-vs-usertenant)):
+
+1. **Builds UserTenant workloads** — per `Tenant` CR (the **UserTenant**, a per-user OpenClaw agent gateway)
+   it creates the Deployment / Service / Ingress (+ ConfigMap, Secrets, SA). One UserTenant Ingress lands
+   at `<name>.<ingress.domain>` under the parent ClusterTenant's wildcard.
+2. **Enforces ClusterTenant isolation** — for the parent **ClusterTenant** (the customer/isolation unit)
+   it provisions/uses the bound namespace and stamps the PSA `restricted` label, `ResourceQuota`,
+   `LimitRange`, and dedicated-node scheduling.
+
 ## Boot & Controllers (`src/index.ts`)
 
 `main()` loads config, builds the K8s client + hosting adapter, and starts independent loops; SIGTERM/SIGINT shut them down. Loops:
 
 | Controller | Watches / cadence | Does |
 |------------|-------------------|------|
-| **TenantOperator** (`tenants/operator.ts`) | Tenant CRs (`WATCH_NAMESPACE` or all) | The main reconcile pipeline (below). |
+| **TenantOperator** (`tenants/operator.ts`) | `Tenant` (UserTenant) CRs (`WATCH_NAMESPACE` or all) | The main reconcile pipeline (below). |
 | **PolicyOperator** (`policies/operator.ts`) | AccessPolicy CRs | Builds NetworkPolicy (+ optional CiliumNetworkPolicy) from egress/domain rules. |
-| **IdleChecker** (`tenants/runtime/idle-checker.ts`) | interval | Auto-suspends tenants idle past `IDLE_TIMEOUT_MINUTES` (sets `spec.suspended=true`). Disabled when ≤0. |
+| **IdleChecker** (`tenants/runtime/idle-checker.ts`) | interval | Auto-suspends UserTenants idle past `IDLE_TIMEOUT_MINUTES` (sets `spec.suspended=true`). Disabled when ≤0. |
 | **ObotHealthChecker** (`mcp-gateway/obot-health-checker.ts`) | ~30s | Polls Obot `/healthz`; tracks consecutive failures; non-blocking. |
 | **RuntimePlaneDriftRepairer** (`runtime-planes/drift-repairer.ts`) | ~60s | Repairs env-var drift on the Obot + skill-registry Deployments (image/replicas left to Helm). |
 | **TenantUpdateWithCanaryStrategyController** (`tenant-rollout/`) | ~15min, opt-in | When `OPENCRANE_AUTO_UPDATE_ENABLED`, canary-rolls new tenant images from the npm registry. |
 
 ## Reconcile Pipeline (`tenants/operator.ts`, idempotent)
 
-Each step uses server-side apply (`fieldManager: openclane-operator`) so re-runs are safe:
+Runs once per `Tenant` CR (a **UserTenant**). Each step uses server-side apply
+(`fieldManager: openclane-operator`) so re-runs are safe:
 
 1. **Resolve parent ClusterTenant** — ref-less → install namespace; with `clusterTenantRef` → parent's `status.boundNamespace` (fails if unbound).
 2. **Enforce isolation** (only with a ref) — Namespace (PSA restricted) → ResourceQuota → LimitRange.
@@ -32,8 +43,11 @@ Each step uses server-side apply (`fieldManager: openclane-operator`) so re-runs
 7. **LiteLLM virtual-key Secret** — best-effort; backend failures log but don't block.
 8. **ConfigMap** — base OpenClaw config + `spec.configOverrides` + the managed-runtime contract (plane URLs, capabilities) + workspace templates.
 9. **State volume** — GCS Fuse CSI mount (GCP) or PVC (on-prem) — adapter decides.
-10. **Deployment + Service + Ingress** — single replica, hardened pod (runAsNonRoot, drop ALL caps, readOnlyRootFilesystem, seccomp), 3 projected audience-bound tokens, liveness on the gateway port; Ingress host `{name}.{INGRESS_DOMAIN}` with optional shared wildcard TLS.
+10. **Deployment + Service + Ingress** — single replica, hardened pod (runAsNonRoot, drop ALL caps, readOnlyRootFilesystem, seccomp), 3 projected audience-bound tokens, liveness on the gateway port; the UserTenant Ingress host is `{name}.{INGRESS_DOMAIN}` (a host under the parent ClusterTenant's base domain) with optional shared wildcard TLS.
 11. **Patch `status`** — phase `Running`, pod name, ingress host, policy resolution source/state, `lastReconciled`.
+
+Step 1 (resolve parent ClusterTenant) and step 2 (enforce isolation) are where the operator acts on the
+**ClusterTenant** customer boundary; steps 4–11 build the **UserTenant** workload itself.
 
 **Delete** removes child resources but **retains buckets + encryption key** (data-loss prevention). **Suspend** scales to 0 and keeps state. Errors set `phase: Error` + message and re-throw to the watch loop.
 

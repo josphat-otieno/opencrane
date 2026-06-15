@@ -22,11 +22,12 @@ Reason: exposes the running pod set on the gateway port.
 
 6. `_BuildIngress` in `5-ingress.ts`
 Reason: routes external host traffic to the Service once backend networking exists.
+Builds **one Ingress per UserTenant** at the gateway host `<name>.<ingress.domain>`, where `ingress.domain` is the ClusterTenant base domain. See [Tenancy Model — ClusterTenant vs UserTenant](../../../../../docs/agents/cluster-architecture.md#tenancy-model--clustertenant-vs-usertenant).
 
 ## Shared Helpers
 
 - `tenant-labels.ts`: `_BuildTenantLabels` used by all builders for consistent metadata.
-- `ingress-host.ts`: `_BuildIngressHost` used by Ingress generation and status reporting.
+- `ingress-host.ts`: `_BuildIngressHost` builds the UserTenant gateway host `<name>.<ingress.domain>`; used by Ingress generation and status reporting.
 - `index.ts`: stable export surface for all deploy functions.
 
 ## Notes

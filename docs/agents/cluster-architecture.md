@@ -7,10 +7,12 @@
 
 ## Mental Model
 
-OpenCrane runs a **containerised control plane + reconciling operator + per-tenant agent pods** in
+OpenCrane runs a **containerised control plane + reconciling operator + per-UserTenant agent pods** in
 one Kubernetes cluster. The cluster is built to host **N strictly-isolated customer instances side by
-side**. A Helm chart deploys the platform planes (release-local by default); the operator then
-creates tenant workloads at runtime. Isolation strength is a per-customer choice (`isolationTier`).
+side** — each customer is a **ClusterTenant**, each per-user OpenClaw gateway is a **UserTenant** (see
+[Tenancy Model](#tenancy-model--clustertenant-vs-usertenant)). A Helm chart deploys the platform planes
+(release-local by default); the operator then creates UserTenant workloads at runtime. Isolation
+strength is a per-customer choice (`isolationTier`).
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
@@ -27,14 +29,52 @@ creates tenant workloads at runtime. Isolation strength is a per-customer choice
 │  │   • skill-registry :5000 entitlement-gated skill delivery          │ │
 │  │   • skill-oci-store :5000 Zot OCI registry (optional)              │ │
 │  │                                                                     │ │
-│  │  TENANT WORKLOADS (operator-created, one set per Tenant CR)         │ │
+│  │  USERTENANT WORKLOADS (operator-created, one set per Tenant CR)     │ │
 │  │   Deployment(OpenClaw, 1 replica) · Service · Ingress · ConfigMap   │ │
 │  │   · Secrets(enc-key, litellm-key) · SA · (CT) ResourceQuota+LimitRange │
 │  └─────────────────────────────────────────────────────────────────────┘ │
 │         ▲ external traffic: GCE LB (GCP) / ingress-nginx (on-prem)       │
-│           → control-plane:8080  and  *.domain → tenant Ingress           │
+│  platform domain → control-plane:8080 · *.<clustertenant-domain> → UserTenant │
 └────────────────────────────────────────────────────────────────────────┘
 ```
+
+## Tenancy Model — ClusterTenant vs UserTenant
+
+OpenCrane has **two distinct tenant concepts**. Keep them straight — they live on **separate,
+independent domains** and serve different roles:
+
+| Term | What it is | Scope | Domain |
+|------|-----------|-------|--------|
+| **ClusterTenant** | The **customer / isolation unit** — owns a namespace, a `ResourceQuota`/`LimitRange`, a compute `isolationTier`, and **its own base domain** (typically the customer's own company domain). One ClusterTenant ≈ one multi-instance OpenCrane instance. | Cluster-scoped CRD `clustertenants.opencrane.io`. | Owns its base domain (the instance's `ingress.domain`, customer-owned, e.g. `ai.client-company.com`); the wildcard `*.<clustertenant-domain>` is this customer's ingress space. |
+| **UserTenant** | A **per-user OpenClaw agent gateway** — the workload a person connects to. This is the `Tenant`/openclaw CRD; **"UserTenant" is the canonical name**, "`Tenant`" is the legacy CRD kind in code. | Namespaced CRD `tenant.opencrane.io`, runs inside its ClusterTenant's namespace. | A single host `<user>.<clustertenant-domain>`, e.g. `mike.ai.client-company.com`. |
+
+### DNS hierarchy
+
+These are **three independent domains**, not one nested DNS tree — the platform and each customer bring
+their own domains:
+
+```
+example.com                  → control plane (platform management API)   [platform's own domain]
+ai.client-company.com        → ClusterTenant "client-company" base domain [per-customer, customer-owned]
+  mike.ai.client-company.com → UserTenant "mike" gateway   (wildcard      [per-user]
+  sara.ai.client-company.com → UserTenant "sara" gateway    *.ai.client-company.com)
+```
+
+- **Control plane** → runs on the **platform's own domain** (e.g. `example.com`), separate from any
+  customer. It is one management API above every customer — logically, not as a DNS parent.
+- **ClusterTenant base domain** → **customer-owned and independent** (e.g. `ai.client-company.com`); each
+  instance sets its own `ingress.domain`. The wildcard cert + ingress live at this level.
+- **UserTenant host** → a single OpenClaw gateway; the operator builds **one `Ingress` per UserTenant** at
+  `<name>.<ingress.domain>`, i.e. a subdomain of that ClusterTenant's base domain.
+
+> **Validated against the tree (June 2026):** the operator builds the UserTenant ingress at
+> `<name>.<ingress.domain>` (`apps/operator/.../5-ingress.ts`) and cert-manager issues
+> `*.<ingress.domain>` + that base domain's own apex (`cluster-issuer.yaml`). `ingress.domain` is already
+> per-instance, so it **is** the ClusterTenant base domain — set it to the customer's domain. Two things
+> to keep straight: (1) the wildcard `*.<domain>` maps to **UserTenant** gateways, *not* the
+> ClusterTenant — the ClusterTenant owns the domain, its UserTenants get the hosts; (2) the **control
+> plane's own domain is not wired by an Ingress in the chart** — its cert/SAN may be covered but routing
+> the platform domain to the control-plane Service is currently an installer/out-of-chart step.
 
 ## Physical Cluster
 
@@ -75,18 +115,18 @@ All planes are **ClusterIP-only** (no external LB) — external traffic arrives 
 
 ## Namespace Model
 
-**Single-install (default):** one release namespace holds all planes + all tenant workloads; CRDs and RBAC are cluster-scoped singletons. Ref-less Tenants land here.
+**Single-install (default):** one release namespace holds all planes + all UserTenant workloads; CRDs and RBAC are cluster-scoped singletons. Ref-less UserTenants land here (an implicit "default" ClusterTenant binds this namespace).
 
 **Multi-instance (`multiInstance.enabled: true`):** each customer install gets its own namespace (`oc-acme`, `oc-globex`, …) with its own planes, namespaced RBAC, namespaced cert Issuer/SecretStore, and a default-deny cross-instance NetworkPolicy. CRDs are installed **once** cluster-wide (`--skip-crds` on releases). See [Multi-Instance](#multi-instance-cluster-shape).
 
-**Per-ClusterTenant fencing (when a Tenant has `clusterTenantRef`):** the operator provisions/uses the parent's bound namespace with a **PSA `restricted`** label, a `ResourceQuota` (cpu/mem/pods/storage/gpu), and a `LimitRange` (per-container defaults — required because the quota constrains `requests.*`).
+**Per-ClusterTenant fencing (when a UserTenant has `clusterTenantRef`):** the operator provisions/uses the parent's bound namespace with a **PSA `restricted`** label, a `ResourceQuota` (cpu/mem/pods/storage/gpu), and a `LimitRange` (per-container defaults — required because the quota constrains `requests.*`).
 
 ## Network Topology
 
-- **Ingress:** GCE Ingress (GCP) or ingress-nginx (on-prem). External clients hit control-plane `:8080`; tenants are exposed at `<tenant>.<ingressDomain>` → tenant Service.
+- **Ingress:** GCE Ingress (GCP) or ingress-nginx (on-prem). The **control plane** is reached on the **platform's own domain** (e.g. `example.com`); each **UserTenant** (OpenClaw gateway) is exposed at `<user>.<clustertenant-domain>` → its Service, under the customer-owned wildcard `*.<clustertenant-domain>`. See [Tenancy Model](#tenancy-model--clustertenant-vs-usertenant).
 - **`networkpolicy-planes.yaml`** restricts control-plane ingress to: ingress controller, operator, mcp-gateway, skill-registry, and tenant pods (contract re-pull). The Zot OCI store accepts the control-plane only. Because `/api/internal/*` has **no auth middleware**, this policy is its only boundary — see [`k8s.md`](./k8s.md#internal-routes-without-auth-middleware).
 - **Tenant egress** is default-DNS + the CIDR/FQDN allow-lists compiled from the tenant's AccessPolicy (standard NetworkPolicy always; optional CiliumNetworkPolicy for FQDN filtering).
-- **TLS:** cert-manager issues a wildcard cert (ACME DNS-01 in prod, selfSigned in dev). Issuance is driven API-first via control-plane `/api/v1/platform/dns`, not raw `kubectl`.
+- **TLS:** cert-manager issues a wildcard cert for the **ClusterTenant base domain** (`*.<clustertenant-domain>` + that base domain's own apex `<clustertenant-domain>`; ACME DNS-01 in prod, selfSigned in dev), so every UserTenant host under it is covered without per-UserTenant issuance. Issuance is driven API-first via control-plane `/api/v1/platform/dns`, not raw `kubectl`.
 
 ## Isolation Tiers
 
@@ -123,7 +163,7 @@ Six CRDs in `platform/helm/crds/`, across **two API groups**:
 
 | CRD | Group | Scope |
 |-----|-------|-------|
-| `Tenant` | `tenant.opencrane.io` | Namespaced — the OpenClaw agent-pod definition. |
+| `Tenant` (the **UserTenant**) | `tenant.opencrane.io` | Namespaced — the per-user OpenClaw agent-gateway. "UserTenant" is the canonical name; the CRD kind is still `Tenant`. |
 | `AccessPolicy` | `tenant.opencrane.io` | Namespaced — egress/MCP/dataset policy. |
 | `ClusterTenant` | `opencrane.io` | **Cluster-scoped** — the customer/isolation unit. |
 | `MCPServer` | `opencrane.io` | Namespaced — MCP server registration. |

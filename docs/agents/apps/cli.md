@@ -13,6 +13,11 @@ policies, mcp, skills, budget, audit, tokens, providers, metrics, platform, awar
 auth**. Config is resolved lazily and cached, so `--help` and `oc auth login` work without
 credentials.
 
+The two tenant groups map to the two tenancy concepts (see
+[`cluster-architecture.md` → Tenancy Model](../cluster-architecture.md#tenancy-model--clustertenant-vs-usertenant)):
+`oc cluster-tenant` manages the **ClusterTenant** (customer/isolation unit — namespace, quota, base
+domain), while `oc tenants` manages **UserTenants** (per-user OpenClaw gateways, CRD kind `Tenant`).
+
 ## Config & Auth (`src/config.ts`)
 
 `CliConfig = { baseUrl, token }`. Resolution precedence:

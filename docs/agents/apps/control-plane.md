@@ -7,6 +7,11 @@ The API-first management hub. **Express 5 + Prisma (PostgreSQL) + `@kubernetes/c
 of truth for tenants, policies, grants, MCP servers, skills; OIDC broker; the only writer of the
 Postgres projection. Listens on `PORT` (default **8080**).
 
+This is the platform management API served on the **platform's own domain** (e.g. `example.com`), separate from and above every customer. It
+exposes both `/api/v1/cluster-tenants` (the **ClusterTenant** customer/isolation unit) and the tenant
+endpoints (the **UserTenant** per-user OpenClaw gateway, CRD kind `Tenant`) — see
+[`cluster-architecture.md` → Tenancy Model](../cluster-architecture.md#tenancy-model--clustertenant-vs-usertenant).
+
 ## Layout
 
 - `infra/` — cross-cutting: `auth/` (OIDC service, device-grant, pod-token pairing, brokered-device registry), `middleware/` (`___AuthMiddleware`, transport security), `db/` (Prisma client + healthcheck).
@@ -22,9 +27,9 @@ Middleware order: transport-security → `express.json()` → `pino-http` → se
 
 CRUD + notable actions:
 
-- **tenants** — `+ suspend/resume`, `/drift`, `/repair`, `/datasets`, **`/effective-contract`** (compiled grants + rendered tools). Dual-writes CRD ↔ Postgres.
+- **tenants** (UserTenants — per-user OpenClaw gateways) — `+ suspend/resume`, `/drift`, `/repair`, `/datasets`, **`/effective-contract`** (compiled grants + rendered tools). Dual-writes CRD ↔ Postgres.
 - **policies** — `+ drift/repair`; best-effort Cognee propagation. Dual-writes CRD ↔ Postgres.
-- **cluster-tenants** — gates `isolationTier` on the provisioner registry (`422 TIER_UNAVAILABLE`).
+- **cluster-tenants** (the customer/isolation unit) — manages the customer namespace + quota + base domain; gates `isolationTier` on the provisioner registry (`422 TIER_UNAVAILABLE`).
 - **mcp-servers** — `+ credentials` (static-fallback vs per-user OBO brokering).
 - **skills/catalog** — `+ /:id/scan`, promote-gate (publish only if scan passed), `/backfill` (DB→OCI dual-write).
 - **groups**, **third-party-sources**, **provider-keys**, **access-tokens** (CLI tokens), **audit**, **metrics** (`/projection-drift` + alert webhook), **token-usage**, **ai-budget** (LiteLLM spend, read-only), **org/workspace-docs** (company-doc versioning + 3-way merge proposals), **platform/dns** (cert issuer + DNS), **awareness/rollout** (`+ promote/rollback/resolve`), **awareness/participation**, **sessions** (scope binding).

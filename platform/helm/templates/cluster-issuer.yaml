@@ -1,10 +1,13 @@
 {{- /*
 CONN.8 — k8s-native TLS issuance via cert-manager.
 
-Renders a cert issuer + a wildcard Certificate so tenant Ingresses (which
-reference ingress.tls.secretName) are served over browser-trusted TLS. A single
-wildcard *.<domain> cert covers every <tenant>.<domain> pod, so adding a tenant
-needs no new issuance.
+Renders a cert issuer + a wildcard Certificate so UserTenant Ingresses (which
+reference ingress.tls.secretName) are served over browser-trusted TLS. Here
+ingress.domain is the ClusterTenant base domain; a single wildcard *.<domain>
+cert covers every UserTenant gateway host (<user>.<domain>) under it, so adding a
+UserTenant needs no new issuance. (UserTenant = the per-user OpenClaw gateway, CRD
+kind `Tenant`; ClusterTenant = the customer that owns the domain. See
+docs/agents/cluster-architecture.md → "Tenancy Model — ClusterTenant vs UserTenant".)
 
 - mode=selfSigned : dev/local — issues instantly, no DNS challenge, not browser-trusted.
 - mode=acme       : production — public CA via DNS-01 (wildcards require DNS-01).
@@ -71,8 +74,9 @@ spec:
   issuerRef:
     name: {{ $cm.issuerName | quote }}
     kind: ClusterIssuer
-  # Wildcard covers every <tenant>.<domain>; the apex is added so anything served
-  # at the bare base domain is also covered (a wildcard does not match the apex).
+  # Wildcard covers every UserTenant gateway host (<user>.<domain>) under the
+  # ClusterTenant base domain; the apex is added so the control plane served at the
+  # bare base domain is also covered (a wildcard does not match the apex).
   dnsNames:
     - {{ printf "*.%s" .Values.ingress.domain | quote }}
     - {{ .Values.ingress.domain | quote }}
@@ -121,8 +125,9 @@ spec:
     # Namespaced Issuer in this same namespace — never a cluster-singleton.
     name: {{ $cm.issuerName | quote }}
     kind: Issuer
-  # Wildcard covers every <tenant>.<domain>; the apex is added so anything served
-  # at the bare base domain is also covered (a wildcard does not match the apex).
+  # Wildcard covers every UserTenant gateway host (<user>.<domain>) under the
+  # ClusterTenant base domain; the apex is added so the control plane served at the
+  # bare base domain is also covered (a wildcard does not match the apex).
   dnsNames:
     - {{ printf "*.%s" $.Values.ingress.domain | quote }}
     - {{ $.Values.ingress.domain | quote }}

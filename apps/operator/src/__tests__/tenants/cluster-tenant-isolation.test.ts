@@ -168,6 +168,21 @@ describe("ClusterTenant isolation enforcement (CT.5 reconcile flow)", () =>
     expect(podSpec?.tolerations?.[0]?.key).toBe("opencrane.io/dedicated");
   });
 
+  it("derives the UserTenant ingress host from the ClusterTenant baseDomain (CT.8)", async () =>
+  {
+    const clusterTenant = _makeClusterTenant("acme", "ct-acme");
+    clusterTenant.spec.baseDomain = "ai.client-company.com";
+    const tenant = _makeTenant("mike", { clusterTenantRef: "acme" });
+
+    const operator = _makeOperator(core, apps, networking, clusterTenant);
+    await operator.reconcileTenant(tenant);
+
+    // The Ingress host comes from the parent's customer-owned base domain, not the
+    // per-instance ingress.domain.
+    const ingress = networking.created.find((r) => r.kind === "Ingress") as k8s.V1Ingress | undefined;
+    expect(ingress?.spec?.rules?.[0]?.host).toBe("mike.ai.client-company.com");
+  });
+
   it("default (ref-less) openclaw renders no namespace/quota/limitrange and no scheduling", async () =>
   {
     const tenant = _makeTenant("plain");

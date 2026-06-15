@@ -88,6 +88,13 @@ export interface ClusterTenant
   name: string;
   /** Human-readable customer name. */
   displayName: string;
+  /**
+   * Customer-owned base domain this ClusterTenant serves its UserTenant gateways
+   * under (e.g. `ai.client-company.com`). UserTenant hosts are derived as
+   * `<user>.<baseDomain>`. Optional: when unset, the operator falls back to the
+   * per-instance `ingress.domain` Helm value, so existing installs are unchanged.
+   */
+  baseDomain?: string;
   /** Isolation strength chosen for this customer. */
   isolationTier: ClusterTenantIsolationTier;
   /** Compute placement policy. */

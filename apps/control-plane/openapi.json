@@ -196,6 +196,10 @@
             "type": "string",
             "description": "Human-readable customer name."
           },
+          "baseDomain": {
+            "type": "string",
+            "description": "Customer-owned base domain serving this tenant's UserTenant gateways (<user>.<baseDomain>); falls back to the per-instance ingress.domain when unset."
+          },
           "isolationTier": {
             "type": "string",
             "enum": [
@@ -277,6 +281,10 @@
           "displayName": {
             "type": "string",
             "description": "Human-readable customer name."
+          },
+          "baseDomain": {
+            "type": "string",
+            "description": "Customer-owned base domain (e.g. ai.client-company.com); optional, falls back to the per-instance ingress.domain."
           },
           "isolationTier": {
             "type": "string",

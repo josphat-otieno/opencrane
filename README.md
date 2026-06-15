@@ -134,13 +134,22 @@ Legend
 
 In this view, the left control pillar stacks Operator Control, Cognee Brain, and the Permission Compiler + Skill Registry (split box showing entitlement resolution alongside OCI/ORAS-backed skill delivery). The right MCP & Egress Plane hosts the Obot MCP Gateway, in-cluster MCP servers, Obot token store, Egress Control Plane, and Harvesting Agents. Both planes are config-slaved to the control plane; tenants reach them only via projected JWT.
 
-### Browser ↔ tenant pod: the OpenClaw connection
+### Browser ↔ UserTenant pod: the OpenClaw connection
+
+> **Two tenant concepts.** A **ClusterTenant** is the *customer / isolation unit* — it owns
+> a namespace, a resource quota, a compute isolation tier, and its own customer-owned base
+> domain (e.g. `ai.client-company.com`). A **UserTenant** is a *per-user OpenClaw agent gateway*
+> (the openclaw / `Tenant` CRD; "UserTenant" is the canonical name, the CRD kind is still
+> `Tenant` in code), exposed at `<user>.<ClusterTenant-domain>`
+> (e.g. `mike.ai.client-company.com`). The platform control plane runs on its own separate
+> domain (e.g. `example.com`), not as a parent of the customer domains. See the authoritative
+> [Tenancy Model](docs/agents/cluster-architecture.md#tenancy-model--clustertenant-vs-usertenant).
 
 A human touches **two backends and logs in once**: the **control plane** (management
-API, OIDC session) and their **own OpenClaw pod** (the live agent session — chat,
-retrieval, canvas). The pod speaks the OpenClaw **Gateway v4 WebSocket** protocol, and
-its native auth is a **pairing link**, so OpenCrane brokers that rather than minting a
-parallel token:
+API, OIDC session) and their **own OpenClaw pod** — a **UserTenant** (the live agent
+session — chat, retrieval, canvas). The pod speaks the OpenClaw **Gateway v4 WebSocket**
+protocol, and its native auth is a **pairing link**, so OpenCrane brokers that rather than
+minting a parallel token:
 
 ```
 1. Browser → OIDC login → control-plane session cookie                    ← the only login
@@ -399,7 +408,7 @@ spec:
 EOF
 ```
 
-The operator creates a GCS bucket, Workload Identity service account, encryption key, deployment, service, and ingress. Access at `https://jente.opencrane.ai`.
+The operator creates a GCS bucket, Workload Identity service account, encryption key, deployment, service, and one ingress per UserTenant. Here `ingress.domain=opencrane.ai` is this instance's **ClusterTenant base domain**, and the `jente` UserTenant gateway is reachable at `https://jente.opencrane.ai` (under the wildcard `*.opencrane.ai`). The platform control plane lives at the apex (`opencrane.ai` / `admin.opencrane.ai`). See the [DNS hierarchy](docs/agents/cluster-architecture.md#tenancy-model--clustertenant-vs-usertenant).
 
 ### CLI Quick Reference
 

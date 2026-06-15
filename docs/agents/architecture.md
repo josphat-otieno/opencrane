@@ -10,11 +10,12 @@
 
 The non-obvious shape of the system (verified June 2026). Read this before touching tenancy, auth, or cross-service flow.
 
-**Tenant model is a two-tier hierarchy:**
+**Tenant model is a two-tier hierarchy** (canonical definition in
+[`cluster-architecture.md` → Tenancy Model](./cluster-architecture.md#tenancy-model--clustertenant-vs-usertenant)):
 
-- `ClusterTenant` (cluster-scoped CRD, **optional** parent) — the first-class *customer* / isolation unit. Carries `isolationTier`, compute mode, and resource quota; binds a namespace (`status.boundNamespace`).
-- `Tenant` (namespaced CRD, always exists) — **is** the OpenClaw agent-pod definition (one pod per Tenant). There is no separate "openclaw" CRD; "OpenClaw" is the pod runtime.
-- A `Tenant` *without* `clusterTenantRef` deploys into the install namespace (single-install legacy mode). *With* a ref, the operator resolves the parent's bound namespace and applies its isolation policy.
+- **ClusterTenant** (cluster-scoped CRD `clustertenants.opencrane.io`, **optional** parent) — the first-class *customer* / isolation unit. Carries `isolationTier`, compute mode, resource quota, and its own base domain; binds a namespace (`status.boundNamespace`).
+- **UserTenant** (namespaced CRD, always exists) — **is** the per-user OpenClaw agent-pod definition (one pod per UserTenant), exposed at `<user>.<clustertenant-domain>`. "UserTenant" is the canonical doc name; the CRD kind is still `Tenant` in code. There is no separate "openclaw" CRD; "OpenClaw" is the pod runtime.
+- A UserTenant *without* `clusterTenantRef` deploys into the install namespace (single-install legacy mode). *With* a ref, the operator resolves the parent ClusterTenant's bound namespace and applies its isolation policy.
 - `isolationTier` ∈ `shared` (bin-packed nodes) · `dedicatedNodes` (tainted node pool) · `dedicatedCluster` (own kube-apiserver via external provisioner). Enum: `ClusterTenantIsolationTier` in `libs/contracts/src/cluster-tenant.types.ts`.
 
 **Five planes** (each detailed in [`app-specific.md`](./app-specific.md)):
@@ -22,7 +23,7 @@ The non-obvious shape of the system (verified June 2026). Read this before touch
 | Plane | Role | Talks to |
 |-------|------|----------|
 | **control-plane** | API-first management surface (`/api/v1`), OIDC broker, source of truth for Tenants/AccessPolicies/Grants/MCP/Skills. Dual-writes CRDs + Postgres. | everything |
-| **operator** | Reconciles Tenant/ClusterTenant/AccessPolicy CRs → namespaces, pods, NetworkPolicies, buckets. | Kubernetes API |
+| **operator** | Reconciles UserTenant (`Tenant`)/ClusterTenant/AccessPolicy CRs → namespaces, pods, Ingresses, NetworkPolicies, buckets. | Kubernetes API |
 | **Obot MCP gateway** | Config-slaved runtime gateway; **polls** control-plane `GET /api/internal/obot-registry`. Tenant pods reach MCP servers *through* Obot. | control-plane (poll), tenant pods |
 | **skill-registry** | Entitlement-gated skill-bundle delivery; validates pod identity via TokenReview, proxies to control-plane. Non-entitled → **404** (existence-hiding). | control-plane, tenant pods |
 | **harvesting-agent** | Background ingestion worker (Slack connector → Postgres `OrgDocument`). Not API-first. | external sources, Postgres |

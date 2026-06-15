@@ -180,6 +180,7 @@ const ClusterTenantSchema = {
   properties: {
     name: { type: "string", description: "Stable cluster-scoped identifier (the customer key)." },
     displayName: { type: "string", description: "Human-readable customer name." },
+    baseDomain: { type: "string", description: "Customer-owned base domain serving this tenant's UserTenant gateways (<user>.<baseDomain>); falls back to the per-instance ingress.domain when unset." },
     isolationTier: { type: "string", enum: ["shared", "dedicatedNodes", "dedicatedCluster"], description: "Isolation strength chosen for this customer." },
     compute: {
       type: "object",
@@ -212,6 +213,7 @@ const ClusterTenantWriteSchema = {
   properties: {
     name: { type: "string", description: "Stable cluster-scoped identifier (the customer key)." },
     displayName: { type: "string", description: "Human-readable customer name." },
+    baseDomain: { type: "string", description: "Customer-owned base domain (e.g. ai.client-company.com); optional, falls back to the per-instance ingress.domain." },
     isolationTier: { type: "string", enum: ["shared", "dedicatedNodes", "dedicatedCluster"] },
     compute: {
       type: "object",

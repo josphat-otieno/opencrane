@@ -43,6 +43,8 @@ export interface ClusterTenantResource extends KubernetesObject
   spec: {
     /** Human-readable customer name. */
     displayName?: string;
+    /** Customer-owned base domain; UserTenant gateway hosts are `<name>.<baseDomain>`. */
+    baseDomain?: string;
     /** Isolation strength chosen for this customer. */
     isolationTier?: string;
     /** Compute placement policy stamped onto attached openclaw pods. */

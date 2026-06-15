@@ -7,7 +7,13 @@ import { _BuildIngressHost } from "./ingress-host.js";
 import { _BuildTenantLabels } from "./tenant-labels.js";
 
 /**
- * Build the tenant Ingress that exposes the gateway on its assigned hostname.
+ * Build the UserTenant Ingress that exposes the per-user OpenClaw gateway on its
+ * assigned hostname. The host is `<name>.<ingressDomain>`, where `ingressDomain` is
+ * the ClusterTenant base domain — so this is one Ingress per UserTenant, sitting under
+ * the customer's (ClusterTenant's) domain. ("UserTenant" is the canonical doc name for
+ * the `Tenant` CRD; the ClusterTenant is the customer / isolation unit that owns the
+ * domain. See docs/agents/cluster-architecture.md → "Tenancy Model — ClusterTenant vs
+ * UserTenant".)
  *
  * Ingress class and provider annotations come from the hosting adapter's IngressBinding,
  * so the builder stays provider-agnostic: nginx on-prem, gce on GKE, etc. When
@@ -15,14 +21,17 @@ import { _BuildTenantLabels } from "./tenant-labels.js";
  * Secret (`ingressTlsSecretName`, populated by cert-manager — see CONN.8), so the
  * browser reaches `wss://<host>` over TLS the ingress terminates.
  */
-export function _BuildIngress(config: OpenClawTenantOperatorConfig, ingressBinding: IngressBinding, tenant: Tenant, namespace: string): k8s.V1Ingress
+export function _BuildIngress(config: OpenClawTenantOperatorConfig, ingressBinding: IngressBinding, tenant: Tenant, namespace: string, ingressDomain?: string): k8s.V1Ingress
 {
   const name = tenant.metadata!.name!;
-  const host = _BuildIngressHost(name, config.ingressDomain);
+  // Prefer the resolved ClusterTenant base domain (CT.8) when supplied; otherwise fall
+  // back to the per-instance ingress.domain so ref-less openclaws are unchanged.
+  const host = _BuildIngressHost(name, ingressDomain ?? config.ingressDomain);
 
   // TLS termination: reference the shared wildcard Secret for this host. The Secret is
-  // provisioned once by cert-manager (a wildcard Certificate); per-tenant Ingresses do
-  // not request their own cert, so adding a tenant needs no new issuance.
+  // provisioned once by cert-manager (a wildcard Certificate for the ClusterTenant base
+  // domain); per-UserTenant Ingresses do not request their own cert, so adding a
+  // UserTenant needs no new issuance.
   const tls: k8s.V1IngressTLS[] | undefined = config.ingressTlsEnabled
     ? [{ hosts: [host], secretName: config.ingressTlsSecretName }]
     : undefined;

@@ -193,6 +193,10 @@ export class TenantOperator
         await this.enforceClusterTenantIsolation(clusterTenantResolution.clusterTenant, namespace);
       }
       const compute = clusterTenantResolution.clusterTenant?.spec.compute;
+      // CT.8 — derive UserTenant ingress hosts from the parent ClusterTenant's
+      // customer-owned base domain when set; ref-less openclaws fall back to the
+      // per-instance ingress.domain so the default path is byte-for-byte unchanged.
+      const ingressDomain = clusterTenantResolution.clusterTenant?.spec.baseDomain ?? this.config.ingressDomain;
 
       // 0b. Effective policy — resolve policyRef deterministically so runtime behavior
       //    is predictable even when selectors or default policies are configured.
@@ -268,14 +272,14 @@ export class TenantOperator
       // 9. Ingress — routes external HTTPS traffic for {tenant}.{domain} to the Service.
       //    Ingress class and annotations come from the adapter (nginx on-prem, gce on GKE).
       const ingressBinding = this.hosting.buildIngressBinding();
-      await __K8sApplyResource(this.networkingApi, _BuildIngress(this.config, ingressBinding, effectiveTenant, namespace), this.log);
+      await __K8sApplyResource(this.networkingApi, _BuildIngress(this.config, ingressBinding, effectiveTenant, namespace, ingressDomain), this.log);
 
       // 10. Status — write the observed Running state back to the Tenant CR so that
       //    kubectl, the control-plane API, and the UI all see the current phase.
       await this.statusWriter.patchStatus(tenant, crNamespace, {
         phase: TenantStatusPhase.Running,
         podName: `openclaw-${name}`,
-        ingressHost: _BuildIngressHost(name, this.config.ingressDomain),
+        ingressHost: _BuildIngressHost(name, ingressDomain),
         effectivePolicyRef,
         policyResolutionSource: policyResolution.source,
         policyResolutionState: policyResolution.state,
