@@ -1,39 +1,38 @@
 # Connect to OpenClaw
 
-Once you've [created a tenant](/guide/first-tenant), the person can start using their
-assistant. They **sign in once** and connect to OpenClaw in the browser.
+Once an assistant exists, the person can start using it. The experience is simple:
+**sign in once, and start chatting.**
 
 ## For the user
 
-1. Go to your assistant's URL — `https://<your-name>.<your-org-domain>`
-   (for example `https://jente.opencrane.example.com`).
-2. Sign in with your organization account (OIDC single sign-on).
-3. Your assistant opens — chat, retrieval, and canvas are ready.
+1. Go to your assistant's address — `https://<your-name>.<your-company-domain>`
+   (for example `https://alice.opencrane.example.com`).
+2. Sign in with your normal work account.
+3. Your assistant opens — chat, search, and canvas are ready to go.
 
-That's it. There's no separate password or token to manage: OpenCrane pairs your
-browser to your assistant automatically and securely.
+No extra passwords, no tokens to copy. OpenCrane connects your browser to your
+assistant automatically and securely.
 
-## What happens behind the scenes
+::: tip What's "OpenClaw"?
+OpenClaw is the AI assistant software running inside each person's assistant. When
+someone "connects to OpenClaw," they're just opening their own assistant in the
+browser.
+:::
 
-You log in **once** to the control plane. When you open your assistant, the control
-plane hands your browser a short-lived **pairing link** to your own OpenClaw pod —
-it never proxies your conversation and never stores a long-lived token in your
-browser. Your assistant talks to tools and skills server-side; those credentials
-never reach the browser.
+## Why it's safe
 
-This means an administrator can **instantly cut off** any assistant (a per-user
-kill-switch) without affecting anyone else.
+- You sign in **once** — no long-lived passwords floating around.
+- An administrator can **instantly cut off** any single assistant if a laptop is lost
+  or someone leaves, without affecting anyone else.
+- The assistant talks to tools and skills behind the scenes; those credentials never
+  touch the browser.
 
-For the full identity and connection design, see
-[Identity & connection auth](/security/identity) and the
-[connection security model](/security/connection-security).
+The full security design is in [Identity & connection auth](/security/identity) — but
+you don't need it to get started.
 
-## Give an assistant access to more
+## Make the assistant more useful
 
-A fresh assistant starts locked down. To let it use organizational knowledge,
-skills, and tools, grant access:
+Right now it's a capable chat assistant. Give it real powers:
 
-- [Control access](/guide/permissions)
-- [Add skills](/guide/skills)
-- [Connect tools](/guide/tools)
-- [Organizational knowledge](/guide/knowledge)
+- **[Share skills](/guide/skills)** · **[Connect tools](/guide/tools)** ·
+  **[Add knowledge](/guide/knowledge)** · **[Control access](/guide/permissions)**

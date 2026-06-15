@@ -1,64 +1,55 @@
-# Create & manage tenants
+# Create your first employee assistant
 
-A **tenant** is one person's private AI assistant. Creating a tenant provisions an
-isolated OpenClaw assistant — with its own encrypted storage and its own URL — for
-that employee.
+::: tip What's an employee assistant?
+A private AI coworker for one person. It has its own secure storage and its own web
+address, and it acts on that person's behalf. (In the API and CLI it's called a
+*tenant*.)
+:::
 
-## Create a tenant
+## Create one
 
 ```bash
 oc tenants create \
-  --name jente \
-  --display-name "Jente" \
-  --email jente@example.com
+  --name alice \
+  --display-name "Alice Smith" \
+  --email alice@example.com
 ```
 
-OpenCrane provisions the assistant and exposes it at
-`https://jente.<your-domain>`. The person can now [connect to it](/guide/connect).
+That's it — Alice's assistant is now live at `https://alice.<your-domain>`, ready for
+her to [sign in and use](/guide/connect).
 
-You can also create one declaratively:
-
-```yaml
-apiVersion: opencrane.io/v1alpha1
-kind: Tenant
-metadata:
-  name: jente
-spec:
-  displayName: Jente
-  email: jente@example.com
-```
+You can set a few things up front:
 
 ```bash
-kubectl apply -f tenant.yaml
+oc tenants create \
+  --name alice \
+  --display-name "Alice Smith" \
+  --email alice@example.com \
+  --team engineering \      # the team she belongs to
+  --budget 50               # monthly spend cap, in USD
 ```
 
-## Manage tenants
+The `--team` label is how you group people — see [Organize your company](/guide/organize).
+
+## Manage assistants
 
 ```bash
 oc tenants list             # everyone's assistants
-oc tenants get jente        # inspect one
-oc tenants suspend jente    # scale to zero (pause)
-oc tenants resume jente     # bring it back
-oc tenants delete jente     # remove it
-```
-
-## Pin a version
-
-By default a tenant installs the latest OpenClaw on first boot and can self-update.
-To pin a specific version:
-
-```yaml
-spec:
-  displayName: Jente
-  email: jente@example.com
-  openclawVersion: "2026.3.15"
+oc tenants get alice        # details for one
+oc tenants suspend alice    # pause it (frees resources)
+oc tenants resume alice     # bring it back
+oc tenants delete alice     # remove it
 ```
 
 ## What's next
 
-- [Connect to OpenClaw](/guide/connect) — how the person reaches their assistant
-- [Control access](/guide/permissions) — decide what this assistant can see and do
-- [Budgets & cost](/guide/budgets) — set a spend limit for this assistant
-- [Audit log](/guide/audit) — review changes
+A brand-new assistant starts locked down — it can chat, but it can't reach company
+tools, skills, or knowledge until you allow it. Build it up:
 
-See the full command set in the [CLI reference](/reference/cli).
+- **[Let Alice sign in](/guide/connect)**
+- **[Share skills with her](/guide/skills)** — reusable abilities
+- **[Connect tools](/guide/tools)** — Slack, Jira, your CRM
+- **[Add company knowledge](/guide/knowledge)** — so it answers with real facts
+- **[Control access](/guide/permissions)** — decide exactly what it can use
+
+Full command details live in the [CLI reference](/reference/cli).

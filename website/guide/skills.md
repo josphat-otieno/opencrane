@@ -1,34 +1,51 @@
-# Add skills
+# Share skills across teams
 
-**Skills** are reusable capabilities you publish once and share with assistants
-across the organization. OpenCrane keeps them in your own registry, scans them for
-safety, and delivers only what each assistant is entitled to.
+::: tip What's a skill?
+A **reusable ability** you give to assistants — like installing an app. "Draft a
+sales follow-up," "review a pull request," "summarise a support ticket" — build it
+once, then share it with whoever should have it.
+:::
 
-## Publish a skill
+Skills live in your own catalog. OpenCrane keeps each one **versioned** and
+**security-scanned**, and only delivers it to assistants you've allowed.
 
-```bash
-oc skills publish ./my-skill        # add to the catalog (scanned on ingest)
-oc skills list                      # see the catalog
-```
-
-Every skill is scanned (Grype/Trivy) before it can be published, so unsafe bundles
-never reach an assistant.
-
-## Share across the org
-
-Promote a skill up through the scopes — from one person, to a project, to a
-department, to the whole organization (and demote the same way):
+## See the catalog
 
 ```bash
-oc skills promote my-skill --to department
-oc skills demote  my-skill --to project
+oc skills list
+oc skills get <id>
 ```
 
-An assistant only ever receives the skills it's entitled to (see
-[Control access](/guide/permissions)). Skills are delivered on demand and pinned by
-digest, so rollouts are consistent and reversible.
+## Add a skill
 
-## Learn more
+```bash
+oc skills create \
+  --name sales-follow-up \
+  --version 1.0.0 \
+  --digest sha256:… \
+  --scope personal
+```
 
-The delivery internals — entitlement checks, scan pipeline, and per-read delivery —
-are covered in [Skill registry & delivery](/integrators/skill-registry).
+A skill is added in **draft** and must pass a **security scan** before it can go live —
+so an unsafe skill never reaches an assistant.
+
+## Share it more widely (promotion)
+
+This is the heart of skill sharing. Every skill has a **scope** — its reach — and you
+**promote** it to wider scopes as it proves useful:
+
+```
+personal  ▸  project  ▸  department  ▸  org
+ you build it   your team    your division   everyone
+```
+
+Promoting a skill to `department` means everyone in that department's assistants can
+use it; promoting to `org` shares it company-wide. You can also pull it back
+(demote) just as easily. Who actually receives a promoted skill is still governed by
+[access grants](/guide/permissions), so you stay in control.
+
+## Going deeper
+
+Publishing, scanning, version pinning, and the exact promotion payloads are covered
+in the [Skill registry deep dive](/integrators/skill-registry). For day-to-day use,
+the create-and-promote idea above is all you need.

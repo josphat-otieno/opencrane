@@ -28,17 +28,17 @@ export default defineConfig({
     search: { provider: 'local' },
 
     nav: [
-      { text: 'Get started', link: '/guide/introduction' },
+      { text: 'Start here', link: '/guide/introduction' },
       {
         text: 'Guides',
         items: [
-          { text: 'Create & manage tenants', link: '/guide/first-tenant' },
-          { text: 'Connect to OpenClaw', link: '/guide/connect' },
-          { text: 'Control access', link: '/guide/permissions' },
-          { text: 'Add skills', link: '/guide/skills' },
-          { text: 'Connect tools', link: '/guide/tools' },
+          { text: 'Employee assistants', link: '/guide/first-tenant' },
+          { text: 'Organize your company', link: '/guide/organize' },
+          { text: 'Share skills', link: '/guide/skills' },
+          { text: 'Manage tools (MCP)', link: '/guide/tools' },
           { text: 'Organizational knowledge', link: '/guide/knowledge' },
-          { text: 'Budgets & cost', link: '/guide/budgets' },
+          { text: 'Control access', link: '/guide/permissions' },
+          { text: 'Manage cost', link: '/guide/budgets' },
         ],
       },
       {
@@ -54,25 +54,32 @@ export default defineConfig({
 
     sidebar: [
       {
-        text: 'Getting started',
+        text: 'Start here',
         items: [
           { text: 'What is OpenCrane?', link: '/guide/introduction' },
-          { text: 'Install OpenCrane', link: '/guide/getting-started' },
-          { text: 'Create your first tenant', link: '/guide/first-tenant' },
-          { text: 'Connect to OpenClaw', link: '/guide/connect' },
+          { text: 'How OpenCrane works', link: '/guide/how-it-works' },
+        ],
+      },
+      {
+        text: 'Get set up',
+        items: [
+          { text: '1. Install OpenCrane', link: '/guide/getting-started' },
+          { text: '2. Set up your domain', link: '/guide/dns' },
+          { text: '3. Create your first assistant', link: '/guide/first-tenant' },
+          { text: '4. Connect to OpenClaw', link: '/guide/connect' },
         ],
       },
       {
         text: 'Guides',
         items: [
-          { text: 'Create & manage tenants', link: '/guide/first-tenant' },
-          { text: 'Connect to OpenClaw', link: '/guide/connect' },
-          { text: 'Control access', link: '/guide/permissions' },
-          { text: 'Add skills', link: '/guide/skills' },
-          { text: 'Connect tools (MCP)', link: '/guide/tools' },
+          { text: 'Employee assistants', link: '/guide/first-tenant' },
+          { text: 'Organize your company', link: '/guide/organize' },
+          { text: 'Share skills across teams', link: '/guide/skills' },
+          { text: 'Manage tools (MCP)', link: '/guide/tools' },
           { text: 'Organizational knowledge', link: '/guide/knowledge' },
-          { text: 'Budgets & cost', link: '/guide/budgets' },
-          { text: 'Audit log', link: '/guide/audit' },
+          { text: 'Control who can access what', link: '/guide/permissions' },
+          { text: 'Manage cost', link: '/guide/budgets' },
+          { text: 'Review activity', link: '/guide/audit' },
         ],
       },
       {
@@ -86,6 +93,7 @@ export default defineConfig({
       },
       {
         text: 'Operating OpenCrane',
+        collapsed: true,
         items: [
           { text: 'Hosting & deployment', link: '/operators/hosting' },
           { text: 'Identity & connection auth', link: '/security/identity' },

@@ -1,44 +1,48 @@
-# Organizational knowledge
+# Connect organizational knowledge
 
-OpenCrane can harvest your company's knowledge — from Slack, Teams, email, tickets,
-and more — into a central index. Assistants then **retrieve from it during a
-conversation**, with role-based scoping and citations, so answers are grounded in
-your organization's own information.
+::: tip What's organizational knowledge?
+Your company's own information — from Slack, email, documents, tickets — gathered
+into a searchable index. With it, an assistant answers from **real company facts,
+with citations**, instead of guessing.
+:::
 
 ## How it works
 
-- **Harvesting agents** continuously ingest knowledge into the index, organised by
-  scope (org / team / project / personal).
-- During a conversation, the assistant **queries the index directly** and returns
-  answers with citations. OpenCrane never sits in the conversation path — it only
-  decides what each assistant is allowed to see.
-- What an assistant can retrieve is governed by [access policies](/guide/permissions).
+- OpenCrane runs **collectors** that continuously pull in knowledge from your systems
+  and organize it by [scope](/guide/organize) (personal, project, department, org).
+- During a conversation, an assistant **looks things up directly** and answers with
+  citations. OpenCrane never reads the conversation — it only decides which knowledge
+  an assistant is allowed to see.
+- What an assistant can reach is set by [access](/guide/permissions): a department's
+  documents only reach that department.
 
-## Consistent behaviour across the fleet
+## Keep every assistant consistent
 
-Every assistant follows a shared **awareness contract** — the same rules for scope
-selection, citations, freshness, and fallback. You roll changes out safely
-(canary → wider) and can roll back in one step:
-
-```bash
-oc awareness list
-oc awareness rollout <version>
-oc awareness evaluate <version>
-```
-
-## Keep contexts separate
-
-To stop one project's context from leaking into another chat, bind a session to a
-scope:
+So every assistant behaves the same way when it looks things up — same rules for
+which sources to use, when to cite, and how fresh information must be — OpenCrane
+applies a shared set of rules across the fleet. You roll changes out gradually (to a
+few assistants first, then everyone) and can undo in one step:
 
 ```bash
-oc sessions scope set <sessionKey> --scope project/acme
-oc sessions scope show <sessionKey>
-oc sessions scope clear <sessionKey>
+oc awareness rollout show
+oc awareness rollout set <version> --waves engineering,sales
+oc awareness rollout promote
+oc awareness rollout rollback
 ```
 
-## Learn more
+## Keep contexts from bleeding together
 
-The retrieval plane, datasets, and freshness model are covered in
-[Retrieval & memory](/integrators/retrieval-memory). SLOs and dashboards are in
-[Awareness SLOs](/operators/awareness-slos).
+To stop one project's context from leaking into an unrelated chat, you can pin a
+conversation to a scope:
+
+```bash
+oc sessions scope set <session> --principal alice --scope project:acme
+oc sessions scope show <session>
+oc sessions scope clear <session>
+```
+
+## Going deeper
+
+How collection, datasets, and freshness work under the hood is in the
+[Retrieval & memory deep dive](/integrators/retrieval-memory). Health dashboards are
+in [Awareness SLOs](/operators/awareness-slos).

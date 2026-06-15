@@ -1,26 +1,24 @@
-# Audit log
+# Review activity
 
-Every administrative change — creating or suspending tenants, editing policies,
-publishing skills, registering tools, changing budgets — is recorded in a queryable
-audit log.
+::: tip What's in the audit log?
+A record of every **administrative action** — who created or paused an assistant,
+changed a policy, shared a skill, connected a tool, or adjusted a budget. It does
+**not** record anyone's conversations with their assistant.
+:::
 
-## Query the log
+## Look it up
 
 ```bash
 oc audit list                          # most recent activity
-oc audit list --tenant jente           # everything for one assistant
-oc audit list --tenant jente --limit 50
+oc audit list --tenant alice           # everything about one assistant
+oc audit list --tenant alice --limit 50
 ```
 
-Use `--output json` for machine-readable output you can pipe into other tools:
+Add `--output json` to feed it into other tools:
 
 ```bash
 oc audit list --output json | jq '.[] | {time, actor, action}'
 ```
 
-## What's recorded
-
-Changes are dual-written to Kubernetes (the source of truth) and to a database for
-fast querying, so the log stays accurate even if one path is unavailable. Note that
-OpenCrane records **administrative actions** — it does **not** log the contents of
-anyone's conversations with their assistant.
+The log is kept accurate even if part of the system is briefly unavailable, so it's a
+reliable record for reviews and compliance.

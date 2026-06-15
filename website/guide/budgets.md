@@ -1,35 +1,43 @@
-# Budgets & cost
+# Manage cost
 
-OpenCrane tracks LLM spend per assistant and lets you cap it — so no single person
-or runaway task can blow your budget.
+::: tip Why budgets?
+AI usage costs money per request. Budgets let you cap spend — per person and
+company-wide — so there are no surprises and no runaway bills.
+:::
 
-## Set a budget and track spend
+## Set a budget when you create an assistant
 
 ```bash
-oc budget set jente --limit 50        # cap monthly spend for one assistant
-oc budget spend jente                 # current spend
+oc tenants create --name alice --display-name "Alice" --email alice@example.com \
+  --budget 50        # monthly cap, in USD
 ```
 
-When an assistant reaches its limit, further LLM calls are stopped until the budget
-resets or you raise it.
+## Adjust budgets later
 
-## Choose your model provider
+```bash
+oc budget set-global 5000        # company-wide monthly ceiling
+oc budget global                 # show the global ceiling
 
-You're not locked to one vendor. Manage the LLM (and storage/secret) providers your
-fleet uses:
+oc budget set-account alice 75   # cap for one person
+oc budget accounts               # all per-person caps
+
+oc budget spend alice            # what Alice has spent this month
+```
+
+When someone hits their cap, their assistant pauses AI calls until the budget resets
+or you raise it — it never silently overspends.
+
+## Choose your AI provider
+
+You're not tied to one vendor. Add the model providers your company uses, and switch
+freely:
 
 ```bash
 oc providers list
-oc providers set <provider> -f provider.yaml
+oc providers set claude <api-key>
+oc providers set openai <api-key>
 ```
 
-Use Claude, GPT, or open-source models — and switch without changing anything about
-your assistants or skills.
-
-## See utilisation
-
-```bash
-oc metrics server      # overall control-plane utilisation snapshot
-```
-
-Spend and budget changes are recorded in the [audit log](/guide/audit).
+Use Claude, GPT, or open-source models without changing anything about your
+assistants or skills. Budget and provider changes are recorded in the
+[audit log](/guide/audit).

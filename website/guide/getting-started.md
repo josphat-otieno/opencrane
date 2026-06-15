@@ -1,26 +1,18 @@
 # Install OpenCrane
 
-OpenCrane runs on your own Kubernetes cluster. This page gets the platform up and
-running so you can [create your first tenant](/guide/first-tenant).
+OpenCrane runs on a Kubernetes cluster you control. This page gets it running. Don't
+worry if you're not a Kubernetes expert — the defaults do the heavy lifting.
 
-## Prerequisites
+## Try it on your laptop first
 
-- **Kubernetes 1.28+** (a local k3d/kind cluster is fine to start; GKE for cloud)
-- **Helm 3**
-- **PostgreSQL 15+** (in-cluster for local; managed for production)
-- A **domain** you control (for production), e.g. `opencrane.example.com`
-- **Node 22+ / pnpm 10+** only if you're building from source
-
-## Try it locally
-
-The fastest way to see OpenCrane working:
+The quickest way to kick the tyres, with everything bundled in:
 
 ```bash
-# operator + control plane + LiteLLM + in-cluster PostgreSQL
 ./platform/install.sh local
 ```
 
-That's enough to create tenants and explore the API and CLI on your machine.
+That's enough to create assistants and explore the `oc` command-line tool locally.
+When you're ready for real users, install it on a cluster.
 
 ## Install on a cluster
 
@@ -30,25 +22,26 @@ helm install opencrane platform/helm \
   --set controlPlane.database.existingSecret=opencrane-db
 ```
 
-`ingress.domain` is **your OpenCrane domain**. The control plane lives at the apex
-(`opencrane.example.com` / `admin.opencrane.example.com`) and each person's
-assistant gets a subdomain like `jente.opencrane.example.com`.
+`ingress.domain` is **your OpenCrane address**. Your control plane lives at the top
+(`admin.opencrane.example.com`) and each person's assistant gets its own subdomain,
+like `alice.opencrane.example.com`.
 
-TLS is issued automatically by cert-manager as a wildcard certificate. Full
-deployment options (cloud adapters, storage, DNS) are in
-[Hosting & deployment](/operators/hosting).
+For storage, cloud, and other options, see [Hosting & deployment](/operators/hosting).
 
-## Point the CLI at your control plane
+## Connect the command-line tool
 
-Everything below uses the `oc` CLI:
+Everything in these guides uses `oc`. Point it at your control plane:
 
 ```bash
 export OPENCRANE_URL=https://admin.opencrane.example.com
 export OPENCRANE_TOKEN=<your-access-token>
 
-oc auth me      # confirm you're connected
+oc auth me        # confirms you're connected
 ```
 
-## Next
+## Next: set up your domain
 
-→ **[Create your first tenant](/guide/first-tenant)**
+Because every assistant gets its own subdomain, the next step is pointing your domain
+name at OpenCrane and turning on HTTPS.
+
+→ **[Set up your domain](/guide/dns)**
