@@ -17,8 +17,8 @@ output "cluster_endpoint"
 
 output "registry_url"
 {
-  description = "Artifact Registry URL for Docker images"
-  value       = module.artifact_registry.repository_url
+  description = "Registry URL for OpenCrane images (Artifact Registry when enabled, else the external registry)"
+  value       = local.registry_url
 }
 
 output "ingress_ip"
@@ -35,8 +35,14 @@ output "control_plane_url"
 
 output "dns_name_servers"
 {
-  description = "Name servers — delegate your domain to these"
-  value       = module.dns.name_servers
+  description = "Cloud DNS name servers (empty unless enable_cloud_dns=true). Delegate your domain to these."
+  value       = var.enable_cloud_dns ? module.dns[0].name_servers : []
+}
+
+output "dns_setup_instructions"
+{
+  description = "Manual DNS guidance when Cloud DNS is disabled."
+  value = var.enable_cloud_dns ? "Cloud DNS managed by Terraform — delegate ${var.domain} to the dns_name_servers output." : "Create an A record for ${var.domain} and a wildcard *.${var.domain} pointing at the ingress_ip output at your DNS provider."
 }
 
 output "database_url"
