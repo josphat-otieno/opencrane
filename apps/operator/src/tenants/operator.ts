@@ -11,13 +11,14 @@ import { TenantPolicyResolutionState, TenantStatusPhase } from "./models/tenant-
 import { _K8sApplyResource } from "../infra/k8s.js";
 import { _RunWatchLoop, K8sWatchEventType } from "../shared/watch-runner.js";
 import { OPENCRANE_API_GROUP, OPENCRANE_API_VERSION, TENANT_CRD_PLURAL } from "../shared/crd-constants.js";
-import { _BuildConfigMap, _BuildDeployment, _BuildIngress, _BuildIngressHost, _BuildService, _BuildServiceAccount, _BuildStatePvc } from "./deploy/index.js";
+import { _BuildClusterTenantLimitRange, _BuildClusterTenantNamespace, _BuildClusterTenantResourceQuota, _BuildConfigMap, _BuildDeployment, _BuildIngress, _BuildIngressHost, _BuildService, _BuildServiceAccount, _BuildStatePvc } from "./deploy/index.js";
 import { TenantCleanup } from "./destroy/tenant-cleanup.js";
 
 import { TenantEncryptionKeys } from "./internal/tenant-encryption-keys.js";
 import { TenantLiteLlmKeys } from "./internal/tenant-litellm-keys.js";
 import { _ResolveTenantPolicy } from "./internal/policy-resolution.js";
 import { _ResolveClusterTenant } from "./internal/cluster-tenant-resolution.js";
+import type { ClusterTenantResource } from "./internal/cluster-tenant-resolution.types.js";
 import { TenantStatusWriter } from "./internal/tenant-status-writer.js";
 
 /**
@@ -184,10 +185,15 @@ export class TenantOperator
       //     openclaw lands in the parent's bound namespace (opt-in multi-tenancy).
       const clusterTenantResolution = await _ResolveClusterTenant(this.customApi, tenant, crNamespace);
       const namespace = clusterTenantResolution.targetNamespace;
-      if (clusterTenantResolution.ref)
+      if (clusterTenantResolution.ref && clusterTenantResolution.clusterTenant)
       {
         this.log.info({ name, clusterTenantRef: tenant.spec.clusterTenantRef, namespace }, "openclaw attached to cluster tenant");
+        // 0a-i. Native isolation — fence the customer's namespace before any child
+        //       resource lands in it. Ref-less openclaws skip this block entirely so
+        //       the default (single-install) path stays byte-for-byte unchanged.
+        await this.enforceClusterTenantIsolation(clusterTenantResolution.clusterTenant, namespace);
       }
+      const compute = clusterTenantResolution.clusterTenant?.spec.compute;
 
       // 0b. Effective policy — resolve policyRef deterministically so runtime behavior
       //    is predictable even when selectors or default policies are configured.
@@ -254,7 +260,7 @@ export class TenantOperator
 
       // 7. Deployment — single-replica pod running the tenant's OpenClaw gateway.
       //    Mounts the ConfigMap, encryption key, state volume, and projected identity tokens.
-      await _K8sApplyResource(this.appsApi, _BuildDeployment(this.config, stateVolume, effectiveTenant, namespace), this.log);
+      await _K8sApplyResource(this.appsApi, _BuildDeployment(this.config, stateVolume, effectiveTenant, namespace, compute), this.log);
 
       // 8. Service — ClusterIP that makes the gateway reachable inside the cluster
       //    on the configured gateway port.
@@ -286,6 +292,42 @@ export class TenantOperator
         lastReconciled: new Date().toISOString(),
       });
       throw err;
+    }
+  }
+
+  /**
+   * Provision and fence the per-ClusterTenant namespace for the opt-in
+   * multi-tenant path.
+   *
+   * This is only reached when an openclaw references a ClusterTenant; it
+   * ensures the customer's namespace exists with PSA `restricted` enforcement,
+   * stamps an aggregate ResourceQuota derived from the customer's quota, and
+   * lays down a default LimitRange so quota-constrained pods still schedule.
+   * Live PSA/quota enforcement is the cluster seam; here we converge the
+   * objects idempotently via server-side create-or-replace.
+   *
+   * @param clusterTenant - Resolved parent ClusterTenant carrying quota/compute.
+   * @param namespace - The customer's bound namespace to fence.
+   */
+  private async enforceClusterTenantIsolation(clusterTenant: ClusterTenantResource, namespace: string): Promise<void>
+  {
+    const clusterTenantName = clusterTenant.metadata?.name ?? namespace;
+
+    // 1. Namespace — ensure the fenced namespace exists and carries the PSA
+    //    restricted enforce/warn/audit labels before any workload lands in it.
+    await _K8sApplyResource(this.coreApi, _BuildClusterTenantNamespace(namespace, clusterTenantName), this.log);
+
+    // 2. ResourceQuota — cap the customer's aggregate CPU/memory/pods/storage/GPU
+    //    so a single customer cannot starve the cluster. Only stamped when the
+    //    ClusterTenant actually declared a quota block.
+    const quota = clusterTenant.spec.resources?.quota;
+    if (quota)
+    {
+      await _K8sApplyResource(this.coreApi, _BuildClusterTenantResourceQuota(namespace, clusterTenantName, quota), this.log);
+
+      // 3. LimitRange — a quota over requests.* rejects pods that omit requests;
+      //    supply per-container defaults so unannotated workloads still schedule.
+      await _K8sApplyResource(this.coreApi, _BuildClusterTenantLimitRange(namespace, clusterTenantName), this.log);
     }
   }
 

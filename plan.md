@@ -361,7 +361,7 @@ With one agent per lane, wall-clock ≈ 4 sequential slices instead of 7.
   error; control-plane tests. **Anchors:** `apps/control-plane/src/routes/cluster-tenants.ts(+.types.ts)`,
   `apps/control-plane/src/openapi/spec.ts`, `libs/contracts/src/generated/api.ts`. **Headless-buildable.**
 
-- [ ] **CT.3 `oc cluster-tenant` CLI.** _(Wave 2 · Lane A — after CT.2)_ `create|list|show|update|delete` with
+- [x] **CT.3 `oc cluster-tenant` CLI.** _(Wave 2 · Lane A — ✅ landed 2026-06-15)_ `create|list|show|update|delete` with
   `--tier`/`--compute`/`--node-pool`/`--quota-*` flags, consuming the generated client (just another
   client, no privileged path). **Acceptance:** commands round-trip against the control-plane; `--help`
   documented; a CLI e2e. **Anchors:** `apps/cli/src/commands/cluster-tenants.ts`, `apps/cli/src/index.ts`.
@@ -375,8 +375,8 @@ With one agent per lane, wall-clock ≈ 4 sequential slices instead of 7.
   (operator test); a ref'd openclaw lands in the parent's namespace. **Anchors:** `libs/contracts`
   Tenant type + CRD, `apps/operator/src/tenants/operator.ts`. **Headless-buildable.**
 
-- [ ] **CT.5 Native isolation enforcement — namespace-per-ClusterTenant + quota + scheduling
-  (the hardening).** _(Wave 2 · Lane C — after CT.4)_ When opt-in, provision a per-ClusterTenant namespace labelled
+- [x] **CT.5 Native isolation enforcement — namespace-per-ClusterTenant + quota + scheduling
+  (the hardening).** _(Wave 2 · Lane C — ✅ landed 2026-06-15)_ When opt-in, provision a per-ClusterTenant namespace labelled
   `pod-security.kubernetes.io/enforce: restricted`, with a `ResourceQuota` + `LimitRange` derived from
   `resources.quota`, and stamp `nodeSelector` + `tolerations` from `compute` onto the openclaw pod
   spec. Off by default (single-install unchanged). **Acceptance:** rendered/operator test shows
