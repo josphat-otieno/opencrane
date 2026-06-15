@@ -337,16 +337,30 @@ export class TenantOperator
   private async suspendTenant(tenant: Tenant): Promise<void>
   {
     const name = tenant.metadata!.name!;
-    const namespace = tenant.metadata!.namespace ?? "default";
+
+    // The Tenant CR lives in its own namespace; status patches target it
+    // regardless of where the (suspended) Deployment is rebuilt.
+    const crNamespace = tenant.metadata!.namespace ?? "default";
 
     this.log.info({ name }, "suspending tenant");
 
+    // 1. Resolve the parent ClusterTenant so the suspended Deployment is rebuilt in
+    //    the same namespace and with the same compute placement as the live one;
+    //    ref-less openclaws resolve to the install namespace + no compute, so the
+    //    default (single-install) path stays byte-for-byte unchanged.
+    const clusterTenantResolution = await _ResolveClusterTenant(this.customApi, tenant, crNamespace);
+    const namespace = clusterTenantResolution.targetNamespace;
+    const compute = clusterTenantResolution.clusterTenant?.spec.compute;
+
+    // 2. Rebuild the Deployment identically but scaled to zero so the pod stops
+    //    without losing its namespace or scheduling identity.
     const stateVolume = this.hosting.buildStateVolume(name);
-    const deployment = _BuildDeployment(this.config, stateVolume, tenant, namespace);
+    const deployment = _BuildDeployment(this.config, stateVolume, tenant, namespace, compute);
     deployment.spec!.replicas = 0;
     await _K8sApplyResource(this.appsApi, deployment, this.log);
 
-    await this.statusWriter.patchStatus(tenant, namespace, {
+    // 3. Record the suspended phase against the CR namespace.
+    await this.statusWriter.patchStatus(tenant, crNamespace, {
       phase: TenantStatusPhase.Suspended,
       lastReconciled: new Date().toISOString(),
     });

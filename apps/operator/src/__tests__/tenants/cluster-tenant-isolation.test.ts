@@ -147,6 +147,27 @@ describe("ClusterTenant isolation enforcement (CT.5 reconcile flow)", () =>
     expect(podSpec?.tolerations?.[0]?.key).toBe("opencrane.io/dedicated");
   });
 
+  it("suspending a ref'd openclaw keeps its bound namespace + scheduling, scaled to zero", async () =>
+  {
+    const clusterTenant = _makeClusterTenant("acme", "ct-acme");
+    clusterTenant.spec.compute = { mode: "dedicated", nodePool: "acme-pool" };
+    clusterTenant.spec.resources = { quota: { cpu: "4", memory: "8Gi", pods: 10 } };
+    const tenant = _makeTenant("mike", { clusterTenantRef: "acme", suspended: true });
+
+    const operator = _makeOperator(core, apps, networking, clusterTenant);
+    // suspendTenant is private; the watch dispatcher routes suspended tenants to it.
+    await (operator as unknown as { suspendTenant(t: typeof tenant): Promise<void> }).suspendTenant(tenant);
+
+    // The suspended Deployment is rebuilt in the bound namespace with the dedicated
+    // scheduling identity intact — not stranded in the CR namespace with no compute.
+    const deployment = apps.created.find((r) => r.kind === "Deployment") as k8s.V1Deployment | undefined;
+    expect(deployment?.metadata?.namespace).toBe("ct-acme");
+    expect(deployment?.spec?.replicas).toBe(0);
+    const podSpec = deployment?.spec?.template?.spec;
+    expect(podSpec?.nodeSelector?.["opencrane.io/node-pool"]).toBe("acme-pool");
+    expect(podSpec?.tolerations?.[0]?.key).toBe("opencrane.io/dedicated");
+  });
+
   it("default (ref-less) openclaw renders no namespace/quota/limitrange and no scheduling", async () =>
   {
     const tenant = _makeTenant("plain");
