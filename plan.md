@@ -353,7 +353,7 @@ With one agent per lane, wall-clock ≈ 4 sequential slices instead of 7.
   `opencrane.io_clustertenants.yaml`; Prisma `ClusterTenant` model + enums + migration `0014`.
   Build green (contracts/control-plane `tsc`, `prisma generate`, `helm template`).
 
-- [ ] **CT.2 Management API — `/api/v1/cluster-tenants` (API-first).** _(Wave 1 · Lane A)_ CRUD + status read in the
+- [x] **CT.2 Management API — `/api/v1/cluster-tenants` (API-first).** _(Wave 1 · Lane A — ✅ landed 2026-06-15)_ CRUD + status read in the
   control-plane, dual-writing the CRD + Postgres. `isolationTier`/`compute`/`resources.quota`
   validated; `dedicatedCluster` rejected `422 TIER_UNAVAILABLE` unless an external provisioner is
   registered for it (CT.6). Update `openapi/spec.ts` → regenerate `openapi.json` + the `libs/contracts`
@@ -367,7 +367,7 @@ With one agent per lane, wall-clock ≈ 4 sequential slices instead of 7.
   documented; a CLI e2e. **Anchors:** `apps/cli/src/commands/cluster-tenants.ts`, `apps/cli/src/index.ts`.
   **Headless-buildable.**
 
-- [ ] **CT.4 Reparent openclaw (`Tenant`) under ClusterTenant + back-compat default.** _(Wave 1 · Lane C)_ Add optional
+- [x] **CT.4 Reparent openclaw (`Tenant`) under ClusterTenant + back-compat default.** _(Wave 1 · Lane C — ✅ landed 2026-06-15)_ Add optional
   `spec.clusterTenantRef` to the `Tenant`/openclaw CRD; the operator resolves the parent to get the
   target namespace + compute/quota policy. **Single-install default:** with multi-tenancy off, a
   synthetic "default" ClusterTenant binds the install namespace and ref-less openclaws attach to it —
@@ -386,8 +386,8 @@ With one agent per lane, wall-clock ≈ 4 sequential slices instead of 7.
   provisioning path, `platform/tests/multi-instance-conformance.sh`. **Headless-buildable** (live
   quota/PSA enforcement is the cluster seam).
 
-- [ ] **CT.6 `ClusterTenantProvisioner` seam + built-in shared provisioner + AGPL-clean external
-  delegation.** _(Wave 1 · Lane B)_ Define a generic `ClusterTenantProvisioner` interface (`provision`/`deprovision`/
+- [x] **CT.6 `ClusterTenantProvisioner` seam + built-in shared provisioner + AGPL-clean external
+  delegation.** _(Wave 1 · Lane B — ✅ landed 2026-06-15)_ Define a generic `ClusterTenantProvisioner` interface (`provision`/`deprovision`/
   `getStatus`/`getKubeconfigRef`) in the control-plane, with a built-in `SharedClusterProvisioner`
   serving `shared`/`dedicatedNodes` (maps a ClusterTenant to a `multiInstance`-profile namespace).
   External backends are reached by an **`ExternalWebhookProvisioner`** that POSTs a generic

@@ -17,6 +17,7 @@ import { TenantCleanup } from "./destroy/tenant-cleanup.js";
 import { TenantEncryptionKeys } from "./internal/tenant-encryption-keys.js";
 import { TenantLiteLlmKeys } from "./internal/tenant-litellm-keys.js";
 import { _ResolveTenantPolicy } from "./internal/policy-resolution.js";
+import { _ResolveClusterTenant } from "./internal/cluster-tenant-resolution.js";
 import { TenantStatusWriter } from "./internal/tenant-status-writer.js";
 
 /**
@@ -169,13 +170,26 @@ export class TenantOperator
   async reconcileTenant(tenant: Tenant): Promise<void>
   {
     const name = tenant.metadata!.name!;
-    const namespace = tenant.metadata!.namespace ?? "default";
+
+    // The Tenant CR itself always lives in its own namespace; status patches must
+    // target that namespace regardless of where child resources are deployed.
+    const crNamespace = tenant.metadata!.namespace ?? "default";
 
     this.log.info({ name, provider: this.hosting.provider }, "reconciling tenant");
 
     try
     {
-      // 0. Effective policy — resolve policyRef deterministically so runtime behavior
+      // 0a. Parent ClusterTenant — resolve the deployment target namespace. Ref-less
+      //     openclaws stay on the install namespace (byte-for-byte unchanged); a ref'd
+      //     openclaw lands in the parent's bound namespace (opt-in multi-tenancy).
+      const clusterTenantResolution = await _ResolveClusterTenant(this.customApi, tenant, crNamespace);
+      const namespace = clusterTenantResolution.targetNamespace;
+      if (clusterTenantResolution.ref)
+      {
+        this.log.info({ name, clusterTenantRef: tenant.spec.clusterTenantRef, namespace }, "openclaw attached to cluster tenant");
+      }
+
+      // 0b. Effective policy — resolve policyRef deterministically so runtime behavior
       //    is predictable even when selectors or default policies are configured.
       const policyResolution = await _ResolveTenantPolicy(this.customApi, this.config, tenant, namespace);
       const effectivePolicyRef = policyResolution.effectivePolicy?.metadata?.name;
@@ -183,7 +197,7 @@ export class TenantOperator
         || policyResolution.state === TenantPolicyResolutionState.PolicyConflict
         || policyResolution.state === TenantPolicyResolutionState.DefaultPolicyNotFound)
       {
-        await this.statusWriter.patchStatus(tenant, namespace, {
+        await this.statusWriter.patchStatus(tenant, crNamespace, {
           phase: TenantStatusPhase.Error,
           message: policyResolution.message,
           effectivePolicyRef,
@@ -253,7 +267,7 @@ export class TenantOperator
 
       // 10. Status — write the observed Running state back to the Tenant CR so that
       //    kubectl, the control-plane API, and the UI all see the current phase.
-      await this.statusWriter.patchStatus(tenant, namespace, {
+      await this.statusWriter.patchStatus(tenant, crNamespace, {
         phase: TenantStatusPhase.Running,
         podName: `openclaw-${name}`,
         ingressHost: _BuildIngressHost(name, this.config.ingressDomain),
@@ -266,7 +280,7 @@ export class TenantOperator
     catch (err)
     {
       this.log.error({ err, name }, "reconcile failed");
-      await this.statusWriter.patchStatus(tenant, namespace, {
+      await this.statusWriter.patchStatus(tenant, crNamespace, {
         phase: TenantStatusPhase.Error,
         message: err instanceof Error ? err.message : String(err),
         lastReconciled: new Date().toISOString(),
