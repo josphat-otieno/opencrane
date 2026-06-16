@@ -32,11 +32,20 @@ done
 command -v helm >/dev/null 2>&1 || { err "Missing required command: helm (https://helm.sh/docs/intro/install/)"; exit 1; }
 
 # 1. Install k3s (idempotent — skips if already present) → a one-node cluster.
-if ! command -v k3s >/dev/null 2>&1 && ! command -v kubectl >/dev/null 2>&1; then
+if ! command -v k3s >/dev/null 2>&1; then
   log "Installing k3s…"
   curl -sfL https://get.k3s.io | sh -
 fi
 export KUBECONFIG="${KUBECONFIG:-/etc/rancher/k3s/k3s.yaml}"
+if [[ ! -r "$KUBECONFIG" ]]; then
+  log "Waiting for $KUBECONFIG to be created and readable..."
+  for i in {1..30}; do
+    if [[ -r "$KUBECONFIG" ]]; then
+      break
+    fi
+    sleep 2
+  done
+fi
 [[ -r "$KUBECONFIG" ]] || { err "Cannot read $KUBECONFIG (run with sudo, or set KUBECONFIG)."; exit 1; }
 
 log "Cluster ready. Installing OpenCrane…"
