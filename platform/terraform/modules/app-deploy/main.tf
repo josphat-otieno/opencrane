@@ -74,6 +74,10 @@ resource "kubernetes_manifest" "postgresql_cluster"
           secret = {
             name = kubernetes_secret.db_creds.metadata[0].name
           }
+          postInitApplicationSQL = [
+            "CREATE DATABASE obot OWNER opencrane;",
+            "CREATE DATABASE litellm OWNER opencrane;"
+          ]
         }
       }
     }
@@ -115,7 +119,25 @@ resource "kubernetes_secret" "opencrane_obot"
 
   data =
   {
-    dsn = "postgresql://opencrane:${random_password.db_password.result}@opencrane-db-rw.${var.namespace}.svc.cluster.local:5432/opencrane"
+    dsn = "postgresql://opencrane:${random_password.db_password.result}@opencrane-db-rw.${var.namespace}.svc.cluster.local:5432/obot"
+  }
+
+  depends_on = [kubernetes_manifest.postgresql_cluster]
+}
+
+# ---- Kubernetes Secret with DATABASE_URL for LiteLLM ----
+
+resource "kubernetes_secret" "database_url_litellm"
+{
+  metadata
+  {
+    name      = "opencrane-litellm-db"
+    namespace = var.namespace
+  }
+
+  data =
+  {
+    DATABASE_URL = "postgresql://opencrane:${random_password.db_password.result}@opencrane-db-rw.${var.namespace}.svc.cluster.local:5432/litellm"
   }
 
   depends_on = [kubernetes_manifest.postgresql_cluster]
@@ -211,6 +233,12 @@ resource "helm_release" "opencrane"
     value = "DATABASE_URL"
   }
 
+  set
+  {
+    name  = "litellm.existingDatabaseSecret"
+    value = kubernetes_secret.database_url_litellm.metadata[0].name
+  }
+
   # Ingress
   set
   {
@@ -230,29 +258,28 @@ resource "helm_release" "opencrane"
     value = google_compute_global_address.ingress_ip.name
   }
 
-  # Storage
+  # Hosting provider. Default is plain-k8s on GKE: standard PVC tenant storage,
+  # k8s Secrets, GKE default StorageClass. The GCS-backed tenant storage extras
+  # (GCS Fuse CSI + Workload Identity) are opt-in via enable_gcs_storage.
   set
   {
-    name  = "tenant.storage.provider"
-    value = "gcs"
+    name  = "hosting.provider"
+    value = var.enable_gcs_storage ? "gcp" : "onprem"
   }
 
-  set
+  # GCP-only tenant storage settings — rendered only when enable_gcs_storage=true.
+  dynamic "set"
   {
-    name  = "tenant.storage.bucketPrefix"
-    value = "opencrane"
-  }
-
-  set
-  {
-    name  = "tenant.storage.csiDriver"
-    value = "gcsfuse.csi.storage.gke.io"
-  }
-
-  set
-  {
-    name  = "tenant.storage.gcpProject"
-    value = var.project_id
+    for_each = var.enable_gcs_storage ? {
+      "hosting.gcp.projectId"   = var.project_id
+      "hosting.gcp.bucketPrefix" = var.bucket_prefix
+      "hosting.gcp.csiDriver"   = "gcsfuse.csi.storage.gke.io"
+    } : {}
+    content
+    {
+      name  = set.key
+      value = set.value
+    }
   }
 
   # Observability
@@ -271,6 +298,7 @@ resource "helm_release" "opencrane"
 
   depends_on = [
     kubernetes_secret.database_url,
+    kubernetes_secret.database_url_litellm,
     kubernetes_secret.opencrane_obot,
     kubernetes_manifest.postgresql_cluster,
     helm_release.cert_manager,
@@ -340,5 +368,7 @@ resource "kubernetes_job" "db_migrate"
   depends_on = [
     kubernetes_manifest.postgresql_cluster,
     kubernetes_secret.database_url,
+    kubernetes_secret.database_url_litellm,
+    kubernetes_secret.opencrane_obot,
   ]
 }

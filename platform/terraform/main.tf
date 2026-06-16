@@ -1,22 +1,32 @@
 # -----------------------------------------------------------------------------
 # OpenCrane GCP Infrastructure
 #
-# Provisions networking, GKE, Artifact Registry, in-cluster PostgreSQL,
-# the OpenCrane platform, and Cloud DNS for wildcard routing.
+# DEFAULT FLOW (plain-k8s on GKE): a single `terraform apply` provisions just a
+# GKE cluster on the project's default VPC — nothing else required. You then
+# install OpenCrane the standard way: `helm install opencrane platform/helm`.
+# Custom VPC/NAT, Artifact Registry, Cloud DNS, GCS-backed storage, and even
+# installing the Helm chart via Terraform (enable_app_deploy) are all OPT-IN
+# (see variables.tf).
 #
-# Usage:
+# Easiest start — only the project id is required:
 #   cd platform/terraform
 #   terraform init
-#   terraform apply -var-file=environments/dev/terraform.tfvars
+#   terraform apply -var project_id=YOUR_GCP_PROJECT
+#   eval "$(terraform output -raw kubeconfig_command)"
+#   helm install opencrane ../helm --set ingress.domain=YOUR_DOMAIN
 # -----------------------------------------------------------------------------
 
 data "google_client_config" "default" {}
 
-# ---- Phase 1: Networking ----
+# ---- Phase 1: Networking (OPT-IN) ----
+#
+# When enable_custom_vpc=false (default) GKE runs on the project default VPC and
+# no networking resources are created.
 
 module "networking"
 {
   source = "./modules/networking"
+  count  = var.enable_custom_vpc ? 1 : 0
 
   project_id = var.project_id
   region     = var.region
@@ -32,8 +42,13 @@ module "gke"
   project_id   = var.project_id
   region       = var.region
   cluster_name = var.cluster_name
-  vpc_id       = module.networking.vpc_id
-  subnet_id    = module.networking.subnet_id
+
+  # Empty strings → the GKE module falls back to the project default VPC.
+  vpc_id    = var.enable_custom_vpc ? module.networking[0].vpc_id : ""
+  subnet_id = var.enable_custom_vpc ? module.networking[0].subnet_id : ""
+
+  # Private nodes + Cloud NAT only make sense with a custom VPC.
+  enable_private_nodes = var.enable_custom_vpc
 
   depends_on = [module.networking]
 }
@@ -56,41 +71,63 @@ provider "helm"
   }
 }
 
-# ---- Phase 3: Artifact Registry ----
+# ---- Phase 3: Artifact Registry (OPT-IN) ----
+#
+# Default flow pushes images to an external registry (e.g. ghcr.io). Enable to
+# provision a GCP Artifact Registry instead.
 
 module "artifact_registry"
 {
   source = "./modules/artifact-registry"
+  count  = var.enable_artifact_registry ? 1 : 0
 
   project_id    = var.project_id
   region        = var.region
   repository_id = "opencrane"
 }
 
-# ---- Phase 4: Application (PostgreSQL + OpenCrane + DB migration) ----
+locals
+{
+  registry_url = var.enable_artifact_registry ? module.artifact_registry[0].repository_url : var.registry_url
+}
+
+# ---- Phase 4: Application (OPT-IN: PostgreSQL + OpenCrane + DB migration) ----
+#
+# Disabled by default so a bare `terraform apply` provisions only the cluster and
+# never has to bootstrap the kubernetes/helm providers from a cluster created in
+# the same run. Install the app afterwards with `helm install` (recommended), or
+# set enable_app_deploy=true to have Terraform install the chart too.
 
 module "app_deploy"
 {
   source = "./modules/app-deploy"
+  count  = var.enable_app_deploy ? 1 : 0
 
-  project_id   = var.project_id
-  registry_url = module.artifact_registry.repository_url
-  image_tag    = var.image_tag
-  domain       = var.domain
-  namespace    = "opencrane"
+  project_id         = var.project_id
+  registry_url       = local.registry_url
+  image_tag          = var.image_tag
+  domain             = var.domain
+  namespace          = "opencrane"
+  enable_gcs_storage = var.enable_gcs_storage
 
   depends_on = [module.gke]
 }
 
-# ---- Phase 6: Cloud DNS (wildcard → ingress IP) ----
+# ---- Phase 5: Cloud DNS (OPT-IN: wildcard → ingress IP) ----
+#
+# Default flow prints the ingress IP and you point DNS at it manually. Enable to
+# have Terraform manage a Cloud DNS zone + records.
 
 module "dns"
 {
   source = "./modules/dns"
+  # Cloud DNS records point at the app's ingress IP, so this requires the app to
+  # be deployed by Terraform too.
+  count = (var.enable_cloud_dns && var.enable_app_deploy) ? 1 : 0
 
   project_id = var.project_id
   domain     = var.domain
-  ingress_ip = module.app_deploy.ingress_ip
+  ingress_ip = one(module.app_deploy[*].ingress_ip)
 
   depends_on = [module.app_deploy]
 }
