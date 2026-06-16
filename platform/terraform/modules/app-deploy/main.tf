@@ -74,6 +74,10 @@ resource "kubernetes_manifest" "postgresql_cluster"
           secret = {
             name = kubernetes_secret.db_creds.metadata[0].name
           }
+          postInitApplicationSQL = [
+            "CREATE DATABASE obot OWNER opencrane;",
+            "CREATE DATABASE litellm OWNER opencrane;"
+          ]
         }
       }
     }
@@ -115,7 +119,25 @@ resource "kubernetes_secret" "opencrane_obot"
 
   data =
   {
-    dsn = "postgresql://opencrane:${random_password.db_password.result}@opencrane-db-rw.${var.namespace}.svc.cluster.local:5432/opencrane"
+    dsn = "postgresql://opencrane:${random_password.db_password.result}@opencrane-db-rw.${var.namespace}.svc.cluster.local:5432/obot"
+  }
+
+  depends_on = [kubernetes_manifest.postgresql_cluster]
+}
+
+# ---- Kubernetes Secret with DATABASE_URL for LiteLLM ----
+
+resource "kubernetes_secret" "database_url_litellm"
+{
+  metadata
+  {
+    name      = "opencrane-litellm-db"
+    namespace = var.namespace
+  }
+
+  data =
+  {
+    DATABASE_URL = "postgresql://opencrane:${random_password.db_password.result}@opencrane-db-rw.${var.namespace}.svc.cluster.local:5432/litellm"
   }
 
   depends_on = [kubernetes_manifest.postgresql_cluster]
@@ -211,6 +233,12 @@ resource "helm_release" "opencrane"
     value = "DATABASE_URL"
   }
 
+  set
+  {
+    name  = "litellm.existingDatabaseSecret"
+    value = kubernetes_secret.database_url_litellm.metadata[0].name
+  }
+
   # Ingress
   set
   {
@@ -270,6 +298,7 @@ resource "helm_release" "opencrane"
 
   depends_on = [
     kubernetes_secret.database_url,
+    kubernetes_secret.database_url_litellm,
     kubernetes_secret.opencrane_obot,
     kubernetes_manifest.postgresql_cluster,
     helm_release.cert_manager,
@@ -339,5 +368,7 @@ resource "kubernetes_job" "db_migrate"
   depends_on = [
     kubernetes_manifest.postgresql_cluster,
     kubernetes_secret.database_url,
+    kubernetes_secret.database_url_litellm,
+    kubernetes_secret.opencrane_obot,
   ]
 }

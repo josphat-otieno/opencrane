@@ -168,6 +168,9 @@ spec:
       database: opencrane
       secret:
         name: ${DB_RELEASE_NAME}-creds
+      postInitApplicationSQL:
+        - CREATE DATABASE obot OWNER opencrane;
+        - CREATE DATABASE litellm OWNER opencrane;
 EOF
 
 echo "[local] Waiting for Control-Plane Database Engine to stabilize..."
@@ -183,7 +186,14 @@ kubectl create secret generic "$DB_SECRET_NAME" \
 echo "[local] Bootstrapping credentials secret for Obot MCP Gateway"
 kubectl create secret generic "opencrane-obot" \
   -n "$NAMESPACE" \
-  --from-literal=dsn="postgresql://opencrane:${DB_PASSWORD}@${DB_RELEASE_NAME}-rw.${NAMESPACE}.svc.cluster.local:5432/opencrane" \
+  --from-literal=dsn="postgresql://opencrane:${DB_PASSWORD}@${DB_RELEASE_NAME}-rw.${NAMESPACE}.svc.cluster.local:5432/obot" \
+  --dry-run=client \
+  -o yaml | kubectl apply -f -
+
+echo "[local] Bootstrapping credentials secret for LiteLLM database"
+kubectl create secret generic "opencrane-litellm-db" \
+  -n "$NAMESPACE" \
+  --from-literal=DATABASE_URL="postgresql://opencrane:${DB_PASSWORD}@${DB_RELEASE_NAME}-rw.${NAMESPACE}.svc.cluster.local:5432/litellm" \
   --dry-run=client \
   -o yaml | kubectl apply -f -
 
@@ -222,7 +232,7 @@ helm_args=(
   --set
   "controlPlane.database.existingSecret=$DB_SECRET_NAME"
   --set
-  "litellm.existingDatabaseSecret=$DB_SECRET_NAME"
+  "litellm.existingDatabaseSecret=opencrane-litellm-db"
 )
 
 if [[ "$LOCAL_PROFILE" == "strict" ]]; then
