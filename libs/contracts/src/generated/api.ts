@@ -3614,15 +3614,12 @@ export interface operations {
                             sub: string;
                             /** @description Identity provider that authenticated the user. */
                             issuer: string;
-                            /**
-                             * @description Authorization role resolved from the caller's group/role claims. The API stays the enforcement point; the frontend uses this only to hide UI.
-                             * @enum {string}
-                             */
-                            role: "platform-operator" | "customer-admin";
-                            /** @description Raw group/role claim values surfaced for the caller. */
+                            /** @description The caller's group memberships from the OIDC groups claim (empty when none). */
                             groups: string[];
-                            /** @description ClusterTenant (customer) key the caller belongs to, when the IdP emits it. */
-                            clusterTenant?: string;
+                            /** @description True iff the caller's groups intersect OPENCRANE_PLATFORM_OPERATOR_GROUPS. Empty/unset config ⇒ false (fail-closed). Introspection only — the API stays the enforcement point and the frontend uses this only to hide UI. Superseded once a first-class role model lands. */
+                            isPlatformOperator: boolean;
+                            /** @description The caller's ClusterTenant (customer) key, resolved server-side from their IdP-verified email → tenant → clusterTenantRef. Null when unresolved or ambiguous. */
+                            clusterTenant?: string | null;
                             email?: string;
                             emailVerified?: boolean;
                             name?: string;

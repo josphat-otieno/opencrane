@@ -6,17 +6,16 @@ import { _ResolveIdentityClaims } from "../../infra/auth/oidc.service.js";
 const _CONFIG = {
   groupsClaim: "groups",
   rolesClaim: "roles",
-  clusterTenantClaim: "cluster_tenant",
   platformOperatorGroups: ["opencrane-operators"],
 };
 
-describe("_ResolveIdentityClaims — role/group/clusterTenant projection (WOI.1)", function _suite()
+describe("_ResolveIdentityClaims — groups + isPlatformOperator projection (WOI.1)", function _suite()
 {
-  it("resolves platform-operator when a groups-claim value matches a configured operator group", function _operatorViaGroups()
+  it("marks the caller a platform operator when a groups-claim value matches a configured operator group", function _operatorViaGroups()
   {
     const result = _ResolveIdentityClaims({ groups: ["Acme-Users", "OpenCrane-Operators"] }, _CONFIG);
 
-    expect(result.role).toBe("platform-operator");
+    expect(result.isPlatformOperator).toBe(true);
     expect(result.groups).toEqual(["Acme-Users", "OpenCrane-Operators"]);
   });
 
@@ -24,43 +23,29 @@ describe("_ResolveIdentityClaims — role/group/clusterTenant projection (WOI.1)
   {
     const result = _ResolveIdentityClaims({ roles: "opencrane-operators" }, _CONFIG);
 
-    expect(result.role).toBe("platform-operator");
+    expect(result.isPlatformOperator).toBe(true);
     expect(result.groups).toEqual(["opencrane-operators"]);
   });
 
-  it("falls back to customer-admin (least privilege) when no claim matches", function _customerAdmin()
+  it("is not a platform operator when no group matches", function _notOperator()
   {
     const result = _ResolveIdentityClaims({ groups: ["acme-admins"] }, _CONFIG);
 
-    expect(result.role).toBe("customer-admin");
+    expect(result.isPlatformOperator).toBe(false);
   });
 
-  it("treats everyone as customer-admin when no operator groups are configured", function _emptyOperatorSet()
+  it("nobody is a platform operator when no operator groups are configured (fail-closed)", function _emptyOperatorSet()
   {
     const result = _ResolveIdentityClaims({ groups: ["opencrane-operators"] }, { ..._CONFIG, platformOperatorGroups: [] });
 
-    expect(result.role).toBe("customer-admin");
+    expect(result.isPlatformOperator).toBe(false);
   });
 
-  it("surfaces the ClusterTenant from the configured claim when it is a non-empty string", function _clusterTenant()
-  {
-    const result = _ResolveIdentityClaims({ cluster_tenant: "acme-corp" }, _CONFIG);
-
-    expect(result.clusterTenant).toBe("acme-corp");
-  });
-
-  it("omits the ClusterTenant when the claim is absent, blank, or not a string", function _noClusterTenant()
-  {
-    expect(_ResolveIdentityClaims({}, _CONFIG).clusterTenant).toBeUndefined();
-    expect(_ResolveIdentityClaims({ cluster_tenant: "   " }, _CONFIG).clusterTenant).toBeUndefined();
-    expect(_ResolveIdentityClaims({ cluster_tenant: 42 }, _CONFIG).clusterTenant).toBeUndefined();
-  });
-
-  it("returns an empty group list when neither claim is present", function _noGroups()
+  it("returns an empty group list and is not an operator when neither claim is present", function _noGroups()
   {
     const result = _ResolveIdentityClaims({}, _CONFIG);
 
     expect(result.groups).toEqual([]);
-    expect(result.role).toBe("customer-admin");
+    expect(result.isPlatformOperator).toBe(false);
   });
 });

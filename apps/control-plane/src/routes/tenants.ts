@@ -433,12 +433,18 @@ export function tenantsRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCli
     const name = req.params.name;
     const body = req.body as Partial<CreateTenantRequest>;
 
+    // Normalise the parent ClusterTenant ref so a present-but-empty value clears
+    // it (stored null, field deleted from the CRD spec via merge-patch), mirroring
+    // how baseDomain is cleared on cluster-tenants. Absent → field left untouched.
+    const clusterTenantRefProvided = body.clusterTenantRef !== undefined;
+    const normalizedClusterTenantRef = clusterTenantRefProvided && body.clusterTenantRef!.trim() ? body.clusterTenantRef!.trim() : null;
+
     const patch = {
       spec: {
         ...(body.displayName ? { displayName: body.displayName } : {}),
         ...(body.email ? { email: body.email } : {}),
         ...(body.team ? { team: body.team } : {}),
-        ...(body.clusterTenantRef !== undefined ? { clusterTenantRef: body.clusterTenantRef } : {}),
+        ...(clusterTenantRefProvided ? { clusterTenantRef: normalizedClusterTenantRef } : {}),
         ...(body.monthlyBudgetUsd !== undefined ? { monthlyBudgetUsd: body.monthlyBudgetUsd } : {}),
         ...(body.resources ? { resources: body.resources } : {}),
         ...(body.skillAllowlist ? { skillAllowlist: body.skillAllowlist } : {}),
@@ -461,7 +467,7 @@ export function tenantsRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCli
         ...(body.displayName ? { displayName: body.displayName } : {}),
         ...(body.email ? { email: body.email } : {}),
         ...(body.team ? { team: body.team } : {}),
-        ...(body.clusterTenantRef !== undefined ? { clusterTenantRef: body.clusterTenantRef } : {}),
+        ...(clusterTenantRefProvided ? { clusterTenantRef: normalizedClusterTenantRef } : {}),
       },
     });
 

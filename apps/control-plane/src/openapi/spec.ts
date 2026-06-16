@@ -1755,17 +1755,19 @@ export const spec = {
               user: {
                 type: "object",
                 nullable: true,
-                required: ["sub", "issuer", "role", "groups"],
+                required: ["sub", "issuer", "groups", "isPlatformOperator"],
                 properties: {
                   sub: { type: "string" },
                   issuer: { type: "string", description: "Identity provider that authenticated the user." },
-                  role: {
-                    type: "string",
-                    enum: ["platform-operator", "customer-admin"],
-                    description: "Authorization role resolved from the caller's group/role claims. The API stays the enforcement point; the frontend uses this only to hide UI.",
+                  groups: { type: "array", items: { type: "string" }, description: "The caller's group memberships from the OIDC groups claim (empty when none)." },
+                  isPlatformOperator: {
+                    type: "boolean",
+                    description: "True iff the caller's groups intersect OPENCRANE_PLATFORM_OPERATOR_GROUPS. Empty/unset config ⇒ false (fail-closed). Introspection only — the API stays the enforcement point and the frontend uses this only to hide UI. Superseded once a first-class role model lands.",
                   },
-                  groups: { type: "array", items: { type: "string" }, description: "Raw group/role claim values surfaced for the caller." },
-                  clusterTenant: { type: "string", description: "ClusterTenant (customer) key the caller belongs to, when the IdP emits it." },
+                  clusterTenant: {
+                    type: ["string", "null"],
+                    description: "The caller's ClusterTenant (customer) key, resolved server-side from their IdP-verified email → tenant → clusterTenantRef. Null when unresolved or ambiguous.",
+                  },
                   email: { type: "string" },
                   emailVerified: { type: "boolean" },
                   name: { type: "string" },

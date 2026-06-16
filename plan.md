@@ -27,14 +27,16 @@ additive, and generic (no vendor specifics — they don't touch the provisioner 
 isolation model).
 
 - [x] **WOI.1 — Emit identity claims on `/api/v1/auth/me`. — LANDED 2026-06-16.** `/auth/me` now
-  surfaces the caller's **role** (`platform-operator` vs `customer-admin`), raw **groups**, and
-  **ClusterTenant**, resolved from the OIDC session so a federated frontend authorizes without
-  guessing. The API stays the enforcement point (the SPA only hides UI). Role derivation is pure +
-  config-driven: `OIDC_PLATFORM_OPERATOR_GROUPS` lists the operator group/role values; a caller whose
-  `OIDC_GROUPS_CLAIM`/`OIDC_ROLES_CLAIM` values intersect that set resolves to `platform-operator`,
-  else least-privilege `customer-admin`. ClusterTenant comes from `OIDC_CLUSTER_TENANT_CLAIM`.
-  **Landed:** `_ResolveIdentityClaims` (`infra/auth/oidc.service.ts`) + config loader fields
-  (`oidc.config*.ts`) + extended `ControlPlaneAuthUser`/session type + `/auth/me` response schema
+  surfaces the caller's **groups**, a derived **`isPlatformOperator`** flag, and their **`clusterTenant`**,
+  so a federated frontend authorizes without guessing. The API stays the enforcement point — these are
+  introspection-only facts the SPA uses to *hide* UI, never to grant access. Two distinct trust paths:
+  `groups`/`isPlatformOperator` come from the OIDC session (resolved at login by the pure, testable
+  `_ResolveIdentityClaims`: operator iff the groups/roles claims intersect `OPENCRANE_PLATFORM_OPERATOR_GROUPS`,
+  fail-closed when unset); `clusterTenant` is resolved **fresh server-side** from the IdP-verified
+  email → tenant → `clusterTenantRef` (WOI.2), never from a self-asserted claim, and is null when
+  unresolved/ambiguous. `isPlatformOperator` is a non-presumptuous stopgap until a first-class role model
+  exists. **Landed:** prisma-injected async `getStatus` + `_resolveClusterTenant` + `_ResolveIdentityClaims`
+  (`infra/auth/oidc.service.ts`), config loader fields (`oidc.config*.ts`), session type, `/auth/me` schema
   (also fixed the stale `mode` enum to `development|oidc|token`). Unit test `oidc-identity-claims.test.ts`.
   _Ties to WeOwnAI LIVE.4._
 - [x] **WOI.2 — Expose `clusterTenantRef` on the Tenant API + a server-side filter. — LANDED 2026-06-16.**

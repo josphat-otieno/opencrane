@@ -31,7 +31,7 @@ const log = pino({ name: "ctrl" });
 export function createApp(prisma: PrismaClient, customApi: k8s.CustomObjectsApi, coreApi: k8s.CoreV1Api, authApi: k8s.AuthenticationV1Api): Express
 {
   const app = express();
-  const authService = ___CreateOidcAuthService(log);
+  const authService = ___CreateOidcAuthService(log, prisma);
 
   // Middleware
   app.set("trust proxy", 1);

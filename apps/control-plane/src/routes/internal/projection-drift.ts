@@ -85,6 +85,9 @@ interface TenantCustomResource
 
     /** Optional team ownership label. */
     team?: string;
+
+    /** Parent ClusterTenant this UserTenant belongs to, when reparented (CT.4). */
+    clusterTenantRef?: string;
   };
 }
 
@@ -129,7 +132,7 @@ export async function _DetectTenantProjectionDrift(
   namespace: string,
 ): Promise<ProjectionDriftReport>
 {
-  const comparedFields = ["displayName", "email", "team"];
+  const comparedFields = ["displayName", "email", "team", "clusterTenantRef"];
 
   // 1. Read the CRDs that remain the desired-state source of truth.
   const sourceResponse = await customApi.listNamespacedCustomObject({
@@ -156,6 +159,7 @@ export async function _DetectTenantProjectionDrift(
           displayName: item.spec?.displayName,
           email: item.spec?.email,
           team: item.spec?.team,
+          clusterTenantRef: item.spec?.clusterTenantRef,
         },
       };
     }),
@@ -167,6 +171,7 @@ export async function _DetectTenantProjectionDrift(
           displayName: item.displayName,
           email: item.email,
           team: item.team,
+          clusterTenantRef: item.clusterTenantRef,
         },
       };
     }),
