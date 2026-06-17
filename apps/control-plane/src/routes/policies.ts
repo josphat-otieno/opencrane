@@ -187,7 +187,7 @@ export function policiesRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCl
       plural: POLICY_CRD_PLURAL,
       name,
       body: { spec: body },
-    });
+    }, k8s.setHeaderOptions("Content-Type", k8s.PatchStrategy.MergePatch));
 
     // 2. Update the PostgreSQL projection (only the fields the request supplied).
     await prisma.accessPolicy.update({

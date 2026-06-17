@@ -459,7 +459,7 @@ export function tenantsRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCli
       plural: TENANT_CRD_PLURAL,
       name,
       body: patch,
-    });
+    }, k8s.setHeaderOptions("Content-Type", k8s.PatchStrategy.MergePatch));
 
     await prisma.tenant.update({
       where: { name },
@@ -522,7 +522,7 @@ export function tenantsRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCli
       plural: TENANT_CRD_PLURAL,
       name,
       body: { spec: { suspended: true } },
-    });
+    }, k8s.setHeaderOptions("Content-Type", k8s.PatchStrategy.MergePatch));
 
     await prisma.tenant.update({
       where: { name },
@@ -553,7 +553,7 @@ export function tenantsRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCli
       plural: TENANT_CRD_PLURAL,
       name,
       body: { spec: { suspended: false } },
-    });
+    }, k8s.setHeaderOptions("Content-Type", k8s.PatchStrategy.MergePatch));
 
     await prisma.tenant.update({
       where: { name },

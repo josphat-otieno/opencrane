@@ -411,9 +411,10 @@ describe("tenantsRouter get + update — clusterTenantRef round-trip and clear (
 
     expect(response.status).toBe(200);
     // Empty string clears: the CRD merge-patch deletes the field via null…
+    // Second arg carries the merge-patch Content-Type (else k8s rejects the body as JSON-Patch).
     expect(patchSpy).toHaveBeenCalledWith(expect.objectContaining({
       body: { spec: expect.objectContaining({ clusterTenantRef: null }) },
-    }));
+    }), expect.anything());
     // …and the DB row stores null.
     expect(updateSpy).toHaveBeenCalledWith(expect.objectContaining({
       data: { clusterTenantRef: null },
@@ -438,7 +439,7 @@ describe("tenantsRouter get + update — clusterTenantRef round-trip and clear (
     expect(response.status).toBe(200);
     expect(patchSpy).toHaveBeenCalledWith(expect.objectContaining({
       body: { spec: expect.objectContaining({ clusterTenantRef: "acme-corp" }) },
-    }));
+    }), expect.anything());
     expect(updateSpy).toHaveBeenCalledWith(expect.objectContaining({
       data: { clusterTenantRef: "acme-corp" },
     }));
