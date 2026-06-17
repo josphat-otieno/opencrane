@@ -11,8 +11,9 @@ coverage/
 .idea/
 *.log
 
-# Dev
-dev/
+# Dev (root-level scratch dir only; anchored so it doesn't swallow nested dirs
+# like platform/terraform/environments/dev/)
+/dev/
 
 # Claude Code local review-gate state
 .claude/.last-review-hash

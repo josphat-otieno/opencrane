@@ -1,22 +1,10 @@
 # -----------------------------------------------------------------------------
-# Dev environment values
-# (auto-overwritten by deploy.sh — edit there or here before manual apply)
+# Dev environment values. The only required value is project_id — everything else
+# has a sensible default (see ../../variables.tf). deploy.sh overwrites this file;
+# for a manual apply, copy terraform.tfvars.example and set your project.
 # -----------------------------------------------------------------------------
 
-project_id  = "opencrane-dev"
-region      = "europe-west1"
-environment = "dev"
-domain      = "opencrane.example.com"
-image_tag   = "latest"
+project_id = "opencrane-dev"
+region     = "europe-west1"
 
-# Networking
-vpc_name = "opencrane-dev-vpc"
-
-# GKE
 cluster_name = "opencrane-dev-cluster"
-
-# Cloud SQL
-db_instance_name     = "opencrane-dev-db"
-db_name              = "opencrane"
-db_tier              = "db-f1-micro"
-db_high_availability = false

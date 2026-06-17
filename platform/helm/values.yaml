@@ -95,7 +95,7 @@ sharedPlatform:
 # -- Operator settings
 operator:
   image:
-    repository: ghcr.io/opencrane/operator
+    repository: ghcr.io/italanta/opencrane-operator
     tag: latest
     pullPolicy: IfNotPresent
   replicas: 1
@@ -116,7 +116,7 @@ operator:
 # -- Control plane settings
 controlPlane:
   image:
-    repository: ghcr.io/opencrane/control-plane
+    repository: ghcr.io/italanta/opencrane-control-plane
     tag: latest
     pullPolicy: IfNotPresent
   replicas: 1
@@ -199,7 +199,7 @@ litellm:
 # -- Default tenant pod settings (can be overridden per Tenant CR)
 tenant:
   defaultImage:
-    repository: ghcr.io/opencrane/tenant
+    repository: ghcr.io/italanta/opencrane-tenant
     tag: latest
     pullPolicy: IfNotPresent
   defaultResources:
@@ -223,6 +223,10 @@ hosting:
     bucketPrefix: ""
     # -- CSI driver for GCS Fuse mounts; defaults to the standard GKE driver.
     csiDriver: gcsfuse.csi.storage.gke.io
+    # -- GKE cluster location (region or zone) for the External Secrets Workload
+    #    Identity binding. Optional: when empty, external-secrets discovers it from
+    #    the GKE metadata server. Only consumed when externalSecrets is enabled.
+    clusterLocation: ""
 
 # -- Ingress settings
 ingress:
@@ -246,7 +250,7 @@ ingress:
 docs:
   enabled: false
   image:
-    repository: ghcr.io/opencrane/docs
+    repository: ghcr.io/italanta/docs
     tag: latest
     pullPolicy: IfNotPresent
   replicas: 1
@@ -370,7 +374,7 @@ mcpGateway:
 skillRegistry:
   enabled: true
   image:
-    repository: ghcr.io/opencrane/skill-registry
+    repository: ghcr.io/italanta/skill-registry
     tag: latest
     pullPolicy: IfNotPresent
   replicas: 1

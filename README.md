@@ -91,6 +91,60 @@ OpenCrane governs access, budgets, and networking, but never inspects them.
 
 📐 See the illustrated **[architecture overview](https://opencrane.ai/advanced/architecture)** — diagrams of the control plane, the sign-in flow, and the deny-by-default access model.
 
+```
+┌──────────────────────────────────────────────────┐      ┌──────────────────────────────┐
+│                  Control Plane                   │◄────►│  Cloud SQL + Skills Repo     │
+│                admin.opencrane.ai                │      │  org / dept / team /         │
+│     Express + Prisma + absorbed Obot admin UI    │      │  tenant / individual / state │
+│  • MCP install + in-cluster registry (desired)   │      └──────────────────────────────┘
+│  • Obot control & config authority               │
+│  • Control-plane UI manages Obot + skills        │
+│  • Permission compiler · effective-contract API  │
+└──────────────────────┬───────────────────────────┘
+                       │  (0) config   (1) grants   (2) contract
+                       ▼
+┌────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                Kubernetes Cluster (OpenCrane)                                  │
+│                                                                                                │
+│  Platform / Control            Tenant Runtime Pillar               MCP & Egress Plane          │
+│                                                                                                │
+│  ┌────────────────────────┐    ┌────────────────────────┐    ┌──────────────────────────────┐  │
+│  │ Operator Control       │    │       jente.oc         │    │ Obot MCP Gateway            ▒▒▒▒▒▒ NETWORKPOLICY TO WEB
+│  │ - tenant/policy        │    │       OpenClaw         │    │ (headless · config-slaved)   │  │
+│  │   reconcile            │    │      (isolated)        │    │ - native admin disabled      │  │
+│  │ - projected-token +    │    ├───────────┬────────────┤    │ - validate projected JWT     │  │
+│  │   contract injection   │    │ Personal  │    IAM     │    │ - per-call scope check       │  │
+│  │ - reconciles Obot      │    │   Drive   │ + Workload │    │ - credential broker/shim     │  │
+│  │   config + registry    │    │           │  Identity  │    ├──────────────────────────────┤  │
+│  │ - drift detect/repair  │    │           |            |    │ In-cluster MCP servers       │  │
+│  └────────────────────────┘    │           |            |    │ (registry-pulled, run        │  │
+│                                └──────┬────┬────────────┘    │  locally)                    │  │
+│  ┌────────────────────────┐           |    │  (3) JWT        ├──────────────────────────────┤  │
+│  │ Cognee Brain           │◄──────┬────────┴────────────────►│ Obot token store             │  │
+│  │ - retrieval / memory   │       |   |                      │ - per-user downstream creds  │  │
+│  └──────────▲─────────────┘       |   |                      │ - encrypted; pod-unreachable │  │
+│             │                     |   |                      └──────────────────────────────┘  │
+│  ┌──────────┴─────┬───────────┐   |   |                                                        │
+│  │ Skill Registry │Skills     │   |   |                      ┌──────────────────────────────┐  │
+│  │ & Delivery     │ Access    │◄──┘   └ ─(jente.oc)─ ─ ─ ───►│ Egress Control Plane         ▒▒▒▒▒▒
+│  │ - OCI/ORAS     │ Permission│                              │ - allowlists / DLP / audit   │  │
+│  │ - scan/ingest  │ Gate      │                              │ - network egress authority   │  │
+│  └────────────────┴───────────┘                              └──────────────────────────────┘  │
+│                                ┌────────────────────────┐                                      │
+│                                │  jane.oc (isolated)    │    ┌──────────────────────────────┐  │
+│                                └────────────────────────┘    │ Harvesting Agents            ▒▒▒▒▒▒
+│                                ┌────────────────────────┐    │ - ingest -> Cognee           │  │
+│                                │  niels.oc (isolated)   │    └──────────────────────────────┘  │
+│                                └────────────────────────┘                                      │
+└────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+Legend
+(0) config — control plane owns Obot's registry, IdP/gateway/auth, lifecycle; operator reconciles + drift-repairs.
+(1) grants — per-tenant compiled scope, pushed live; revocation effective next call.
+(2) contract — versioned effective-contract the pod re-pulls at loop boundaries.
+(3) JWT — short-lived, audience-bound projected SA token; shim injects downstream creds server-side, never to the pod.
+```
+
 ## Components
 
 | Component | Path | Description |
@@ -165,12 +219,12 @@ terraform init && terraform apply
 # 2. Install the platform
 helm install opencrane platform/helm \
   -f platform/helm/values/gcp.yaml \
-  --set tenant.storage.gcpProject=my-project \
+  --set hosting.gcp.projectId=my-project \
   --set ingress.domain=opencrane.ai \
   --set controlPlane.database.existingSecret=opencrane-cloudsql
 
 # 3. Create a tenant via the oc CLI
-export OPENCRANE_URL=https://admin.opencrane.ai
+export OPENCRANE_URL=https://opencrane.ai
 export OPENCRANE_TOKEN=<your-access-token>
 
 oc tenants create \
@@ -196,7 +250,7 @@ The operator provisions everything the tenant needs — storage, identity, an en
 
 ```bash
 # Point the CLI at your control plane
-export OPENCRANE_URL=https://admin.opencrane.ai
+export OPENCRANE_URL=https://opencrane.ai
 export OPENCRANE_TOKEN=<your-access-token>
 
 oc tenants list                         # list all tenants

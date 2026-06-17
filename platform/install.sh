@@ -21,7 +21,7 @@ Examples:
 Notes:
   - local mode uses k3d + Helm full-stack install and keeps cluster by default.
   - local profiles: `default` (fast dev) and `strict` (prod-like validation + explicit LiteLLM secret flow).
-  - gcp mode delegates to ./platform/deploy.sh (interactive unless --yes with all required flags).
+  - gcp mode delegates to ./platform/gke-deploy.sh (interactive unless --yes with --project-id).
 EOF
 }
 
@@ -197,29 +197,24 @@ function _run_gcp()
     esac
   done
 
-  # Default to interactive deploy script if required values are not provided.
-  if [[ -z "$project_id" || -z "$domain" ]]; then
-    echo "[install] Running interactive GCP deploy..."
-    "$ROOT_DIR/platform/deploy.sh"
+  # Interactive GKE deploy when no project is given (gke-deploy.sh prompts).
+  if [[ -z "$project_id" ]]; then
+    echo "[install] Running interactive GKE deploy..."
+    "$ROOT_DIR/platform/gke-deploy.sh" ${domain:+--domain "$domain"}
     return
   fi
 
   region="${region:-europe-west1}"
-  environment="${environment:-dev}"
 
   if [[ "$auto_yes" != "1" ]]; then
     echo "[install] Missing --yes for non-interactive run."
-    echo "[install] Re-run with --yes or use interactive mode (omit --project-id/--domain)."
+    echo "[install] Re-run with --yes, or omit --project-id for interactive mode."
     exit 1
   fi
 
-  _require_cmd gcloud
-  _require_cmd terraform
-  _require_cmd docker
-  _require_cmd pnpm
-
-  echo "[install] Running non-interactive GCP deploy..."
-  printf "%s\n%s\n%s\n%s\nY\n" "$project_id" "$region" "$domain" "$environment" | "$ROOT_DIR/platform/deploy.sh"
+  echo "[install] Running non-interactive GKE deploy..."
+  "$ROOT_DIR/platform/gke-deploy.sh" \
+    --project-id "$project_id" --region "$region" ${domain:+--domain "$domain"} --yes
 }
 
 if [[ $# -lt 1 ]]; then
