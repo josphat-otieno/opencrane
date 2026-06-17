@@ -147,7 +147,7 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: migrate
-          image: ghcr.io/opencrane/control-plane:${IMAGE_TAG}
+          image: ghcr.io/italanta/opencrane-control-plane:${IMAGE_TAG}
           command: ["npx", "prisma@6", "migrate", "deploy"]
           workingDir: /app/apps/control-plane
           env:
