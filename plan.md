@@ -582,9 +582,15 @@ With one agent per lane, wall-clock ≈ 4 sequential slices instead of 7.
   only when CI excludes zero) behind `JudgeClient`/`ModelRunner` seams (`_BuildShadowSeams`, env-gated,
   no-op when unconfigured); `/model-routing/measurements` (+ `POST /run`) + `oc routing measurement`;
   Langfuse trace-capture wiring (LiteLLM `LITELLM_SUCCESS_CALLBACK=langfuse` + `LANGFUSE_*`, values-gated
-  default-off, points at an operator-provided Langfuse — not bundled). **Seams (live-infra slice):** the
-  LiteLLM-backed runner + neutral judge implementations, and reading sampled traffic back out of Langfuse.
-  309 control-plane tests green. _(Original:)_ LiteLLM
+  default-off, points at an operator-provided Langfuse — not bundled). **Live seams IMPLEMENTED 2026-06-18:**
+  `shadow-seams.ts` now builds a real `ModelRunner` (LiteLLM `/v1/chat/completions`, cost from the
+  `x-litellm-response-cost` header) + a vendor-neutral `JudgeClient` (`ROUTING_JUDGE_MODEL`, robust 0–1 score
+  parse) when `LITELLM_ENDPOINT` + `LITELLM_MASTER_KEY` + `ROUTING_JUDGE_MODEL` are set (null pair / no-op
+  otherwise); hard HTTP failures throw (clean 500, no corrupt sample), soft cases degrade. Ops recipe in
+  `docs/operators/routing-measurement.md`. 346 control-plane tests green. **Remaining = the live RUN itself**
+  (deploy DB-backed LiteLLM + provider keys + a judge model, then `oc routing measurement run` → the first real
+  savings number) — an operator step on a live cluster, plus reading sampled production traffic out of Langfuse.
+  _(Original:)_ LiteLLM
   `CustomLogger` → **Langfuse** (skill id, model, cost, latency, propensity); per-skill golden eval set
   + quality bar; nightly shadow-grade a sample with a **neutral judge** (not the candidates' vendor);
   **OPE** (Open Bandit Pipeline, doubly-robust + bootstrap CIs + per-tenant breakdown); produce the
