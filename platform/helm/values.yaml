@@ -221,6 +221,33 @@ litellm:
   # -- Optional explicit master key override. Leave empty to auto-generate when generateMasterKey=true.
   #    Placeholder is ignored when auto-generation is enabled.
   masterKey: "change-me-in-production"
+  # -- Trace capture (AIR.6): emit per-call traces from LiteLLM to a Langfuse
+  #    instance via LiteLLM's native langfuse success callback. This is the "log"
+  #    half of the shadow-measurement loop — it records {prompt, model, cost,
+  #    latency} per call so the optimizer (AIR.6/7) can read those traces back out
+  #    of Langfuse and join them by skill.
+  #    The chart does NOT bundle Langfuse (which needs its own Postgres + ClickHouse
+  #    + web). Point `host` at an operator-provided / separately-installed Langfuse.
+  #    OFF by default: a default render is byte-identical with this disabled.
+  langfuse:
+    # -- Master switch. When false, no LANGFUSE_* / LITELLM_SUCCESS_CALLBACK env is
+    #    rendered and LiteLLM behaviour is unchanged.
+    enabled: false
+    # -- Base URL of the external Langfuse (e.g. https://langfuse.example.com).
+    #    Set on the container as LANGFUSE_HOST.
+    host: ""
+    # -- Inline Langfuse API keys. Used only when `enabled` and no `existingSecret`
+    #    is given; persisted into the chart-managed litellm Secret. Prefer
+    #    `existingSecret` in production.
+    publicKey: ""
+    secretKey: ""
+    # -- Existing Secret holding the Langfuse keys (preferred in production). When
+    #    set, the chart does not manage/persist the inline keys.
+    existingSecret: ""
+    # -- Keys within `existingSecret` (and the chart-managed Secret) for the public
+    #    and secret Langfuse keys.
+    publicKeyKey: LANGFUSE_PUBLIC_KEY
+    secretKeyKey: LANGFUSE_SECRET_KEY
 
 # -- Default tenant pod settings (can be overridden per Tenant CR)
 tenant:
