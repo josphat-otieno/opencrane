@@ -61,6 +61,38 @@ spec:
                   name: {{ include "opencrane.fullname" . }}-litellm
                   key: {{ .Values.litellm.databaseSecretKey }}
             {{- end }}
+            {{- /* DB-backed model store (STORE_MODEL_IN_DB). Requires Postgres
+                   (DATABASE_URL above), so it is values-driven and OFF unless a DB
+                   profile turns it on. LITELLM_SALT_KEY encrypts provider keys
+                   persisted in the DB — set it once and never rotate, or stored
+                   keys become unreadable. Sourced from existingSaltSecret or the
+                   chart-managed litellm Secret. */ -}}
+            {{- if .Values.litellm.storeModelInDb }}
+            - name: STORE_MODEL_IN_DB
+              value: "True"
+            {{- if .Values.litellm.existingSaltSecret }}
+            - name: LITELLM_SALT_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.litellm.existingSaltSecret }}
+                  key: {{ .Values.litellm.saltSecretKey }}
+            {{- else }}
+            - name: LITELLM_SALT_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "opencrane.fullname" . }}-litellm
+                  key: {{ .Values.litellm.saltSecretKey }}
+            {{- end }}
+            {{- end }}
+            {{- /* Redis backs cross-replica budget + rate-limit consistency.
+                   Required for HA/multi-replica installs so spend and limits are
+                   shared across pods rather than per-replica. Default OFF. */ -}}
+            {{- if .Values.litellm.redis.enabled }}
+            - name: REDIS_HOST
+              value: {{ .Values.litellm.redis.host | quote }}
+            - name: REDIS_PORT
+              value: {{ .Values.litellm.redis.port | quote }}
+            {{- end }}
             - name: LITELLM_MIGRATION_DIR
               value: "/tmp/litellm/migrations"
             - name: LITELLM_NON_ROOT

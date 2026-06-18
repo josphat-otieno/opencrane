@@ -164,10 +164,36 @@ litellm:
   spendPathTemplate: "/spend/tenant/{tenant}"
   image:
     repository: ghcr.io/berriai/litellm
-    tag: main-latest
+    # -- Pinned to the audited stable tag (matches the k3d overlays) for
+    #    supply-chain integrity + reproducible deploys. Do NOT use a rolling
+    #    `main-latest` tag in production — bump deliberately after re-auditing.
+    tag: main-v1.81.0-stable
     pullPolicy: IfNotPresent
   service:
     port: 4000
+  # -- Persist model/router config in Postgres (LiteLLM STORE_MODEL_IN_DB). Lets
+  #    you manage models/keys at runtime via the admin API instead of static
+  #    config. REQUIRES a DATABASE_URL (set existingDatabaseSecret/databaseUrl), so
+  #    it is OFF by default and must NOT be enabled on DB-less profiles. Enabled in
+  #    values/gcp.yaml (which provisions Postgres).
+  storeModelInDb: false
+  # -- Encryption salt for provider keys stored in the DB (LITELLM_SALT_KEY). Only
+  #    consumed when storeModelInDb=true. Leave empty to auto-generate + persist in
+  #    the chart-managed litellm Secret (stable across upgrades). MUST stay constant
+  #    once set — rotating it makes already-stored keys unreadable.
+  saltKey: ""
+  # -- Existing Secret holding LITELLM_SALT_KEY (preferred in production). When set,
+  #    the chart does not manage/generate the salt.
+  existingSaltSecret: ""
+  saltSecretKey: LITELLM_SALT_KEY
+  # -- Redis backend for cross-replica budget + rate-limit consistency. Needed for
+  #    HA / multi-replica installs so spend tracking and rate limits are shared
+  #    across pods (not per-replica). OFF by default — single-replica installs do
+  #    not need it. No Redis is deployed by the chart; point this at an existing one.
+  redis:
+    enabled: false
+    host: ""
+    port: 6379
   podSecurityContext:
     runAsNonRoot: true
     runAsUser: 10001
