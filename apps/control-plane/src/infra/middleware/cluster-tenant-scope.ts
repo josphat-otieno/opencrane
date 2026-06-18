@@ -3,6 +3,7 @@ import type { PrismaClient } from "@prisma/client";
 
 import type { ClusterTenantScopedResource } from "./cluster-tenant-scope.types.js";
 import { _ResolveCallerClusterTenant } from "../auth/resolve-caller-cluster-tenant.js";
+import { _IsDevAuthMode } from "../auth/auth-mode.js";
 
 /**
  * Reusable authorization guard for mutations (POST/PUT/DELETE) on ClusterTenant-scoped
@@ -65,14 +66,12 @@ async function _enforce(
 {
   const authUser = req.session?.authUser;
 
-  // 1. Dev open-auth fallthrough: no established session means the auth middleware
-  //    let the request through under the dev-mode bypass (OIDC disabled, no env token).
-  //    Honour that posture here rather than locking out a fresh local install.
-  //    TODO(AIR.0b): in production this must hard-fail closed once a first-class
-  //    role model / non-dev auth is always present; do not ship open-auth to prod.
+  // 1. No established session. Honour the auth posture: under the dev-mode bypass (no OIDC, no env
+  //    token) allow it so a fresh local install / the OPEN dev backend isn't locked out; otherwise
+  //    FAIL CLOSED — a missing session in a real auth deployment must never reach a scoped mutation (AIR.0b).
   if (!authUser)
   {
-    return "allow";
+    return _IsDevAuthMode() ? "allow" : "deny";
   }
 
   // 2. Platform operators may mutate any resource at any scope.

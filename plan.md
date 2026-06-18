@@ -501,9 +501,20 @@ With one agent per lane, wall-clock ≈ 4 sequential slices instead of 7.
   `infra/middleware/cluster-tenant-scope.ts` guard on all POST/PUT/DELETE of the new routers: platform
   operators allowed at any scope; non-operators only on a `clusterTenant`-scoped resource whose owner equals
   their freshly-resolved `clusterTenant`; Global mutations operator-only; denials → 403 `FORBIDDEN_SCOPE`.
-  **Open item:** the dev open-auth fallthrough (no session) is still permitted with a `// TODO(AIR.0b)`
-  marker — prod tightening (deny-by-default once OIDC/token is mandatory) tracked here.
-  **Anchors:** `apps/control-plane/src/infra/middleware/cluster-tenant-scope.ts`, the new routes.
+  **Prod hardening LANDED 2026-06-18 (security cutover):** the no-session fallthrough now **fails closed
+  unless dev-mode** — `infra/auth/auth-mode.ts._IsDevAuthMode()` (mirrors `auth.middleware`: dev = no OIDC
+  + no `OPENCRANE_API_TOKEN`) gates the guard + both read-scope resolvers (metrics → 403, recommendations →
+  empty). Dev / the OPEN dev backend stay permissive; any real auth deployment denies a sessionless mutation.
+  The `_ResolveCallerClusterTenant` resolver is single-sourced in `infra/auth/`. 324 tests green (+1 fail-closed test).
+  **Anchors:** `infra/auth/auth-mode.ts`, `infra/middleware/cluster-tenant-scope.ts`, `routes/model-routing-{metrics,recommendations}.ts`.
+- [ ] **AIR.0c (cutover, BLOCKED on prerequisites) — retire the legacy provider-key path + the broadcast.**
+  Two tenant-/client-breaking removals deliberately NOT done in the AIR.0b slice: **(B)** removing the
+  `org-shared-secrets` `envFrom` broadcast (`3-deployment.ts:189-191`) — it still feeds `OPENAI_API_KEY` into
+  every pod as OpenClaw's fallback, so it breaks the LLM path until the operator can populate the pod's
+  `models[]` from the registry (the deferred AIR.2-operator data-path); **(C)** deleting the orphaned
+  `ProviderApiKey` table + `/providers/keys` route — needs WeOwnAI confirmed off the legacy endpoint first.
+  Sequence: build the operator→models data-path → cut pods to LiteLLM-only → then remove the broadcast → then
+  retire `ProviderApiKey` once no client uses it.
 - [x] **AIR.1 Model registry (BYOM) — control-plane + LiteLLM. — LANDED 2026-06-18.** Prisma
   `ModelDefinition` + `ProviderCredential` (scope `global|clusterTenant`, **stores `secretRef` — never a raw
   key**) + enum `ModelRoutingScope` + migration `0017_model_routing`; contract types in `libs/contracts`;

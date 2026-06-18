@@ -218,4 +218,23 @@ describe("modelRoutingDefaultsRouter", function _suite()
     expect(res.body.status).toBe("deleted");
     expect(store.size).toBe(0);
   });
+
+  it("scope guard fails closed under real auth: no session -> 403 (AIR.0b)", async function _failClosed()
+  {
+    const prev = process.env.OPENCRANE_API_TOKEN;
+    process.env.OPENCRANE_API_TOKEN = "ci-token"; // a real auth mode → dev open-auth bypass is OFF
+    try
+    {
+      const res = await request(_buildApp(_mockPrisma(new Map())))
+        .put("/api/v1/model-routing/defaults")
+        .send({ defaultModel: "openai/gpt-4o" });
+
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe("FORBIDDEN_SCOPE");
+    }
+    finally
+    {
+      if (prev === undefined) { delete process.env.OPENCRANE_API_TOKEN; } else { process.env.OPENCRANE_API_TOKEN = prev; }
+    }
+  });
 });

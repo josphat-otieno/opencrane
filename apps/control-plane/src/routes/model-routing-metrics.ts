@@ -4,6 +4,7 @@ import type { PrismaClient } from "@prisma/client";
 
 import type { LangfuseConfig, MetricsCallerScope } from "./model-routing-metrics.types.js";
 import { _ResolveCallerClusterTenant as _resolveCallerClusterTenant } from "../infra/auth/resolve-caller-cluster-tenant.js";
+import { _IsDevAuthMode } from "../infra/auth/auth-mode.js";
 
 /**
  * Default Langfuse v1 Metrics/Public API path. Confirmed against the Langfuse public-API docs
@@ -55,11 +56,12 @@ async function _resolveCallerScope(prisma: PrismaClient, req: Request): Promise<
 {
   const authUser = req.session?.authUser;
 
-  // 1. No session = dev open-auth bypass; honour the same posture as the scope guard.
-  //    TODO(AIR.0b): hard-fail closed in production once a non-dev role model is always present.
+  // 1. No session: the dev-mode bypass treats the caller as operator (fresh local install / OPEN
+  //    dev backend); a real auth deployment FAILS CLOSED (non-operator, no tenant) so the proxy
+  //    403s rather than forwarding unconstrained metrics (AIR.0b).
   if (!authUser)
   {
-    return { isOperator: true, clusterTenant: null };
+    return _IsDevAuthMode() ? { isOperator: true, clusterTenant: null } : { isOperator: false, clusterTenant: null };
   }
 
   // 2. Platform operators forward the query unconstrained (no tenant filter injected).
