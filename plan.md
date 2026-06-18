@@ -507,14 +507,21 @@ With one agent per lane, wall-clock ≈ 4 sequential slices instead of 7.
   empty). Dev / the OPEN dev backend stay permissive; any real auth deployment denies a sessionless mutation.
   The `_ResolveCallerClusterTenant` resolver is single-sourced in `infra/auth/`. 324 tests green (+1 fail-closed test).
   **Anchors:** `infra/auth/auth-mode.ts`, `infra/middleware/cluster-tenant-scope.ts`, `routes/model-routing-{metrics,recommendations}.ts`.
-- [ ] **AIR.0c (cutover, BLOCKED on prerequisites) — retire the legacy provider-key path + the broadcast.**
-  Two tenant-/client-breaking removals deliberately NOT done in the AIR.0b slice: **(B)** removing the
-  `org-shared-secrets` `envFrom` broadcast (`3-deployment.ts:189-191`) — it still feeds `OPENAI_API_KEY` into
-  every pod as OpenClaw's fallback, so it breaks the LLM path until the operator can populate the pod's
-  `models[]` from the registry (the deferred AIR.2-operator data-path); **(C)** deleting the orphaned
-  `ProviderApiKey` table + `/providers/keys` route — needs WeOwnAI confirmed off the legacy endpoint first.
-  Sequence: build the operator→models data-path → cut pods to LiteLLM-only → then remove the broadcast → then
-  retire `ProviderApiKey` once no client uses it.
+- [x] **AIR.0c-data-path Operator→models data-path + per-key allowlist + config-map population. — LANDED 2026-06-18.**
+  New NetworkPolicy-gated internal endpoint `GET /api/internal/tenant-models/:tenant` → `{ models, defaultModel }`
+  (Global + the tenant's ClusterTenant `ModelDefinition`s; default via `ModelRoutingDefault` precedence). The
+  operator fetches it **best-effort/non-fatal** at reconcile (`tenants/internal/tenant-models.ts`, 2s timeout,
+  null on any error) and applies it: the LiteLLM virtual key's `models[]` allowlist is now set on `/key/generate`
+  + `/key/update` **when non-empty** (the real model-access gate; **omitted when empty** to avoid LiteLLM's
+  "empty = ALL" footgun — non-breaking), and the config-map `litellm-proxy.models[]` is populated likewise.
+  Closes the "any tenant can call any registered model" gap (also completes the deferred AIR.2-operator config-map
+  population). 332 control-plane + 101 operator tests green.
+- [ ] **AIR.0c-cutover (STILL BLOCKED) — remove the broadcast + retire `ProviderApiKey`.** **(B)** removing the
+  `org-shared-secrets` `envFrom` broadcast (`3-deployment.ts:189-191`) is **blocked on OpenClaw**, not the
+  operator: `OPENAI_API_KEY` feeds OpenClaw's *internal OpenAI translator fallback* (hardcoded, no config flag
+  per `3-deployment.ts:81`) — needs an **OpenClaw image change** (configurable translator backend) to point it
+  at LiteLLM. **(C)** deleting the orphaned `ProviderApiKey` table + `/providers/keys` route needs WeOwnAI
+  confirmed off the legacy endpoint first. Both deferred to a coordinated cutover.
 - [x] **AIR.1 Model registry (BYOM) — control-plane + LiteLLM. — LANDED 2026-06-18.** Prisma
   `ModelDefinition` + `ProviderCredential` (scope `global|clusterTenant`, **stores `secretRef` — never a raw
   key**) + enum `ModelRoutingScope` + migration `0017_model_routing`; contract types in `libs/contracts`;

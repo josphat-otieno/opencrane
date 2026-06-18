@@ -7,6 +7,7 @@ import type { OpenClawTenantOperatorConfig } from "../../config.js";
 import { __K8sApplyResource } from "../../infra/k8s.js";
 import { _BuildTenantLabels } from "../deploy/tenant-labels.js";
 import type { Tenant } from "../models/tenant.interface.js";
+import type { TenantModelSet } from "./tenant-models.types.js";
 
 /**
  * Handles LiteLLM virtual key provisioning and Secret materialization
@@ -44,8 +45,16 @@ export class TenantLiteLlmKeys
 
   /**
    * Ensure the tenant has a LiteLLM virtual key Secret when integration is enabled.
+   *
+   * @param tenant - The Tenant CR to provision the key for.
+   * @param namespace - Namespace the key Secret is written to.
+   * @param modelSet - The tenant's allowed model set fetched best-effort from the
+   *        control-plane, or `null` when unavailable. When its `models` list is
+   *        non-empty the key is restricted to exactly those models; otherwise the
+   *        `models` field is omitted entirely (an empty list means ALL models in
+   *        LiteLLM, so sending it would be a footgun and a behaviour change).
    */
-  async ensureLiteLlmKeySecret(tenant: Tenant, namespace: string): Promise<void>
+  async ensureLiteLlmKeySecret(tenant: Tenant, namespace: string, modelSet?: TenantModelSet | null): Promise<void>
   {
     // 1. Guard rails — skip when disabled and fail fast for missing master key.
     if (!this.config.liteLlmEnabled)
@@ -70,7 +79,7 @@ export class TenantLiteLlmKeys
     const existingKey = await this._readExistingKeyValue(secretName, namespace);
     if (existingKey !== undefined)
     {
-      await this._updateLiteLlmVirtualKey(name, existingKey, tenant, budget);
+      await this._updateLiteLlmVirtualKey(name, existingKey, tenant, budget, modelSet);
       this.log.debug({ name, secretName, budget }, "reconciled existing litellm virtual key params");
       return;
     }
@@ -78,7 +87,7 @@ export class TenantLiteLlmKeys
     // 3. Provision key in LiteLLM and persist as a namespaced Secret for tenant env injection.
     const issuedAt = new Date().toISOString();
     const keyAlias = `opencrane-${name}`;
-    const apiKey = await this._generateLiteLlmVirtualKey(tenant, budget);
+    const apiKey = await this._generateLiteLlmVirtualKey(tenant, budget, modelSet);
     const secret: k8s.V1Secret = {
       apiVersion: "v1",
       kind: "Secret",
@@ -107,15 +116,17 @@ export class TenantLiteLlmKeys
    *
    * @param tenant - The Tenant CR; supplies team_id resolution and the alias/metadata.
    * @param monthlyBudgetUsd - Resolved monthly spend cap to attach to the new key.
+   * @param modelSet - The tenant's allowed model set, or `null`; a non-empty list
+   *        restricts the key to those models, otherwise the field is omitted.
    * @returns The freshly minted virtual key value.
    */
-  private async _generateLiteLlmVirtualKey(tenant: Tenant, monthlyBudgetUsd: number): Promise<string>
+  private async _generateLiteLlmVirtualKey(tenant: Tenant, monthlyBudgetUsd: number, modelSet?: TenantModelSet | null): Promise<string>
   {
     const tenantName = tenant.metadata!.name!;
 
-    // 1. Build the shared param block (budget window, team, rate limits) so the
-    //    same hardening applied on update is applied at mint time.
-    const params = this._buildKeyParams(tenant, monthlyBudgetUsd);
+    // 1. Build the shared param block (budget window, team, rate limits, models) so
+    //    the same hardening applied on update is applied at mint time.
+    const params = this._buildKeyParams(tenant, monthlyBudgetUsd, modelSet);
 
     // 2. Mint the key, layering the alias + tenant metadata on top of the params.
     const response = await fetch(`${this.config.liteLlmEndpoint}/key/generate`, {
@@ -166,14 +177,17 @@ export class TenantLiteLlmKeys
    * @param keyValue - The existing virtual key value to update in place.
    * @param tenant - The Tenant CR supplying team/budget params.
    * @param monthlyBudgetUsd - Resolved monthly spend cap to re-apply.
+   * @param modelSet - The tenant's allowed model set, or `null`; a non-empty list
+   *        re-applies the model allowlist to the key (AIR.5 sync), otherwise the
+   *        field is omitted so the key is not silently widened to all models.
    */
-  private async _updateLiteLlmVirtualKey(tenantName: string, keyValue: string, tenant: Tenant, monthlyBudgetUsd: number): Promise<void>
+  private async _updateLiteLlmVirtualKey(tenantName: string, keyValue: string, tenant: Tenant, monthlyBudgetUsd: number, modelSet?: TenantModelSet | null): Promise<void>
   {
     try
     {
       // 1. Build the same param block used at mint time, then pin it to the
       //    existing key value so /key/update converges params without rotating.
-      const params = this._buildKeyParams(tenant, monthlyBudgetUsd);
+      const params = this._buildKeyParams(tenant, monthlyBudgetUsd, modelSet);
       const response = await fetch(`${this.config.liteLlmEndpoint}/key/update`, {
         method: "POST",
         headers: {
@@ -235,9 +249,13 @@ export class TenantLiteLlmKeys
    *
    * @param tenant - The Tenant CR; team_id resolves from clusterTenantRef then team.
    * @param monthlyBudgetUsd - Resolved monthly spend cap.
+   * @param modelSet - The tenant's allowed model set, or `null`. CRITICAL: only a
+   *        NON-EMPTY list adds `models`; an empty/null list omits the field entirely
+   *        (in LiteLLM `models: []` means ALL models, so sending it would silently
+   *        widen access — omitting preserves today's unrestricted behaviour).
    * @returns A param object spread into the generate/update request body.
    */
-  private _buildKeyParams(tenant: Tenant, monthlyBudgetUsd: number): Record<string, unknown>
+  private _buildKeyParams(tenant: Tenant, monthlyBudgetUsd: number, modelSet?: TenantModelSet | null): Record<string, unknown>
   {
     const params: Record<string, unknown> = {
       max_budget: monthlyBudgetUsd,
@@ -263,6 +281,15 @@ export class TenantLiteLlmKeys
     if (this.config.liteLlmDefaultRpmLimit > 0)
     {
       params["rpm_limit"] = this.config.liteLlmDefaultRpmLimit;
+    }
+
+    // 3. models — restrict the key to the tenant's registered models, but ONLY when
+    //    the fetched list is non-empty. An empty list in LiteLLM means ALL models, so
+    //    omitting the field (rather than sending `[]`) keeps the unrestricted default
+    //    and avoids silently widening access on a control-plane outage.
+    if (modelSet && modelSet.models.length > 0)
+    {
+      params["models"] = [...modelSet.models];
     }
 
     return params;

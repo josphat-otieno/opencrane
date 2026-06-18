@@ -181,6 +181,70 @@ describe("TenantLiteLlmKeys", () =>
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("generate includes models[] when the fetched model set is non-empty", async () =>
+  {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ key: "sk-tenant-new" }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const keys = new TenantLiteLlmKeys(_enabledConfig, _makeCoreApi(), _makeObjectApi(), _log);
+    const tenant = _makeTenant("acme-user", { clusterTenantRef: "acme" });
+
+    await keys.ensureLiteLlmKeySecret(tenant, "default", { models: ["gpt-4o", "claude-opus-4-8"], defaultModel: "gpt-4o" });
+
+    const body = _bodyOf(fetchMock.mock.calls[0]);
+    expect(body["models"]).toEqual(["gpt-4o", "claude-opus-4-8"]);
+  });
+
+  it("update includes models[] when the fetched model set is non-empty (AIR.5 sync)", async () =>
+  {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const keys = new TenantLiteLlmKeys(_enabledConfig, _makeCoreApi("sk-tenant-existing"), _makeObjectApi(), _log);
+    const tenant = _makeTenant("acme-user", { clusterTenantRef: "acme" });
+
+    await keys.ensureLiteLlmKeySecret(tenant, "default", { models: ["gpt-4o"], defaultModel: null });
+
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe("http://litellm:4000/key/update");
+    const body = _bodyOf(fetchMock.mock.calls[0]);
+    expect(body["models"]).toEqual(["gpt-4o"]);
+  });
+
+  it("OMITS the models field when the fetched list is empty (empty == ALL models in LiteLLM)", async () =>
+  {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ key: "sk-tenant-new" }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const keys = new TenantLiteLlmKeys(_enabledConfig, _makeCoreApi(), _makeObjectApi(), _log);
+    const tenant = _makeTenant("acme-user", { clusterTenantRef: "acme" });
+
+    await keys.ensureLiteLlmKeySecret(tenant, "default", { models: [], defaultModel: null });
+
+    const body = _bodyOf(fetchMock.mock.calls[0]);
+    expect(body).not.toHaveProperty("models");
+  });
+
+  it("OMITS the models field when the model set is null (control-plane unavailable)", async () =>
+  {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ key: "sk-tenant-new" }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const keys = new TenantLiteLlmKeys(_enabledConfig, _makeCoreApi(), _makeObjectApi(), _log);
+    const tenant = _makeTenant("acme-user", { clusterTenantRef: "acme" });
+
+    await keys.ensureLiteLlmKeySecret(tenant, "default", null);
+
+    const body = _bodyOf(fetchMock.mock.calls[0]);
+    expect(body).not.toHaveProperty("models");
+  });
+
   it("is a no-op when LiteLLM integration is disabled", async () =>
   {
     const fetchMock = vi.fn();
