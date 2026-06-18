@@ -173,6 +173,21 @@ export async function _RevokeLiteLlmKey(req: Request, res: Response, deps: AiBud
     await _syncLiteLlmKeyMetadata(deps.prisma, tenantName, secret);
   }
 
+  // 1. Resolve the active key's alias so the upstream LiteLLM key can be deleted by alias. The
+  //    Secret annotation is the freshest source; fall back to the persisted metadata row.
+  const annotatedAlias = secret?.metadata?.annotations?.["opencrane.io/litellm-key-alias"];
+  const activeKey = await deps.prisma.tenantLiteLlmKey.findFirst({
+    where: { tenant: tenantName, revokedAt: null },
+    orderBy: [{ issuedAt: "desc" }, { createdAt: "desc" }],
+  });
+  const keyAlias = annotatedAlias ?? activeKey?.keyAlias ?? null;
+
+  // 2. Best-effort delete of the upstream LiteLLM virtual key. Non-fatal: a flaky/absent LiteLLM
+  //    must not block local revocation (the mounted Secret delete below is what stops the pod from
+  //    using the key). The outcome is recorded in the audit metadata for the change log.
+  const litellmDeleteResult = await _deleteLiteLlmKey(keyAlias);
+
+  // 3. Delete the mounted Secret so the tenant pod loses the key on its next mount/refresh.
   const secretName = _buildLiteLlmSecretName(tenantName);
   let secretDeleted = false;
 
@@ -197,11 +212,54 @@ export async function _RevokeLiteLlmKey(req: Request, res: Response, deps: AiBud
       action: "LiteLLMKeyRevoked",
       resource: `Tenant/${tenantName}`,
       message: `LiteLLM key revoked for tenant ${tenantName}`,
-      metadata: { secretDeleted, secretName },
+      metadata: { secretDeleted, secretName, litellmKeyDeleted: litellmDeleteResult.deleted, litellmKeyAlias: keyAlias },
     },
   });
 
-  res.json({ name: tenantName, status: "revoked", secretDeleted });
+  res.json({ name: tenantName, status: "revoked", secretDeleted, litellmKeyDeleted: litellmDeleteResult.deleted });
+}
+
+/**
+ * Best-effort deletion of a tenant's upstream LiteLLM virtual key via `POST /key/delete`
+ * (master-key auth, from `LITELLM_ENDPOINT` + `LITELLM_MASTER_KEY`). Deletes by `key_aliases`
+ * since OpenCrane never persists the raw key, only its alias.
+ *
+ * Returns `{ deleted: false }` — never throws — when LiteLLM is unconfigured, no alias is known,
+ * or the call fails, so a revoke is never blocked on the upstream. Mirrors the resilient-fetch
+ * posture used for model registration.
+ *
+ * @param keyAlias - The active key's alias, or null when none is known.
+ * @returns `{ deleted: true }` only on a confirmed 2xx delete; `{ deleted: false }` otherwise.
+ */
+async function _deleteLiteLlmKey(keyAlias: string | null): Promise<{ deleted: boolean }>
+{
+  const endpoint = process.env.LITELLM_ENDPOINT?.trim() ?? "";
+  const masterKey = process.env.LITELLM_MASTER_KEY?.trim() ?? "";
+
+  // 1. Unconfigured or no alias to target → nothing to delete upstream.
+  if (!endpoint || !masterKey || !keyAlias)
+  {
+    return { deleted: false };
+  }
+
+  try
+  {
+    // 2. Delete by alias — the raw key is never stored by OpenCrane, only the alias.
+    const response = await fetch(`${endpoint}/key/delete`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        Authorization: `Bearer ${masterKey}`,
+      },
+      body: JSON.stringify({ key_aliases: [keyAlias] }),
+    });
+    return { deleted: response.ok };
+  }
+  catch
+  {
+    // 3. Network / parse failure is non-fatal — the Secret delete still revokes access locally.
+    return { deleted: false };
+  }
 }
 
 /** Build the canonical Secret name for a tenant LiteLLM key. */

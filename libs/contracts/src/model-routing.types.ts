@@ -98,3 +98,84 @@ export interface ModelDefinitionWrite
   /** Provider credential backing this model. */
   providerCredentialId?: string;
 }
+
+/**
+ * A skill's model-selection posture. `pinned` uses the skill's `pinnedModel`; `auto` routes within
+ * the skill's auto config; absence means the skill inherits the scope default. Mirrors Prisma `SkillModelMode`.
+ */
+export const SkillModelMode = {
+  Pinned: "pinned",
+  Auto: "auto",
+} as const;
+
+/** Union of the {@link SkillModelMode} values. */
+export type SkillModelMode = (typeof SkillModelMode)[keyof typeof SkillModelMode];
+
+/** Optimization objective for an `auto` routing decision. */
+export const AutoRoutingObjective = {
+  CheapestPassingBar: "cheapest-passing-bar",
+  BestQualityWithinBudget: "best-quality-within-budget",
+  Balanced: "balanced",
+} as const;
+
+/** Union of the {@link AutoRoutingObjective} values. */
+export type AutoRoutingObjective = (typeof AutoRoutingObjective)[keyof typeof AutoRoutingObjective];
+
+/**
+ * The opt-in "auto" routing configuration surface. Stores the knobs only — the runtime optimizer
+ * that consumes them (judge → OPE → propose) is a later track item (AIR.7). Auto routing applies
+ * ONLY when a skill (or scope default) selects it; otherwise the explicit/pinned model is used verbatim.
+ */
+export interface AutoRoutingConfig
+{
+  /** The optimization objective. */
+  objective: AutoRoutingObjective;
+  /** Cost↔quality dial for the `balanced` objective: 0 = cheapest … 10 = best. */
+  costQualitySlider?: number;
+  /** Minimum eval score a model must clear; defaults to the skill's own bar when omitted. */
+  qualityFloor?: number;
+  /** Hard per-decision spend ceiling in USD. */
+  maxBudgetUsd?: number;
+  /** Restrict auto to this subset of `publicModelName`s; must stay within the key's allowlist. */
+  allowedModels?: string[];
+  /** Reject/penalize models slower than this many milliseconds. */
+  latencyCeilingMs?: number;
+  /** Ordered fallback `publicModelName`s on failure/unavailability. */
+  fallbacks?: string[];
+  /** Keep the chosen model stable within a conversation to preserve prompt caches (default true). */
+  sessionPin: boolean;
+  /** Fraction of traffic to explore alternatives on (0 = pure exploit). */
+  explorationRate: number;
+}
+
+/** A scope-level model + auto-config default, consulted when a skill declares no posture. */
+export interface ModelRoutingDefault
+{
+  /** Stable identifier. */
+  id: string;
+  /** Whether this default is platform-wide or per-ClusterTenant. */
+  scope: ModelRoutingScope;
+  /** Owning ClusterTenant when `scope` is `clusterTenant`; null for Global. */
+  clusterTenant: string | null;
+  /** Default model `publicModelName` at this scope; null when unset. */
+  defaultModel: string | null;
+  /** Default auto-routing config at this scope; null when unset. */
+  autoConfig: AutoRoutingConfig | null;
+  /** Creation timestamp (ISO-8601). */
+  createdAt: string;
+  /** Last-update timestamp (ISO-8601). */
+  updatedAt: string;
+}
+
+/** Create/update body for a {@link ModelRoutingDefault}. */
+export interface ModelRoutingDefaultWrite
+{
+  /** Defaults to `global` when omitted. */
+  scope?: ModelRoutingScope;
+  /** Required when `scope` is `clusterTenant`. */
+  clusterTenant?: string;
+  /** Default model `publicModelName`. */
+  defaultModel?: string;
+  /** Default auto-routing config. */
+  autoConfig?: AutoRoutingConfig;
+}

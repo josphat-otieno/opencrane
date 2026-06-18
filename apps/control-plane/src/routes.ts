@@ -18,7 +18,9 @@ import { prometheusMetricsRouter } from "./routes/prometheus-metrics.js";
 import { providerKeysRouter } from "./routes/provider-keys.js";
 import { providerCredentialsRouter } from "./routes/provider-credentials.js";
 import { modelRegistryRouter } from "./routes/model-registry.js";
+import { modelRoutingDefaultsRouter } from "./routes/model-routing-defaults.js";
 import { skillCatalogRouter } from "./routes/skill-catalog.js";
+import { skillModelPostureRouter } from "./routes/skill-model-posture.js";
 import { tenantsRouter } from "./routes/tenants.js";
 import { thirdPartySourcesRouter } from "./routes/third-party-sources.js";
 import { tokenUsageRouter } from "./routes/token-usage.js";
@@ -97,6 +99,8 @@ export function _RegisterRoutes(app: Express, prisma: PrismaClient, customApi: k
   app.use("/api/v1/groups", groupsRouter(prisma));
   app.use("/api/v1/mcp-servers", mcpServersRouter(prisma));
   app.use("/api/v1/skills/catalog", skillCatalogRouter(prisma, ociBundleStore));
+  app.use("/api/v1/skills/posture", skillModelPostureRouter(prisma));
+  app.use("/api/v1/model-routing/defaults", modelRoutingDefaultsRouter(prisma));
   app.use("/api/v1/third-party-sources", thirdPartySourcesRouter(prisma));
   app.use("/api/v1/org/workspace-docs", companyDocsRouter(prisma, _BuildDocMergeReconciler()));
   app.use("/api/v1/platform/dns", platformDnsRouter(customApi, coreApi));

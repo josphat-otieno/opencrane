@@ -186,6 +186,12 @@ model Skill {
   path        String
   author      String?
   contentHash String?  @map("content_hash")
+  /// Model posture (Track AIR): `pinned` (use pinnedModel), `auto` (route within autoConfig), or null (inherit the scope default).
+  modelMode   SkillModelMode? @map("model_mode")
+  /// The pinned model's publicModelName, when modelMode is `pinned`.
+  pinnedModel String?  @map("pinned_model")
+  /// Per-skill AutoRoutingConfig, when modelMode is `auto`.
+  autoConfig  Json?    @map("auto_config")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
@@ -592,6 +598,27 @@ model ModelDefinition {
   @@unique([scope, clusterTenant, publicModelName])
   @@index([clusterTenant])
   @@map("model_definitions")
+}
+
+/// Skill model-selection posture (Track AIR): pin a model or opt the skill into auto-routing.
+enum SkillModelMode {
+  Pinned @map("pinned")
+  Auto   @map("auto")
+}
+
+/// Default model + auto-routing config at a scope (Global platform default, or per ClusterTenant),
+/// consulted when a skill has no posture of its own. `defaultModel` is a ModelDefinition.publicModelName.
+model ModelRoutingDefault {
+  id            String            @id @default(cuid())
+  scope         ModelRoutingScope @default(Global)
+  clusterTenant String?           @map("cluster_tenant")
+  defaultModel  String?           @map("default_model")
+  autoConfig    Json?             @map("auto_config")
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+
+  @@unique([scope, clusterTenant])
+  @@map("model_routing_defaults")
 }
 
 model OrgDocument {

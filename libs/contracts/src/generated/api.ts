@@ -736,6 +736,77 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/model-routing/defaults": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List model-routing defaults */
+        get: operations["listModelRoutingDefaults"];
+        /** Upsert the model-routing default for a (scope, clusterTenant) pair */
+        put: operations["upsertModelRoutingDefault"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/model-routing/defaults/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a single model-routing default by id */
+        get: operations["getModelRoutingDefault"];
+        put?: never;
+        post?: never;
+        /** Delete a model-routing default */
+        delete: operations["deleteModelRoutingDefault"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/skills/posture": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all skills with their model posture */
+        get: operations["listSkillModelPostures"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/skills/posture/skill": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a single skill's model posture by its compound key */
+        get: operations["getSkillModelPosture"];
+        /** Set (or clear) a skill's model posture */
+        put: operations["setSkillModelPosture"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ai-budget/global": {
         parameters: {
             query?: never;
@@ -1358,6 +1429,186 @@ export interface components {
             isDefault?: boolean;
             /** @description Provider credential backing this model. */
             providerCredentialId?: string;
+        };
+        /** @description Opt-in auto-routing configuration. Auto routing applies ONLY when a skill (or scope default) selects it; the runtime optimizer that consumes it is a later track item (AIR.7). */
+        AutoRoutingConfig: {
+            /**
+             * @description The optimization objective.
+             * @enum {string}
+             */
+            objective: "cheapest-passing-bar" | "best-quality-within-budget" | "balanced";
+            /** @description Cost↔quality dial for the balanced objective: 0 = cheapest … 10 = best. */
+            costQualitySlider?: number;
+            /** @description Minimum eval score a model must clear; defaults to the skill's own bar when omitted. */
+            qualityFloor?: number;
+            /** @description Hard per-decision spend ceiling in USD. */
+            maxBudgetUsd?: number;
+            /** @description Restrict auto to this subset of publicModelNames; must stay within the key's allowlist. */
+            allowedModels?: string[];
+            /** @description Reject/penalize models slower than this many milliseconds. */
+            latencyCeilingMs?: number;
+            /** @description Ordered fallback publicModelNames on failure/unavailability. */
+            fallbacks?: string[];
+            /** @description Keep the chosen model stable within a conversation to preserve prompt caches. */
+            sessionPin: boolean;
+            /** @description Fraction of traffic to explore alternatives on (0 = pure exploit). */
+            explorationRate: number;
+        };
+        ModelRoutingDefault: {
+            /** @description Stable identifier. */
+            id: string;
+            /**
+             * @description Whether this default is platform-wide or per-ClusterTenant.
+             * @enum {string}
+             */
+            scope: "global" | "clusterTenant";
+            /** @description Owning ClusterTenant when scope is clusterTenant; null for Global. */
+            clusterTenant?: string | null;
+            /** @description Default model publicModelName at this scope; null when unset. */
+            defaultModel?: string | null;
+            /** @description Default auto-routing config at this scope; null when unset. */
+            autoConfig?: {
+                /**
+                 * @description The optimization objective.
+                 * @enum {string}
+                 */
+                objective: "cheapest-passing-bar" | "best-quality-within-budget" | "balanced";
+                /** @description Cost↔quality dial for the balanced objective: 0 = cheapest … 10 = best. */
+                costQualitySlider?: number;
+                /** @description Minimum eval score a model must clear; defaults to the skill's own bar when omitted. */
+                qualityFloor?: number;
+                /** @description Hard per-decision spend ceiling in USD. */
+                maxBudgetUsd?: number;
+                /** @description Restrict auto to this subset of publicModelNames; must stay within the key's allowlist. */
+                allowedModels?: string[];
+                /** @description Reject/penalize models slower than this many milliseconds. */
+                latencyCeilingMs?: number;
+                /** @description Ordered fallback publicModelNames on failure/unavailability. */
+                fallbacks?: string[];
+                /** @description Keep the chosen model stable within a conversation to preserve prompt caches. */
+                sessionPin: boolean;
+                /** @description Fraction of traffic to explore alternatives on (0 = pure exploit). */
+                explorationRate: number;
+            } | null;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+        };
+        /** @description Upsert body for a scope-level model-routing default. At least one of defaultModel or autoConfig is required. */
+        ModelRoutingDefaultWrite: {
+            /**
+             * @description Defaults to global when omitted.
+             * @enum {string}
+             */
+            scope?: "global" | "clusterTenant";
+            /** @description Required when scope is clusterTenant. */
+            clusterTenant?: string;
+            /** @description Default model publicModelName. */
+            defaultModel?: string;
+            /** @description Default auto-routing config. */
+            autoConfig?: {
+                /**
+                 * @description The optimization objective.
+                 * @enum {string}
+                 */
+                objective: "cheapest-passing-bar" | "best-quality-within-budget" | "balanced";
+                /** @description Cost↔quality dial for the balanced objective: 0 = cheapest … 10 = best. */
+                costQualitySlider?: number;
+                /** @description Minimum eval score a model must clear; defaults to the skill's own bar when omitted. */
+                qualityFloor?: number;
+                /** @description Hard per-decision spend ceiling in USD. */
+                maxBudgetUsd?: number;
+                /** @description Restrict auto to this subset of publicModelNames; must stay within the key's allowlist. */
+                allowedModels?: string[];
+                /** @description Reject/penalize models slower than this many milliseconds. */
+                latencyCeilingMs?: number;
+                /** @description Ordered fallback publicModelNames on failure/unavailability. */
+                fallbacks?: string[];
+                /** @description Keep the chosen model stable within a conversation to preserve prompt caches. */
+                sessionPin: boolean;
+                /** @description Fraction of traffic to explore alternatives on (0 = pure exploit). */
+                explorationRate: number;
+            };
+        };
+        SkillModelPosture: {
+            /** @description Skill name (part of the compound key). */
+            name: string;
+            /** @description Skill scope, e.g. org/team/personal (part of the compound key). */
+            scope: string;
+            /** @description Owning team for team-scoped skills; empty string when not team-scoped (part of the compound key). */
+            team: string;
+            /** @description Workspace-relative path the skill is delivered to. */
+            path: string;
+            /**
+             * @description pinned (use pinnedModel), auto (route within autoConfig), or null (inherit the scope default).
+             * @enum {string|null}
+             */
+            modelMode?: "pinned" | "auto" | null;
+            /** @description The pinned model's publicModelName, when modelMode is pinned. */
+            pinnedModel?: string | null;
+            /** @description The skill's auto-routing config, when modelMode is auto. */
+            autoConfig?: {
+                /**
+                 * @description The optimization objective.
+                 * @enum {string}
+                 */
+                objective: "cheapest-passing-bar" | "best-quality-within-budget" | "balanced";
+                /** @description Cost↔quality dial for the balanced objective: 0 = cheapest … 10 = best. */
+                costQualitySlider?: number;
+                /** @description Minimum eval score a model must clear; defaults to the skill's own bar when omitted. */
+                qualityFloor?: number;
+                /** @description Hard per-decision spend ceiling in USD. */
+                maxBudgetUsd?: number;
+                /** @description Restrict auto to this subset of publicModelNames; must stay within the key's allowlist. */
+                allowedModels?: string[];
+                /** @description Reject/penalize models slower than this many milliseconds. */
+                latencyCeilingMs?: number;
+                /** @description Ordered fallback publicModelNames on failure/unavailability. */
+                fallbacks?: string[];
+                /** @description Keep the chosen model stable within a conversation to preserve prompt caches. */
+                sessionPin: boolean;
+                /** @description Fraction of traffic to explore alternatives on (0 = pure exploit). */
+                explorationRate: number;
+            } | null;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+        };
+        /** @description Set a skill's model posture. pinned requires pinnedModel; auto validates autoConfig; null clears the posture (inherit the scope default). */
+        SkillModelPostureWrite: {
+            /**
+             * @description pinned, auto, or null to clear the posture.
+             * @enum {string|null}
+             */
+            modelMode: "pinned" | "auto" | null;
+            /** @description Required when modelMode is pinned. */
+            pinnedModel?: string | null;
+            /** @description Provided when modelMode is auto. */
+            autoConfig?: {
+                /**
+                 * @description The optimization objective.
+                 * @enum {string}
+                 */
+                objective: "cheapest-passing-bar" | "best-quality-within-budget" | "balanced";
+                /** @description Cost↔quality dial for the balanced objective: 0 = cheapest … 10 = best. */
+                costQualitySlider?: number;
+                /** @description Minimum eval score a model must clear; defaults to the skill's own bar when omitted. */
+                qualityFloor?: number;
+                /** @description Hard per-decision spend ceiling in USD. */
+                maxBudgetUsd?: number;
+                /** @description Restrict auto to this subset of publicModelNames; must stay within the key's allowlist. */
+                allowedModels?: string[];
+                /** @description Reject/penalize models slower than this many milliseconds. */
+                latencyCeilingMs?: number;
+                /** @description Ordered fallback publicModelNames on failure/unavailability. */
+                fallbacks?: string[];
+                /** @description Keep the chosen model stable within a conversation to preserve prompt caches. */
+                sessionPin: boolean;
+                /** @description Fraction of traffic to explore alternatives on (0 = pure exploit). */
+                explorationRate: number;
+            } | null;
         };
         AwarenessRollout: {
             targetVersion?: string;
@@ -3802,6 +4053,268 @@ export interface operations {
                 };
             };
             /** @description Model definition not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listModelRoutingDefaults: {
+        parameters: {
+            query?: {
+                /** @description Filter to one owning ClusterTenant. */
+                clusterTenant?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Model-routing default list. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelRoutingDefault"][];
+                };
+            };
+        };
+    };
+    upsertModelRoutingDefault: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelRoutingDefaultWrite"];
+            };
+        };
+        responses: {
+            /** @description Model-routing default upserted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelRoutingDefault"];
+                };
+            };
+            /** @description Request body failed validation (code VALIDATION_ERROR). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Caller is not authorized for the resource scope (code FORBIDDEN_SCOPE). Global defaults are operator-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getModelRoutingDefault: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Model-routing default detail. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelRoutingDefault"];
+                };
+            };
+            /** @description Model routing default not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteModelRoutingDefault: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Model-routing default deleted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id?: string;
+                        status?: string;
+                    };
+                };
+            };
+            /** @description Caller is not authorized for the resource scope (code FORBIDDEN_SCOPE). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Model routing default not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listSkillModelPostures: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Skill posture list. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillModelPosture"][];
+                };
+            };
+        };
+    };
+    getSkillModelPosture: {
+        parameters: {
+            query: {
+                /** @description Skill name. */
+                name: string;
+                /** @description Skill scope. */
+                scope: string;
+                /** @description Owning team; empty string when not team-scoped. */
+                team?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Skill posture detail. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillModelPosture"];
+                };
+            };
+            /** @description name and scope query params are required (code VALIDATION_ERROR). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Skill not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    setSkillModelPosture: {
+        parameters: {
+            query: {
+                /** @description Skill name. */
+                name: string;
+                /** @description Skill scope. */
+                scope: string;
+                /** @description Owning team; empty string when not team-scoped. */
+                team?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SkillModelPostureWrite"];
+            };
+        };
+        responses: {
+            /** @description Skill posture updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillModelPosture"];
+                };
+            };
+            /** @description Request body or query failed validation (code VALIDATION_ERROR). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Caller is not authorized for the resource scope (code FORBIDDEN_SCOPE). Org/global skills are operator-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Skill not found. */
             404: {
                 headers: {
                     [name: string]: unknown;

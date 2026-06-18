@@ -375,6 +375,75 @@ const ModelDefinitionWriteSchema = {
   },
 };
 
+const AutoRoutingConfigSchema = {
+  type: "object" as const,
+  required: ["objective", "sessionPin", "explorationRate"],
+  description: "Opt-in auto-routing configuration. Auto routing applies ONLY when a skill (or scope default) selects it; the runtime optimizer that consumes it is a later track item (AIR.7).",
+  properties: {
+    objective: { type: "string", enum: ["cheapest-passing-bar", "best-quality-within-budget", "balanced"], description: "The optimization objective." },
+    costQualitySlider: { type: "number", description: "Cost↔quality dial for the balanced objective: 0 = cheapest … 10 = best." },
+    qualityFloor: { type: "number", description: "Minimum eval score a model must clear; defaults to the skill's own bar when omitted." },
+    maxBudgetUsd: { type: "number", description: "Hard per-decision spend ceiling in USD." },
+    allowedModels: { type: "array", items: { type: "string" }, description: "Restrict auto to this subset of publicModelNames; must stay within the key's allowlist." },
+    latencyCeilingMs: { type: "number", description: "Reject/penalize models slower than this many milliseconds." },
+    fallbacks: { type: "array", items: { type: "string" }, description: "Ordered fallback publicModelNames on failure/unavailability." },
+    sessionPin: { type: "boolean", description: "Keep the chosen model stable within a conversation to preserve prompt caches." },
+    explorationRate: { type: "number", minimum: 0, maximum: 1, description: "Fraction of traffic to explore alternatives on (0 = pure exploit)." },
+  },
+};
+
+const ModelRoutingDefaultSchema = {
+  type: "object" as const,
+  required: ["id", "scope"],
+  properties: {
+    id: { type: "string", description: "Stable identifier." },
+    scope: { type: "string", enum: ["global", "clusterTenant"], description: "Whether this default is platform-wide or per-ClusterTenant." },
+    clusterTenant: { type: "string", nullable: true, description: "Owning ClusterTenant when scope is clusterTenant; null for Global." },
+    defaultModel: { type: "string", nullable: true, description: "Default model publicModelName at this scope; null when unset." },
+    autoConfig: { ...AutoRoutingConfigSchema, nullable: true, description: "Default auto-routing config at this scope; null when unset." },
+    createdAt: { type: "string", format: "date-time" },
+    updatedAt: { type: "string", format: "date-time" },
+  },
+};
+
+const ModelRoutingDefaultWriteSchema = {
+  type: "object" as const,
+  description: "Upsert body for a scope-level model-routing default. At least one of defaultModel or autoConfig is required.",
+  properties: {
+    scope: { type: "string", enum: ["global", "clusterTenant"], description: "Defaults to global when omitted." },
+    clusterTenant: { type: "string", description: "Required when scope is clusterTenant." },
+    defaultModel: { type: "string", description: "Default model publicModelName." },
+    autoConfig: { ...AutoRoutingConfigSchema, description: "Default auto-routing config." },
+  },
+};
+
+const SkillModelPostureSchema = {
+  type: "object" as const,
+  required: ["name", "scope", "team", "path"],
+  properties: {
+    name: { type: "string", description: "Skill name (part of the compound key)." },
+    scope: { type: "string", description: "Skill scope, e.g. org/team/personal (part of the compound key)." },
+    team: { type: "string", description: "Owning team for team-scoped skills; empty string when not team-scoped (part of the compound key)." },
+    path: { type: "string", description: "Workspace-relative path the skill is delivered to." },
+    modelMode: { type: "string", enum: ["pinned", "auto"], nullable: true, description: "pinned (use pinnedModel), auto (route within autoConfig), or null (inherit the scope default)." },
+    pinnedModel: { type: "string", nullable: true, description: "The pinned model's publicModelName, when modelMode is pinned." },
+    autoConfig: { ...AutoRoutingConfigSchema, nullable: true, description: "The skill's auto-routing config, when modelMode is auto." },
+    createdAt: { type: "string", format: "date-time" },
+    updatedAt: { type: "string", format: "date-time" },
+  },
+};
+
+const SkillModelPostureWriteSchema = {
+  type: "object" as const,
+  required: ["modelMode"],
+  description: "Set a skill's model posture. pinned requires pinnedModel; auto validates autoConfig; null clears the posture (inherit the scope default).",
+  properties: {
+    modelMode: { type: "string", enum: ["pinned", "auto"], nullable: true, description: "pinned, auto, or null to clear the posture." },
+    pinnedModel: { type: "string", nullable: true, description: "Required when modelMode is pinned." },
+    autoConfig: { ...AutoRoutingConfigSchema, nullable: true, description: "Provided when modelMode is auto." },
+  },
+};
+
 const DeviceGrantSchema = {
   type: "object" as const,
   required: ["deviceCode", "userCode", "verificationUri", "expiresIn", "interval"],
@@ -504,6 +573,11 @@ export const spec = {
       ProviderCredentialWrite: ProviderCredentialWriteSchema,
       ModelDefinition: ModelDefinitionSchema,
       ModelDefinitionWrite: ModelDefinitionWriteSchema,
+      AutoRoutingConfig: AutoRoutingConfigSchema,
+      ModelRoutingDefault: ModelRoutingDefaultSchema,
+      ModelRoutingDefaultWrite: ModelRoutingDefaultWriteSchema,
+      SkillModelPosture: SkillModelPostureSchema,
+      SkillModelPostureWrite: SkillModelPostureWriteSchema,
       AwarenessRollout: {
         type: "object",
         properties: {
@@ -1752,6 +1826,113 @@ export const spec = {
           200: ok("Model definition deleted.", { type: "object", properties: { id: { type: "string" }, status: { type: "string" } } }),
           403: { description: "Caller is not authorized for the resource scope (code FORBIDDEN_SCOPE).", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
           404: notFound("Model definition not found."),
+        },
+      },
+    },
+
+    // ------------------------------------------------------------------
+    // Model-routing defaults (AIR.4)
+    // ------------------------------------------------------------------
+
+    "/model-routing/defaults": {
+      get: {
+        operationId: "listModelRoutingDefaults",
+        summary: "List model-routing defaults",
+        tags: ["Model Registry"],
+        parameters: [{ name: "clusterTenant", in: "query", required: false, schema: { type: "string" }, description: "Filter to one owning ClusterTenant." }],
+        responses: {
+          200: ok("Model-routing default list.", { type: "array", items: { $ref: "#/components/schemas/ModelRoutingDefault" } }),
+        },
+      },
+      put: {
+        operationId: "upsertModelRoutingDefault",
+        summary: "Upsert the model-routing default for a (scope, clusterTenant) pair",
+        tags: ["Model Registry"],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/ModelRoutingDefaultWrite" } } },
+        },
+        responses: {
+          200: ok("Model-routing default upserted.", { $ref: "#/components/schemas/ModelRoutingDefault" }),
+          400: badRequest("Request body failed validation (code VALIDATION_ERROR)."),
+          403: { description: "Caller is not authorized for the resource scope (code FORBIDDEN_SCOPE). Global defaults are operator-only.", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+        },
+      },
+    },
+
+    "/model-routing/defaults/{id}": {
+      get: {
+        operationId: "getModelRoutingDefault",
+        summary: "Get a single model-routing default by id",
+        tags: ["Model Registry"],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          200: ok("Model-routing default detail.", { $ref: "#/components/schemas/ModelRoutingDefault" }),
+          404: notFound("Model routing default not found."),
+        },
+      },
+      delete: {
+        operationId: "deleteModelRoutingDefault",
+        summary: "Delete a model-routing default",
+        tags: ["Model Registry"],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          200: ok("Model-routing default deleted.", { type: "object", properties: { id: { type: "string" }, status: { type: "string" } } }),
+          403: { description: "Caller is not authorized for the resource scope (code FORBIDDEN_SCOPE).", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+          404: notFound("Model routing default not found."),
+        },
+      },
+    },
+
+    // ------------------------------------------------------------------
+    // Skill model posture (AIR.3)
+    // ------------------------------------------------------------------
+
+    "/skills/posture": {
+      get: {
+        operationId: "listSkillModelPostures",
+        summary: "List all skills with their model posture",
+        tags: ["Skills"],
+        responses: {
+          200: ok("Skill posture list.", { type: "array", items: { $ref: "#/components/schemas/SkillModelPosture" } }),
+        },
+      },
+    },
+
+    "/skills/posture/skill": {
+      get: {
+        operationId: "getSkillModelPosture",
+        summary: "Get a single skill's model posture by its compound key",
+        tags: ["Skills"],
+        parameters: [
+          { name: "name", in: "query", required: true, schema: { type: "string" }, description: "Skill name." },
+          { name: "scope", in: "query", required: true, schema: { type: "string" }, description: "Skill scope." },
+          { name: "team", in: "query", required: false, schema: { type: "string" }, description: "Owning team; empty string when not team-scoped." },
+        ],
+        responses: {
+          200: ok("Skill posture detail.", { $ref: "#/components/schemas/SkillModelPosture" }),
+          400: badRequest("name and scope query params are required (code VALIDATION_ERROR)."),
+          404: notFound("Skill not found."),
+        },
+      },
+      put: {
+        operationId: "setSkillModelPosture",
+        summary: "Set (or clear) a skill's model posture",
+        tags: ["Skills"],
+        parameters: [
+          { name: "name", in: "query", required: true, schema: { type: "string" }, description: "Skill name." },
+          { name: "scope", in: "query", required: true, schema: { type: "string" }, description: "Skill scope." },
+          { name: "team", in: "query", required: false, schema: { type: "string" }, description: "Owning team; empty string when not team-scoped." },
+        ],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/SkillModelPostureWrite" } } },
+        },
+        responses: {
+          200: ok("Skill posture updated.", { $ref: "#/components/schemas/SkillModelPosture" }),
+          400: badRequest("Request body or query failed validation (code VALIDATION_ERROR)."),
+          403: { description: "Caller is not authorized for the resource scope (code FORBIDDEN_SCOPE). Org/global skills are operator-only.", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+          404: notFound("Skill not found."),
         },
       },
     },

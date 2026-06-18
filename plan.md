@@ -521,23 +521,38 @@ With one agent per lane, wall-clock ≈ 4 sequential slices instead of 7.
   `api_key: os.environ/<KEY>`). Retire the orphaned `ProviderApiKey` table + hardcoded `["openai","claude"]`.
   **Anchors:** `openapi/spec.ts`, `routes/provider-keys.ts`→registry routes, `prisma/schema.prisma`,
   regenerated `libs/contracts`, `apps/cli/src/commands/`.
-- [ ] **AIR.2 Model selection precedence + the "auto" gate.** Resolve per request/skill:
+- [x] **AIR.2 Model selection precedence + the "auto" gate. — LANDED 2026-06-18 (contract side).** The
+  effective-contract now emits a resolved per-skill model via the pure `resolve-skill-model` helper
+  (precedence skill-pinned > skill-auto > ClusterTenant default > Global default). **Deferred:** operator
+  config-map pod-side default population (needs an operator→models data path) + the request-level explicit
+  override at the gateway. _(Original:)_ Resolve per request/skill:
   **explicit > skill-pinned > auto (opt-in) > global default**, bounded by the key's `models[]`.
   **Auto runs only when explicitly selected** (request- or skill-level flag) — never global-implicit.
   Write the resolved per-skill model into the effective-contract + propagate to the pod
   (`2-config-map.ts` `models[]`/default). **Anchors:** effective-contract endpoint,
   `apps/operator/src/tenants/deploy/2-config-map.ts`.
-- [ ] **AIR.3 Skill-level model definition.** Let a skill self-define its model in the skill-registry
+- [x] **AIR.3 Skill-level model definition. — LANDED 2026-06-18.** `Skill` gained
+  `modelMode`/`pinnedModel`/`autoConfig`; dedicated `/api/v1/skills/posture` router (the `Skill` model had
+  no prior read/write path — `skill-catalog` operates on the separate `SkillBundle`) keyed by
+  (name,scope,team) + `oc skill-posture` CLI. _(Original:)_ Let a skill self-define its model in the skill-registry
   metadata — a **pinned** model or **`auto`** (with a per-skill auto config) — surfaced via the skill
   API + `oc skill …` + the effective-contract. **Anchors:** skill-registry schema, control-plane skill
   routes, contract compiler.
-- [ ] **AIR.4 "auto" configuration surface.** The opt-in auto knobs (router report §12):
+- [x] **AIR.4 "auto" configuration surface. — LANDED 2026-06-18.** `ModelRoutingDefault` table (scope
+  global|clusterTenant) + `/api/v1/model-routing/defaults` CRUD + `oc model-default` CLI + the
+  `AutoRoutingConfig` type. **Config surface only** — the runtime optimizer that consumes `autoConfig` is
+  AIR.7. _(Original:)_ The opt-in auto knobs (router report §12):
   objective/strategy (cheapest-passing-bar default | best-quality-within-budget | balanced via a
   cost↔quality slider), quality floor (skill bar), budget cap, allowed-model set (= key `models[]`),
   latency ceiling, fallback chain, scope (global|ClusterTenant|skill|request), session-pin (default on),
   exploration toggle. API-first + `oc` + WeOwnAI. **Anchors:** config schema in `openapi/spec.ts`,
   contract, CLI.
-- [ ] **AIR.5 Per-tenant virtual-key hardening.** Extend `_generateLiteLlmVirtualKey` to send `team_id`
+- [x] **AIR.5 Per-tenant virtual-key hardening. — LANDED 2026-06-18.** Operator: richer `/key/generate`
+  params (`team_id` from clusterTenantRef/team, `budget_duration`, config-default tpm/rpm) + a `/key/update`
+  drift-reconcile replacing the no-rotation early-return (key value preserved, no pod restart). Control-plane:
+  revoke now best-effort `/key/delete` by alias, audited. **Deferred:** `org-shared-secrets` broadcast removal
+  (cutover — would break tenants before AIR.2 operator-side lands) + per-key `models[]` allowlist (needs the
+  operator→models data path). _(Original:)_ Extend `_generateLiteLlmVirtualKey` to send `team_id`
   (ClusterTenant→LiteLLM Team), `models[]` allowlist, `budget_duration`, `tpm/rpm`; fix the no-rotation
   early-return; complete revocation (`/key/delete`); stop the `org-shared-secrets` `envFrom` broadcast
   (keys stay at the proxy). **Anchors:** `apps/operator/src/tenants/internal/tenant-litellm-keys.ts`,
