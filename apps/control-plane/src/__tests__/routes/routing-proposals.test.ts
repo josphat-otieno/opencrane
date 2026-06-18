@@ -58,11 +58,15 @@ function _mockPrisma(stores: Stores): PrismaClient
   return client as unknown as PrismaClient;
 }
 
-/** Build a minimal app mounting the proposals router. */
-function _buildApp(prisma: PrismaClient): Express
+/** Build a minimal app mounting the proposals router, optionally seeding a session user. */
+function _buildApp(prisma: PrismaClient, user?: { isPlatformOperator: boolean; email?: string }): Express
 {
   const app = express();
   app.use(express.json());
+  if (user)
+  {
+    app.use(function _seedSession(req, _res, next) { (req as unknown as { session: { authUser: typeof user } }).session = { authUser: user }; next(); });
+  }
   app.use("/api/v1/model-routing/proposals", routingProposalsRouter(prisma));
   return app;
 }
@@ -126,5 +130,17 @@ describe("routingProposalsRouter", function _suite()
   {
     const res = await request(_buildApp(_mockPrisma(_seed()))).post("/api/v1/model-routing/proposals/nope/approve").send({});
     expect(res.status).toBe(404);
+  });
+
+  it("scope guard: a non-operator may NOT approve an org-scoped proposal (403)", async function _guardDenied()
+  {
+    const stores = _seed();
+    const res = await request(_buildApp(_mockPrisma(stores), { isPlatformOperator: false, email: "user@acme.test" }))
+      .post("/api/v1/model-routing/proposals/p1/approve")
+      .send({});
+
+    expect(res.status).toBe(403);
+    // The proposal stays Pending and the skill is untouched when the guard denies.
+    expect((stores.proposals.get("p1") as { status: string }).status).toBe("Pending");
   });
 });
