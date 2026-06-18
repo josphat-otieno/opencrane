@@ -596,8 +596,24 @@ With one agent per lane, wall-clock ≈ 4 sequential slices instead of 7.
   external OSS service (LiteLLM's built-in callbacks are Enterprise), emit verdicts to Langfuse keyed by
   skill id; use as a hard routing filter + a safety term in the per-skill score — **not** the quality
   judge. No such service exists today.
+- [ ] **AIR.10 (FRONTEND ENABLER) Langfuse-metrics proxy.** Control-plane read endpoint proxying
+  Langfuse's **v1** Metrics/Public API (v2 is Cloud-only) with project keys held server-side + scoped
+  per tenant, so the WeOwnAI console can render native eval/cost trend tiles without the browser ever
+  holding Langfuse credentials. IAM-gated. (Verified 2026-06-18: Langfuse has no iframe embed → build
+  native over the API + link out for deep eval UX.)
+- [ ] **AIR.11 (FRONTEND ENABLER) Savings-recommendation read endpoint.** Aggregate the latest
+  `RoutingMeasurement` + open `RoutingProposal` per skill/tenant into a "save up to N%" feed — the API
+  behind the console's headline differentiator (the inline savings-recommendation + one-click human-gated
+  apply, market whitespace; see `litellm-router-autonomous-improvement-research.md` §14). Pure read over
+  data the AIR.6/7 loop already produces.
 
-**Sequencing:** AIR.0/0b (prereqs) → AIR.1 (registry) → {AIR.2 selection ∥ AIR.3 skill model ∥ AIR.4 auto config} → AIR.5 key hardening → **AIR.6 shadow measurement is the recommended first end-to-end slice** (proves the savings before building AIR.7) → AIR.7 loop → AIR.8/9 future.
+> **Frontend (WeOwnAI, separate proprietary repo — out of this AGPL tree):** the management *views* live
+> there as just-another-API-client (`/auth/me` claims hide UI; the API enforces). Prioritized capability
+> catalogue + Langfuse embed/link/native guidance in `litellm-router-autonomous-improvement-research.md`
+> §14. **Eval refinement:** AIR.6's judge should be a thin layer over **Langfuse managed evaluators +
+> trace-curated datasets** (all MIT/free on OSS self-host) rather than a fully bespoke judge — §13.
+
+**Sequencing:** AIR.0/0b (prereqs) → AIR.1 (registry) → {AIR.2 selection ∥ AIR.3 skill model ∥ AIR.4 auto config} → AIR.5 key hardening → **AIR.6 shadow measurement is the recommended first end-to-end slice** (proves the savings before building AIR.7) → AIR.7 loop → {AIR.10 ∥ AIR.11 frontend enablers} → AIR.8/9 future.
 
 ---
 
