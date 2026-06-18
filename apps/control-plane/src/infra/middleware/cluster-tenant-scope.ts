@@ -2,6 +2,7 @@ import type { Request, RequestHandler } from "express";
 import type { PrismaClient } from "@prisma/client";
 
 import type { ClusterTenantScopedResource } from "./cluster-tenant-scope.types.js";
+import { _ResolveCallerClusterTenant } from "../auth/resolve-caller-cluster-tenant.js";
 
 /**
  * Reusable authorization guard for mutations (POST/PUT/DELETE) on ClusterTenant-scoped
@@ -103,40 +104,4 @@ async function _enforce(
   }
 
   return "deny";
-}
-
-/**
- * Resolve the caller's ClusterTenant from their IdP-verified email, fail-closed.
- * Mirrors `OidcAuthService._resolveClusterTenant`: at most one tenant may match, and
- * its `clusterTenantRef` is returned. Returns null on a missing/ambiguous email or any
- * lookup failure — never an arbitrary pick, never taken from request input.
- *
- * @param prisma - Prisma client for the tenant lookup.
- * @param email  - The session's verified email claim, if any.
- */
-async function _ResolveCallerClusterTenant(prisma: PrismaClient, email: string | undefined): Promise<string | null>
-{
-  const normalized = typeof email === "string" ? email.toLowerCase().trim() : "";
-  if (!normalized)
-  {
-    return null;
-  }
-
-  try
-  {
-    const matches = await prisma.tenant.findMany({
-      where: { email: { equals: normalized, mode: "insensitive" } },
-      select: { clusterTenantRef: true },
-      take: 2,
-    });
-    if (matches.length !== 1)
-    {
-      return null;
-    }
-    return matches[0].clusterTenantRef ?? null;
-  }
-  catch
-  {
-    return null;
-  }
 }

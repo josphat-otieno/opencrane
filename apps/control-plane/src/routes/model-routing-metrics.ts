@@ -3,6 +3,7 @@ import type { Request } from "express";
 import type { PrismaClient } from "@prisma/client";
 
 import type { LangfuseConfig, MetricsCallerScope } from "./model-routing-metrics.types.js";
+import { _ResolveCallerClusterTenant as _resolveCallerClusterTenant } from "../infra/auth/resolve-caller-cluster-tenant.js";
 
 /**
  * Default Langfuse v1 Metrics/Public API path. Confirmed against the Langfuse public-API docs
@@ -70,41 +71,6 @@ async function _resolveCallerScope(prisma: PrismaClient, req: Request): Promise<
   // 3. Non-operator: resolve their own ClusterTenant fresh from the verified email (fail-closed).
   const clusterTenant = await _resolveCallerClusterTenant(prisma, authUser.email);
   return { isOperator: false, clusterTenant };
-}
-
-/**
- * Resolve the caller's ClusterTenant from their IdP-verified email, fail-closed. Mirrors
- * `cluster-tenant-scope._ResolveCallerClusterTenant`. Returns null on missing/ambiguous email or
- * any lookup failure.
- *
- * @param prisma - Prisma client for the tenant lookup.
- * @param email  - The session's verified email claim, if any.
- */
-async function _resolveCallerClusterTenant(prisma: PrismaClient, email: string | undefined): Promise<string | null>
-{
-  const normalized = typeof email === "string" ? email.toLowerCase().trim() : "";
-  if (!normalized)
-  {
-    return null;
-  }
-
-  try
-  {
-    const matches = await prisma.tenant.findMany({
-      where: { email: { equals: normalized, mode: "insensitive" } },
-      select: { clusterTenantRef: true },
-      take: 2,
-    });
-    if (matches.length !== 1)
-    {
-      return null;
-    }
-    return matches[0].clusterTenantRef ?? null;
-  }
-  catch
-  {
-    return null;
-  }
 }
 
 /**
