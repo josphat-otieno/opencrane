@@ -13,6 +13,8 @@ follows [Keep a Changelog](https://keepachangelog.com/); the project uses
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-06-19
+
 ### Added
 
 - **Register any AI model from any provider and make it routable across the platform.** Operators
@@ -78,6 +80,26 @@ follows [Keep a Changelog](https://keepachangelog.com/); the project uses
   nothing vendor-specific lives in the AGPL core. Configure via Helm
   (`clusterTenant.provisionerWebhook.url`); `dedicatedCluster` is rejected `422
   TIER_UNAVAILABLE` until a backend advertises it (fail-closed).
+
+- **Every service now emits structured, trace-correlated logs — and a single Helm toggle
+  wires the whole fleet to GCP Cloud Logging + Cloud Trace (or any OTLP backend).** All
+  OpenCrane services share a single `@opencrane/observability` library that writes
+  synchronous pino JSON directly to stdout on every deployment, with no configuration
+  required: each log record carries a `requestId` (propagated through the full async
+  call-tree via `AsyncLocalStorage` without threading it by hand), and known secret fields
+  (`authorization`, `token`, `apiKey`, `masterKey`, `client_secret`, `DATABASE_URL`, and
+  their nested equivalents) are redacted before the record is serialised. Any stray
+  `console.*` calls — from first-party code or noisy third-party libraries — are
+  transparently routed into the same structured pipeline. The CLI writes to stderr so
+  stdout stays reserved for `--output json`. Distributed tracing is opt-in: set
+  `observability.otel.enabled: true` in Helm and the chart deploys an in-cluster
+  OpenTelemetry Collector (DaemonSet by default, single Deployment for GKE Autopilot) that
+  receives OTLP traces from all services, scrapes pod stdout via the filelog receiver,
+  promotes pino's `trace_id`/`span_id` fields to first-class log attributes so logs and
+  traces correlate in Cloud Trace, and exports both to GCP Cloud Logging + Cloud Trace
+  (`exporter.backend: googlecloud`) or to any downstream OTLP endpoint
+  (`exporter.backend: otlp`). Tracing is a no-op on a laptop or in CI when no collector
+  endpoint is configured — nothing times out or errors.
 
 ### Changed
 
