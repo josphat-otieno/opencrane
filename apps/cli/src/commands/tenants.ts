@@ -14,13 +14,16 @@ export function _RegisterTenants(parent: Command, getConfig: () => CliConfig): v
   tenants
     .command("list")
     .description("List all tenants")
+    .option("--cluster-tenant <name>", "Only list tenants attached to this parent ClusterTenant (customer)")
     .option("-o, --output <format>", "Output format: table|json", "table")
-    .action(async function _list(opts: { output: OutputFormat })
+    .action(async function _list(opts: { clusterTenant?: string; output: OutputFormat })
     {
       const client = _MakeClient(getConfig());
-      const { data, error } = await client.GET("/tenants");
+      const { data, error } = await client.GET("/tenants", {
+        params: { query: opts.clusterTenant ? { clusterTenantRef: opts.clusterTenant } : {} },
+      });
       if (error) _PrintApiError("tenants list", error);
-      _Print(data, opts.output, ["name", "phase", "email", "team", "ingressHost", "createdAt"]);
+      _Print(data, opts.output, ["name", "phase", "email", "team", "clusterTenantRef", "ingressHost", "createdAt"]);
     });
 
   tenants
@@ -42,6 +45,7 @@ export function _RegisterTenants(parent: Command, getConfig: () => CliConfig): v
     .requiredOption("--display-name <displayName>", "Human-readable display name")
     .requiredOption("--email <email>", "Contact email for the tenant")
     .option("--team <team>", "Team name")
+    .option("--cluster-tenant <name>", "Parent ClusterTenant (customer) to attach this tenant to")
     .option("--budget <usd>", "Monthly budget ceiling in USD")
     .option("--policy-ref <policyRef>", "AccessPolicy name to attach")
     .option("-o, --output <format>", "Output format: table|json", "table")
@@ -50,6 +54,7 @@ export function _RegisterTenants(parent: Command, getConfig: () => CliConfig): v
       displayName: string;
       email: string;
       team?: string;
+      clusterTenant?: string;
       budget?: string;
       policyRef?: string;
       output: OutputFormat;
@@ -62,6 +67,7 @@ export function _RegisterTenants(parent: Command, getConfig: () => CliConfig): v
           displayName: opts.displayName,
           email: opts.email,
           ...(opts.team ? { team: opts.team } : {}),
+          ...(opts.clusterTenant ? { clusterTenantRef: opts.clusterTenant } : {}),
           ...(opts.budget ? { monthlyBudgetUsd: Number(opts.budget) } : {}),
           ...(opts.policyRef ? { policyRef: opts.policyRef } : {}),
         },
@@ -76,6 +82,7 @@ export function _RegisterTenants(parent: Command, getConfig: () => CliConfig): v
     .option("--display-name <displayName>", "New display name")
     .option("--email <email>", "New contact email")
     .option("--team <team>", "New team name")
+    .option("--cluster-tenant <name>", "New parent ClusterTenant (customer); pass an empty string to detach")
     .option("--budget <usd>", "New monthly budget ceiling in USD")
     .option("--policy-ref <policyRef>", "New AccessPolicy name")
     .option("-o, --output <format>", "Output format: table|json", "table")
@@ -83,6 +90,7 @@ export function _RegisterTenants(parent: Command, getConfig: () => CliConfig): v
       displayName?: string;
       email?: string;
       team?: string;
+      clusterTenant?: string;
       budget?: string;
       policyRef?: string;
       output: OutputFormat;
@@ -95,6 +103,7 @@ export function _RegisterTenants(parent: Command, getConfig: () => CliConfig): v
           ...(opts.displayName ? { displayName: opts.displayName } : {}),
           ...(opts.email ? { email: opts.email } : {}),
           ...(opts.team ? { team: opts.team } : {}),
+          ...(opts.clusterTenant !== undefined ? { clusterTenantRef: opts.clusterTenant } : {}),
           ...(opts.budget ? { monthlyBudgetUsd: Number(opts.budget) } : {}),
           ...(opts.policyRef ? { policyRef: opts.policyRef } : {}),
         },

@@ -252,6 +252,37 @@ describe("tenantsRouter dataset membership endpoints", () =>
   });
 });
 
+describe("tenantsRouter list endpoint — clusterTenantRef projection + filter (WOI.2)", () =>
+{
+  it("surfaces clusterTenantRef in the list response", async () =>
+  {
+    const findManySpy = vi.fn().mockResolvedValue([
+      { name: "acme", displayName: "Acme", email: "o@acme.io", team: "eng", clusterTenantRef: "acme-corp", phase: "Running", ingressHost: null, createdAt: new Date("2026-01-01T00:00:00Z") },
+    ]);
+    const prisma = { tenant: { findMany: findManySpy } } as unknown as PrismaClient;
+
+    const app = _buildTenantsApp({} as k8s.CustomObjectsApi, prisma);
+    const response = await request(app).get("/api/tenants");
+
+    expect(response.status).toBe(200);
+    expect(response.body[0].clusterTenantRef).toBe("acme-corp");
+    // No filter supplied → no where clause.
+    expect(findManySpy).toHaveBeenCalledWith(expect.not.objectContaining({ where: expect.anything() }));
+  });
+
+  it("filters server-side by clusterTenantRef when the query param is present", async () =>
+  {
+    const findManySpy = vi.fn().mockResolvedValue([]);
+    const prisma = { tenant: { findMany: findManySpy } } as unknown as PrismaClient;
+
+    const app = _buildTenantsApp({} as k8s.CustomObjectsApi, prisma);
+    const response = await request(app).get("/api/tenants?clusterTenantRef=acme-corp");
+
+    expect(response.status).toBe(200);
+    expect(findManySpy).toHaveBeenCalledWith(expect.objectContaining({ where: { clusterTenantRef: "acme-corp" } }));
+  });
+});
+
 describe("tenantsRouter create endpoint — Tenant CR appearance validation", () =>
 {
   it("creates a tenant when the Tenant CR appears", async () =>
@@ -279,6 +310,35 @@ describe("tenantsRouter create endpoint — Tenant CR appearance validation", ()
     expect(response.status).toBe(201);
     expect(tenantCreateSpy).toHaveBeenCalledOnce();
     expect(auditCreateSpy).toHaveBeenCalledOnce();
+  });
+
+  it("dual-writes clusterTenantRef to both the CRD spec and the DB row (WOI.2)", async () =>
+  {
+    const createCrSpy = vi.fn().mockResolvedValue({});
+    const customApi = {
+      createNamespacedCustomObject: createCrSpy,
+      getNamespacedCustomObject: vi.fn().mockResolvedValue({}),
+    } as unknown as k8s.CustomObjectsApi;
+    const tenantCreateSpy = vi.fn().mockResolvedValue({});
+    const prisma = {
+      tenant: { create: tenantCreateSpy },
+      auditEntry: { create: vi.fn().mockResolvedValue({}) },
+    } as unknown as PrismaClient;
+
+    const app = _buildTenantsApp(customApi, prisma);
+    const response = await request(app)
+      .post("/api/tenants")
+      .send({ name: "acme", displayName: "Acme", email: "owner@acme.io", clusterTenantRef: "acme-corp" });
+
+    expect(response.status).toBe(201);
+    // CRD spec carries clusterTenantRef…
+    expect(createCrSpy).toHaveBeenCalledWith(expect.objectContaining({
+      body: expect.objectContaining({ spec: expect.objectContaining({ clusterTenantRef: "acme-corp" }) }),
+    }));
+    // …and so does the projected DB row.
+    expect(tenantCreateSpy).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ clusterTenantRef: "acme-corp" }),
+    }));
   });
 
   it("returns 504 when the Tenant CR does not appear within the SLO window", async () =>
@@ -312,5 +372,76 @@ describe("tenantsRouter create endpoint — Tenant CR appearance validation", ()
     expect(response.body.error).toContain("within 30 seconds");
     expect(tenantCreateSpy).not.toHaveBeenCalled();
     expect(auditCreateSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("tenantsRouter get + update — clusterTenantRef round-trip and clear (WOI.2)", () =>
+{
+  it("returns clusterTenantRef from a single-tenant get", async () =>
+  {
+    const prisma = {
+      tenant: {
+        findUnique: vi.fn().mockResolvedValue({
+          name: "acme", displayName: "Acme", email: "o@acme.io", team: "eng", clusterTenantRef: "acme-corp", phase: "Running", ingressHost: null, createdAt: new Date("2026-01-01T00:00:00Z"),
+        }),
+      },
+    } as unknown as PrismaClient;
+
+    const app = _buildTenantsApp({} as k8s.CustomObjectsApi, prisma);
+    const response = await request(app).get("/api/tenants/acme");
+
+    expect(response.status).toBe(200);
+    expect(response.body.clusterTenantRef).toBe("acme-corp");
+  });
+
+  it("clears clusterTenantRef to null in both the CRD patch and the DB when given an empty string", async () =>
+  {
+    const patchSpy = vi.fn().mockResolvedValue({});
+    const updateSpy = vi.fn().mockResolvedValue({});
+    const customApi = { patchNamespacedCustomObject: patchSpy } as unknown as k8s.CustomObjectsApi;
+    const prisma = {
+      tenant: { update: updateSpy },
+      auditEntry: { create: vi.fn().mockResolvedValue({}) },
+    } as unknown as PrismaClient;
+
+    const app = _buildTenantsApp(customApi, prisma);
+    const response = await request(app)
+      .put("/api/tenants/acme")
+      .send({ clusterTenantRef: "" });
+
+    expect(response.status).toBe(200);
+    // Empty string clears: the CRD merge-patch deletes the field via null…
+    // Second arg carries the merge-patch Content-Type (else k8s rejects the body as JSON-Patch).
+    expect(patchSpy).toHaveBeenCalledWith(expect.objectContaining({
+      body: { spec: expect.objectContaining({ clusterTenantRef: null }) },
+    }), expect.anything());
+    // …and the DB row stores null.
+    expect(updateSpy).toHaveBeenCalledWith(expect.objectContaining({
+      data: { clusterTenantRef: null },
+    }));
+  });
+
+  it("attaches a non-empty clusterTenantRef on update (CRD patch + DB)", async () =>
+  {
+    const patchSpy = vi.fn().mockResolvedValue({});
+    const updateSpy = vi.fn().mockResolvedValue({});
+    const customApi = { patchNamespacedCustomObject: patchSpy } as unknown as k8s.CustomObjectsApi;
+    const prisma = {
+      tenant: { update: updateSpy },
+      auditEntry: { create: vi.fn().mockResolvedValue({}) },
+    } as unknown as PrismaClient;
+
+    const app = _buildTenantsApp(customApi, prisma);
+    const response = await request(app)
+      .put("/api/tenants/acme")
+      .send({ clusterTenantRef: "acme-corp" });
+
+    expect(response.status).toBe(200);
+    expect(patchSpy).toHaveBeenCalledWith(expect.objectContaining({
+      body: { spec: expect.objectContaining({ clusterTenantRef: "acme-corp" }) },
+    }), expect.anything());
+    expect(updateSpy).toHaveBeenCalledWith(expect.objectContaining({
+      data: { clusterTenantRef: "acme-corp" },
+    }));
   });
 });

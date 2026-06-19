@@ -101,6 +101,7 @@ const TenantSchema = {
     displayName: { type: "string" },
     email: { type: "string", format: "email" },
     team: { type: "string" },
+    clusterTenantRef: { type: "string", description: "Parent ClusterTenant (customer) this tenant attaches to; absent on the single-instance path." },
     phase: { type: "string" },
     ingressHost: { type: "string" },
     createdAt: { type: "string", format: "date-time" },
@@ -231,6 +232,29 @@ const ClusterTenantWriteSchema = {
   },
 };
 
+const ClusterTenantUpdateSchema = {
+  type: "object" as const,
+  description: "Partial cluster-tenant update; the immutable name comes from the path. Every field is optional — only those present are changed.",
+  properties: {
+    displayName: { type: "string", description: "New human-readable customer name (must be non-blank when present)." },
+    baseDomain: { type: "string", description: "New customer-owned base domain; an empty string clears it (back to the per-instance ingress.domain fallback)." },
+    isolationTier: { type: "string", enum: ["shared", "dedicatedNodes", "dedicatedCluster"], description: "New isolation strength; re-gated against the provisioner registry when changed." },
+    compute: {
+      type: "object",
+      required: ["mode"],
+      properties: {
+        mode: { type: "string", enum: ["shared", "dedicated"] },
+        nodePool: { type: "string", description: "Dedicated node pool name; required when mode is 'dedicated'." },
+      },
+    },
+    resources: {
+      type: "object",
+      required: ["quota"],
+      properties: { quota: { $ref: "#/components/schemas/ClusterTenantResourceQuota" } },
+    },
+  },
+};
+
 const GroupSchema = {
   type: "object" as const,
   properties: {
@@ -289,6 +313,234 @@ const ProviderKeySchema = {
     provider: { type: "string" },
     configured: { type: "boolean" },
     updatedAt: { type: "string", format: "date-time" },
+  },
+};
+
+const ProviderCredentialSchema = {
+  type: "object" as const,
+  required: ["id", "scope", "provider", "secretRef"],
+  properties: {
+    id: { type: "string", description: "Stable identifier." },
+    scope: { type: "string", enum: ["global", "clusterTenant"], description: "Whether the credential is platform-wide or owned by one ClusterTenant." },
+    clusterTenant: { type: "string", nullable: true, description: "Owning ClusterTenant when scope is clusterTenant; null for Global." },
+    provider: { type: "string", description: "Free-text provider key (e.g. openai, anthropic, bedrock)." },
+    secretRef: { type: "string", description: "Name of the External-Secrets-synced k8s Secret carrying the provider key (never the raw key)." },
+    litellmCredentialName: { type: "string", nullable: true, description: "LiteLLM /credentials name when registered for the dynamic path; null for the env baseline." },
+    createdAt: { type: "string", format: "date-time" },
+    updatedAt: { type: "string", format: "date-time" },
+  },
+};
+
+const ProviderCredentialWriteSchema = {
+  type: "object" as const,
+  required: ["provider", "secretRef"],
+  properties: {
+    scope: { type: "string", enum: ["global", "clusterTenant"], description: "Defaults to global when omitted." },
+    clusterTenant: { type: "string", description: "Required when scope is clusterTenant." },
+    provider: { type: "string", description: "Free-text provider key." },
+    secretRef: { type: "string", description: "Name of the External-Secrets-synced k8s Secret carrying the provider key. A raw key field (apiKey/keyValue/key) is rejected with 400." },
+    litellmCredentialName: { type: "string", description: "Optional LiteLLM /credentials name for the dynamic no-restart path." },
+  },
+};
+
+const ModelDefinitionSchema = {
+  type: "object" as const,
+  required: ["id", "scope", "publicModelName", "litellmModelId", "upstreamModel", "isDefault"],
+  properties: {
+    id: { type: "string", description: "Stable identifier." },
+    scope: { type: "string", enum: ["global", "clusterTenant"], description: "Whether the model is platform-wide or owned by one ClusterTenant." },
+    clusterTenant: { type: "string", nullable: true, description: "Owning ClusterTenant when scope is clusterTenant; null for Global." },
+    publicModelName: { type: "string", description: "The routable public slug callers request, e.g. openai/gpt-4o." },
+    litellmModelId: { type: "string", description: "Deployment id returned by LiteLLM /model/new (or a deterministic placeholder when LiteLLM is unconfigured)." },
+    upstreamModel: { type: "string", description: "Upstream model the deployment targets." },
+    apiBase: { type: "string", nullable: true, description: "Optional non-default API base for self-hosted / proxied endpoints." },
+    isDefault: { type: "boolean", description: "Whether this is the default model at its scope." },
+    providerCredentialId: { type: "string", nullable: true, description: "The provider credential backing this model, when set." },
+    createdAt: { type: "string", format: "date-time" },
+    updatedAt: { type: "string", format: "date-time" },
+  },
+};
+
+const ModelDefinitionWriteSchema = {
+  type: "object" as const,
+  required: ["publicModelName", "upstreamModel"],
+  properties: {
+    scope: { type: "string", enum: ["global", "clusterTenant"], description: "Defaults to global when omitted." },
+    clusterTenant: { type: "string", description: "Required when scope is clusterTenant." },
+    publicModelName: { type: "string", description: "The routable public slug, e.g. openai/gpt-4o." },
+    upstreamModel: { type: "string", description: "Upstream model the deployment targets." },
+    apiBase: { type: "string", description: "Optional non-default API base." },
+    isDefault: { type: "boolean", description: "Whether this is the default model at its scope." },
+    providerCredentialId: { type: "string", description: "Provider credential backing this model." },
+  },
+};
+
+const AutoRoutingConfigSchema = {
+  type: "object" as const,
+  required: ["objective", "sessionPin", "explorationRate"],
+  description: "Opt-in auto-routing configuration. Auto routing applies ONLY when a skill (or scope default) selects it; the runtime optimizer that consumes it is a later track item (AIR.7).",
+  properties: {
+    objective: { type: "string", enum: ["cheapest-passing-bar", "best-quality-within-budget", "balanced"], description: "The optimization objective." },
+    costQualitySlider: { type: "number", description: "Cost↔quality dial for the balanced objective: 0 = cheapest … 10 = best." },
+    qualityFloor: { type: "number", description: "Minimum eval score a model must clear; defaults to the skill's own bar when omitted." },
+    maxBudgetUsd: { type: "number", description: "Hard per-decision spend ceiling in USD." },
+    allowedModels: { type: "array", items: { type: "string" }, description: "Restrict auto to this subset of publicModelNames; must stay within the key's allowlist." },
+    latencyCeilingMs: { type: "number", description: "Reject/penalize models slower than this many milliseconds." },
+    fallbacks: { type: "array", items: { type: "string" }, description: "Ordered fallback publicModelNames on failure/unavailability." },
+    sessionPin: { type: "boolean", description: "Keep the chosen model stable within a conversation to preserve prompt caches." },
+    explorationRate: { type: "number", minimum: 0, maximum: 1, description: "Fraction of traffic to explore alternatives on (0 = pure exploit)." },
+  },
+};
+
+const ModelRoutingDefaultSchema = {
+  type: "object" as const,
+  required: ["id", "scope"],
+  properties: {
+    id: { type: "string", description: "Stable identifier." },
+    scope: { type: "string", enum: ["global", "clusterTenant"], description: "Whether this default is platform-wide or per-ClusterTenant." },
+    clusterTenant: { type: "string", nullable: true, description: "Owning ClusterTenant when scope is clusterTenant; null for Global." },
+    defaultModel: { type: "string", nullable: true, description: "Default model publicModelName at this scope; null when unset." },
+    autoConfig: { ...AutoRoutingConfigSchema, nullable: true, description: "Default auto-routing config at this scope; null when unset." },
+    createdAt: { type: "string", format: "date-time" },
+    updatedAt: { type: "string", format: "date-time" },
+  },
+};
+
+const ModelRoutingDefaultWriteSchema = {
+  type: "object" as const,
+  description: "Upsert body for a scope-level model-routing default. At least one of defaultModel or autoConfig is required.",
+  properties: {
+    scope: { type: "string", enum: ["global", "clusterTenant"], description: "Defaults to global when omitted." },
+    clusterTenant: { type: "string", description: "Required when scope is clusterTenant." },
+    defaultModel: { type: "string", description: "Default model publicModelName." },
+    autoConfig: { ...AutoRoutingConfigSchema, description: "Default auto-routing config." },
+  },
+};
+
+const SkillModelPostureSchema = {
+  type: "object" as const,
+  required: ["name", "scope", "team", "path"],
+  properties: {
+    name: { type: "string", description: "Skill name (part of the compound key)." },
+    scope: { type: "string", description: "Skill scope, e.g. org/team/personal (part of the compound key)." },
+    team: { type: "string", description: "Owning team for team-scoped skills; empty string when not team-scoped (part of the compound key)." },
+    path: { type: "string", description: "Workspace-relative path the skill is delivered to." },
+    modelMode: { type: "string", enum: ["pinned", "auto"], nullable: true, description: "pinned (use pinnedModel), auto (route within autoConfig), or null (inherit the scope default)." },
+    pinnedModel: { type: "string", nullable: true, description: "The pinned model's publicModelName, when modelMode is pinned." },
+    autoConfig: { ...AutoRoutingConfigSchema, nullable: true, description: "The skill's auto-routing config, when modelMode is auto." },
+    createdAt: { type: "string", format: "date-time" },
+    updatedAt: { type: "string", format: "date-time" },
+  },
+};
+
+const SkillModelPostureWriteSchema = {
+  type: "object" as const,
+  required: ["modelMode"],
+  description: "Set a skill's model posture. pinned requires pinnedModel; auto validates autoConfig; null clears the posture (inherit the scope default).",
+  properties: {
+    modelMode: { type: "string", enum: ["pinned", "auto"], nullable: true, description: "pinned, auto, or null to clear the posture." },
+    pinnedModel: { type: "string", nullable: true, description: "Required when modelMode is pinned." },
+    autoConfig: { ...AutoRoutingConfigSchema, nullable: true, description: "Provided when modelMode is auto." },
+  },
+};
+
+const RoutingEvalCaseSchema = {
+  type: "object" as const,
+  required: ["id", "skillName", "skillScope", "skillTeam", "qualityBar"],
+  properties: {
+    id: { type: "string", description: "Stable identifier." },
+    skillName: { type: "string", description: "Owning skill name." },
+    skillScope: { type: "string", description: "Owning skill scope." },
+    skillTeam: { type: "string", description: "Owning skill team (empty for org/global)." },
+    input: { description: "The prompt/inputs for this case." },
+    expected: { nullable: true, description: "Optional golden answer or grader rubric." },
+    qualityBar: { type: "number", minimum: 0, maximum: 1, description: "Minimum judge score (0..1) a model must clear on this case." },
+    createdAt: { type: "string", format: "date-time" },
+    updatedAt: { type: "string", format: "date-time" },
+  },
+};
+
+const RoutingEvalCaseWriteSchema = {
+  type: "object" as const,
+  required: ["skillName", "skillScope", "input"],
+  description: "Create/update body for a routing eval case (AIR.6).",
+  properties: {
+    skillName: { type: "string", description: "Owning skill name." },
+    skillScope: { type: "string", description: "Owning skill scope." },
+    skillTeam: { type: "string", description: "Owning skill team (defaults to empty)." },
+    input: { description: "The prompt/inputs for this case." },
+    expected: { nullable: true, description: "Optional golden answer or grader rubric." },
+    qualityBar: { type: "number", minimum: 0, maximum: 1, description: "Minimum judge score (0..1); defaults to 0.8." },
+  },
+};
+
+const RoutingMeasurementSchema = {
+  type: "object" as const,
+  required: ["id", "skillName", "skillScope", "skillTeam", "sampledCalls", "atBarCheapFraction", "projectedSavingsPct", "ciLowPct", "ciHighPct", "overheadPct"],
+  properties: {
+    id: { type: "string", description: "Stable identifier." },
+    skillName: { type: "string", description: "Owning skill name." },
+    skillScope: { type: "string", description: "Owning skill scope." },
+    skillTeam: { type: "string", description: "Owning skill team." },
+    candidateModel: { type: "string", nullable: true, description: "The cheaper candidate model evaluated against the current default." },
+    sampledCalls: { type: "integer", description: "Number of logged calls sampled + shadow-graded." },
+    atBarCheapFraction: { type: "number", description: "Fraction of sampled traffic the candidate served at-or-above the skill's bar." },
+    projectedSavingsPct: { type: "number", description: "Point estimate of % spend saved at equal quality." },
+    ciLowPct: { type: "number", description: "Lower bound of the bootstrap 95% CI on projected savings." },
+    ciHighPct: { type: "number", description: "Upper bound of the bootstrap 95% CI on projected savings." },
+    overheadPct: { type: "number", description: "Token overhead of running the measurement, as % of the skill's serve spend." },
+    skillContentHash: { type: "string", nullable: true, description: "Skill content version coordinate: the Skill.contentHash at run time (best-effort; null if unresolved)." },
+    skillDigest: { type: "string", nullable: true, description: "Skill content version coordinate: the live published SkillBundle.digest at run time (best-effort; null when no published bundle)." },
+    candidateModelId: { type: "string", nullable: true, description: "Model deployment coordinate: the candidate's stable litellmModelId (best-effort; null if unresolved)." },
+    candidateUpstreamModel: { type: "string", nullable: true, description: "Model deployment coordinate: the candidate's upstreamModel (best-effort; null if unresolved)." },
+    runAt: { type: "string", format: "date-time" },
+  },
+};
+
+const RoutingProposalSchema = {
+  type: "object" as const,
+  required: ["id", "skillName", "skillScope", "skillTeam", "proposedModel", "projectedSavingsPct", "ciLowPct", "ciHighPct", "status"],
+  properties: {
+    id: { type: "string", description: "Stable identifier." },
+    skillName: { type: "string", description: "Owning skill name." },
+    skillScope: { type: "string", description: "Owning skill scope." },
+    skillTeam: { type: "string", description: "Owning skill team." },
+    fromModel: { type: "string", nullable: true, description: "The model the skill resolves to today (null when unset)." },
+    proposedModel: { type: "string", description: "The cheaper model the loop proposes switching to." },
+    projectedSavingsPct: { type: "number", description: "Point estimate of % spend saved at equal quality." },
+    ciLowPct: { type: "number", description: "Lower bound of the bootstrap 95% CI (must exclude zero to propose)." },
+    ciHighPct: { type: "number", description: "Upper bound of the bootstrap 95% CI." },
+    skillContentHash: { type: "string", nullable: true, description: "Skill content version coordinate: the Skill.contentHash at proposal time (best-effort; null if unresolved)." },
+    skillDigest: { type: "string", nullable: true, description: "Skill content version coordinate: the live published SkillBundle.digest at proposal time (best-effort; null when none)." },
+    proposedModelId: { type: "string", nullable: true, description: "Model deployment coordinate: the proposed model's stable litellmModelId (best-effort; null if unresolved)." },
+    measurementId: { type: "string", nullable: true, description: "The measurement that produced this proposal." },
+    status: { type: "string", enum: ["pending", "approved", "rejected", "applied"], description: "Lifecycle status." },
+    decidedBy: { type: "string", nullable: true, description: "Principal who approved/rejected, when decided." },
+    decidedAt: { type: "string", format: "date-time", nullable: true },
+    createdAt: { type: "string", format: "date-time" },
+  },
+};
+
+const SavingsRecommendationSchema = {
+  type: "object" as const,
+  required: ["skillName", "skillScope", "skillTeam", "projectedSavingsPct", "ciLowPct", "ciHighPct", "hasOpenProposal", "measurementId", "runAt"],
+  properties: {
+    skillName: { type: "string", description: "Owning skill name." },
+    skillScope: { type: "string", description: "Owning skill scope." },
+    skillTeam: { type: "string", description: "Owning skill team (empty for org/global)." },
+    modelMode: { type: "string", enum: ["pinned", "auto"], nullable: true, description: "The skill's posture: pinned, auto, or null (inherits the scope default) — lets the UI flag a fixed-model advisory distinctly." },
+    currentModel: { type: "string", nullable: true, description: "The model the skill resolves to today — proposal fromModel, else the skill's pin, else null." },
+    recommendedModel: { type: "string", nullable: true, description: "The cheaper model recommended — proposal proposedModel, else the measurement candidate, else null." },
+    recommendedModelId: { type: "string", nullable: true, description: "Stable deployment id of the recommended model — proposal proposedModelId, else the measurement's candidateModelId, else null." },
+    skillContentHash: { type: "string", nullable: true, description: "Skill content version coordinate the evidence was gathered at — lets the console flag stale evidence; null if unresolved." },
+    skillDigest: { type: "string", nullable: true, description: "Live published SkillBundle.digest the evidence was gathered at; null when none." },
+    projectedSavingsPct: { type: "number", description: "Point estimate of % spend saved at equal quality (from the latest measurement)." },
+    ciLowPct: { type: "number", description: "Lower bound of the bootstrap 95% CI on projected savings." },
+    ciHighPct: { type: "number", description: "Upper bound of the bootstrap 95% CI on projected savings." },
+    hasOpenProposal: { type: "boolean", description: "True when an open Pending proposal exists for this skill." },
+    proposalId: { type: "string", nullable: true, description: "Id of the open Pending proposal, when one exists; null otherwise." },
+    measurementId: { type: "string", description: "Id of the latest measurement this recommendation is derived from." },
+    runAt: { type: "string", format: "date-time", description: "When the latest measurement ran (ISO-8601)." },
   },
 };
 
@@ -410,12 +662,27 @@ export const spec = {
       McpServerCredential: McpServerCredentialSchema,
       ClusterTenant: ClusterTenantSchema,
       ClusterTenantWrite: ClusterTenantWriteSchema,
+      ClusterTenantUpdate: ClusterTenantUpdateSchema,
       ClusterTenantResourceQuota: ClusterTenantResourceQuotaSchema,
       Group: GroupSchema,
       SkillBundle: SkillBundleSchema,
       AuditEntry: AuditEntrySchema,
       AccessToken: AccessTokenSchema,
       ProviderKey: ProviderKeySchema,
+      ProviderCredential: ProviderCredentialSchema,
+      ProviderCredentialWrite: ProviderCredentialWriteSchema,
+      ModelDefinition: ModelDefinitionSchema,
+      ModelDefinitionWrite: ModelDefinitionWriteSchema,
+      AutoRoutingConfig: AutoRoutingConfigSchema,
+      ModelRoutingDefault: ModelRoutingDefaultSchema,
+      ModelRoutingDefaultWrite: ModelRoutingDefaultWriteSchema,
+      SkillModelPosture: SkillModelPostureSchema,
+      SkillModelPostureWrite: SkillModelPostureWriteSchema,
+      RoutingEvalCase: RoutingEvalCaseSchema,
+      RoutingEvalCaseWrite: RoutingEvalCaseWriteSchema,
+      RoutingMeasurement: RoutingMeasurementSchema,
+      RoutingProposal: RoutingProposalSchema,
+      SavingsRecommendation: SavingsRecommendationSchema,
       AwarenessRollout: {
         type: "object",
         properties: {
@@ -720,6 +987,9 @@ export const spec = {
         operationId: "listTenants",
         summary: "List all tenants",
         tags: ["Tenants"],
+        parameters: [
+          { name: "clusterTenantRef", in: "query", schema: { type: "string" }, description: "Return only tenants attached to this parent ClusterTenant (customer)." },
+        ],
         responses: {
           200: ok("Tenant list.", { type: "array", items: { $ref: "#/components/schemas/Tenant" } }),
         },
@@ -740,6 +1010,7 @@ export const spec = {
                   displayName: { type: "string" },
                   email: { type: "string", format: "email" },
                   team: { type: "string" },
+                  clusterTenantRef: { type: "string", description: "Parent ClusterTenant (customer) to attach this tenant to." },
                   monthlyBudgetUsd: { type: "number" },
                   resources: { type: "object" },
                   skillAllowlist: { type: "array", items: { type: "string" } },
@@ -808,6 +1079,7 @@ export const spec = {
                   displayName: { type: "string" },
                   email: { type: "string", format: "email" },
                   team: { type: "string" },
+                  clusterTenantRef: { type: "string", description: "Parent ClusterTenant (customer) to attach this tenant to." },
                   monthlyBudgetUsd: { type: "number" },
                   resources: { type: "object" },
                   skillAllowlist: { type: "array", items: { type: "string" } },
@@ -1033,7 +1305,7 @@ export const spec = {
         parameters: [{ name: "name", in: "path", required: true, schema: { type: "string" } }],
         requestBody: {
           required: true,
-          content: { "application/json": { schema: { type: "object" } } },
+          content: { "application/json": { schema: { $ref: "#/components/schemas/ClusterTenantUpdate" } } },
         },
         responses: {
           200: ok("Cluster tenant updated.", { $ref: "#/components/schemas/ClusterTenant" }),
@@ -1523,6 +1795,479 @@ export const spec = {
     },
 
     // ------------------------------------------------------------------
+    // Provider credentials (Track AIR) — references only, never raw keys.
+    // Owned at Global or ClusterTenant scope; never per openclaw tenant.
+    // ------------------------------------------------------------------
+
+    "/providers/credentials": {
+      get: {
+        operationId: "listProviderCredentials",
+        summary: "List provider credentials (references only — never the key value)",
+        tags: ["Provider Credentials"],
+        parameters: [{ name: "clusterTenant", in: "query", required: false, schema: { type: "string" }, description: "Filter to one owning ClusterTenant." }],
+        responses: {
+          200: ok("Provider credential list.", { type: "array", items: { $ref: "#/components/schemas/ProviderCredential" } }),
+        },
+      },
+      post: {
+        operationId: "createProviderCredential",
+        summary: "Create a provider credential reference (rejects any raw-key field)",
+        tags: ["Provider Credentials"],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/ProviderCredentialWrite" } } },
+        },
+        responses: {
+          201: created("Provider credential created.", { $ref: "#/components/schemas/ProviderCredential" }),
+          400: badRequest("Request body failed validation, or carried a raw key (code RAW_KEY_REJECTED)."),
+          403: { description: "Caller is not authorized for the resource scope (code FORBIDDEN_SCOPE).", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+        },
+      },
+    },
+
+    "/providers/credentials/{id}": {
+      get: {
+        operationId: "getProviderCredential",
+        summary: "Get a single provider credential by id",
+        tags: ["Provider Credentials"],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          200: ok("Provider credential detail.", { $ref: "#/components/schemas/ProviderCredential" }),
+          404: notFound("Provider credential not found."),
+        },
+      },
+      put: {
+        operationId: "updateProviderCredential",
+        summary: "Update a provider credential reference (rejects any raw-key field)",
+        tags: ["Provider Credentials"],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/ProviderCredentialWrite" } } },
+        },
+        responses: {
+          200: ok("Provider credential updated.", { $ref: "#/components/schemas/ProviderCredential" }),
+          400: badRequest("Request body failed validation, or carried a raw key (code RAW_KEY_REJECTED)."),
+          403: { description: "Caller is not authorized for the resource scope (code FORBIDDEN_SCOPE).", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+          404: notFound("Provider credential not found."),
+        },
+      },
+      delete: {
+        operationId: "deleteProviderCredential",
+        summary: "Delete a provider credential",
+        tags: ["Provider Credentials"],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          200: ok("Provider credential deleted.", { type: "object", properties: { id: { type: "string" }, status: { type: "string" } } }),
+          403: { description: "Caller is not authorized for the resource scope (code FORBIDDEN_SCOPE).", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+          404: notFound("Provider credential not found."),
+        },
+      },
+    },
+
+    // ------------------------------------------------------------------
+    // Model registry (Track AIR) — routable models registered in LiteLLM (BYOM).
+    // ------------------------------------------------------------------
+
+    "/models": {
+      get: {
+        operationId: "listModels",
+        summary: "List model definitions",
+        tags: ["Model Registry"],
+        parameters: [{ name: "clusterTenant", in: "query", required: false, schema: { type: "string" }, description: "Filter to one owning ClusterTenant." }],
+        responses: {
+          200: ok("Model definition list.", { type: "array", items: { $ref: "#/components/schemas/ModelDefinition" } }),
+        },
+      },
+      post: {
+        operationId: "createModel",
+        summary: "Create a model definition and register it best-effort with LiteLLM",
+        tags: ["Model Registry"],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/ModelDefinitionWrite" } } },
+        },
+        responses: {
+          201: created("Model definition created.", { $ref: "#/components/schemas/ModelDefinition" }),
+          400: badRequest("Request body failed validation, or the providerCredentialId is missing or owned by another ClusterTenant (code CREDENTIAL_SCOPE_MISMATCH)."),
+          403: { description: "Caller is not authorized for the resource scope (code FORBIDDEN_SCOPE).", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+        },
+      },
+    },
+
+    "/models/{id}": {
+      get: {
+        operationId: "getModel",
+        summary: "Get a single model definition by id",
+        tags: ["Model Registry"],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          200: ok("Model definition detail.", { $ref: "#/components/schemas/ModelDefinition" }),
+          404: notFound("Model definition not found."),
+        },
+      },
+      put: {
+        operationId: "updateModel",
+        summary: "Update a model definition",
+        tags: ["Model Registry"],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/ModelDefinitionWrite" } } },
+        },
+        responses: {
+          200: ok("Model definition updated.", { $ref: "#/components/schemas/ModelDefinition" }),
+          400: badRequest("Request body failed validation."),
+          403: { description: "Caller is not authorized for the resource scope (code FORBIDDEN_SCOPE).", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+          404: notFound("Model definition not found."),
+        },
+      },
+      delete: {
+        operationId: "deleteModel",
+        summary: "Delete a model definition",
+        tags: ["Model Registry"],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          200: ok("Model definition deleted.", { type: "object", properties: { id: { type: "string" }, status: { type: "string" } } }),
+          403: { description: "Caller is not authorized for the resource scope (code FORBIDDEN_SCOPE).", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+          404: notFound("Model definition not found."),
+        },
+      },
+    },
+
+    // ------------------------------------------------------------------
+    // Model-routing defaults (AIR.4)
+    // ------------------------------------------------------------------
+
+    "/model-routing/defaults": {
+      get: {
+        operationId: "listModelRoutingDefaults",
+        summary: "List model-routing defaults",
+        tags: ["Model Registry"],
+        parameters: [{ name: "clusterTenant", in: "query", required: false, schema: { type: "string" }, description: "Filter to one owning ClusterTenant." }],
+        responses: {
+          200: ok("Model-routing default list.", { type: "array", items: { $ref: "#/components/schemas/ModelRoutingDefault" } }),
+        },
+      },
+      put: {
+        operationId: "upsertModelRoutingDefault",
+        summary: "Upsert the model-routing default for a (scope, clusterTenant) pair",
+        tags: ["Model Registry"],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/ModelRoutingDefaultWrite" } } },
+        },
+        responses: {
+          200: ok("Model-routing default upserted.", { $ref: "#/components/schemas/ModelRoutingDefault" }),
+          400: badRequest("Request body failed validation (code VALIDATION_ERROR)."),
+          403: { description: "Caller is not authorized for the resource scope (code FORBIDDEN_SCOPE). Global defaults are operator-only.", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+        },
+      },
+    },
+
+    "/model-routing/defaults/{id}": {
+      get: {
+        operationId: "getModelRoutingDefault",
+        summary: "Get a single model-routing default by id",
+        tags: ["Model Registry"],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          200: ok("Model-routing default detail.", { $ref: "#/components/schemas/ModelRoutingDefault" }),
+          404: notFound("Model routing default not found."),
+        },
+      },
+      delete: {
+        operationId: "deleteModelRoutingDefault",
+        summary: "Delete a model-routing default",
+        tags: ["Model Registry"],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          200: ok("Model-routing default deleted.", { type: "object", properties: { id: { type: "string" }, status: { type: "string" } } }),
+          403: { description: "Caller is not authorized for the resource scope (code FORBIDDEN_SCOPE).", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+          404: notFound("Model routing default not found."),
+        },
+      },
+    },
+
+    // ------------------------------------------------------------------
+    // Skill model posture (AIR.3)
+    // ------------------------------------------------------------------
+
+    "/skills/posture": {
+      get: {
+        operationId: "listSkillModelPostures",
+        summary: "List all skills with their model posture",
+        tags: ["Skills"],
+        responses: {
+          200: ok("Skill posture list.", { type: "array", items: { $ref: "#/components/schemas/SkillModelPosture" } }),
+        },
+      },
+    },
+
+    "/skills/posture/skill": {
+      get: {
+        operationId: "getSkillModelPosture",
+        summary: "Get a single skill's model posture by its compound key",
+        tags: ["Skills"],
+        parameters: [
+          { name: "name", in: "query", required: true, schema: { type: "string" }, description: "Skill name." },
+          { name: "scope", in: "query", required: true, schema: { type: "string" }, description: "Skill scope." },
+          { name: "team", in: "query", required: false, schema: { type: "string" }, description: "Owning team; empty string when not team-scoped." },
+        ],
+        responses: {
+          200: ok("Skill posture detail.", { $ref: "#/components/schemas/SkillModelPosture" }),
+          400: badRequest("name and scope query params are required (code VALIDATION_ERROR)."),
+          404: notFound("Skill not found."),
+        },
+      },
+      put: {
+        operationId: "setSkillModelPosture",
+        summary: "Set (or clear) a skill's model posture",
+        tags: ["Skills"],
+        parameters: [
+          { name: "name", in: "query", required: true, schema: { type: "string" }, description: "Skill name." },
+          { name: "scope", in: "query", required: true, schema: { type: "string" }, description: "Skill scope." },
+          { name: "team", in: "query", required: false, schema: { type: "string" }, description: "Owning team; empty string when not team-scoped." },
+        ],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/SkillModelPostureWrite" } } },
+        },
+        responses: {
+          200: ok("Skill posture updated.", { $ref: "#/components/schemas/SkillModelPosture" }),
+          400: badRequest("Request body or query failed validation (code VALIDATION_ERROR)."),
+          403: { description: "Caller is not authorized for the resource scope (code FORBIDDEN_SCOPE). Org/global skills are operator-only.", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+          404: notFound("Skill not found."),
+        },
+      },
+    },
+
+    // ------------------------------------------------------------------
+    // Routing eval cases (AIR.6)
+    // ------------------------------------------------------------------
+
+    "/model-routing/eval-cases": {
+      get: {
+        operationId: "listRoutingEvalCases",
+        summary: "List routing eval cases",
+        tags: ["Model Registry"],
+        parameters: [
+          { name: "skillName", in: "query", required: false, schema: { type: "string" }, description: "Filter to one owning skill name." },
+          { name: "skillScope", in: "query", required: false, schema: { type: "string" }, description: "Filter to one owning skill scope." },
+          { name: "skillTeam", in: "query", required: false, schema: { type: "string" }, description: "Filter to one owning skill team." },
+        ],
+        responses: {
+          200: ok("Routing eval-case list.", { type: "array", items: { $ref: "#/components/schemas/RoutingEvalCase" } }),
+        },
+      },
+      post: {
+        operationId: "createRoutingEvalCase",
+        summary: "Create a routing eval case for a skill",
+        tags: ["Model Registry"],
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/RoutingEvalCaseWrite" } } } },
+        responses: {
+          201: created("Eval case created.", { $ref: "#/components/schemas/RoutingEvalCase" }),
+          400: badRequest("Request body failed validation (code VALIDATION_ERROR)."),
+          403: { description: "Caller is not authorized for the owning skill's scope (code FORBIDDEN_SCOPE). Org/global cases are operator-only.", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+        },
+      },
+    },
+
+    "/model-routing/eval-cases/{id}": {
+      get: {
+        operationId: "getRoutingEvalCase",
+        summary: "Get a single routing eval case by id",
+        tags: ["Model Registry"],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          200: ok("Eval case detail.", { $ref: "#/components/schemas/RoutingEvalCase" }),
+          404: notFound("Eval case not found."),
+        },
+      },
+      put: {
+        operationId: "updateRoutingEvalCase",
+        summary: "Update a routing eval case by id",
+        tags: ["Model Registry"],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/RoutingEvalCaseWrite" } } } },
+        responses: {
+          200: ok("Eval case updated.", { $ref: "#/components/schemas/RoutingEvalCase" }),
+          400: badRequest("Request body failed validation (code VALIDATION_ERROR)."),
+          403: { description: "Caller is not authorized for the owning skill's scope (code FORBIDDEN_SCOPE).", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+          404: notFound("Eval case not found."),
+        },
+      },
+      delete: {
+        operationId: "deleteRoutingEvalCase",
+        summary: "Delete a routing eval case by id",
+        tags: ["Model Registry"],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          200: ok("Eval case deleted.", { type: "object", properties: { id: { type: "string" }, status: { type: "string" } } }),
+          403: { description: "Caller is not authorized for the owning skill's scope (code FORBIDDEN_SCOPE).", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+          404: notFound("Eval case not found."),
+        },
+      },
+    },
+
+    // ------------------------------------------------------------------
+    // Routing measurements (AIR.6 — shadow savings)
+    // ------------------------------------------------------------------
+
+    "/model-routing/measurements": {
+      get: {
+        operationId: "listRoutingMeasurements",
+        summary: "List shadow-savings measurements",
+        tags: ["Model Registry"],
+        parameters: [
+          { name: "skillName", in: "query", required: false, schema: { type: "string" }, description: "Filter to one owning skill name." },
+          { name: "skillScope", in: "query", required: false, schema: { type: "string" }, description: "Filter to one owning skill scope." },
+          { name: "skillTeam", in: "query", required: false, schema: { type: "string" }, description: "Filter to one owning skill team." },
+        ],
+        responses: {
+          200: ok("Measurement list.", { type: "array", items: { $ref: "#/components/schemas/RoutingMeasurement" } }),
+        },
+      },
+    },
+
+    "/model-routing/measurements/run": {
+      post: {
+        operationId: "runRoutingMeasurement",
+        summary: "Trigger a shadow-savings measurement for a skill + candidate (operator-gated, best-effort)",
+        tags: ["Model Registry"],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: {
+            type: "object",
+            required: ["skillName", "skillScope", "candidateModel"],
+            properties: {
+              skillName: { type: "string" },
+              skillScope: { type: "string" },
+              skillTeam: { type: "string", description: "Defaults to empty." },
+              candidateModel: { type: "string", description: "The cheaper candidate model to evaluate." },
+              currentModel: { type: "string", nullable: true, description: "Baseline model; resolved from the skill's pin when omitted." },
+            },
+          } } },
+        },
+        responses: {
+          200: ok("Seams unconfigured — no-op; nothing recorded.", { type: "object", properties: { status: { type: "string" }, note: { type: "string" } } }),
+          202: { description: "Measurement run completed; the persisted measurement (and proposalId when the savings CI excluded zero).", content: { "application/json": { schema: { type: "object", properties: { status: { type: "string" }, measurement: { $ref: "#/components/schemas/RoutingMeasurement" }, proposalId: { type: "string", nullable: true } } } } } },
+          400: badRequest("Request body failed validation (code VALIDATION_ERROR)."),
+          403: { description: "Caller is not a platform operator (code FORBIDDEN_SCOPE).", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+        },
+      },
+    },
+
+    "/model-routing/measurements/{id}": {
+      get: {
+        operationId: "getRoutingMeasurement",
+        summary: "Get a single measurement by id",
+        tags: ["Model Registry"],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          200: ok("Measurement detail.", { $ref: "#/components/schemas/RoutingMeasurement" }),
+          404: notFound("Measurement not found."),
+        },
+      },
+    },
+
+    // ------------------------------------------------------------------
+    // Routing proposals (AIR.7 — human-gated improvement loop)
+    // ------------------------------------------------------------------
+
+    "/model-routing/proposals": {
+      get: {
+        operationId: "listRoutingProposals",
+        summary: "List routing-change proposals",
+        tags: ["Model Registry"],
+        parameters: [{ name: "status", in: "query", required: false, schema: { type: "string", enum: ["pending", "approved", "rejected", "applied"] }, description: "Filter by lifecycle status." }],
+        responses: {
+          200: ok("Proposal list.", { type: "array", items: { $ref: "#/components/schemas/RoutingProposal" } }),
+        },
+      },
+    },
+
+    "/model-routing/proposals/{id}": {
+      get: {
+        operationId: "getRoutingProposal",
+        summary: "Get a single proposal by id",
+        tags: ["Model Registry"],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          200: ok("Proposal detail.", { $ref: "#/components/schemas/RoutingProposal" }),
+          404: notFound("Proposal not found."),
+        },
+      },
+    },
+
+    "/model-routing/proposals/{id}/approve": {
+      post: {
+        operationId: "approveRoutingProposal",
+        summary: "Approve a proposal — pin the skill to the proposed model and mark it Applied",
+        tags: ["Model Registry"],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          200: ok("Proposal applied.", { type: "object", properties: { id: { type: "string" }, status: { type: "string" }, appliedModel: { type: "string", nullable: true } } }),
+          403: { description: "Caller is not authorized for the owning skill's scope (code FORBIDDEN_SCOPE).", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+          404: notFound("Proposal or target skill not found."),
+          409: conflict("Proposal is no longer pending (code PROPOSAL_ALREADY_DECIDED)."),
+        },
+      },
+    },
+
+    "/model-routing/proposals/{id}/reject": {
+      post: {
+        operationId: "rejectRoutingProposal",
+        summary: "Reject a proposal — flip status to Rejected; the skill posture is untouched",
+        tags: ["Model Registry"],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          200: ok("Proposal rejected.", { type: "object", properties: { id: { type: "string" }, status: { type: "string" }, appliedModel: { type: "string", nullable: true } } }),
+          403: { description: "Caller is not authorized for the owning skill's scope (code FORBIDDEN_SCOPE).", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+          404: notFound("Proposal not found."),
+          409: conflict("Proposal is no longer pending (code PROPOSAL_ALREADY_DECIDED)."),
+        },
+      },
+    },
+
+    // ------------------------------------------------------------------
+    // Savings recommendations (AIR.11 — frontend feed) + metrics proxy (AIR.10)
+    // ------------------------------------------------------------------
+
+    "/model-routing/recommendations": {
+      get: {
+        operationId: "listSavingsRecommendations",
+        summary: "List savings recommendations (latest measurement + any open proposal, per skill)",
+        tags: ["Model Registry"],
+        parameters: [
+          { name: "clusterTenant", in: "query", required: false, schema: { type: "string" }, description: "Filter to skills owned by this ClusterTenant (the skill's team)." },
+          { name: "skillScope", in: "query", required: false, schema: { type: "string" }, description: "Filter to one owning skill scope." },
+          { name: "onlyOpen", in: "query", required: false, schema: { type: "string", enum: ["true"] }, description: "When 'true', return only skills with an open Pending proposal." },
+        ],
+        responses: {
+          200: ok("Recommendations sorted by projected savings desc; scope-filtered to the caller's ClusterTenant for non-operators.", { type: "array", items: { $ref: "#/components/schemas/SavingsRecommendation" } }),
+        },
+      },
+    },
+
+    "/model-routing/metrics": {
+      get: {
+        operationId: "getRoutingMetrics",
+        summary: "Proxy a metrics query to the self-hosted Langfuse backend (server-side auth; non-operators scoped to their tenant)",
+        tags: ["Model Registry"],
+        parameters: [
+          { name: "query", in: "query", required: false, schema: { type: "string" }, description: "Langfuse v1 metrics `query` JSON, forwarded verbatim (a tenant filter is injected for non-operators)." },
+        ],
+        responses: {
+          200: ok("Upstream Langfuse metrics JSON (loosely-typed passthrough).", { type: "object", additionalProperties: true }),
+          403: { description: "A non-operator caller with no resolved ClusterTenant has no metrics scope (code FORBIDDEN_SCOPE).", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+          502: { description: "The Langfuse backend was unreachable or returned a non-2xx status.", content: { "application/json": { schema: { type: "object", properties: { status: { type: "string" }, error: { type: "string" } } } } } },
+          503: { description: "The Langfuse backend is not configured (host/keys missing).", content: { "application/json": { schema: { type: "object", properties: { status: { type: "string" } } } } } },
+        },
+      },
+    },
+
+    // ------------------------------------------------------------------
     // AI budget & spend
     // ------------------------------------------------------------------
 
@@ -1720,15 +2465,29 @@ export const spec = {
             type: "object",
             required: ["mode", "authenticated"],
             properties: {
-              mode: { type: "string", enum: ["oidc", "none"], description: "Active authentication mode for this instance." },
+              mode: { type: "string", enum: ["development", "oidc", "token"], description: "Active authentication mode for this instance." },
               authenticated: { type: "boolean" },
               user: {
                 type: "object",
                 nullable: true,
+                required: ["sub", "issuer", "groups", "isPlatformOperator"],
                 properties: {
                   sub: { type: "string" },
+                  issuer: { type: "string", description: "Identity provider that authenticated the user." },
+                  groups: { type: "array", items: { type: "string" }, description: "The caller's group memberships from the OIDC groups claim (empty when none)." },
+                  isPlatformOperator: {
+                    type: "boolean",
+                    description: "True iff the caller's groups intersect OPENCRANE_PLATFORM_OPERATOR_GROUPS. Empty/unset config ⇒ false (fail-closed). Introspection only — the API stays the enforcement point and the frontend uses this only to hide UI. Superseded once a first-class role model lands.",
+                  },
+                  clusterTenant: {
+                    type: ["string", "null"],
+                    description: "The caller's ClusterTenant (customer) key, resolved server-side from their IdP-verified email → tenant → clusterTenantRef. Null when unresolved or ambiguous.",
+                  },
                   email: { type: "string" },
+                  emailVerified: { type: "boolean" },
                   name: { type: "string" },
+                  picture: { type: "string" },
+                  authenticatedAt: { type: "string", format: "date-time" },
                 },
               },
             },

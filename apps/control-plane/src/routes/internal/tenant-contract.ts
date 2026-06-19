@@ -7,6 +7,7 @@ import { GrantCompilerAccess, GrantCompilerPayloadType } from "../../core/grants
 import { _RenderToolsMarkdown } from "../../core/contract/tools-markdown.js";
 import { _LoadAwarenessRollout } from "../../core/awareness/rollout-store.js";
 import { _ResolveAwarenessVersion } from "../../core/awareness/rollout.js";
+import { _ResolveContractSkillModels } from "../../core/model-routing/resolve-contract-skill-models.js";
 
 /** Expected audience on the projected token the tenant pod uses to call this endpoint. */
 const _EXPECTED_AUDIENCE = "control-plane";
@@ -120,7 +121,7 @@ export function _RegisterInternalTenantContract(prisma: PrismaClient, authApi: k
       // 4. Verify the tenant exists before compiling grants.
       const tenant = await prisma.tenant.findUnique({
         where: { name },
-        select: { name: true, team: true, awarenessWave: true },
+        select: { name: true, team: true, awarenessWave: true, clusterTenantRef: true },
       });
 
       if (!tenant)
@@ -154,6 +155,13 @@ export function _RegisterInternalTenantContract(prisma: PrismaClient, authApi: k
       const skillBundles = allowedSkills.length > 0
         ? await prisma.skillBundle.findMany({ where: { id: { in: allowedSkills } }, select: { id: true, name: true, description: true } })
         : [];
+
+      // 6b. Resolve the effective model for each entitled skill by the locked precedence chain
+      //     (AIR.2): explicit-request (honoured at runtime, not here) > skill-pinned > skill-auto >
+      //     scope default (this tenant's ClusterTenant default, else Global). Pure resolution over
+      //     DB rows — no LiteLLM call. Skills with no resolvable model are returned with model null
+      //     so the pod falls back to its own configured default.
+      const resolvedSkillModels = await _ResolveContractSkillModels(prisma, skillBundles, tenant.clusterTenantRef ?? null);
 
       // 7. Render the contract-derived TOOLS.md (L1 workspace doc). The entrypoint
       //    poll loop writes this over the workspace file and SIGHUPs OpenClaw, so a
@@ -199,6 +207,10 @@ export function _RegisterInternalTenantContract(prisma: PrismaClient, authApi: k
         },
         skills: {
           entitled: allowedSkills,
+          // Per-skill resolved model (AIR.2). One entry per entitled skill: `{ skillId, model, auto }`.
+          // `model` is null when nothing in the precedence chain resolves, in which case the pod
+          // falls back to its own configured default. `auto` flags an auto-routing posture.
+          models: resolvedSkillModels,
         },
         capabilities: {
           mcpPolicyEnforced: allowedMcp.length > 0 || deniedMcp.length > 0,

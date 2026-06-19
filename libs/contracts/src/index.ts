@@ -17,6 +17,24 @@ export {
 export { GrantAccess, GrantScope, GrantSubjectType, type Grant } from "./grant.types.js";
 export { type Group } from "./group.types.js";
 export { McpCredentialBrokeringMode, McpServerStatus, McpServerTransport, type McpServer, type McpServerCredential } from "./mcp-server.types.js";
+export {
+  AutoRoutingObjective,
+  ModelRoutingScope,
+  RoutingProposalStatus,
+  SkillModelMode,
+  type AutoRoutingConfig,
+  type ModelDefinition,
+  type ModelDefinitionWrite,
+  type ModelRoutingDefault,
+  type ModelRoutingDefaultWrite,
+  type ProviderCredential,
+  type ProviderCredentialWrite,
+  type RoutingEvalCase,
+  type RoutingEvalCaseWrite,
+  type RoutingMeasurement,
+  type RoutingProposal,
+  type SavingsRecommendation,
+} from "./model-routing.types.js";
 export { SkillBundleStatus, SkillPromotionStatus, type SkillBundle, type SkillPromotion } from "./skill-bundle.types.js";
 export {
   ThirdPartySourceItemKind,

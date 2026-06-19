@@ -170,6 +170,10 @@ describe("aiBudgetRouter", () =>
 
   it("revokes active LiteLLM key metadata and deletes Secret", async () =>
   {
+    // No live LiteLLM in this case → the best-effort /key/delete is a no-op (litellmKeyDeleted false).
+    delete process.env.LITELLM_ENDPOINT;
+    delete process.env.LITELLM_MASTER_KEY;
+
     const prisma = {
       tenant: {
         findUnique: vi.fn().mockResolvedValue({ name: "jente" }),
@@ -210,8 +214,60 @@ describe("aiBudgetRouter", () =>
     const res = await request(app).post("/api/ai-budget/jente/litellm-key/revoke");
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ name: "jente", status: "revoked", secretDeleted: true });
+    expect(res.body).toEqual({ name: "jente", status: "revoked", secretDeleted: true, litellmKeyDeleted: false });
     expect(prisma.tenantLiteLlmKey.updateMany).toHaveBeenCalled();
     expect(prisma.auditEntry.create).toHaveBeenCalled();
+  });
+
+  it("revoke calls LiteLLM /key/delete by alias when configured (best-effort, audited)", async () =>
+  {
+    // LITELLM env is set by beforeEach, so the upstream delete is attempted.
+    const prisma = {
+      tenant: {
+        findUnique: vi.fn().mockResolvedValue({ name: "jente" }),
+      },
+      tenantLiteLlmKey: {
+        findFirst: vi.fn().mockResolvedValue({
+          tenant: "jente",
+          keyAlias: "opencrane-jente",
+          secretName: "openclaw-jente-litellm-key",
+          issuedAt: new Date("2026-04-06T12:00:00.000Z"),
+          revokedAt: null,
+          createdAt: new Date("2026-04-06T12:00:00.000Z"),
+        }),
+        create: vi.fn().mockResolvedValue({}),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      auditEntry: {
+        create: vi.fn().mockResolvedValue({}),
+      },
+    } as unknown as PrismaClient;
+
+    const coreApi = {
+      // No mounted Secret → the alias is taken from the persisted metadata row instead.
+      readNamespacedSecret: vi.fn().mockRejectedValue(new Error("not found")),
+      deleteNamespacedSecret: vi.fn().mockResolvedValue({}),
+    } as unknown as k8s.CoreV1Api;
+
+    const fetchSpy = vi.fn().mockResolvedValue({ ok: true, json: async function _json() { return {}; } });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const app = _buildAiBudgetApp(coreApi, prisma);
+    const res = await request(app).post("/api/ai-budget/jente/litellm-key/revoke");
+
+    expect(res.status).toBe(200);
+    expect(res.body.litellmKeyDeleted).toBe(true);
+
+    // The upstream key was deleted by alias with master-key auth.
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe("http://litellm:4000/key/delete");
+    expect((init as { headers: Record<string, string> }).headers.Authorization).toBe("Bearer master-key");
+    expect(JSON.parse((init as { body: string }).body)).toEqual({ key_aliases: ["opencrane-jente"] });
+
+    // The outcome is recorded in the audit metadata.
+    const auditArg = (prisma.auditEntry.create as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(auditArg.data.metadata.litellmKeyDeleted).toBe(true);
+    expect(auditArg.data.metadata.litellmKeyAlias).toBe("opencrane-jente");
   });
 });

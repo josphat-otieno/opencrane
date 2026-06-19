@@ -34,3 +34,11 @@ litellm:
   generateMasterKey: false
   existingDatabaseSecret: opencrane-litellm-db
   databaseSecretKey: DATABASE_URL
+  # DB-backed model store — GCP profile provisions Postgres (existingDatabaseSecret
+  # above), so manage models/keys at runtime via the LiteLLM admin API.
+  storeModelInDb: true
+  # Salt key comes from the same operator-managed Secret as the master key (the
+  # chart-managed Secret is not rendered when existingSecret is set). Provision
+  # LITELLM_SALT_KEY in opencrane-litellm and keep it stable.
+  existingSaltSecret: opencrane-litellm
+  saltSecretKey: LITELLM_SALT_KEY

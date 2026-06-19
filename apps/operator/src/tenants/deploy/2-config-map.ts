@@ -6,6 +6,7 @@ import type * as k8s from "@kubernetes/client-node";
 import type { OpenClawTenantOperatorConfig } from "../../config.js";
 import type { AccessPolicy } from "../../policies/types.js";
 import type { Tenant } from "../models/tenant.interface.js";
+import type { TenantModelSet } from "../internal/tenant-models.types.js";
 import { _BuildTenantLabels } from "./tenant-labels.js";
 
 /** Directory containing the workspace template files shipped with the operator. */
@@ -27,10 +28,27 @@ const _WORKSPACE_PATH = "/data/openclaw/workspace";
  *   seeded into the OpenClaw agent workspace by `entrypoint.sh` on boot.
  *   L0 files (no `.seed` suffix) are re-stamped on every boot; L2 files
  *   (`.seed` suffix) are copied once and then tenant-owned.
+ *
+ * @param config - Operator runtime configuration.
+ * @param tenant - The Tenant CR being reconciled.
+ * @param namespace - Namespace the ConfigMap is written to.
+ * @param effectivePolicy - The resolved AccessPolicy, when one applies.
+ * @param modelSet - The tenant's allowed model set fetched best-effort from the
+ *        control-plane, or `null`. When non-empty (and LiteLLM is enabled) the
+ *        `litellm-proxy` provider is restricted to those models and the default
+ *        model is surfaced; when empty/null the provider keeps `models: []`
+ *        (unchanged today's behaviour — OpenClaw treats `[]` as the proxy default).
  */
-export function _BuildConfigMap(config: OpenClawTenantOperatorConfig, tenant: Tenant, namespace: string, effectivePolicy?: AccessPolicy): k8s.V1ConfigMap
+export function _BuildConfigMap(config: OpenClawTenantOperatorConfig, tenant: Tenant, namespace: string, effectivePolicy?: AccessPolicy, modelSet?: TenantModelSet | null): k8s.V1ConfigMap
 {
   const name = tenant.metadata!.name!;
+
+  // 0. Allowed models — restrict the litellm-proxy provider to the tenant's
+  //    registered set when the control-plane returned a non-empty list. An empty
+  //    or null result falls back to `[]` (unchanged), so a control-plane outage
+  //    never narrows or breaks the tenant's model access.
+  const allowedModels = modelSet && modelSet.models.length > 0 ? [...modelSet.models] : [];
+  const defaultModel = modelSet?.defaultModel ?? null;
 
   // 1. Base runtime config — establish the OpenClaw gateway defaults that every
   //    tenant needs before any tenant-specific overrides are applied.
@@ -44,12 +62,13 @@ export function _BuildConfigMap(config: OpenClawTenantOperatorConfig, tenant: Te
       ? {
             models: {
               mode: "merge",
+              ...(defaultModel ? { default: defaultModel } : {}),
               providers: {
                 "litellm-proxy": {
                   baseUrl: config.liteLlmEndpoint,
                   apiKey: "${LITELLM_API_KEY}",
                   api: "openai-completions",
-                  models: [],
+                  models: allowedModels,
                 },
               },
             },

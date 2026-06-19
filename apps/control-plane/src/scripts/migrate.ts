@@ -13,7 +13,9 @@ function _runMigrations(): void
   {
     execSync("npx prisma migrate deploy", {
       stdio: "inherit",
-      cwd: new URL("../../..", import.meta.url).pathname,
+      // dist/scripts/migrate.js → up two levels to the control-plane package root,
+      // where prisma/schema.prisma lives (the cwd `prisma migrate deploy` expects).
+      cwd: new URL("../../", import.meta.url).pathname,
     });
     console.log("[opencrane] Migrations complete");
   }

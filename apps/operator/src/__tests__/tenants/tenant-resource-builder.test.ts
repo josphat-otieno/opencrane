@@ -47,6 +47,34 @@ describe("TenantResourceBuilder", () =>
     expect(runtimeContract.skills.registry).toBe(defaultConfig.skillRegistryUrl);
   });
 
+  it("populates litellm-proxy models[] when a non-empty model set is supplied", () =>
+  {
+    const litellmConfig = { ...defaultConfig, liteLlmEnabled: true };
+    const tenant = _makeTenant("models-test");
+
+    const configMap = _BuildConfigMap(litellmConfig, tenant, "default", undefined, { models: ["gpt-4o", "claude-opus-4-8"], defaultModel: "gpt-4o" });
+    const payload = JSON.parse(configMap.data?.["openclaw.json"] ?? "{}");
+
+    expect(payload.models.providers["litellm-proxy"].models).toEqual(["gpt-4o", "claude-opus-4-8"]);
+    expect(payload.models.default).toBe("gpt-4o");
+  });
+
+  it("keeps litellm-proxy models[] empty when the model set is empty or null", () =>
+  {
+    const litellmConfig = { ...defaultConfig, liteLlmEnabled: true };
+    const tenant = _makeTenant("models-empty");
+
+    const emptyMap = _BuildConfigMap(litellmConfig, tenant, "default", undefined, { models: [], defaultModel: null });
+    const nullMap = _BuildConfigMap(litellmConfig, tenant, "default", undefined, null);
+
+    const emptyPayload = JSON.parse(emptyMap.data?.["openclaw.json"] ?? "{}");
+    const nullPayload = JSON.parse(nullMap.data?.["openclaw.json"] ?? "{}");
+
+    expect(emptyPayload.models.providers["litellm-proxy"].models).toEqual([]);
+    expect(emptyPayload.models.default).toBeUndefined();
+    expect(nullPayload.models.providers["litellm-proxy"].models).toEqual([]);
+  });
+
   it("pins workspace path and disables bootstrap even when agents block is overridden", () =>
   {
     const tenant = _makeTenant("ws", {

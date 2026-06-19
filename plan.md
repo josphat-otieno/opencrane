@@ -9,6 +9,7 @@
 - **Track P4-C** (agent identity & personalisation via OpenClaw workspace files): **P4C.1–P4C.5 landed** (2026-06-13). Workspace bootstrap/seeding, contract-derived TOOLS.md, company-doc API + immutable versioning + L0 guard, agent-driven reconciliation (deterministic merger; LiteLLM agent merge is the seam) producing approve/reject proposals, and version-gated delivery into the pod via the re-pull loop. Whole track testable spine complete; live LiteLLM merge quality is the remaining upgrade.
 - **Track CONN** (OpenClaw connection auth & session security): pairing-broker endpoint implemented (2026-06-13); connection-security posture **decided = Option B** (short-lived re-brokered credentials + per-user kill-switch; control plane stays connection-stateless). Full trade-off in `website/security/connection-security.md`. Transport hardening landed 2026-06-13 (CONN.2); `website/security/identity.md` rewritten for the pairing broker (CONN.6); **CONN.8 wildcard TLS** landed (operator Ingress `tls:` + cert-manager ClusterIssuer/Certificate Helm scaffold, dev selfSigned + prod ACME DNS-01; **onboarding CLI/API `oc platform dns set` + dev sslip.io hosts landed 2026-06-13**) with cross-namespace + live-ACME-e2e as the remaining (cluster-bound) follow-ups. **Kill-switch chain landed 2026-06-13 (CONN.3 persistence+decode, CONN.4 device registry, CONN.5 cut + RBAC)** — testable spine complete; the gateway per-device revoke + CP-held operator device + in-pod mint exec are the remaining live-infra seams. Proxy (Option C) deferred as a contingent vision.
 - **Track P4-D** (MCP & Skills platform completion — the two 🔶 gaps): scoped + decisions locked 2026-06-13. P4D.2 OCI/Zot **foundation slice landed** (`OciBundleStore` + gated Zot Helm; runtime cutover deferred to a live-Zot slice). P4D.1 **brokering-model slice landed** (credential brokering-mode + custody validation + API/CLI + gated encryption-at-rest Helm; live OBO push/exchange parked). See Open Backlog → Track P4-D.
+- **Track AIR** (AI model routing, selection & cost optimization): **scoped 2026-06-18** from the LiteLLM BYOK/BYOM + autonomous-router research (`litellm-byok-byom-research.md`, `litellm-router-autonomous-improvement-research.md`). Explicit / skill-pinned / opt-in-`auto` model selection, the BYOM model registry, and the shadow-mode measurement + nightly improvement loop that lowers token cost at equal quality. Locked: full AGPL (OpenRouter = inspiration only), no fee (meter only), no Enterprise license, BYOK at control-plane/ClusterTenant level (not per-openclaw-tenant), k8s-native secrets (GCP-SM + ESO + CMEK-by-default). GuardLLM verified **not** implemented (design-only). See Open Backlog → Track AIR.
 - **Review discipline** (2026-06-13): the `review` agent (`.claude/agents/review.md`) now has a mandatory **"verify every finding before reporting"** step — re-trace the cited code and construct a concrete repro before asserting; unconfirmed concerns go under *Open questions*, not *Findings*. Added after a review surfaced a finding that did not survive verification.
 - **Branch**: `phase-4-5-fixes`, 6 commits ahead of `main`.
 
@@ -18,6 +19,41 @@
 
 > Authoritative, code-verified worklist as of 2026-06-10. Work top-to-bottom.
 > Items marked **[BLOCKED]** need a decision before implementation — do not guess.
+
+### Track WOI — WeOwnAI control-plane integration (frontend cutover dependencies)
+
+Raised 2026-06-15 by the WeOwnAI frontend (proprietary control-plane UI). Its mock→live cutover
+(WeOwnAI `plan.md` → Track LIVE) is blocked on two control-plane **API** gaps; both are small,
+additive, and generic (no vendor specifics — they don't touch the provisioner seam or the AGPL
+isolation model).
+
+- [x] **WOI.1 — Emit identity claims on `/api/v1/auth/me`. — LANDED 2026-06-16.** `/auth/me` now
+  surfaces the caller's **groups**, a derived **`isPlatformOperator`** flag, and their **`clusterTenant`**,
+  so a federated frontend authorizes without guessing. The API stays the enforcement point — these are
+  introspection-only facts the SPA uses to *hide* UI, never to grant access. Two distinct trust paths:
+  `groups`/`isPlatformOperator` come from the OIDC session (resolved at login by the pure, testable
+  `_ResolveIdentityClaims`: operator iff the groups/roles claims intersect `OPENCRANE_PLATFORM_OPERATOR_GROUPS`,
+  fail-closed when unset); `clusterTenant` is resolved **fresh server-side** from the IdP-verified
+  email → tenant → `clusterTenantRef` (WOI.2), never from a self-asserted claim, and is null when
+  unresolved/ambiguous. `isPlatformOperator` is a non-presumptuous stopgap until a first-class role model
+  exists. **Landed:** prisma-injected async `getStatus` + `_resolveClusterTenant` + `_ResolveIdentityClaims`
+  (`infra/auth/oidc.service.ts`), config loader fields (`oidc.config*.ts`), session type, `/auth/me` schema
+  (also fixed the stale `mode` enum to `development|oidc|token`). Unit test `oidc-identity-claims.test.ts`.
+  _Ties to WeOwnAI LIVE.4._
+- [x] **WOI.2 — Expose `clusterTenantRef` on the Tenant API + a server-side filter. — LANDED 2026-06-16.**
+  Projected the Tenant CRD's `spec.clusterTenantRef` (CT.4) into the SQL read model (migration 0016 +
+  Prisma column), dual-write it on create/update (CRD spec + DB), surface it in the list/get responses,
+  and added the `GET /tenants?clusterTenantRef=<name>` server-side filter — so WeOwnAI drops the
+  `team` → ref client-side stopgap. **Landed:** `routes/tenants.ts`, `types.ts`, `openapi/spec.ts`,
+  `prisma/schema.prisma` + `0016_tenant_cluster_tenant_ref`, regenerated `libs/contracts`. Tests in
+  `tenants.test.ts`. _Ties to WeOwnAI LIVE.3._
+- [x] **WOI.3 — Give the ClusterTenant update body a real schema. — LANDED 2026-06-16.** Replaced the
+  open-object `PUT /api/v1/cluster-tenants/{name}` body with a `ClusterTenantUpdate` component
+  (all-optional displayName/baseDomain/isolationTier/compute/resources, name from the path), so the
+  generated client types the body properly instead of `Record<string, never>`. **Landed:**
+  `openapi/spec.ts`, regenerated `libs/contracts`. _Ties to WeOwnAI LIVE.2._
+
+**Track WOI complete (2026-06-16).** WeOwnAI can now re-sync the spec (its LIVE.8) and drop the three stopgaps.
 
 ### Track P5 — Close Phase 5 — ✅ COMPLETE · full history: plan-done.md § Completed Tracks (archived 2026-06-15)
 
@@ -409,6 +445,217 @@ With one agent per lane, wall-clock ≈ 4 sequential slices instead of 7.
   is unchanged; opt-in renders the ClusterTenant path; conformance + build green. **Anchors:**
   `platform/helm/values.yaml`, `website/operators/multi-instance.md`, `docs/enterprise-needs.md`,
   `platform/tests/multi-instance-conformance.sh`. **Headless-buildable.**
+
+### Track AIR — AI model routing, selection & cost optimization
+
+> Scoped 2026-06-18 from the LiteLLM BYOK/BYOM + autonomous-router research (this session). Two
+> reports at repo root: `litellm-byok-byom-research.md`, `litellm-router-autonomous-improvement-research.md`.
+> Goal: give every caller **explicit model choice**, let **skills pin (or `auto`) their own model**,
+> add an **opt-in "auto" routing mode**, and stand up the **shadow-mode measurement + nightly
+> improvement loop** that lowers token cost at equal quality — all OSS/AGPL, API-first, IAM-gated.
+>
+> **Decisions (locked 2026-06-18):**
+> - **Full AGPL forever.** OpenRouter is UI/CLI *inspiration only* — no wire/client-slug compat;
+>   triangulate the surface with WeOwnAI.
+> - **No fee — meter + manage only** (no 5% / prepaid wallet).
+> - **No LiteLLM Enterprise license** (proprietary; can't ship in an AGPL artifact). OSS workarounds
+>   are permanent architecture.
+> - **BYOK is control-plane / ClusterTenant level — never per-openclaw-tenant.** Two key types:
+>   *upstream provider key* = central or per-ClusterTenant (held by LiteLLM); *LiteLLM virtual key* =
+>   per-openclaw (budget + `models[]` + metering, already minted).
+> - **Secrets are k8s-native:** GCP Secret Manager → External Secrets Operator → k8s Secret → LiteLLM
+>   env (`os.environ/<KEY>`); the `/credentials` DB store is only for the optional dynamic case.
+>   **CMEK on by default** (Terraform gap today).
+> - **Selection precedence: explicit request model > skill-pinned model > "auto" (only if selected) >
+>   global default**, bounded by the virtual key's `models[]`. **Auto runs only when "auto" is
+>   explicitly chosen** — otherwise the chosen/pinned model is used verbatim.
+> - **`STORE_MODEL_IN_DB` is the BYOM unlock.** LiteLLM does not learn — the improvement loop is
+>   external (RouteLLM Apache-2.0 + Langfuse MIT), writing back via the control plane only.
+>
+> **Verified:** no GuardLLM / guardrail / safety service exists anywhere in `opencrane-2` (code, Helm,
+> briefs, plans) — design-only, never built. A safety stream is future work (AIR.9); its logs would be
+> an auxiliary signal (hard filter + score term), **not** the routing quality judge.
+>
+> **Security prerequisite:** dev auth is OPEN and there is no per-route RBAC
+> (`auth.middleware.ts:117`, `docs/agents/architecture.md:35`). The credential/model/skill-model
+> mutation routes handle live secrets + cost policy and **must get ClusterTenant-scoped route authz
+> before they ship** (AIR.0b).
+
+- [x] **AIR.0 Platform hardening prereqs (Helm/Terraform — no behaviour change). — LANDED 2026-06-18.**
+  CMEK default-on in the GKE module (KMS keyring/key with `prevent_destroy` + 90d rotation, robot IAM,
+  `database_encryption`, gated by `enable_secrets_encryption=true`); `STORE_MODEL_IN_DB` + `LITELLM_SALT_KEY`
+  + Redis are **values-gated** (`litellm.storeModelInDb/redis.*`, salt auto-gen in `litellm-secret.yaml`),
+  **on for `values/gcp.yaml` (has Postgres), off for DB-less k3d** — i.e. DB-backing is wired everywhere but
+  only enabled where a DB exists, not force-on for all profiles; image pinned to `main-v1.81.0-stable`.
+  Validated: `helm template` (base + gcp) renders, multi-instance conformance passes; terraform not installed
+  (manual HCL pass). Original scope — (a) **CMEK by
+  default** in `platform/terraform/modules/gke/main.tf`: KMS keyring + crypto key (`prevent_destroy`)
+  + GKE robot `roles/cloudkms.cryptoKeyEncrypterDecrypter` IAM + `database_encryption { state=ENCRYPTED;
+  key_name=… }`. (b) **DB-backed LiteLLM for all profiles**: `DATABASE_URL` + `STORE_MODEL_IN_DB=True`
+  (+ `LITELLM_SALT_KEY` if `/credentials` used) into `litellm-deployment.yaml` + every values profile
+  (today only `gcp.yaml`). (c) **Redis** for cross-replica budgets/limits. (d) **Pin the LiteLLM image**
+  off `:main-latest`. **Acceptance:** existing per-tenant virtual keys still mint + persist across
+  restart; `helm template` clean. **Anchors:** `platform/terraform/modules/gke/main.tf`,
+  `platform/helm/templates/litellm-deployment.yaml`, `platform/helm/values*.yaml`.
+- [x] **AIR.0b Route authz for credential/model/skill-model mutations. — LANDED 2026-06-18.**
+  `infra/middleware/cluster-tenant-scope.ts` guard on all POST/PUT/DELETE of the new routers: platform
+  operators allowed at any scope; non-operators only on a `clusterTenant`-scoped resource whose owner equals
+  their freshly-resolved `clusterTenant`; Global mutations operator-only; denials → 403 `FORBIDDEN_SCOPE`.
+  **Prod hardening LANDED 2026-06-18 (security cutover):** the no-session fallthrough now **fails closed
+  unless dev-mode** — `infra/auth/auth-mode.ts._IsDevAuthMode()` (mirrors `auth.middleware`: dev = no OIDC
+  + no `OPENCRANE_API_TOKEN`) gates the guard + both read-scope resolvers (metrics → 403, recommendations →
+  empty). Dev / the OPEN dev backend stay permissive; any real auth deployment denies a sessionless mutation.
+  The `_ResolveCallerClusterTenant` resolver is single-sourced in `infra/auth/`. 324 tests green (+1 fail-closed test).
+  **Anchors:** `infra/auth/auth-mode.ts`, `infra/middleware/cluster-tenant-scope.ts`, `routes/model-routing-{metrics,recommendations}.ts`.
+- [x] **AIR.0c-data-path Operator→models data-path + per-key allowlist + config-map population. — LANDED 2026-06-18.**
+  New NetworkPolicy-gated internal endpoint `GET /api/internal/tenant-models/:tenant` → `{ models, defaultModel }`
+  (Global + the tenant's ClusterTenant `ModelDefinition`s; default via `ModelRoutingDefault` precedence). The
+  operator fetches it **best-effort/non-fatal** at reconcile (`tenants/internal/tenant-models.ts`, 2s timeout,
+  null on any error) and applies it: the LiteLLM virtual key's `models[]` allowlist is now set on `/key/generate`
+  + `/key/update` **when non-empty** (the real model-access gate; **omitted when empty** to avoid LiteLLM's
+  "empty = ALL" footgun — non-breaking), and the config-map `litellm-proxy.models[]` is populated likewise.
+  Closes the "any tenant can call any registered model" gap (also completes the deferred AIR.2-operator config-map
+  population). 332 control-plane + 101 operator tests green.
+- [ ] **AIR.0c-cutover (STILL BLOCKED) — remove the broadcast + retire `ProviderApiKey`.** **(B)** removing the
+  `org-shared-secrets` `envFrom` broadcast (`3-deployment.ts:189-191`) is **blocked on OpenClaw**, not the
+  operator: `OPENAI_API_KEY` feeds OpenClaw's *internal OpenAI translator fallback* (hardcoded, no config flag
+  per `3-deployment.ts:81`) — needs an **OpenClaw image change** (configurable translator backend) to point it
+  at LiteLLM. **(C)** deleting the orphaned `ProviderApiKey` table + `/providers/keys` route needs WeOwnAI
+  confirmed off the legacy endpoint first. Both deferred to a coordinated cutover.
+- [x] **AIR.1 Model registry (BYOM) — control-plane + LiteLLM. — LANDED 2026-06-18.** Prisma
+  `ModelDefinition` + `ProviderCredential` (scope `global|clusterTenant`, **stores `secretRef` — never a raw
+  key**) + enum `ModelRoutingScope` + migration `0017_model_routing`; contract types in `libs/contracts`;
+  `GET/POST/PUT/DELETE /api/v1/models` + `/api/v1/providers/credentials` (raw-key fields rejected 400;
+  cross-tenant credential binding rejected); `oc model …` + `oc credential …` CLI; LiteLLM `POST /model/new`
+  is a **best-effort GLOBAL seam** (guarded by `LITELLM_ENDPOINT`+master key, deterministic placeholder id in
+  dev). Build green; control-plane 242 tests pass (+18). **Deviations:** the orphaned `ProviderApiKey` table +
+  `/providers/keys` route are **kept for now** (retirement deferred to a cutover slice to avoid breaking
+  WeOwnAI); the CLI uses `--secret-ref` (not `--token-file`) — uploading a raw key to GCP-SM is a deliberate
+  future enhancement. _(Original scope:)_ `ModelDefinition` (scope
+  `global|clusterTenant`) + `ProviderCredential` (scope `global|clusterTenant`, references the
+  ESO-synced k8s Secret — **no raw key**) Prisma tables; `GET /models` + `POST/PATCH/DELETE /models`
+  (global) + `/cluster-tenants/{id}/models`; `oc model add/list/update/remove [--cluster-tenant]` +
+  `oc provider add/list/remove [--cluster-tenant] --token-file`. Backed by LiteLLM `/model/new` (GLOBAL,
+  `api_key: os.environ/<KEY>`). Retire the orphaned `ProviderApiKey` table + hardcoded `["openai","claude"]`.
+  **Anchors:** `openapi/spec.ts`, `routes/provider-keys.ts`→registry routes, `prisma/schema.prisma`,
+  regenerated `libs/contracts`, `apps/cli/src/commands/`.
+- [x] **AIR.2 Model selection precedence + the "auto" gate. — LANDED 2026-06-18 (contract side).** The
+  effective-contract now emits a resolved per-skill model via the pure `resolve-skill-model` helper
+  (precedence skill-pinned > skill-auto > ClusterTenant default > Global default). **Deferred:** operator
+  config-map pod-side default population (needs an operator→models data path) + the request-level explicit
+  override at the gateway. _(Original:)_ Resolve per request/skill:
+  **explicit > skill-pinned > auto (opt-in) > global default**, bounded by the key's `models[]`.
+  **Auto runs only when explicitly selected** (request- or skill-level flag) — never global-implicit.
+  Write the resolved per-skill model into the effective-contract + propagate to the pod
+  (`2-config-map.ts` `models[]`/default). **Anchors:** effective-contract endpoint,
+  `apps/operator/src/tenants/deploy/2-config-map.ts`.
+- [x] **AIR.3 Skill-level model definition. — LANDED 2026-06-18.** `Skill` gained
+  `modelMode`/`pinnedModel`/`autoConfig`; dedicated `/api/v1/skills/posture` router (the `Skill` model had
+  no prior read/write path — `skill-catalog` operates on the separate `SkillBundle`) keyed by
+  (name,scope,team) + `oc skill-posture` CLI. _(Original:)_ Let a skill self-define its model in the skill-registry
+  metadata — a **pinned** model or **`auto`** (with a per-skill auto config) — surfaced via the skill
+  API + `oc skill …` + the effective-contract. **Anchors:** skill-registry schema, control-plane skill
+  routes, contract compiler.
+- [x] **AIR.4 "auto" configuration surface. — LANDED 2026-06-18.** `ModelRoutingDefault` table (scope
+  global|clusterTenant) + `/api/v1/model-routing/defaults` CRUD + `oc model-default` CLI + the
+  `AutoRoutingConfig` type. **Config surface only** — the runtime optimizer that consumes `autoConfig` is
+  AIR.7. _(Original:)_ The opt-in auto knobs (router report §12):
+  objective/strategy (cheapest-passing-bar default | best-quality-within-budget | balanced via a
+  cost↔quality slider), quality floor (skill bar), budget cap, allowed-model set (= key `models[]`),
+  latency ceiling, fallback chain, scope (global|ClusterTenant|skill|request), session-pin (default on),
+  exploration toggle. API-first + `oc` + WeOwnAI. **Anchors:** config schema in `openapi/spec.ts`,
+  contract, CLI.
+- [x] **AIR.5 Per-tenant virtual-key hardening. — LANDED 2026-06-18.** Operator: richer `/key/generate`
+  params (`team_id` from clusterTenantRef/team, `budget_duration`, config-default tpm/rpm) + a `/key/update`
+  drift-reconcile replacing the no-rotation early-return (key value preserved, no pod restart). Control-plane:
+  revoke now best-effort `/key/delete` by alias, audited. **Deferred:** `org-shared-secrets` broadcast removal
+  (cutover — would break tenants before AIR.2 operator-side lands) + per-key `models[]` allowlist (needs the
+  operator→models data path). _(Original:)_ Extend `_generateLiteLlmVirtualKey` to send `team_id`
+  (ClusterTenant→LiteLLM Team), `models[]` allowlist, `budget_duration`, `tpm/rpm`; fix the no-rotation
+  early-return; complete revocation (`/key/delete`); stop the `org-shared-secrets` `envFrom` broadcast
+  (keys stay at the proxy). **Anchors:** `apps/operator/src/tenants/internal/tenant-litellm-keys.ts`,
+  `deploy/3-deployment.ts`, `core/ai-budget/ai-budget.logic.ts`.
+- [x] **AIR.6 Shadow-mode savings measurement. — LANDED 2026-06-18 (foundation).** `RoutingEvalCase`
+  data model + `/api/v1/model-routing/eval-cases` API + `oc routing eval-case`; pure `savings.ts`
+  estimator (at-bar fraction → `1 - effective/baseline`, bootstrap 95% CI, injectable rng) +
+  `shadow-measure.ts` orchestrator (per-case run+judge → `RoutingMeasurement`, emits a Pending proposal
+  only when CI excludes zero) behind `JudgeClient`/`ModelRunner` seams (`_BuildShadowSeams`, env-gated,
+  no-op when unconfigured); `/model-routing/measurements` (+ `POST /run`) + `oc routing measurement`;
+  Langfuse trace-capture wiring (LiteLLM `LITELLM_SUCCESS_CALLBACK=langfuse` + `LANGFUSE_*`, values-gated
+  default-off, points at an operator-provided Langfuse — not bundled). **Live seams IMPLEMENTED 2026-06-18:**
+  `shadow-seams.ts` now builds a real `ModelRunner` (LiteLLM `/v1/chat/completions`, cost from the
+  `x-litellm-response-cost` header) + a vendor-neutral `JudgeClient` (`ROUTING_JUDGE_MODEL`, robust 0–1 score
+  parse) when `LITELLM_ENDPOINT` + `LITELLM_MASTER_KEY` + `ROUTING_JUDGE_MODEL` are set (null pair / no-op
+  otherwise); hard HTTP failures throw (clean 500, no corrupt sample), soft cases degrade. Ops recipe in
+  `docs/operators/routing-measurement.md`. **Version-stamping LANDED 2026-06-19:** every `RoutingMeasurement`
+  /`RoutingProposal` now records `skillContentHash` + `skillDigest` (live published `SkillBundle`) + the stable
+  `candidateModelId`/`proposedModelId` (`litellmModelId`, not just the slug) + `candidateUpstreamModel` (migration
+  0020, best-effort lookups), and the recommendation feed surfaces them — so performance is attributable to a
+  specific *(skill content version × model deployment)* and stale evidence is detectable. (Residual: a provider
+  drifting a model behind a slug needs dated provider model ids to fully detect.) 352 tests green.
+  **Remaining = the live RUN itself**
+  (deploy DB-backed LiteLLM + provider keys + a judge model, then `oc routing measurement run` → the first real
+  savings number) — an operator step on a live cluster, plus reading sampled production traffic out of Langfuse.
+  _(Original:)_ LiteLLM
+  `CustomLogger` → **Langfuse** (skill id, model, cost, latency, propensity); per-skill golden eval set
+  + quality bar; nightly shadow-grade a sample with a **neutral judge** (not the candidates' vendor);
+  **OPE** (Open Bandit Pipeline, doubly-robust + bootstrap CIs + per-tenant breakdown); produce the
+  per-skill **go/no-go savings table**. (Router §11.) **Deliverable:** "routing would save X%±Y at equal
+  quality; overhead Z%." Needs AIR.0 + candidate models registered (AIR.1). **Anchors:** new optimizer
+  service/job, Langfuse self-host (MIT), LiteLLM callback.
+- [x] **AIR.7 Nightly improvement loop for "auto" skills. — LANDED 2026-06-18 (foundation).** Human-gated
+  `RoutingProposal` lifecycle (`/api/v1/model-routing/proposals` + `oc routing proposal` approve/reject):
+  a proposal is emitted only when the savings CI excludes zero, and **apply happens ONLY on explicit
+  approve** (pins the skill to `proposedModel` via the AIR.3 write, status→Applied, audited) — never
+  auto-deployed; reject leaves routing untouched. Pure `ope.ts` off-policy estimators (replay +
+  doubly-robust + bootstrap CI) provide the AIR.7 substrate for assessing a candidate policy from logs.
+  **Deferred (live-infra / next slices):** live judge+runner execution, Langfuse-backed sampling, the
+  RouteLLM/bandit policy learner, and staged canary % rollout (proposal status exists; graded traffic-%
+  rollout not implemented). _(Original:)_ judge → OPE → propose
+  (cheapest-≥-bar; later RouteLLM matrix-factorization/BERT or a bandit) → gate on a frozen private
+  hold-out + significance (95% CI excludes zero) → **canary** → **human-approved diff via the control
+  plane** → write per-skill default + LiteLLM `/model/update` + per-key `models[]`. IAM-gated + audited;
+  **never auto-deploy.** Four rules: log propensities/explore, neutral judge (multi-vendor
+  self-preference), frozen hold-out, shadow→canary→approve. (Router §4/§7.)
+- [ ] **AIR.8 (FUTURE) Fixed-model-skill savings evaluator + advisory notification.** For skills pinned
+  to a fixed model (not auto), run the shadow evaluator continuously and **surface an advisory — never
+  auto-change a pinned skill**: WeOwnAI/CLI lists fixed-model skills with *"by changing this skill's
+  model you could save up to N% in token cost at equal quality,"* one-click **"switch to recommended"** /
+  **"enable auto."** (Router §12.) **In-repo enablers DONE:** the savings-recommendation feed
+  (`/model-routing/recommendations`, AIR.11) now also carries the skill's `modelMode` (pinned|auto|null) so the
+  console can flag a *fixed-model* skill distinctly; the one-click actions map to existing APIs (proposal
+  approve = AIR.7, enable-auto = `oc skill-posture set --mode auto` = AIR.3). Remaining is the WeOwnAI view itself.
+- [ ] **AIR.9 (FUTURE) Safety / guardrail stream.** If/when a guardrail service is adopted, run it as an
+  external OSS service (LiteLLM's built-in callbacks are Enterprise), emit verdicts to Langfuse keyed by
+  skill id; use as a hard routing filter + a safety term in the per-skill score — **not** the quality
+  judge. No such service exists today.
+- [x] **AIR.10 (FRONTEND ENABLER) Langfuse-metrics proxy. — LANDED 2026-06-18.** `GET /api/v1/model-routing/metrics`
+  proxies Langfuse v1 `/api/public/metrics` (overridable via `LANGFUSE_METRICS_PATH`) with server-side HTTP Basic
+  auth; **503** when unconfigured, **502** on upstream error; non-operators get a tenant-dimension filter injected
+  (fail-closed **403** when their ClusterTenant can't be resolved); `oc routing metrics`. **Open:** the tenant
+  filter field (`metadata.clusterTenant`) is a documented `TODO(AIR.10)` to confirm once the gateway stamps the
+  tenant dimension into trace metadata. _(Original:)_ Control-plane read endpoint proxying
+  Langfuse's **v1** Metrics/Public API (v2 is Cloud-only) with project keys held server-side + scoped
+  per tenant, so the WeOwnAI console can render native eval/cost trend tiles without the browser ever
+  holding Langfuse credentials. IAM-gated. (Verified 2026-06-18: Langfuse has no iframe embed → build
+  native over the API + link out for deep eval UX.)
+- [x] **AIR.11 (FRONTEND ENABLER) Savings-recommendation read endpoint. — LANDED 2026-06-18.**
+  `GET /api/v1/model-routing/recommendations` joins each skill's latest `RoutingMeasurement` with any open
+  Pending `RoutingProposal`, sorted by `projectedSavingsPct` desc, scope-filtered (operator sees all,
+  non-operator only their own ClusterTenant, fail-closed `[]`); new `SavingsRecommendation` contract type;
+  `oc routing recommendation list`. The "save up to N%" feed behind the console differentiator. _(Original:)_ Aggregate the latest
+  `RoutingMeasurement` + open `RoutingProposal` per skill/tenant into a "save up to N%" feed — the API
+  behind the console's headline differentiator (the inline savings-recommendation + one-click human-gated
+  apply, market whitespace; see `litellm-router-autonomous-improvement-research.md` §14). Pure read over
+  data the AIR.6/7 loop already produces.
+
+> **Frontend (WeOwnAI, separate proprietary repo — out of this AGPL tree):** the management *views* live
+> there as just-another-API-client (`/auth/me` claims hide UI; the API enforces). Prioritized capability
+> catalogue + Langfuse embed/link/native guidance in `litellm-router-autonomous-improvement-research.md`
+> §14. **Eval refinement:** AIR.6's judge should be a thin layer over **Langfuse managed evaluators +
+> trace-curated datasets** (all MIT/free on OSS self-host) rather than a fully bespoke judge — §13.
+
+**Sequencing:** AIR.0/0b (prereqs) → AIR.1 (registry) → {AIR.2 selection ∥ AIR.3 skill model ∥ AIR.4 auto config} → AIR.5 key hardening → **AIR.6 shadow measurement is the recommended first end-to-end slice** (proves the savings before building AIR.7) → AIR.7 loop → {AIR.10 ∥ AIR.11 frontend enablers} → AIR.8/9 future.
 
 ---
 

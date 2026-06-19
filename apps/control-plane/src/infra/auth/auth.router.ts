@@ -35,9 +35,16 @@ export function ___AuthRouter(authService: OidcAuthService, prisma: PrismaClient
   // --------------------------------------------------------------------------
 
   /** Report the current auth mode and authenticated user session, if any. */
-  router.get("/me", function _me(req, res)
+  router.get("/me", async function _me(req, res, next)
   {
-    res.json(authService.getStatus(req));
+    try
+    {
+      res.json(await authService.getStatus(req));
+    }
+    catch (err)
+    {
+      next(err);
+    }
   });
 
   // --------------------------------------------------------------------------

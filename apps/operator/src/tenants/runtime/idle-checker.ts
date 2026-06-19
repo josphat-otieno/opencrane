@@ -153,7 +153,7 @@ export class IdleChecker
         plural: TENANT_CRD_PLURAL,
         name,
         body: { spec: { suspended: true } },
-      });
+      }, k8s.setHeaderOptions("Content-Type", k8s.PatchStrategy.MergePatch));
     }
     catch (err)
     {

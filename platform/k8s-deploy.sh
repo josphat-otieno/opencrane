@@ -131,33 +131,11 @@ helm_args=(upgrade --install "$RELEASE" "$CHART_DIR" --namespace "$NAMESPACE" --
 helm_args+=("${EXTRA_SET[@]}")
 helm "${helm_args[@]}"
 
-# 4. Database schema migration.
-log "Running database migrations…"
-kubectl apply -f - <<EOF
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: opencrane-db-migrate
-  namespace: ${NAMESPACE}
-spec:
-  ttlSecondsAfterFinished: 300
-  backoffLimit: 3
-  template:
-    spec:
-      restartPolicy: OnFailure
-      containers:
-        - name: migrate
-          image: ghcr.io/italanta/opencrane-control-plane:${IMAGE_TAG}
-          command: ["npx", "prisma@6", "migrate", "deploy"]
-          workingDir: /app/apps/control-plane
-          env:
-            - name: DATABASE_URL
-              valueFrom:
-                secretKeyRef: { name: ${DB_SECRET}, key: DATABASE_URL }
-EOF
-kubectl wait --for=condition=complete "job/opencrane-db-migrate" -n "$NAMESPACE" --timeout="${TIMEOUT}s"
-
-# 5. Wait for the core workloads.
+# 4. Wait for the core workloads.
+# Database migrations run automatically in the control-plane's `db-migrate`
+# initContainer (prisma migrate deploy) before the server starts — so the
+# rollout below also gates on a successful migration. Any `helm upgrade` or
+# pod restart re-runs it idempotently; no separate migration Job needed.
 kubectl rollout status "deployment/${RELEASE}-operator" -n "$NAMESPACE" --timeout="${TIMEOUT}s"
 kubectl rollout status "deployment/${RELEASE}-control-plane" -n "$NAMESPACE" --timeout="${TIMEOUT}s"
 

@@ -164,10 +164,36 @@ litellm:
   spendPathTemplate: "/spend/tenant/{tenant}"
   image:
     repository: ghcr.io/berriai/litellm
-    tag: main-latest
+    # -- Pinned to the audited stable tag (matches the k3d overlays) for
+    #    supply-chain integrity + reproducible deploys. Do NOT use a rolling
+    #    `main-latest` tag in production — bump deliberately after re-auditing.
+    tag: main-v1.81.0-stable
     pullPolicy: IfNotPresent
   service:
     port: 4000
+  # -- Persist model/router config in Postgres (LiteLLM STORE_MODEL_IN_DB). Lets
+  #    you manage models/keys at runtime via the admin API instead of static
+  #    config. REQUIRES a DATABASE_URL (set existingDatabaseSecret/databaseUrl), so
+  #    it is OFF by default and must NOT be enabled on DB-less profiles. Enabled in
+  #    values/gcp.yaml (which provisions Postgres).
+  storeModelInDb: false
+  # -- Encryption salt for provider keys stored in the DB (LITELLM_SALT_KEY). Only
+  #    consumed when storeModelInDb=true. Leave empty to auto-generate + persist in
+  #    the chart-managed litellm Secret (stable across upgrades). MUST stay constant
+  #    once set — rotating it makes already-stored keys unreadable.
+  saltKey: ""
+  # -- Existing Secret holding LITELLM_SALT_KEY (preferred in production). When set,
+  #    the chart does not manage/generate the salt.
+  existingSaltSecret: ""
+  saltSecretKey: LITELLM_SALT_KEY
+  # -- Redis backend for cross-replica budget + rate-limit consistency. Needed for
+  #    HA / multi-replica installs so spend tracking and rate limits are shared
+  #    across pods (not per-replica). OFF by default — single-replica installs do
+  #    not need it. No Redis is deployed by the chart; point this at an existing one.
+  redis:
+    enabled: false
+    host: ""
+    port: 6379
   podSecurityContext:
     runAsNonRoot: true
     runAsUser: 10001
@@ -195,6 +221,33 @@ litellm:
   # -- Optional explicit master key override. Leave empty to auto-generate when generateMasterKey=true.
   #    Placeholder is ignored when auto-generation is enabled.
   masterKey: "change-me-in-production"
+  # -- Trace capture (AIR.6): emit per-call traces from LiteLLM to a Langfuse
+  #    instance via LiteLLM's native langfuse success callback. This is the "log"
+  #    half of the shadow-measurement loop — it records {prompt, model, cost,
+  #    latency} per call so the optimizer (AIR.6/7) can read those traces back out
+  #    of Langfuse and join them by skill.
+  #    The chart does NOT bundle Langfuse (which needs its own Postgres + ClickHouse
+  #    + web). Point `host` at an operator-provided / separately-installed Langfuse.
+  #    OFF by default: a default render is byte-identical with this disabled.
+  langfuse:
+    # -- Master switch. When false, no LANGFUSE_* / LITELLM_SUCCESS_CALLBACK env is
+    #    rendered and LiteLLM behaviour is unchanged.
+    enabled: false
+    # -- Base URL of the external Langfuse (e.g. https://langfuse.example.com).
+    #    Set on the container as LANGFUSE_HOST.
+    host: ""
+    # -- Inline Langfuse API keys. Used only when `enabled` and no `existingSecret`
+    #    is given; persisted into the chart-managed litellm Secret. Prefer
+    #    `existingSecret` in production.
+    publicKey: ""
+    secretKey: ""
+    # -- Existing Secret holding the Langfuse keys (preferred in production). When
+    #    set, the chart does not manage/persist the inline keys.
+    existingSecret: ""
+    # -- Keys within `existingSecret` (and the chart-managed Secret) for the public
+    #    and secret Langfuse keys.
+    publicKeyKey: LANGFUSE_PUBLIC_KEY
+    secretKeyKey: LANGFUSE_SECRET_KEY
 
 # -- Default tenant pod settings (can be overridden per Tenant CR)
 tenant:

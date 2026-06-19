@@ -1,4 +1,5 @@
 import type * as k8s from "@kubernetes/client-node";
+import { PatchStrategy, setHeaderOptions } from "@kubernetes/client-node";
 import type { Logger } from "pino";
 
 import type { TenantRolloutConfig, TenantRolloutEntry, TenantRolloutPhase } from "./tenant-update-with-canary-strategy.types.js";
@@ -189,7 +190,7 @@ export class TenantUpdateWithCanaryStrategyController
       plural: TENANT_CRD_PLURAL,
       name: tenantName,
       body: { spec: { openclawVersion: targetVersion } },
-    });
+    }, setHeaderOptions("Content-Type", PatchStrategy.MergePatch));
 
     this._log.info({ tenantName, targetVersion, previousVersion }, "patched tenant version");
 

@@ -16,6 +16,7 @@ import { TenantCleanup } from "./destroy/tenant-cleanup.js";
 import { TenantEncryptionKeys } from "./internal/tenant-encryption-keys.js";
 import { TenantLiteLlmKeys } from "./internal/tenant-litellm-keys.js";
 import { _ResolveTenantPolicy } from "./internal/policy-resolution.js";
+import { _FetchTenantModels } from "./internal/tenant-models.js";
 import { _ResolveClusterTenant } from "./internal/cluster-tenant-resolution.js";
 import type { ClusterTenantResource } from "./internal/cluster-tenant-resolution.types.js";
 import { TenantStatusWriter } from "./internal/tenant-status-writer.js";
@@ -225,6 +226,12 @@ export class TenantOperator
         },
       };
 
+      // 0c. Allowed model set — best-effort fetch of the tenant's registered models
+      //     from the control-plane internal API. This is a deliberate, non-fatal
+      //     operator → control-plane dependency: a null result (outage, 404, timeout)
+      //     falls back to today's unrestricted behaviour and never blocks reconcile.
+      const modelSet = await _FetchTenantModels(this.config.controlPlaneInternalUrl, name, this.log);
+
       // 1. ServiceAccount — identity annotations come from the adapter; empty on-prem,
       //    Workload Identity annotation on GKE, IRSA on EKS, etc.
       await __K8sApplyResource(this.coreApi, _BuildServiceAccount(this.hosting, effectiveTenant, namespace), this.log);
@@ -242,7 +249,7 @@ export class TenantOperator
       //    Best-effort so transient LiteLLM backend issues do not block tenant startup.
       try
       {
-        await this.liteLlmKeys.ensureLiteLlmKeySecret(effectiveTenant, namespace);
+        await this.liteLlmKeys.ensureLiteLlmKeySecret(effectiveTenant, namespace, modelSet);
       }
       catch (err)
       {
@@ -251,7 +258,7 @@ export class TenantOperator
 
       // 5. ConfigMap — serialises the base OpenClaw JSON config merged with any
       //    spec.configOverrides the tenant author provided.
-      await __K8sApplyResource(this.coreApi, _BuildConfigMap(this.config, effectiveTenant, namespace, policyResolution.effectivePolicy), this.log);
+      await __K8sApplyResource(this.coreApi, _BuildConfigMap(this.config, effectiveTenant, namespace, policyResolution.effectivePolicy, modelSet), this.log);
 
       // 6. State volume — adapter decides CSI mount (cloud) vs PVC (on-prem).
       //    Create the PVC only when the adapter requests it (on-prem path).

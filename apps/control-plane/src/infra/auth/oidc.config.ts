@@ -24,6 +24,9 @@ export function ___LoadOidcAuthConfig(): OidcAuthConfig
       sessionMaxAgeMs: 12 * 60 * 60 * 1000,
       allowedEmailDomains: [],
       allowedEmails: [],
+      groupsClaim: process.env.OIDC_GROUPS_CLAIM?.trim() || "groups",
+      rolesClaim: process.env.OIDC_ROLES_CLAIM?.trim() || "roles",
+      platformOperatorGroups: _readPlatformOperatorGroups(),
     };
   }
 
@@ -52,7 +55,24 @@ export function ___LoadOidcAuthConfig(): OidcAuthConfig
     sessionMaxAgeMs: _readNumber(process.env.OIDC_SESSION_MAX_AGE_SECONDS, 12 * 60 * 60) * 1000,
     allowedEmailDomains: _readCsv(process.env.OIDC_ALLOWED_EMAIL_DOMAINS),
     allowedEmails: _readCsv(process.env.OIDC_ALLOWED_EMAILS),
+    groupsClaim: process.env.OIDC_GROUPS_CLAIM?.trim() || "groups",
+    rolesClaim: process.env.OIDC_ROLES_CLAIM?.trim() || "roles",
+    platformOperatorGroups: _readPlatformOperatorGroups(),
   };
+}
+
+/**
+ * Read the platform-operator group allowlist that drives `isPlatformOperator`.
+ *
+ * Sourced from `OPENCRANE_PLATFORM_OPERATOR_GROUPS` (comma-separated, lowercased);
+ * the legacy `OIDC_PLATFORM_OPERATOR_GROUPS` is honoured as a fallback. Empty when
+ * neither is set, so the derived `isPlatformOperator` is false for everyone until a
+ * platform admin opts in — fail-closed, since OpenCrane has no role model yet.
+ */
+function _readPlatformOperatorGroups(): string[]
+{
+  const primary = _readCsv(process.env.OPENCRANE_PLATFORM_OPERATOR_GROUPS);
+  return primary.length ? primary : _readCsv(process.env.OIDC_PLATFORM_OPERATOR_GROUPS);
 }
 
 /**

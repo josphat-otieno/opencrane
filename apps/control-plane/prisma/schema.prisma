@@ -14,6 +14,7 @@ model Tenant {
   team               String?
   phase              String                    @default("Pending")
   ingressHost        String?                   @map("ingress_host")
+  clusterTenantRef   String?                   @map("cluster_tenant_ref")
   configOverrides    Json?                     @map("config_overrides")
   awarenessWave      String?                   @map("awareness_wave")
   createdAt          DateTime                  @default(now()) @map("created_at")
@@ -185,6 +186,12 @@ model Skill {
   path        String
   author      String?
   contentHash String?  @map("content_hash")
+  /// Model posture (Track AIR): `pinned` (use pinnedModel), `auto` (route within autoConfig), or null (inherit the scope default).
+  modelMode   SkillModelMode? @map("model_mode")
+  /// The pinned model's publicModelName, when modelMode is `pinned`.
+  pinnedModel String?  @map("pinned_model")
+  /// Per-skill AutoRoutingConfig, when modelMode is `auto`.
+  autoConfig  Json?    @map("auto_config")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
@@ -540,6 +547,159 @@ model ProviderApiKey {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("provider_api_keys")
+}
+
+/// Scope at which a provider credential or model definition is owned (Track AIR).
+/// Provider keys are central (Global) or per-customer (ClusterTenant) — NEVER per openclaw tenant.
+enum ModelRoutingScope {
+  Global        @map("global")
+  ClusterTenant @map("clusterTenant")
+}
+
+/// A provider API credential owned at control-plane (Global) or ClusterTenant scope.
+/// OpenCrane stores only a REFERENCE to the External-Secrets-synced k8s Secret holding the key —
+/// never the raw key. `litellmCredentialName` is set only when registered via LiteLLM /credentials
+/// for the dynamic no-restart path; the baseline rides `os.environ/<KEY>` from the synced Secret.
+model ProviderCredential {
+  id                    String            @id @default(cuid())
+  scope                 ModelRoutingScope @default(Global)
+  clusterTenant         String?           @map("cluster_tenant")
+  provider              String
+  secretRef             String            @map("secret_ref")
+  litellmCredentialName String?           @map("litellm_credential_name")
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
+
+  models ModelDefinition[]
+
+  @@unique([scope, clusterTenant, provider])
+  @@index([clusterTenant])
+  @@map("provider_credentials")
+}
+
+/// A routable model registered in LiteLLM, owned at Global or ClusterTenant scope (BYOM).
+/// The control plane registers it via LiteLLM `POST /model/new` (global) and records the returned
+/// deployment id here; access is scoped per tenant via the virtual key's `models[]` allowlist.
+model ModelDefinition {
+  id                   String              @id @default(cuid())
+  scope                ModelRoutingScope   @default(Global)
+  clusterTenant        String?             @map("cluster_tenant")
+  publicModelName      String              @map("public_model_name")
+  litellmModelId       String              @unique @map("litellm_model_id")
+  upstreamModel        String              @map("upstream_model")
+  apiBase              String?             @map("api_base")
+  isDefault            Boolean             @default(false) @map("is_default")
+  providerCredentialId String?             @map("provider_credential_id")
+  createdAt            DateTime            @default(now()) @map("created_at")
+  updatedAt            DateTime            @updatedAt @map("updated_at")
+
+  providerCredential ProviderCredential? @relation(fields: [providerCredentialId], references: [id], onDelete: SetNull)
+
+  @@unique([scope, clusterTenant, publicModelName])
+  @@index([clusterTenant])
+  @@map("model_definitions")
+}
+
+/// Skill model-selection posture (Track AIR): pin a model or opt the skill into auto-routing.
+enum SkillModelMode {
+  Pinned @map("pinned")
+  Auto   @map("auto")
+}
+
+/// Default model + auto-routing config at a scope (Global platform default, or per ClusterTenant),
+/// consulted when a skill has no posture of its own. `defaultModel` is a ModelDefinition.publicModelName.
+model ModelRoutingDefault {
+  id            String            @id @default(cuid())
+  scope         ModelRoutingScope @default(Global)
+  clusterTenant String?           @map("cluster_tenant")
+  defaultModel  String?           @map("default_model")
+  autoConfig    Json?             @map("auto_config")
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+
+  @@unique([scope, clusterTenant])
+  @@map("model_routing_defaults")
+}
+
+/// Lifecycle of a routing-change proposal (AIR.7 safe-rollout spine: never auto-applied).
+enum RoutingProposalStatus {
+  Pending  @map("pending")
+  Approved @map("approved")
+  Rejected @map("rejected")
+  Applied  @map("applied")
+}
+
+/// A golden eval case for a skill — the per-skill quality-bar substrate the shadow measurement
+/// grades candidate models against (AIR.6). Keyed loosely by the skill's (name, scope, team).
+model RoutingEvalCase {
+  id         String   @id @default(cuid())
+  skillName  String   @map("skill_name")
+  skillScope String   @map("skill_scope")
+  skillTeam  String   @default("") @map("skill_team")
+  input      Json
+  expected   Json?
+  qualityBar Float    @default(0.8) @map("quality_bar")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([skillName, skillScope, skillTeam])
+  @@map("routing_eval_cases")
+}
+
+/// A shadow-mode savings measurement for one skill (AIR.6 output): what routing WOULD save at
+/// equal quality, with a bootstrap CI, computed without changing any live routing.
+model RoutingMeasurement {
+  id                  String   @id @default(cuid())
+  skillName           String   @map("skill_name")
+  skillScope          String   @map("skill_scope")
+  skillTeam           String   @default("") @map("skill_team")
+  candidateModel      String?  @map("candidate_model")
+  sampledCalls        Int      @map("sampled_calls")
+  atBarCheapFraction  Float    @map("at_bar_cheap_fraction")
+  projectedSavingsPct Float    @map("projected_savings_pct")
+  ciLowPct            Float    @map("ci_low_pct")
+  ciHighPct           Float    @map("ci_high_pct")
+  overheadPct         Float    @default(0) @map("overhead_pct")
+  /// Skill content version coordinate: the `Skill.contentHash` of the measured skill at run time (best-effort; null if unresolved).
+  skillContentHash    String?  @map("skill_content_hash")
+  /// Skill content version coordinate: the live published `SkillBundle.digest` at run time (best-effort; null if no published bundle).
+  skillDigest         String?  @map("skill_digest")
+  /// Model deployment coordinate: the candidate's stable `ModelDefinition.litellmModelId` (best-effort; null if unresolved).
+  candidateModelId    String?  @map("candidate_model_id")
+  /// Model deployment coordinate: the candidate's `ModelDefinition.upstreamModel` (best-effort; null if unresolved).
+  candidateUpstreamModel String? @map("candidate_upstream_model")
+  runAt               DateTime @default(now()) @map("run_at")
+
+  @@index([skillName, skillScope, skillTeam])
+  @@map("routing_measurements")
+}
+
+/// A human-gated routing-change proposal (AIR.7). Emitted only when the savings CI excludes zero;
+/// applied (write the per-skill default) ONLY after explicit approval — never auto-deployed.
+model RoutingProposal {
+  id                  String                @id @default(cuid())
+  skillName           String                @map("skill_name")
+  skillScope          String                @map("skill_scope")
+  skillTeam           String                @default("") @map("skill_team")
+  fromModel           String?               @map("from_model")
+  proposedModel       String                @map("proposed_model")
+  projectedSavingsPct Float                 @map("projected_savings_pct")
+  ciLowPct            Float                 @map("ci_low_pct")
+  ciHighPct           Float                 @map("ci_high_pct")
+  /// Skill content version coordinate: the `Skill.contentHash` at proposal time (best-effort; null if unresolved).
+  skillContentHash    String?               @map("skill_content_hash")
+  /// Skill content version coordinate: the live published `SkillBundle.digest` at proposal time (best-effort; null if none).
+  skillDigest         String?               @map("skill_digest")
+  /// Model deployment coordinate: the proposed model's stable `ModelDefinition.litellmModelId` (best-effort; null if unresolved).
+  proposedModelId     String?               @map("proposed_model_id")
+  measurementId       String?               @map("measurement_id")
+  status              RoutingProposalStatus @default(Pending)
+  decidedBy           String?               @map("decided_by")
+  decidedAt           DateTime?             @map("decided_at")
+  createdAt           DateTime              @default(now()) @map("created_at")
+
+  @@index([status])
+  @@map("routing_proposals")
 }
 
 model OrgDocument {

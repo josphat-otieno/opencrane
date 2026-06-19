@@ -159,7 +159,7 @@ export class PolicyOperator
         plural: ACCESS_POLICY_CRD_PLURAL,
         name,
         body: { status: { lastReconciled: new Date().toISOString() } },
-      });
+      }, k8s.setHeaderOptions("Content-Type", k8s.PatchStrategy.MergePatch));
     }
     catch (err)
     {

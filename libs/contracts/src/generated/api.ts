@@ -662,6 +662,341 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/providers/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List provider credentials (references only — never the key value) */
+        get: operations["listProviderCredentials"];
+        put?: never;
+        /** Create a provider credential reference (rejects any raw-key field) */
+        post: operations["createProviderCredential"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/providers/credentials/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a single provider credential by id */
+        get: operations["getProviderCredential"];
+        /** Update a provider credential reference (rejects any raw-key field) */
+        put: operations["updateProviderCredential"];
+        post?: never;
+        /** Delete a provider credential */
+        delete: operations["deleteProviderCredential"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List model definitions */
+        get: operations["listModels"];
+        put?: never;
+        /** Create a model definition and register it best-effort with LiteLLM */
+        post: operations["createModel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/models/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a single model definition by id */
+        get: operations["getModel"];
+        /** Update a model definition */
+        put: operations["updateModel"];
+        post?: never;
+        /** Delete a model definition */
+        delete: operations["deleteModel"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/model-routing/defaults": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List model-routing defaults */
+        get: operations["listModelRoutingDefaults"];
+        /** Upsert the model-routing default for a (scope, clusterTenant) pair */
+        put: operations["upsertModelRoutingDefault"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/model-routing/defaults/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a single model-routing default by id */
+        get: operations["getModelRoutingDefault"];
+        put?: never;
+        post?: never;
+        /** Delete a model-routing default */
+        delete: operations["deleteModelRoutingDefault"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/skills/posture": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all skills with their model posture */
+        get: operations["listSkillModelPostures"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/skills/posture/skill": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a single skill's model posture by its compound key */
+        get: operations["getSkillModelPosture"];
+        /** Set (or clear) a skill's model posture */
+        put: operations["setSkillModelPosture"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/model-routing/eval-cases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List routing eval cases */
+        get: operations["listRoutingEvalCases"];
+        put?: never;
+        /** Create a routing eval case for a skill */
+        post: operations["createRoutingEvalCase"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/model-routing/eval-cases/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a single routing eval case by id */
+        get: operations["getRoutingEvalCase"];
+        /** Update a routing eval case by id */
+        put: operations["updateRoutingEvalCase"];
+        post?: never;
+        /** Delete a routing eval case by id */
+        delete: operations["deleteRoutingEvalCase"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/model-routing/measurements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List shadow-savings measurements */
+        get: operations["listRoutingMeasurements"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/model-routing/measurements/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Trigger a shadow-savings measurement for a skill + candidate (operator-gated, best-effort) */
+        post: operations["runRoutingMeasurement"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/model-routing/measurements/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a single measurement by id */
+        get: operations["getRoutingMeasurement"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/model-routing/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List routing-change proposals */
+        get: operations["listRoutingProposals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/model-routing/proposals/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a single proposal by id */
+        get: operations["getRoutingProposal"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/model-routing/proposals/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve a proposal — pin the skill to the proposed model and mark it Applied */
+        post: operations["approveRoutingProposal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/model-routing/proposals/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject a proposal — flip status to Rejected; the skill posture is untouched */
+        post: operations["rejectRoutingProposal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/model-routing/recommendations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List savings recommendations (latest measurement + any open proposal, per skill) */
+        get: operations["listSavingsRecommendations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/model-routing/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Proxy a metrics query to the self-hosted Langfuse backend (server-side auth; non-operators scoped to their tenant) */
+        get: operations["getRoutingMetrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ai-budget/global": {
         parameters: {
             query?: never;
@@ -1035,6 +1370,8 @@ export interface components {
             /** Format: email */
             email?: string;
             team?: string;
+            /** @description Parent ClusterTenant (customer) this tenant attaches to; absent on the single-instance path. */
+            clusterTenantRef?: string;
             phase?: string;
             ingressHost?: string;
             /** Format: date-time */
@@ -1119,6 +1456,27 @@ export interface components {
                 quota: components["schemas"]["ClusterTenantResourceQuota"];
             };
         };
+        /** @description Partial cluster-tenant update; the immutable name comes from the path. Every field is optional — only those present are changed. */
+        ClusterTenantUpdate: {
+            /** @description New human-readable customer name (must be non-blank when present). */
+            displayName?: string;
+            /** @description New customer-owned base domain; an empty string clears it (back to the per-instance ingress.domain fallback). */
+            baseDomain?: string;
+            /**
+             * @description New isolation strength; re-gated against the provisioner registry when changed.
+             * @enum {string}
+             */
+            isolationTier?: "shared" | "dedicatedNodes" | "dedicatedCluster";
+            compute?: {
+                /** @enum {string} */
+                mode: "shared" | "dedicated";
+                /** @description Dedicated node pool name; required when mode is 'dedicated'. */
+                nodePool?: string;
+            };
+            resources?: {
+                quota: components["schemas"]["ClusterTenantResourceQuota"];
+            };
+        };
         ClusterTenantResourceQuota: {
             /** @description Total CPU the customer may request (e.g. '4', '500m'). */
             cpu?: string;
@@ -1179,6 +1537,416 @@ export interface components {
             configured?: boolean;
             /** Format: date-time */
             updatedAt?: string;
+        };
+        ProviderCredential: {
+            /** @description Stable identifier. */
+            id: string;
+            /**
+             * @description Whether the credential is platform-wide or owned by one ClusterTenant.
+             * @enum {string}
+             */
+            scope: "global" | "clusterTenant";
+            /** @description Owning ClusterTenant when scope is clusterTenant; null for Global. */
+            clusterTenant?: string | null;
+            /** @description Free-text provider key (e.g. openai, anthropic, bedrock). */
+            provider: string;
+            /** @description Name of the External-Secrets-synced k8s Secret carrying the provider key (never the raw key). */
+            secretRef: string;
+            /** @description LiteLLM /credentials name when registered for the dynamic path; null for the env baseline. */
+            litellmCredentialName?: string | null;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+        };
+        ProviderCredentialWrite: {
+            /**
+             * @description Defaults to global when omitted.
+             * @enum {string}
+             */
+            scope?: "global" | "clusterTenant";
+            /** @description Required when scope is clusterTenant. */
+            clusterTenant?: string;
+            /** @description Free-text provider key. */
+            provider: string;
+            /** @description Name of the External-Secrets-synced k8s Secret carrying the provider key. A raw key field (apiKey/keyValue/key) is rejected with 400. */
+            secretRef: string;
+            /** @description Optional LiteLLM /credentials name for the dynamic no-restart path. */
+            litellmCredentialName?: string;
+        };
+        ModelDefinition: {
+            /** @description Stable identifier. */
+            id: string;
+            /**
+             * @description Whether the model is platform-wide or owned by one ClusterTenant.
+             * @enum {string}
+             */
+            scope: "global" | "clusterTenant";
+            /** @description Owning ClusterTenant when scope is clusterTenant; null for Global. */
+            clusterTenant?: string | null;
+            /** @description The routable public slug callers request, e.g. openai/gpt-4o. */
+            publicModelName: string;
+            /** @description Deployment id returned by LiteLLM /model/new (or a deterministic placeholder when LiteLLM is unconfigured). */
+            litellmModelId: string;
+            /** @description Upstream model the deployment targets. */
+            upstreamModel: string;
+            /** @description Optional non-default API base for self-hosted / proxied endpoints. */
+            apiBase?: string | null;
+            /** @description Whether this is the default model at its scope. */
+            isDefault: boolean;
+            /** @description The provider credential backing this model, when set. */
+            providerCredentialId?: string | null;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+        };
+        ModelDefinitionWrite: {
+            /**
+             * @description Defaults to global when omitted.
+             * @enum {string}
+             */
+            scope?: "global" | "clusterTenant";
+            /** @description Required when scope is clusterTenant. */
+            clusterTenant?: string;
+            /** @description The routable public slug, e.g. openai/gpt-4o. */
+            publicModelName: string;
+            /** @description Upstream model the deployment targets. */
+            upstreamModel: string;
+            /** @description Optional non-default API base. */
+            apiBase?: string;
+            /** @description Whether this is the default model at its scope. */
+            isDefault?: boolean;
+            /** @description Provider credential backing this model. */
+            providerCredentialId?: string;
+        };
+        /** @description Opt-in auto-routing configuration. Auto routing applies ONLY when a skill (or scope default) selects it; the runtime optimizer that consumes it is a later track item (AIR.7). */
+        AutoRoutingConfig: {
+            /**
+             * @description The optimization objective.
+             * @enum {string}
+             */
+            objective: "cheapest-passing-bar" | "best-quality-within-budget" | "balanced";
+            /** @description Cost↔quality dial for the balanced objective: 0 = cheapest … 10 = best. */
+            costQualitySlider?: number;
+            /** @description Minimum eval score a model must clear; defaults to the skill's own bar when omitted. */
+            qualityFloor?: number;
+            /** @description Hard per-decision spend ceiling in USD. */
+            maxBudgetUsd?: number;
+            /** @description Restrict auto to this subset of publicModelNames; must stay within the key's allowlist. */
+            allowedModels?: string[];
+            /** @description Reject/penalize models slower than this many milliseconds. */
+            latencyCeilingMs?: number;
+            /** @description Ordered fallback publicModelNames on failure/unavailability. */
+            fallbacks?: string[];
+            /** @description Keep the chosen model stable within a conversation to preserve prompt caches. */
+            sessionPin: boolean;
+            /** @description Fraction of traffic to explore alternatives on (0 = pure exploit). */
+            explorationRate: number;
+        };
+        ModelRoutingDefault: {
+            /** @description Stable identifier. */
+            id: string;
+            /**
+             * @description Whether this default is platform-wide or per-ClusterTenant.
+             * @enum {string}
+             */
+            scope: "global" | "clusterTenant";
+            /** @description Owning ClusterTenant when scope is clusterTenant; null for Global. */
+            clusterTenant?: string | null;
+            /** @description Default model publicModelName at this scope; null when unset. */
+            defaultModel?: string | null;
+            /** @description Default auto-routing config at this scope; null when unset. */
+            autoConfig?: {
+                /**
+                 * @description The optimization objective.
+                 * @enum {string}
+                 */
+                objective: "cheapest-passing-bar" | "best-quality-within-budget" | "balanced";
+                /** @description Cost↔quality dial for the balanced objective: 0 = cheapest … 10 = best. */
+                costQualitySlider?: number;
+                /** @description Minimum eval score a model must clear; defaults to the skill's own bar when omitted. */
+                qualityFloor?: number;
+                /** @description Hard per-decision spend ceiling in USD. */
+                maxBudgetUsd?: number;
+                /** @description Restrict auto to this subset of publicModelNames; must stay within the key's allowlist. */
+                allowedModels?: string[];
+                /** @description Reject/penalize models slower than this many milliseconds. */
+                latencyCeilingMs?: number;
+                /** @description Ordered fallback publicModelNames on failure/unavailability. */
+                fallbacks?: string[];
+                /** @description Keep the chosen model stable within a conversation to preserve prompt caches. */
+                sessionPin: boolean;
+                /** @description Fraction of traffic to explore alternatives on (0 = pure exploit). */
+                explorationRate: number;
+            } | null;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+        };
+        /** @description Upsert body for a scope-level model-routing default. At least one of defaultModel or autoConfig is required. */
+        ModelRoutingDefaultWrite: {
+            /**
+             * @description Defaults to global when omitted.
+             * @enum {string}
+             */
+            scope?: "global" | "clusterTenant";
+            /** @description Required when scope is clusterTenant. */
+            clusterTenant?: string;
+            /** @description Default model publicModelName. */
+            defaultModel?: string;
+            /** @description Default auto-routing config. */
+            autoConfig?: {
+                /**
+                 * @description The optimization objective.
+                 * @enum {string}
+                 */
+                objective: "cheapest-passing-bar" | "best-quality-within-budget" | "balanced";
+                /** @description Cost↔quality dial for the balanced objective: 0 = cheapest … 10 = best. */
+                costQualitySlider?: number;
+                /** @description Minimum eval score a model must clear; defaults to the skill's own bar when omitted. */
+                qualityFloor?: number;
+                /** @description Hard per-decision spend ceiling in USD. */
+                maxBudgetUsd?: number;
+                /** @description Restrict auto to this subset of publicModelNames; must stay within the key's allowlist. */
+                allowedModels?: string[];
+                /** @description Reject/penalize models slower than this many milliseconds. */
+                latencyCeilingMs?: number;
+                /** @description Ordered fallback publicModelNames on failure/unavailability. */
+                fallbacks?: string[];
+                /** @description Keep the chosen model stable within a conversation to preserve prompt caches. */
+                sessionPin: boolean;
+                /** @description Fraction of traffic to explore alternatives on (0 = pure exploit). */
+                explorationRate: number;
+            };
+        };
+        SkillModelPosture: {
+            /** @description Skill name (part of the compound key). */
+            name: string;
+            /** @description Skill scope, e.g. org/team/personal (part of the compound key). */
+            scope: string;
+            /** @description Owning team for team-scoped skills; empty string when not team-scoped (part of the compound key). */
+            team: string;
+            /** @description Workspace-relative path the skill is delivered to. */
+            path: string;
+            /**
+             * @description pinned (use pinnedModel), auto (route within autoConfig), or null (inherit the scope default).
+             * @enum {string|null}
+             */
+            modelMode?: "pinned" | "auto" | null;
+            /** @description The pinned model's publicModelName, when modelMode is pinned. */
+            pinnedModel?: string | null;
+            /** @description The skill's auto-routing config, when modelMode is auto. */
+            autoConfig?: {
+                /**
+                 * @description The optimization objective.
+                 * @enum {string}
+                 */
+                objective: "cheapest-passing-bar" | "best-quality-within-budget" | "balanced";
+                /** @description Cost↔quality dial for the balanced objective: 0 = cheapest … 10 = best. */
+                costQualitySlider?: number;
+                /** @description Minimum eval score a model must clear; defaults to the skill's own bar when omitted. */
+                qualityFloor?: number;
+                /** @description Hard per-decision spend ceiling in USD. */
+                maxBudgetUsd?: number;
+                /** @description Restrict auto to this subset of publicModelNames; must stay within the key's allowlist. */
+                allowedModels?: string[];
+                /** @description Reject/penalize models slower than this many milliseconds. */
+                latencyCeilingMs?: number;
+                /** @description Ordered fallback publicModelNames on failure/unavailability. */
+                fallbacks?: string[];
+                /** @description Keep the chosen model stable within a conversation to preserve prompt caches. */
+                sessionPin: boolean;
+                /** @description Fraction of traffic to explore alternatives on (0 = pure exploit). */
+                explorationRate: number;
+            } | null;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+        };
+        /** @description Set a skill's model posture. pinned requires pinnedModel; auto validates autoConfig; null clears the posture (inherit the scope default). */
+        SkillModelPostureWrite: {
+            /**
+             * @description pinned, auto, or null to clear the posture.
+             * @enum {string|null}
+             */
+            modelMode: "pinned" | "auto" | null;
+            /** @description Required when modelMode is pinned. */
+            pinnedModel?: string | null;
+            /** @description Provided when modelMode is auto. */
+            autoConfig?: {
+                /**
+                 * @description The optimization objective.
+                 * @enum {string}
+                 */
+                objective: "cheapest-passing-bar" | "best-quality-within-budget" | "balanced";
+                /** @description Cost↔quality dial for the balanced objective: 0 = cheapest … 10 = best. */
+                costQualitySlider?: number;
+                /** @description Minimum eval score a model must clear; defaults to the skill's own bar when omitted. */
+                qualityFloor?: number;
+                /** @description Hard per-decision spend ceiling in USD. */
+                maxBudgetUsd?: number;
+                /** @description Restrict auto to this subset of publicModelNames; must stay within the key's allowlist. */
+                allowedModels?: string[];
+                /** @description Reject/penalize models slower than this many milliseconds. */
+                latencyCeilingMs?: number;
+                /** @description Ordered fallback publicModelNames on failure/unavailability. */
+                fallbacks?: string[];
+                /** @description Keep the chosen model stable within a conversation to preserve prompt caches. */
+                sessionPin: boolean;
+                /** @description Fraction of traffic to explore alternatives on (0 = pure exploit). */
+                explorationRate: number;
+            } | null;
+        };
+        RoutingEvalCase: {
+            /** @description Stable identifier. */
+            id: string;
+            /** @description Owning skill name. */
+            skillName: string;
+            /** @description Owning skill scope. */
+            skillScope: string;
+            /** @description Owning skill team (empty for org/global). */
+            skillTeam: string;
+            /** @description The prompt/inputs for this case. */
+            input?: unknown;
+            /** @description Optional golden answer or grader rubric. */
+            expected?: unknown;
+            /** @description Minimum judge score (0..1) a model must clear on this case. */
+            qualityBar: number;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+        };
+        /** @description Create/update body for a routing eval case (AIR.6). */
+        RoutingEvalCaseWrite: {
+            /** @description Owning skill name. */
+            skillName: string;
+            /** @description Owning skill scope. */
+            skillScope: string;
+            /** @description Owning skill team (defaults to empty). */
+            skillTeam?: string;
+            /** @description The prompt/inputs for this case. */
+            input: unknown;
+            /** @description Optional golden answer or grader rubric. */
+            expected?: unknown;
+            /** @description Minimum judge score (0..1); defaults to 0.8. */
+            qualityBar?: number;
+        };
+        RoutingMeasurement: {
+            /** @description Stable identifier. */
+            id: string;
+            /** @description Owning skill name. */
+            skillName: string;
+            /** @description Owning skill scope. */
+            skillScope: string;
+            /** @description Owning skill team. */
+            skillTeam: string;
+            /** @description The cheaper candidate model evaluated against the current default. */
+            candidateModel?: string | null;
+            /** @description Number of logged calls sampled + shadow-graded. */
+            sampledCalls: number;
+            /** @description Fraction of sampled traffic the candidate served at-or-above the skill's bar. */
+            atBarCheapFraction: number;
+            /** @description Point estimate of % spend saved at equal quality. */
+            projectedSavingsPct: number;
+            /** @description Lower bound of the bootstrap 95% CI on projected savings. */
+            ciLowPct: number;
+            /** @description Upper bound of the bootstrap 95% CI on projected savings. */
+            ciHighPct: number;
+            /** @description Token overhead of running the measurement, as % of the skill's serve spend. */
+            overheadPct: number;
+            /** @description Skill content version coordinate: the Skill.contentHash at run time (best-effort; null if unresolved). */
+            skillContentHash?: string | null;
+            /** @description Skill content version coordinate: the live published SkillBundle.digest at run time (best-effort; null when no published bundle). */
+            skillDigest?: string | null;
+            /** @description Model deployment coordinate: the candidate's stable litellmModelId (best-effort; null if unresolved). */
+            candidateModelId?: string | null;
+            /** @description Model deployment coordinate: the candidate's upstreamModel (best-effort; null if unresolved). */
+            candidateUpstreamModel?: string | null;
+            /** Format: date-time */
+            runAt?: string;
+        };
+        RoutingProposal: {
+            /** @description Stable identifier. */
+            id: string;
+            /** @description Owning skill name. */
+            skillName: string;
+            /** @description Owning skill scope. */
+            skillScope: string;
+            /** @description Owning skill team. */
+            skillTeam: string;
+            /** @description The model the skill resolves to today (null when unset). */
+            fromModel?: string | null;
+            /** @description The cheaper model the loop proposes switching to. */
+            proposedModel: string;
+            /** @description Point estimate of % spend saved at equal quality. */
+            projectedSavingsPct: number;
+            /** @description Lower bound of the bootstrap 95% CI (must exclude zero to propose). */
+            ciLowPct: number;
+            /** @description Upper bound of the bootstrap 95% CI. */
+            ciHighPct: number;
+            /** @description Skill content version coordinate: the Skill.contentHash at proposal time (best-effort; null if unresolved). */
+            skillContentHash?: string | null;
+            /** @description Skill content version coordinate: the live published SkillBundle.digest at proposal time (best-effort; null when none). */
+            skillDigest?: string | null;
+            /** @description Model deployment coordinate: the proposed model's stable litellmModelId (best-effort; null if unresolved). */
+            proposedModelId?: string | null;
+            /** @description The measurement that produced this proposal. */
+            measurementId?: string | null;
+            /**
+             * @description Lifecycle status.
+             * @enum {string}
+             */
+            status: "pending" | "approved" | "rejected" | "applied";
+            /** @description Principal who approved/rejected, when decided. */
+            decidedBy?: string | null;
+            /** Format: date-time */
+            decidedAt?: string | null;
+            /** Format: date-time */
+            createdAt?: string;
+        };
+        SavingsRecommendation: {
+            /** @description Owning skill name. */
+            skillName: string;
+            /** @description Owning skill scope. */
+            skillScope: string;
+            /** @description Owning skill team (empty for org/global). */
+            skillTeam: string;
+            /**
+             * @description The skill's posture: pinned, auto, or null (inherits the scope default) — lets the UI flag a fixed-model advisory distinctly.
+             * @enum {string|null}
+             */
+            modelMode?: "pinned" | "auto" | null;
+            /** @description The model the skill resolves to today — proposal fromModel, else the skill's pin, else null. */
+            currentModel?: string | null;
+            /** @description The cheaper model recommended — proposal proposedModel, else the measurement candidate, else null. */
+            recommendedModel?: string | null;
+            /** @description Stable deployment id of the recommended model — proposal proposedModelId, else the measurement's candidateModelId, else null. */
+            recommendedModelId?: string | null;
+            /** @description Skill content version coordinate the evidence was gathered at — lets the console flag stale evidence; null if unresolved. */
+            skillContentHash?: string | null;
+            /** @description Live published SkillBundle.digest the evidence was gathered at; null when none. */
+            skillDigest?: string | null;
+            /** @description Point estimate of % spend saved at equal quality (from the latest measurement). */
+            projectedSavingsPct: number;
+            /** @description Lower bound of the bootstrap 95% CI on projected savings. */
+            ciLowPct: number;
+            /** @description Upper bound of the bootstrap 95% CI on projected savings. */
+            ciHighPct: number;
+            /** @description True when an open Pending proposal exists for this skill. */
+            hasOpenProposal: boolean;
+            /** @description Id of the open Pending proposal, when one exists; null otherwise. */
+            proposalId?: string | null;
+            /** @description Id of the latest measurement this recommendation is derived from. */
+            measurementId: string;
+            /**
+             * Format: date-time
+             * @description When the latest measurement ran (ISO-8601).
+             */
+            runAt: string;
         };
         AwarenessRollout: {
             targetVersion?: string;
@@ -1629,7 +2397,10 @@ export interface operations {
     };
     listTenants: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Return only tenants attached to this parent ClusterTenant (customer). */
+                clusterTenantRef?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -1662,6 +2433,8 @@ export interface operations {
                     /** Format: email */
                     email: string;
                     team?: string;
+                    /** @description Parent ClusterTenant (customer) to attach this tenant to. */
+                    clusterTenantRef?: string;
                     monthlyBudgetUsd?: number;
                     resources?: Record<string, never>;
                     skillAllowlist?: string[];
@@ -1792,6 +2565,8 @@ export interface operations {
                     /** Format: email */
                     email?: string;
                     team?: string;
+                    /** @description Parent ClusterTenant (customer) to attach this tenant to. */
+                    clusterTenantRef?: string;
                     monthlyBudgetUsd?: number;
                     resources?: Record<string, never>;
                     skillAllowlist?: string[];
@@ -2288,7 +3063,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": Record<string, never>;
+                "application/json": components["schemas"]["ClusterTenantUpdate"];
             };
         };
         responses: {
@@ -3242,6 +4017,1217 @@ export interface operations {
             };
         };
     };
+    listProviderCredentials: {
+        parameters: {
+            query?: {
+                /** @description Filter to one owning ClusterTenant. */
+                clusterTenant?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Provider credential list. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderCredential"][];
+                };
+            };
+        };
+    };
+    createProviderCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProviderCredentialWrite"];
+            };
+        };
+        responses: {
+            /** @description Provider credential created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderCredential"];
+                };
+            };
+            /** @description Request body failed validation, or carried a raw key (code RAW_KEY_REJECTED). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Caller is not authorized for the resource scope (code FORBIDDEN_SCOPE). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getProviderCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Provider credential detail. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderCredential"];
+                };
+            };
+            /** @description Provider credential not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updateProviderCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProviderCredentialWrite"];
+            };
+        };
+        responses: {
+            /** @description Provider credential updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderCredential"];
+                };
+            };
+            /** @description Request body failed validation, or carried a raw key (code RAW_KEY_REJECTED). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Caller is not authorized for the resource scope (code FORBIDDEN_SCOPE). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Provider credential not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteProviderCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Provider credential deleted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id?: string;
+                        status?: string;
+                    };
+                };
+            };
+            /** @description Caller is not authorized for the resource scope (code FORBIDDEN_SCOPE). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Provider credential not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listModels: {
+        parameters: {
+            query?: {
+                /** @description Filter to one owning ClusterTenant. */
+                clusterTenant?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Model definition list. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelDefinition"][];
+                };
+            };
+        };
+    };
+    createModel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelDefinitionWrite"];
+            };
+        };
+        responses: {
+            /** @description Model definition created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelDefinition"];
+                };
+            };
+            /** @description Request body failed validation, or the providerCredentialId is missing or owned by another ClusterTenant (code CREDENTIAL_SCOPE_MISMATCH). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Caller is not authorized for the resource scope (code FORBIDDEN_SCOPE). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getModel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Model definition detail. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelDefinition"];
+                };
+            };
+            /** @description Model definition not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updateModel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelDefinitionWrite"];
+            };
+        };
+        responses: {
+            /** @description Model definition updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelDefinition"];
+                };
+            };
+            /** @description Request body failed validation. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Caller is not authorized for the resource scope (code FORBIDDEN_SCOPE). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Model definition not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteModel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Model definition deleted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id?: string;
+                        status?: string;
+                    };
+                };
+            };
+            /** @description Caller is not authorized for the resource scope (code FORBIDDEN_SCOPE). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Model definition not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listModelRoutingDefaults: {
+        parameters: {
+            query?: {
+                /** @description Filter to one owning ClusterTenant. */
+                clusterTenant?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Model-routing default list. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelRoutingDefault"][];
+                };
+            };
+        };
+    };
+    upsertModelRoutingDefault: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelRoutingDefaultWrite"];
+            };
+        };
+        responses: {
+            /** @description Model-routing default upserted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelRoutingDefault"];
+                };
+            };
+            /** @description Request body failed validation (code VALIDATION_ERROR). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Caller is not authorized for the resource scope (code FORBIDDEN_SCOPE). Global defaults are operator-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getModelRoutingDefault: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Model-routing default detail. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelRoutingDefault"];
+                };
+            };
+            /** @description Model routing default not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteModelRoutingDefault: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Model-routing default deleted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id?: string;
+                        status?: string;
+                    };
+                };
+            };
+            /** @description Caller is not authorized for the resource scope (code FORBIDDEN_SCOPE). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Model routing default not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listSkillModelPostures: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Skill posture list. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillModelPosture"][];
+                };
+            };
+        };
+    };
+    getSkillModelPosture: {
+        parameters: {
+            query: {
+                /** @description Skill name. */
+                name: string;
+                /** @description Skill scope. */
+                scope: string;
+                /** @description Owning team; empty string when not team-scoped. */
+                team?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Skill posture detail. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillModelPosture"];
+                };
+            };
+            /** @description name and scope query params are required (code VALIDATION_ERROR). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Skill not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    setSkillModelPosture: {
+        parameters: {
+            query: {
+                /** @description Skill name. */
+                name: string;
+                /** @description Skill scope. */
+                scope: string;
+                /** @description Owning team; empty string when not team-scoped. */
+                team?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SkillModelPostureWrite"];
+            };
+        };
+        responses: {
+            /** @description Skill posture updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillModelPosture"];
+                };
+            };
+            /** @description Request body or query failed validation (code VALIDATION_ERROR). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Caller is not authorized for the resource scope (code FORBIDDEN_SCOPE). Org/global skills are operator-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Skill not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listRoutingEvalCases: {
+        parameters: {
+            query?: {
+                /** @description Filter to one owning skill name. */
+                skillName?: string;
+                /** @description Filter to one owning skill scope. */
+                skillScope?: string;
+                /** @description Filter to one owning skill team. */
+                skillTeam?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Routing eval-case list. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutingEvalCase"][];
+                };
+            };
+        };
+    };
+    createRoutingEvalCase: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoutingEvalCaseWrite"];
+            };
+        };
+        responses: {
+            /** @description Eval case created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutingEvalCase"];
+                };
+            };
+            /** @description Request body failed validation (code VALIDATION_ERROR). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Caller is not authorized for the owning skill's scope (code FORBIDDEN_SCOPE). Org/global cases are operator-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getRoutingEvalCase: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Eval case detail. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutingEvalCase"];
+                };
+            };
+            /** @description Eval case not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updateRoutingEvalCase: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoutingEvalCaseWrite"];
+            };
+        };
+        responses: {
+            /** @description Eval case updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutingEvalCase"];
+                };
+            };
+            /** @description Request body failed validation (code VALIDATION_ERROR). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Caller is not authorized for the owning skill's scope (code FORBIDDEN_SCOPE). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Eval case not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteRoutingEvalCase: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Eval case deleted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id?: string;
+                        status?: string;
+                    };
+                };
+            };
+            /** @description Caller is not authorized for the owning skill's scope (code FORBIDDEN_SCOPE). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Eval case not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listRoutingMeasurements: {
+        parameters: {
+            query?: {
+                /** @description Filter to one owning skill name. */
+                skillName?: string;
+                /** @description Filter to one owning skill scope. */
+                skillScope?: string;
+                /** @description Filter to one owning skill team. */
+                skillTeam?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Measurement list. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutingMeasurement"][];
+                };
+            };
+        };
+    };
+    runRoutingMeasurement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    skillName: string;
+                    skillScope: string;
+                    /** @description Defaults to empty. */
+                    skillTeam?: string;
+                    /** @description The cheaper candidate model to evaluate. */
+                    candidateModel: string;
+                    /** @description Baseline model; resolved from the skill's pin when omitted. */
+                    currentModel?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description Seams unconfigured — no-op; nothing recorded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status?: string;
+                        note?: string;
+                    };
+                };
+            };
+            /** @description Measurement run completed; the persisted measurement (and proposalId when the savings CI excluded zero). */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status?: string;
+                        measurement?: components["schemas"]["RoutingMeasurement"];
+                        proposalId?: string | null;
+                    };
+                };
+            };
+            /** @description Request body failed validation (code VALIDATION_ERROR). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Caller is not a platform operator (code FORBIDDEN_SCOPE). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getRoutingMeasurement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Measurement detail. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutingMeasurement"];
+                };
+            };
+            /** @description Measurement not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listRoutingProposals: {
+        parameters: {
+            query?: {
+                /** @description Filter by lifecycle status. */
+                status?: "pending" | "approved" | "rejected" | "applied";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Proposal list. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutingProposal"][];
+                };
+            };
+        };
+    };
+    getRoutingProposal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Proposal detail. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutingProposal"];
+                };
+            };
+            /** @description Proposal not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    approveRoutingProposal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Proposal applied. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id?: string;
+                        status?: string;
+                        appliedModel?: string | null;
+                    };
+                };
+            };
+            /** @description Caller is not authorized for the owning skill's scope (code FORBIDDEN_SCOPE). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Proposal or target skill not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Proposal is no longer pending (code PROPOSAL_ALREADY_DECIDED). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    rejectRoutingProposal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Proposal rejected. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id?: string;
+                        status?: string;
+                        appliedModel?: string | null;
+                    };
+                };
+            };
+            /** @description Caller is not authorized for the owning skill's scope (code FORBIDDEN_SCOPE). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Proposal not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Proposal is no longer pending (code PROPOSAL_ALREADY_DECIDED). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listSavingsRecommendations: {
+        parameters: {
+            query?: {
+                /** @description Filter to skills owned by this ClusterTenant (the skill's team). */
+                clusterTenant?: string;
+                /** @description Filter to one owning skill scope. */
+                skillScope?: string;
+                /** @description When 'true', return only skills with an open Pending proposal. */
+                onlyOpen?: "true";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recommendations sorted by projected savings desc; scope-filtered to the caller's ClusterTenant for non-operators. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavingsRecommendation"][];
+                };
+            };
+        };
+    };
+    getRoutingMetrics: {
+        parameters: {
+            query?: {
+                /** @description Langfuse v1 metrics `query` JSON, forwarded verbatim (a tenant filter is injected for non-operators). */
+                query?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Upstream Langfuse metrics JSON (loosely-typed passthrough). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description A non-operator caller with no resolved ClusterTenant has no metrics scope (code FORBIDDEN_SCOPE). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The Langfuse backend was unreachable or returned a non-2xx status. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status?: string;
+                        error?: string;
+                    };
+                };
+            };
+            /** @description The Langfuse backend is not configured (host/keys missing). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status?: string;
+                    };
+                };
+            };
+        };
+    };
     getGlobalBudget: {
         parameters: {
             query?: never;
@@ -3578,12 +5564,24 @@ export interface operations {
                          * @description Active authentication mode for this instance.
                          * @enum {string}
                          */
-                        mode: "oidc" | "none";
+                        mode: "development" | "oidc" | "token";
                         authenticated: boolean;
                         user?: {
-                            sub?: string;
+                            sub: string;
+                            /** @description Identity provider that authenticated the user. */
+                            issuer: string;
+                            /** @description The caller's group memberships from the OIDC groups claim (empty when none). */
+                            groups: string[];
+                            /** @description True iff the caller's groups intersect OPENCRANE_PLATFORM_OPERATOR_GROUPS. Empty/unset config ⇒ false (fail-closed). Introspection only — the API stays the enforcement point and the frontend uses this only to hide UI. Superseded once a first-class role model lands. */
+                            isPlatformOperator: boolean;
+                            /** @description The caller's ClusterTenant (customer) key, resolved server-side from their IdP-verified email → tenant → clusterTenantRef. Null when unresolved or ambiguous. */
+                            clusterTenant?: string | null;
                             email?: string;
+                            emailVerified?: boolean;
                             name?: string;
+                            picture?: string;
+                            /** Format: date-time */
+                            authenticatedAt?: string;
                         } | null;
                     };
                 };

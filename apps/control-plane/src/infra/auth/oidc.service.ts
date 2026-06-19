@@ -4,6 +4,7 @@ import type { Request, RequestHandler } from "express";
 import session from "express-session";
 import * as client from "openid-client";
 import type { Logger } from "pino";
+import type { PrismaClient } from "@prisma/client";
 
 import { ___LoadOidcAuthConfig } from "./oidc.config.js";
 
@@ -18,6 +19,20 @@ export interface ControlPlaneAuthUser
 
   /** Issuer that authenticated the user. */
   issuer: string;
+
+  /** The caller's group memberships from the OIDC groups/roles claims (empty when none). */
+  groups: string[];
+
+  /**
+   * Whether the caller's groups intersect `OPENCRANE_PLATFORM_OPERATOR_GROUPS`.
+   * Empty/unset config ⇒ false for everyone (fail-closed). Introspection only —
+   * the API stays the enforcement point; a federated frontend uses this to decide
+   * what UI to *hide*, never what it may *do*.
+   *
+   * TODO: this is a non-presumptuous, config-driven stopgap because OpenCrane has
+   * no role model yet. A first-class role/RBAC model supersedes this flag.
+   */
+  isPlatformOperator: boolean;
 
   /** Human-readable email address when available. */
   email?: string;
@@ -35,6 +50,21 @@ export interface ControlPlaneAuthUser
   authenticatedAt: string;
 }
 
+/**
+ * Authenticated user as returned by `/auth/me`: the cached session identity plus
+ * the caller's `clusterTenant`, resolved fresh at read time from their IdP-verified
+ * email (never stored at login, since the email→tenant mapping can change after).
+ */
+export interface ControlPlaneAuthStatusUser extends ControlPlaneAuthUser
+{
+  /**
+   * The caller's ClusterTenant (customer) key, resolved server-side from their
+   * verified email → tenant → `clusterTenantRef`. Null when unresolved or ambiguous
+   * (fail-closed; never taken from request input or a self-asserted claim).
+   */
+  clusterTenant: string | null;
+}
+
 /** Session auth status returned to the SPA bootstrap logic. */
 export interface ControlPlaneAuthStatus
 {
@@ -45,7 +75,7 @@ export interface ControlPlaneAuthStatus
   authenticated: boolean;
 
   /** Authenticated user details when logged in through OIDC. */
-  user: ControlPlaneAuthUser | null;
+  user: ControlPlaneAuthStatusUser | null;
 }
 
 /** OIDC session helper that owns provider discovery, login redirects, and session state. */
@@ -60,10 +90,18 @@ export class OidcAuthService
   /** Lazily initialized OIDC client configuration discovered from the issuer. */
   private discoveredConfig: Promise<client.Configuration> | null = null;
 
-  /** Create a new OIDC auth service bound to the current runtime config. */
-  constructor(log: Logger)
+  /** Prisma client used to resolve the caller's ClusterTenant by verified email. */
+  private prisma: PrismaClient;
+
+  /**
+   * Create a new OIDC auth service bound to the current runtime config.
+   * @param log    - Parent logger; a child scoped to `oidc-auth` is derived.
+   * @param prisma - Prisma client for the fail-closed email→tenant→clusterTenantRef lookup.
+   */
+  constructor(log: Logger, prisma: PrismaClient)
   {
     this.log = log.child({ component: "oidc-auth" });
+    this.prisma = prisma;
   }
 
   /** Whether human login should use OIDC-backed sessions. */
@@ -99,15 +137,32 @@ export class OidcAuthService
     });
   }
 
-  /** Return the auth mode and current human session details for the SPA. */
-  getStatus(req: Request): ControlPlaneAuthStatus
+  /**
+   * Return the auth mode and current human session details for the SPA.
+   *
+   * Surfaces introspection-only authorization facts: the caller's `groups`,
+   * the derived `isPlatformOperator`, and their `clusterTenant`. The first two
+   * come from the session (resolved at login); `clusterTenant` is resolved fresh
+   * here from the IdP-verified email so a post-login reparent is reflected.
+   */
+  async getStatus(req: Request): Promise<ControlPlaneAuthStatus>
   {
     if (this.config.enabled)
     {
+      // 1. No session → unauthenticated; never resolve a tenant for an absent caller.
+      const authUser = req.session.authUser;
+      if (!authUser)
+      {
+        return { mode: "oidc", authenticated: false, user: null };
+      }
+
+      // 2. Resolve the ClusterTenant from the session's verified email (fail-closed)
+      //    and return it alongside the cached identity facts.
+      const clusterTenant = await this._resolveClusterTenant(authUser.email);
       return {
         mode: "oidc",
-        authenticated: Boolean(req.session.authUser),
-        user: req.session.authUser ?? null,
+        authenticated: true,
+        user: { ...authUser, clusterTenant },
       };
     }
 
@@ -125,6 +180,45 @@ export class OidcAuthService
       authenticated: false,
       user: null,
     };
+  }
+
+  /**
+   * Resolve the caller's ClusterTenant from their IdP-verified email, reusing the
+   * pod-token broker's fail-closed rule: resolve the tenant by email, then read its
+   * `clusterTenantRef`. Returns null when the email is missing, matches no tenant,
+   * matches more than one (ambiguous), the tenant has no parent, or the lookup
+   * fails — never an arbitrary pick, and never taken from request input.
+   *
+   * @param email - The session's verified email claim, if any.
+   */
+  private async _resolveClusterTenant(email: string | undefined): Promise<string | null>
+  {
+    const normalized = typeof email === "string" ? email.toLowerCase().trim() : "";
+    if (!normalized)
+    {
+      return null;
+    }
+
+    try
+    {
+      // Fail closed on an ambiguous email→tenant mapping: take at most two rows so a
+      // duplicate is detected without silently adopting one tenant's parent.
+      const matches = await this.prisma.tenant.findMany({
+        where: { email: { equals: normalized, mode: "insensitive" } },
+        select: { clusterTenantRef: true },
+        take: 2,
+      });
+      if (matches.length !== 1)
+      {
+        return null;
+      }
+      return matches[0].clusterTenantRef ?? null;
+    }
+    catch (err)
+    {
+      this.log.warn({ err }, "failed to resolve clusterTenant for /auth/me; returning null");
+      return null;
+    }
   }
 
   /** Build the provider redirect URL and persist PKCE state in the local session. */
@@ -280,9 +374,13 @@ export class OidcAuthService
       }
     }
 
+    const identity = _ResolveIdentityClaims(claims, this.config);
+
     return {
       sub: subject,
       issuer: this.config.issuerUrl,
+      groups: identity.groups,
+      isPlatformOperator: identity.isPlatformOperator,
       ...(email ? { email } : {}),
       ...(emailVerified !== undefined ? { emailVerified } : {}),
       ...(typeof claims.name === "string" ? { name: claims.name } : {}),
@@ -292,10 +390,70 @@ export class OidcAuthService
   }
 }
 
-/** Create the singleton-friendly OIDC auth service used by the Express app. */
-export function ___CreateOidcAuthService(log: Logger): OidcAuthService
+/**
+ * Project the IdP's group/role claims into the introspection-only authorization
+ * facts the control-plane surfaces: the caller's `groups` and a derived
+ * `isPlatformOperator`. Pure (no I/O) so it is unit-testable and so the rule
+ * "operator iff a group matches a configured operator group" is verified
+ * independently of the OIDC flow.
+ *
+ * `clusterTenant` is intentionally NOT derived here — it is resolved server-side
+ * from the verified email → tenant → `clusterTenantRef` (see `_resolveClusterTenant`),
+ * never from a self-asserted claim.
+ *
+ * TODO: this is the non-presumptuous stopgap until OpenCrane has a first-class
+ * role model; a real RBAC model supersedes `isPlatformOperator`.
+ *
+ * @param claims - The merged ID-token + UserInfo claims for the caller.
+ * @param config - OIDC config supplying the claim names and operator group set.
+ */
+export function _ResolveIdentityClaims(
+  claims: Record<string, unknown>,
+  config: { groupsClaim: string; rolesClaim: string; platformOperatorGroups: string[] },
+): { groups: string[]; isPlatformOperator: boolean }
 {
-  return new OidcAuthService(log);
+  // 1. Collect the raw values from both the groups and roles claims — Entra emits
+  //    security groups under `groups` and app roles under `roles`; either may
+  //    grant operator status, so the union is what we authorize against.
+  const groups = [..._ReadStringArrayClaim(claims[config.groupsClaim]), ..._ReadStringArrayClaim(claims[config.rolesClaim])];
+
+  // 2. An empty operator set means nobody is a platform operator — fail-closed.
+  const operatorSet = new Set(config.platformOperatorGroups);
+  const isPlatformOperator = operatorSet.size > 0 && groups.some(value => operatorSet.has(value.toLowerCase()));
+
+  return { groups, isPlatformOperator };
+}
+
+/**
+ * Normalize a claim value into a list of non-empty strings. Identity providers
+ * emit group/role claims as either an array or a single space-/comma-free
+ * string, so both shapes are accepted; anything else yields an empty list.
+ *
+ * @param value - The raw claim value.
+ */
+function _ReadStringArrayClaim(value: unknown): string[]
+{
+  if (Array.isArray(value))
+  {
+    return value.filter((entry): entry is string => typeof entry === "string" && entry.trim() !== "");
+  }
+
+  if (typeof value === "string" && value.trim() !== "")
+  {
+    return [value.trim()];
+  }
+
+  return [];
+}
+
+/**
+ * Create the singleton-friendly OIDC auth service used by the Express app.
+ * @param log    - Parent logger.
+ * @param prisma - Prisma client for the fail-closed email→tenant→clusterTenantRef lookup.
+ */
+export function ___CreateOidcAuthService(log: Logger, prisma: PrismaClient): OidcAuthService
+{
+  return new OidcAuthService(log, prisma);
 }
 
 /** Convert the current Express request into an absolute callback URL. */
