@@ -13,6 +13,7 @@ env:
   OPERATOR_IMAGE: ghcr.io/${{ github.repository_owner }}/opencrane-operator
   CONTROL_PLANE_IMAGE: ghcr.io/${{ github.repository_owner }}/opencrane-control-plane
   TENANT_IMAGE: ghcr.io/${{ github.repository_owner }}/opencrane-tenant
+  SKILL_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/opencrane-skill-registry
 
 jobs:
   test:
@@ -41,6 +42,9 @@ jobs:
 
       - name: Test control-plane
         run: pnpm --filter @opencrane/control-plane test
+
+      - name: Test skill-registry
+        run: pnpm --filter @opencrane/skill-registry test
 
   e2e-k3d:
     name: k3d e2e smoke test
@@ -140,5 +144,25 @@ jobs:
           push: ${{ github.event_name == 'push' }}
           tags: ${{ steps.meta-tenant.outputs.tags }}
           labels: ${{ steps.meta-tenant.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Extract image metadata (skill-registry)
+        id: meta-skill-registry
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.SKILL_REGISTRY_IMAGE }}
+          tags: |
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build and push skill-registry
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/skill-registry/deploy/Dockerfile
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.meta-skill-registry.outputs.tags }}
+          labels: ${{ steps.meta-skill-registry.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

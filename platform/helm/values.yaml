@@ -427,7 +427,9 @@ mcpGateway:
 skillRegistry:
   enabled: true
   image:
-    repository: ghcr.io/italanta/skill-registry
+    # Built and published by .github/workflows/docker.yml (SKILL_REGISTRY_IMAGE), matching
+    # the opencrane-<service> naming of the other first-party images.
+    repository: ghcr.io/italanta/opencrane-skill-registry
     tag: latest
     pullPolicy: IfNotPresent
   replicas: 1
