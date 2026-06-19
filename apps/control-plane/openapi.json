@@ -1322,6 +1322,26 @@
             "type": "number",
             "description": "Token overhead of running the measurement, as % of the skill's serve spend."
           },
+          "skillContentHash": {
+            "type": "string",
+            "nullable": true,
+            "description": "Skill content version coordinate: the Skill.contentHash at run time (best-effort; null if unresolved)."
+          },
+          "skillDigest": {
+            "type": "string",
+            "nullable": true,
+            "description": "Skill content version coordinate: the live published SkillBundle.digest at run time (best-effort; null when no published bundle)."
+          },
+          "candidateModelId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Model deployment coordinate: the candidate's stable litellmModelId (best-effort; null if unresolved)."
+          },
+          "candidateUpstreamModel": {
+            "type": "string",
+            "nullable": true,
+            "description": "Model deployment coordinate: the candidate's upstreamModel (best-effort; null if unresolved)."
+          },
           "runAt": {
             "type": "string",
             "format": "date-time"
@@ -1378,6 +1398,21 @@
           "ciHighPct": {
             "type": "number",
             "description": "Upper bound of the bootstrap 95% CI."
+          },
+          "skillContentHash": {
+            "type": "string",
+            "nullable": true,
+            "description": "Skill content version coordinate: the Skill.contentHash at proposal time (best-effort; null if unresolved)."
+          },
+          "skillDigest": {
+            "type": "string",
+            "nullable": true,
+            "description": "Skill content version coordinate: the live published SkillBundle.digest at proposal time (best-effort; null when none)."
+          },
+          "proposedModelId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Model deployment coordinate: the proposed model's stable litellmModelId (best-effort; null if unresolved)."
           },
           "measurementId": {
             "type": "string",
@@ -1454,6 +1489,21 @@
             "type": "string",
             "nullable": true,
             "description": "The cheaper model recommended — proposal proposedModel, else the measurement candidate, else null."
+          },
+          "recommendedModelId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Stable deployment id of the recommended model — proposal proposedModelId, else the measurement's candidateModelId, else null."
+          },
+          "skillContentHash": {
+            "type": "string",
+            "nullable": true,
+            "description": "Skill content version coordinate the evidence was gathered at — lets the console flag stale evidence; null if unresolved."
+          },
+          "skillDigest": {
+            "type": "string",
+            "nullable": true,
+            "description": "Live published SkillBundle.digest the evidence was gathered at; null when none."
           },
           "projectedSavingsPct": {
             "type": "number",

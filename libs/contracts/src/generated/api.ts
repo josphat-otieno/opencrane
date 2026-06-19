@@ -1858,6 +1858,14 @@ export interface components {
             ciHighPct: number;
             /** @description Token overhead of running the measurement, as % of the skill's serve spend. */
             overheadPct: number;
+            /** @description Skill content version coordinate: the Skill.contentHash at run time (best-effort; null if unresolved). */
+            skillContentHash?: string | null;
+            /** @description Skill content version coordinate: the live published SkillBundle.digest at run time (best-effort; null when no published bundle). */
+            skillDigest?: string | null;
+            /** @description Model deployment coordinate: the candidate's stable litellmModelId (best-effort; null if unresolved). */
+            candidateModelId?: string | null;
+            /** @description Model deployment coordinate: the candidate's upstreamModel (best-effort; null if unresolved). */
+            candidateUpstreamModel?: string | null;
             /** Format: date-time */
             runAt?: string;
         };
@@ -1880,6 +1888,12 @@ export interface components {
             ciLowPct: number;
             /** @description Upper bound of the bootstrap 95% CI. */
             ciHighPct: number;
+            /** @description Skill content version coordinate: the Skill.contentHash at proposal time (best-effort; null if unresolved). */
+            skillContentHash?: string | null;
+            /** @description Skill content version coordinate: the live published SkillBundle.digest at proposal time (best-effort; null when none). */
+            skillDigest?: string | null;
+            /** @description Model deployment coordinate: the proposed model's stable litellmModelId (best-effort; null if unresolved). */
+            proposedModelId?: string | null;
             /** @description The measurement that produced this proposal. */
             measurementId?: string | null;
             /**
@@ -1910,6 +1924,12 @@ export interface components {
             currentModel?: string | null;
             /** @description The cheaper model recommended — proposal proposedModel, else the measurement candidate, else null. */
             recommendedModel?: string | null;
+            /** @description Stable deployment id of the recommended model — proposal proposedModelId, else the measurement's candidateModelId, else null. */
+            recommendedModelId?: string | null;
+            /** @description Skill content version coordinate the evidence was gathered at — lets the console flag stale evidence; null if unresolved. */
+            skillContentHash?: string | null;
+            /** @description Live published SkillBundle.digest the evidence was gathered at; null when none. */
+            skillDigest?: string | null;
             /** @description Point estimate of % spend saved at equal quality (from the latest measurement). */
             projectedSavingsPct: number;
             /** @description Lower bound of the bootstrap 95% CI on projected savings. */

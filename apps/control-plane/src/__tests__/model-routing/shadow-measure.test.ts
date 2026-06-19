@@ -13,11 +13,25 @@ interface CapturedWrites
   proposals: Record<string, unknown>[];
 }
 
-/** Build a Prisma stub capturing measurement + proposal creates with stable ids. */
-function _mockPrisma(captured: CapturedWrites): PrismaClient
+/** Version-coordinate seeds for the best-effort lookups; omit a field to simulate "no row". */
+interface VersionSeeds
+{
+  /** The Skill row (carries `contentHash`); null/absent → no skill found. */
+  skill?: Record<string, unknown> | null;
+  /** The live published SkillBundle row (carries `digest`); null/absent → no bundle. */
+  bundle?: Record<string, unknown> | null;
+  /** The matched ModelDefinition row (carries `litellmModelId` + `upstreamModel`); null/absent → none. */
+  model?: Record<string, unknown> | null;
+  /** When true, every coordinate lookup throws — proves the resolver is best-effort (fields stay null). */
+  throws?: boolean;
+}
+
+/** Build a Prisma stub capturing measurement + proposal creates with stable ids and serving version seeds. */
+function _mockPrisma(captured: CapturedWrites, seeds: VersionSeeds = {}): PrismaClient
 {
   let mSeq = 0;
   let pSeq = 0;
+  function _maybeThrow(): void { if (seeds.throws) { throw new Error("lookup failed"); } }
   return {
     routingMeasurement: {
       create: async function _create(args: { data: Record<string, unknown> })
@@ -34,6 +48,15 @@ function _mockPrisma(captured: CapturedWrites): PrismaClient
         captured.proposals.push(row);
         return row;
       },
+    },
+    skill: {
+      findUnique: async function _findUnique() { _maybeThrow(); return seeds.skill ?? null; },
+    },
+    skillBundle: {
+      findFirst: async function _findFirst() { _maybeThrow(); return seeds.bundle ?? null; },
+    },
+    modelDefinition: {
+      findFirst: async function _findFirst() { _maybeThrow(); return seeds.model ?? null; },
     },
   } as unknown as PrismaClient;
 }
@@ -113,5 +136,64 @@ describe("_RunShadowMeasurement", function _suite()
     expect(captured.measurements).toHaveLength(1);
     expect(captured.proposals).toHaveLength(0);
     expect(captured.measurements[0].projectedSavingsPct).toBeCloseTo(0, 6);
+  });
+
+  it("stamps the version coordinates on the measurement AND proposal when the lookups return data", async function _stamps()
+  {
+    const captured: CapturedWrites = { measurements: [], proposals: [] };
+    const seeds = {
+      skill: { contentHash: "sha-content-abc" },
+      bundle: { digest: "sha-digest-xyz" },
+      model: { litellmModelId: "deploy-123", upstreamModel: "openai/gpt-4o-mini" },
+    };
+    const prisma = _mockPrisma(captured, seeds);
+    const cases = [_evalCase({ id: "a" }), _evalCase({ id: "b" }), _evalCase({ id: "c" })];
+
+    const out = await _RunShadowMeasurement(prisma, { ...input, evalCases: cases }, _judge(0.95), _runner(1, 0.5), { bootstrapSamples: 20, rng: function _r() { return 0; } });
+
+    expect(out.kind).toBe("measured");
+    // Measurement carries all four coordinates.
+    expect(captured.measurements[0].skillContentHash).toBe("sha-content-abc");
+    expect(captured.measurements[0].skillDigest).toBe("sha-digest-xyz");
+    expect(captured.measurements[0].candidateModelId).toBe("deploy-123");
+    expect(captured.measurements[0].candidateUpstreamModel).toBe("openai/gpt-4o-mini");
+    // Proposal carries the skill coordinates + the proposed model deployment id.
+    expect(captured.proposals).toHaveLength(1);
+    expect(captured.proposals[0].skillContentHash).toBe("sha-content-abc");
+    expect(captured.proposals[0].skillDigest).toBe("sha-digest-xyz");
+    expect(captured.proposals[0].proposedModelId).toBe("deploy-123");
+  });
+
+  it("leaves the version coordinates null (no throw) when the lookups return no rows", async function _stampsAbsent()
+  {
+    const captured: CapturedWrites = { measurements: [], proposals: [] };
+    const prisma = _mockPrisma(captured, { skill: null, bundle: null, model: null });
+    const cases = [_evalCase({ id: "a" }), _evalCase({ id: "b" }), _evalCase({ id: "c" })];
+
+    const out = await _RunShadowMeasurement(prisma, { ...input, evalCases: cases }, _judge(0.95), _runner(1, 0.5), { bootstrapSamples: 20, rng: function _r() { return 0; } });
+
+    expect(out.kind).toBe("measured");
+    expect(captured.measurements[0].skillContentHash).toBe(null);
+    expect(captured.measurements[0].skillDigest).toBe(null);
+    expect(captured.measurements[0].candidateModelId).toBe(null);
+    expect(captured.measurements[0].candidateUpstreamModel).toBe(null);
+    expect(captured.proposals[0].skillContentHash).toBe(null);
+    expect(captured.proposals[0].skillDigest).toBe(null);
+    expect(captured.proposals[0].proposedModelId).toBe(null);
+  });
+
+  it("is best-effort: a throwing version lookup leaves coordinates null and still persists", async function _stampsThrow()
+  {
+    const captured: CapturedWrites = { measurements: [], proposals: [] };
+    const prisma = _mockPrisma(captured, { throws: true });
+    const cases = [_evalCase({ id: "a" }), _evalCase({ id: "b" }), _evalCase({ id: "c" })];
+
+    const out = await _RunShadowMeasurement(prisma, { ...input, evalCases: cases }, _judge(0.95), _runner(1, 0.5), { bootstrapSamples: 20, rng: function _r() { return 0; } });
+
+    expect(out.kind).toBe("measured");
+    expect(captured.measurements).toHaveLength(1);
+    expect(captured.measurements[0].skillContentHash).toBe(null);
+    expect(captured.measurements[0].candidateModelId).toBe(null);
+    expect(captured.proposals[0].skillDigest).toBe(null);
   });
 });

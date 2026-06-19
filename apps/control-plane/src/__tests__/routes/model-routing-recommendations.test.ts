@@ -77,7 +77,7 @@ function _buildApp(prisma: PrismaClient, user?: SessionUser): Express
 /** Build a measurement row. */
 function _measurement(over: Partial<Row>): Row
 {
-  return { id: "m", skillName: "s", skillScope: "org", skillTeam: "", candidateModel: "cheap", sampledCalls: 3, atBarCheapFraction: 1, projectedSavingsPct: 30, ciLowPct: 10, ciHighPct: 50, overheadPct: 0, runAt: new Date("2026-06-18T00:00:00.000Z"), ...over };
+  return { id: "m", skillName: "s", skillScope: "org", skillTeam: "", candidateModel: "cheap", sampledCalls: 3, atBarCheapFraction: 1, projectedSavingsPct: 30, ciLowPct: 10, ciHighPct: 50, overheadPct: 0, skillContentHash: null, skillDigest: null, candidateModelId: null, candidateUpstreamModel: null, runAt: new Date("2026-06-18T00:00:00.000Z"), ...over };
 }
 
 describe("modelRoutingRecommendationsRouter", function _suite()
@@ -101,6 +101,34 @@ describe("modelRoutingRecommendationsRouter", function _suite()
     expect(res.body[0].proposalId).toBe("p1");
     expect(res.body[0].currentModel).toBe("expensive");
     expect(res.body[0].recommendedModel).toBe("new-cheap");
+  });
+
+  it("surfaces the version coordinates from the latest measurement, with proposal proposedModelId winning for recommendedModelId", async function _versionCoordinates()
+  {
+    const seeds: Seeds = {
+      measurements: [
+        _measurement({ id: "m1", skillName: "summarise", candidateModel: "cheap", candidateModelId: "deploy-cheap", skillContentHash: "sha-content-abc", skillDigest: "sha-digest-xyz" }),
+      ],
+      proposals: [{ id: "p1", skillName: "summarise", skillScope: "org", skillTeam: "", fromModel: "expensive", proposedModel: "cheap", proposedModelId: "deploy-proposed", status: "Pending" }],
+    };
+    const res = await request(_buildApp(_mockPrisma(seeds))).get("/api/v1/model-routing/recommendations");
+
+    expect(res.body[0].skillContentHash).toBe("sha-content-abc");
+    expect(res.body[0].skillDigest).toBe("sha-digest-xyz");
+    // The open proposal's proposedModelId wins over the measurement's candidateModelId.
+    expect(res.body[0].recommendedModelId).toBe("deploy-proposed");
+  });
+
+  it("falls back to the measurement candidateModelId for recommendedModelId when there is no proposal", async function _recIdFallback()
+  {
+    const seeds: Seeds = {
+      measurements: [_measurement({ id: "m1", skillName: "translate", candidateModel: "cand", candidateModelId: "deploy-cand", skillContentHash: "sha-x" })],
+    };
+    const res = await request(_buildApp(_mockPrisma(seeds))).get("/api/v1/model-routing/recommendations");
+
+    expect(res.body[0].recommendedModelId).toBe("deploy-cand");
+    expect(res.body[0].skillContentHash).toBe("sha-x");
+    expect(res.body[0].skillDigest).toBe(null);
   });
 
   it("falls back to the skill pin + measurement candidate when there is no proposal", async function _noProposal()

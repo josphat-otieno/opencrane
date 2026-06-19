@@ -587,7 +587,13 @@ With one agent per lane, wall-clock ≈ 4 sequential slices instead of 7.
   `x-litellm-response-cost` header) + a vendor-neutral `JudgeClient` (`ROUTING_JUDGE_MODEL`, robust 0–1 score
   parse) when `LITELLM_ENDPOINT` + `LITELLM_MASTER_KEY` + `ROUTING_JUDGE_MODEL` are set (null pair / no-op
   otherwise); hard HTTP failures throw (clean 500, no corrupt sample), soft cases degrade. Ops recipe in
-  `docs/operators/routing-measurement.md`. 346 control-plane tests green. **Remaining = the live RUN itself**
+  `docs/operators/routing-measurement.md`. **Version-stamping LANDED 2026-06-19:** every `RoutingMeasurement`
+  /`RoutingProposal` now records `skillContentHash` + `skillDigest` (live published `SkillBundle`) + the stable
+  `candidateModelId`/`proposedModelId` (`litellmModelId`, not just the slug) + `candidateUpstreamModel` (migration
+  0020, best-effort lookups), and the recommendation feed surfaces them — so performance is attributable to a
+  specific *(skill content version × model deployment)* and stale evidence is detectable. (Residual: a provider
+  drifting a model behind a slug needs dated provider model ids to fully detect.) 352 tests green.
+  **Remaining = the live RUN itself**
   (deploy DB-backed LiteLLM + provider keys + a judge model, then `oc routing measurement run` → the first real
   savings number) — an operator step on a live cluster, plus reading sampled production traffic out of Langfuse.
   _(Original:)_ LiteLLM

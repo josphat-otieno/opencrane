@@ -245,6 +245,14 @@ export interface RoutingMeasurement
   ciHighPct: number;
   /** Token overhead of running the measurement, as % of the skill's serve spend. */
   overheadPct: number;
+  /** Skill content version coordinate: the `Skill.contentHash` at run time; null if unresolved (best-effort). */
+  skillContentHash: string | null;
+  /** Skill content version coordinate: the live published `SkillBundle.digest` at run time; null when no published bundle (best-effort). */
+  skillDigest: string | null;
+  /** Model deployment coordinate: the candidate's stable `litellmModelId`; null if unresolved (best-effort). */
+  candidateModelId: string | null;
+  /** Model deployment coordinate: the candidate's `upstreamModel`; null if unresolved (best-effort). */
+  candidateUpstreamModel: string | null;
   /** When the measurement ran (ISO-8601). */
   runAt: string;
 }
@@ -280,6 +288,12 @@ export interface SavingsRecommendation
   currentModel: string | null;
   /** The cheaper model recommended — proposal `proposedModel`, else the measurement candidate, else null. */
   recommendedModel: string | null;
+  /** Stable deployment id of the recommended model — proposal `proposedModelId`, else the measurement's `candidateModelId`, else null. */
+  recommendedModelId: string | null;
+  /** Skill content version coordinate the evidence was gathered at — lets the console flag stale evidence ("evidence is for skill content vX"); null if unresolved. */
+  skillContentHash: string | null;
+  /** Live published `SkillBundle.digest` the evidence was gathered at; null when none. */
+  skillDigest: string | null;
   /** Point estimate of % spend saved at equal quality (from the latest measurement). */
   projectedSavingsPct: number;
   /** Lower bound of the bootstrap 95% CI on projected savings. */
@@ -317,6 +331,12 @@ export interface RoutingProposal
   ciLowPct: number;
   /** Upper bound of the bootstrap 95% CI. */
   ciHighPct: number;
+  /** Skill content version coordinate: the `Skill.contentHash` at proposal time; null if unresolved (best-effort). */
+  skillContentHash: string | null;
+  /** Skill content version coordinate: the live published `SkillBundle.digest` at proposal time; null when none (best-effort). */
+  skillDigest: string | null;
+  /** Model deployment coordinate: the proposed model's stable `litellmModelId`; null if unresolved (best-effort). */
+  proposedModelId: string | null;
   /** The measurement that produced this proposal. */
   measurementId: string | null;
   /** Lifecycle status. */

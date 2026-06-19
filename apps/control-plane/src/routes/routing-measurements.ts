@@ -31,6 +31,10 @@ function _toView(row: PrismaRoutingMeasurement): RoutingMeasurementDto
     ciLowPct: row.ciLowPct,
     ciHighPct: row.ciHighPct,
     overheadPct: row.overheadPct,
+    skillContentHash: row.skillContentHash,
+    skillDigest: row.skillDigest,
+    candidateModelId: row.candidateModelId,
+    candidateUpstreamModel: row.candidateUpstreamModel,
     runAt: row.runAt.toISOString(),
   };
 }

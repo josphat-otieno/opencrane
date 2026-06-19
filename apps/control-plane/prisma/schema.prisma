@@ -660,6 +660,14 @@ model RoutingMeasurement {
   ciLowPct            Float    @map("ci_low_pct")
   ciHighPct           Float    @map("ci_high_pct")
   overheadPct         Float    @default(0) @map("overhead_pct")
+  /// Skill content version coordinate: the `Skill.contentHash` of the measured skill at run time (best-effort; null if unresolved).
+  skillContentHash    String?  @map("skill_content_hash")
+  /// Skill content version coordinate: the live published `SkillBundle.digest` at run time (best-effort; null if no published bundle).
+  skillDigest         String?  @map("skill_digest")
+  /// Model deployment coordinate: the candidate's stable `ModelDefinition.litellmModelId` (best-effort; null if unresolved).
+  candidateModelId    String?  @map("candidate_model_id")
+  /// Model deployment coordinate: the candidate's `ModelDefinition.upstreamModel` (best-effort; null if unresolved).
+  candidateUpstreamModel String? @map("candidate_upstream_model")
   runAt               DateTime @default(now()) @map("run_at")
 
   @@index([skillName, skillScope, skillTeam])
@@ -678,6 +686,12 @@ model RoutingProposal {
   projectedSavingsPct Float                 @map("projected_savings_pct")
   ciLowPct            Float                 @map("ci_low_pct")
   ciHighPct           Float                 @map("ci_high_pct")
+  /// Skill content version coordinate: the `Skill.contentHash` at proposal time (best-effort; null if unresolved).
+  skillContentHash    String?               @map("skill_content_hash")
+  /// Skill content version coordinate: the live published `SkillBundle.digest` at proposal time (best-effort; null if none).
+  skillDigest         String?               @map("skill_digest")
+  /// Model deployment coordinate: the proposed model's stable `ModelDefinition.litellmModelId` (best-effort; null if unresolved).
+  proposedModelId     String?               @map("proposed_model_id")
   measurementId       String?               @map("measurement_id")
   status              RoutingProposalStatus @default(Pending)
   decidedBy           String?               @map("decided_by")

@@ -77,6 +77,24 @@ export interface ShadowMeasureInput
   candidateModel: string;
 }
 
+/**
+ * Version coordinates stamped onto a measurement (and its proposal), each resolved best-effort.
+ * Together they make a datapoint attributable to a specific (skill content version × model
+ * deployment) so performance can be tracked version-over-version and model-over-model. Any field is
+ * null when its source could not be resolved — a missing lookup never breaks a measurement.
+ */
+export interface RoutingVersionStamps
+{
+  /** The measured skill's `Skill.contentHash` (mutable current content version); null if unresolved. */
+  skillContentHash: string | null;
+  /** The live published `SkillBundle.digest` (immutable content version); null when no published bundle. */
+  skillDigest: string | null;
+  /** The candidate's stable `ModelDefinition.litellmModelId` (vs the mutable slug); null if unresolved. */
+  candidateModelId: string | null;
+  /** The candidate's `ModelDefinition.upstreamModel` the deployment targets; null if unresolved. */
+  candidateUpstreamModel: string | null;
+}
+
 /** The persisted outcome of a shadow-measurement run. */
 export interface ShadowMeasureOutcome
 {
