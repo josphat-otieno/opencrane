@@ -9,7 +9,7 @@
  * Per-operation context propagated through `AsyncLocalStorage`.
  *
  * Seeded once at the entry of a request (HTTP middleware) or a background
- * operation (`___WithOperation`); every log line emitted within that async scope
+ * operation (`___DoWithTrace`); every log line emitted within that async scope
  * automatically inherits these fields via the pino mixin, so no logger or id
  * needs to be threaded through function signatures.
  */

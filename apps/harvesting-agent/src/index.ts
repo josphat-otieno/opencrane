@@ -3,7 +3,7 @@ import "./instrument.js";
 
 import { PrismaClient } from "@prisma/client";
 
-import { ___BindConsole, ___CreateLogger, ___ShutdownTelemetry, ___WithOperation } from "@opencrane/observability";
+import { ___BindConsole, ___CreateLogger, ___ShutdownTelemetry, ___DoWithTrace } from "@opencrane/observability";
 
 import { SlackConnector } from "./connectors/slack.connector.js";
 import type { SlackConnectorConfig } from "./domain/harvesting-agents/harvesting-agent.types.js";
@@ -94,7 +94,7 @@ async function _RunSlackSyncCycle(
 
   // Trace the whole cycle as a `harvest.cycle` span so each sync (and its
   // Slack→Cognee child calls) is one attributable unit in the trace timeline.
-  await ___WithOperation("harvest.cycle", { source }, async function _cycle()
+  await ___DoWithTrace("harvest.cycle", { source }, async function _cycle()
   {
     log.info({ source }, "starting sync cycle");
 

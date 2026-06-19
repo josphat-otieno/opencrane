@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { ___WithOperation } from "@opencrane/observability";
+import { ___DoWithTrace } from "@opencrane/observability";
 
 import { _log } from "../../log.js";
 import type { OciBundleStoreConfig, OciFetch, OciPushResult, OciResponse } from "./oci-bundle-store.types.js";
@@ -111,7 +111,7 @@ export class OciBundleStore
 
     // Trace the push as `oci.bundle.push`; the digest + size make a slow or
     // failing registry interaction attributable to a specific bundle.
-    return ___WithOperation("oci.bundle.push", { repository: this.repository, digest, sizeBytes: size }, async function _push(): Promise<OciPushResult>
+    return ___DoWithTrace("oci.bundle.push", { repository: this.repository, digest, sizeBytes: size }, async function _push(): Promise<OciPushResult>
     {
       // 1. Upload the bundle as a layer blob and the empty config blob. Both must
       //    exist before the manifest that references them can be accepted.
@@ -143,7 +143,7 @@ export class OciBundleStore
     const self = this;
 
     // Trace the pull as `oci.bundle.pull`.
-    return ___WithOperation("oci.bundle.pull", { repository: this.repository, digest }, async function _pull(): Promise<string | null>
+    return ___DoWithTrace("oci.bundle.pull", { repository: this.repository, digest }, async function _pull(): Promise<string | null>
     {
       // 1. Fetch the blob directly by its content-addressable digest.
       const res = await self.fetchFn(`${self.registryUrl}/v2/${self.repository}/blobs/${digest}`, {

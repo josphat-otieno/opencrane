@@ -3,7 +3,7 @@ import "./instrument.js";
 
 import * as k8s from "@kubernetes/client-node";
 
-import { ___BindConsole, ___CreateLogger, ___ShutdownTelemetry, ___WithOperation } from "@opencrane/observability";
+import { ___BindConsole, ___CreateLogger, ___ShutdownTelemetry, ___DoWithTrace } from "@opencrane/observability";
 
 import { _LoadOperatorConfig } from "./config.js";
 import { ObotHealthChecker } from "./mcp-gateway/obot-health-checker.js";
@@ -65,7 +65,7 @@ async function main(): Promise<void>
     // registry probe is attributable in the trace timeline.
     setInterval(function _pollRelease()
     {
-      void ___WithOperation("tenant.rollout.poll", { releaseTag: tenantRolloutConfig.releaseTag }, async function _poll()
+      void ___DoWithTrace("tenant.rollout.poll", { releaseTag: tenantRolloutConfig.releaseTag }, async function _poll()
       {
         try
         {

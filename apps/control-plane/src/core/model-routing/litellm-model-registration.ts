@@ -1,4 +1,4 @@
-import { ___WithOperation } from "@opencrane/observability";
+import { ___DoWithTrace } from "@opencrane/observability";
 
 import { _log } from "../../log.js";
 import type { LiteLlmModelRegistration } from "./litellm-model-registration.types.js";
@@ -33,7 +33,7 @@ export async function _RegisterLiteLlmModel(input: LiteLlmModelRegistration): Pr
     return placeholder;
   }
 
-  return ___WithOperation(
+  return ___DoWithTrace(
     "litellm.model.register",
     { publicModelName: input.publicModelName, upstreamModel: input.upstreamModel, scope: input.scope },
     function _register(): Promise<string> { return _registerLive(endpoint, masterKey, input); },

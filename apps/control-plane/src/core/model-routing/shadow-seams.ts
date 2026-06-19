@@ -1,4 +1,4 @@
-import { ___WithOperation } from "@opencrane/observability";
+import { ___DoWithTrace } from "@opencrane/observability";
 
 import { _log } from "../../log.js";
 import type { JudgeClient, ModelRunResult, ModelRunner } from "./shadow-measure.types.js";
@@ -76,7 +76,7 @@ function _buildModelRunner(endpoint: string, masterKey: string): ModelRunner
     {
       // Trace each candidate execution as a `litellm.chat.run` span so a slow or
       // failing leg of a shadow measurement is attributable to a specific model.
-      return ___WithOperation("litellm.chat.run", { model }, async function _traced(): Promise<ModelRunResult>
+      return ___DoWithTrace("litellm.chat.run", { model }, async function _traced(): Promise<ModelRunResult>
       {
         // 1. Derive OpenAI-style messages from the arbitrary eval-case input so any case shape runs.
         const messages = _deriveMessages(input);
@@ -139,7 +139,7 @@ function _buildJudgeClient(endpoint: string, masterKey: string, judgeModel: stri
     {
       // Trace each grading call as a `routing.judge.score` span, keyed by the
       // independent judge model, so judge latency/failures are separable from runs.
-      return ___WithOperation("routing.judge.score", { judgeModel }, async function _traced(): Promise<number>
+      return ___DoWithTrace("routing.judge.score", { judgeModel }, async function _traced(): Promise<number>
       {
         // 1. Build a grading prompt presenting the input, candidate output, and optional rubric, and
         //    instruct the judge to reply with a single JSON `{ "score": n }` in [0, 1].

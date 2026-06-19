@@ -27,7 +27,7 @@ const _tracer = trace.getTracer("@opencrane/observability");
  * @param fn     - The work to run inside the operation scope.
  * @returns Whatever `fn` resolves to.
  */
-export async function ___WithOperation<T>(
+export async function ___DoWithTrace<T>(
   name: string,
   fields: Record<string, unknown>,
   fn: () => Promise<T>,

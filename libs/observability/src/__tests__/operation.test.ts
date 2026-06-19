@@ -3,9 +3,9 @@ import { BasicTracerProvider, InMemorySpanExporter, SimpleSpanProcessor } from "
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { ___GetContext } from "../context.js";
-import { ___WithOperation } from "../operation.js";
+import { ___DoWithTrace } from "../operation.js";
 
-/** Captures spans emitted by ___WithOperation for assertion. */
+/** Captures spans emitted by ___DoWithTrace for assertion. */
 const _exporter = new InMemorySpanExporter();
 
 beforeAll(function _registerProvider()
@@ -21,12 +21,12 @@ afterAll(async function _shutdown()
   await _exporter.shutdown();
 });
 
-describe("___WithOperation", function _withOperationSuite()
+describe("___DoWithTrace", function _withOperationSuite()
 {
   it("seeds context, sets duration, and ends an OK span on success", async function _success()
   {
     _exporter.reset();
-    const seen = await ___WithOperation("tenant.reconcile", { tenant: "acme" }, async function _work()
+    const seen = await ___DoWithTrace("tenant.reconcile", { tenant: "acme" }, async function _work()
     {
       return ___GetContext();
     });
@@ -47,7 +47,7 @@ describe("___WithOperation", function _withOperationSuite()
   {
     _exporter.reset();
     await expect(
-      ___WithOperation("oci.bundle.push", { digest: "sha256:bad" }, async function _work()
+      ___DoWithTrace("oci.bundle.push", { digest: "sha256:bad" }, async function _work()
       {
         throw new Error("registry unreachable");
       }),
@@ -61,7 +61,7 @@ describe("___WithOperation", function _withOperationSuite()
 
   it("reuses a caller-supplied requestId", async function _inheritsId()
   {
-    const seen = await ___WithOperation("harvest.cycle", { requestId: "req-42" }, async function _work()
+    const seen = await ___DoWithTrace("harvest.cycle", { requestId: "req-42" }, async function _work()
     {
       return ___GetContext()?.requestId;
     });
