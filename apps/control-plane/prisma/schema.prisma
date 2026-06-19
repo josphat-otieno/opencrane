@@ -643,7 +643,7 @@ model RoutingEvalCase {
   updatedAt  DateTime @updatedAt @map("updated_at")
 
   @@index([skillName, skillScope, skillTeam])
-  @@map("routing_eval_cases")
+  @@map("mrl_eval_cases")
 }
 
 /// A shadow-mode savings measurement for one skill (AIR.6 output): what routing WOULD save at
@@ -671,7 +671,7 @@ model RoutingMeasurement {
   runAt               DateTime @default(now()) @map("run_at")
 
   @@index([skillName, skillScope, skillTeam])
-  @@map("routing_measurements")
+  @@map("mrl_measurements")
 }
 
 /// A human-gated routing-change proposal (AIR.7). Emitted only when the savings CI excludes zero;
