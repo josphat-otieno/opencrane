@@ -481,7 +481,14 @@ With one agent per lane, wall-clock ≈ 4 sequential slices instead of 7.
 > mutation routes handle live secrets + cost policy and **must get ClusterTenant-scoped route authz
 > before they ship** (AIR.0b).
 
-- [ ] **AIR.0 Platform hardening prereqs (Helm/Terraform — no behaviour change).** (a) **CMEK by
+- [x] **AIR.0 Platform hardening prereqs (Helm/Terraform — no behaviour change). — LANDED 2026-06-18.**
+  CMEK default-on in the GKE module (KMS keyring/key with `prevent_destroy` + 90d rotation, robot IAM,
+  `database_encryption`, gated by `enable_secrets_encryption=true`); `STORE_MODEL_IN_DB` + `LITELLM_SALT_KEY`
+  + Redis are **values-gated** (`litellm.storeModelInDb/redis.*`, salt auto-gen in `litellm-secret.yaml`),
+  **on for `values/gcp.yaml` (has Postgres), off for DB-less k3d** — i.e. DB-backing is wired everywhere but
+  only enabled where a DB exists, not force-on for all profiles; image pinned to `main-v1.81.0-stable`.
+  Validated: `helm template` (base + gcp) renders, multi-instance conformance passes; terraform not installed
+  (manual HCL pass). Original scope — (a) **CMEK by
   default** in `platform/terraform/modules/gke/main.tf`: KMS keyring + crypto key (`prevent_destroy`)
   + GKE robot `roles/cloudkms.cryptoKeyEncrypterDecrypter` IAM + `database_encryption { state=ENCRYPTED;
   key_name=… }`. (b) **DB-backed LiteLLM for all profiles**: `DATABASE_URL` + `STORE_MODEL_IN_DB=True`
@@ -490,10 +497,41 @@ With one agent per lane, wall-clock ≈ 4 sequential slices instead of 7.
   off `:main-latest`. **Acceptance:** existing per-tenant virtual keys still mint + persist across
   restart; `helm template` clean. **Anchors:** `platform/terraform/modules/gke/main.tf`,
   `platform/helm/templates/litellm-deployment.yaml`, `platform/helm/values*.yaml`.
-- [ ] **AIR.0b Route authz for credential/model/skill-model mutations.** ClusterTenant-scoped
-  authorization at the route layer — the mutation routes cannot inherit the dev fallback gate. Prereq
-  for AIR.1/AIR.3/AIR.4 shipping. **Anchors:** `apps/control-plane/src/infra/middleware/`, the new routes.
-- [ ] **AIR.1 Model registry (BYOM) — control-plane + LiteLLM.** `ModelDefinition` (scope
+- [x] **AIR.0b Route authz for credential/model/skill-model mutations. — LANDED 2026-06-18.**
+  `infra/middleware/cluster-tenant-scope.ts` guard on all POST/PUT/DELETE of the new routers: platform
+  operators allowed at any scope; non-operators only on a `clusterTenant`-scoped resource whose owner equals
+  their freshly-resolved `clusterTenant`; Global mutations operator-only; denials → 403 `FORBIDDEN_SCOPE`.
+  **Prod hardening LANDED 2026-06-18 (security cutover):** the no-session fallthrough now **fails closed
+  unless dev-mode** — `infra/auth/auth-mode.ts._IsDevAuthMode()` (mirrors `auth.middleware`: dev = no OIDC
+  + no `OPENCRANE_API_TOKEN`) gates the guard + both read-scope resolvers (metrics → 403, recommendations →
+  empty). Dev / the OPEN dev backend stay permissive; any real auth deployment denies a sessionless mutation.
+  The `_ResolveCallerClusterTenant` resolver is single-sourced in `infra/auth/`. 324 tests green (+1 fail-closed test).
+  **Anchors:** `infra/auth/auth-mode.ts`, `infra/middleware/cluster-tenant-scope.ts`, `routes/model-routing-{metrics,recommendations}.ts`.
+- [x] **AIR.0c-data-path Operator→models data-path + per-key allowlist + config-map population. — LANDED 2026-06-18.**
+  New NetworkPolicy-gated internal endpoint `GET /api/internal/tenant-models/:tenant` → `{ models, defaultModel }`
+  (Global + the tenant's ClusterTenant `ModelDefinition`s; default via `ModelRoutingDefault` precedence). The
+  operator fetches it **best-effort/non-fatal** at reconcile (`tenants/internal/tenant-models.ts`, 2s timeout,
+  null on any error) and applies it: the LiteLLM virtual key's `models[]` allowlist is now set on `/key/generate`
+  + `/key/update` **when non-empty** (the real model-access gate; **omitted when empty** to avoid LiteLLM's
+  "empty = ALL" footgun — non-breaking), and the config-map `litellm-proxy.models[]` is populated likewise.
+  Closes the "any tenant can call any registered model" gap (also completes the deferred AIR.2-operator config-map
+  population). 332 control-plane + 101 operator tests green.
+- [ ] **AIR.0c-cutover (STILL BLOCKED) — remove the broadcast + retire `ProviderApiKey`.** **(B)** removing the
+  `org-shared-secrets` `envFrom` broadcast (`3-deployment.ts:189-191`) is **blocked on OpenClaw**, not the
+  operator: `OPENAI_API_KEY` feeds OpenClaw's *internal OpenAI translator fallback* (hardcoded, no config flag
+  per `3-deployment.ts:81`) — needs an **OpenClaw image change** (configurable translator backend) to point it
+  at LiteLLM. **(C)** deleting the orphaned `ProviderApiKey` table + `/providers/keys` route needs WeOwnAI
+  confirmed off the legacy endpoint first. Both deferred to a coordinated cutover.
+- [x] **AIR.1 Model registry (BYOM) — control-plane + LiteLLM. — LANDED 2026-06-18.** Prisma
+  `ModelDefinition` + `ProviderCredential` (scope `global|clusterTenant`, **stores `secretRef` — never a raw
+  key**) + enum `ModelRoutingScope` + migration `0017_model_routing`; contract types in `libs/contracts`;
+  `GET/POST/PUT/DELETE /api/v1/models` + `/api/v1/providers/credentials` (raw-key fields rejected 400;
+  cross-tenant credential binding rejected); `oc model …` + `oc credential …` CLI; LiteLLM `POST /model/new`
+  is a **best-effort GLOBAL seam** (guarded by `LITELLM_ENDPOINT`+master key, deterministic placeholder id in
+  dev). Build green; control-plane 242 tests pass (+18). **Deviations:** the orphaned `ProviderApiKey` table +
+  `/providers/keys` route are **kept for now** (retirement deferred to a cutover slice to avoid breaking
+  WeOwnAI); the CLI uses `--secret-ref` (not `--token-file`) — uploading a raw key to GCP-SM is a deliberate
+  future enhancement. _(Original scope:)_ `ModelDefinition` (scope
   `global|clusterTenant`) + `ProviderCredential` (scope `global|clusterTenant`, references the
   ESO-synced k8s Secret — **no raw key**) Prisma tables; `GET /models` + `POST/PATCH/DELETE /models`
   (global) + `/cluster-tenants/{id}/models`; `oc model add/list/update/remove [--cluster-tenant]` +
@@ -501,35 +539,79 @@ With one agent per lane, wall-clock ≈ 4 sequential slices instead of 7.
   `api_key: os.environ/<KEY>`). Retire the orphaned `ProviderApiKey` table + hardcoded `["openai","claude"]`.
   **Anchors:** `openapi/spec.ts`, `routes/provider-keys.ts`→registry routes, `prisma/schema.prisma`,
   regenerated `libs/contracts`, `apps/cli/src/commands/`.
-- [ ] **AIR.2 Model selection precedence + the "auto" gate.** Resolve per request/skill:
+- [x] **AIR.2 Model selection precedence + the "auto" gate. — LANDED 2026-06-18 (contract side).** The
+  effective-contract now emits a resolved per-skill model via the pure `resolve-skill-model` helper
+  (precedence skill-pinned > skill-auto > ClusterTenant default > Global default). **Deferred:** operator
+  config-map pod-side default population (needs an operator→models data path) + the request-level explicit
+  override at the gateway. _(Original:)_ Resolve per request/skill:
   **explicit > skill-pinned > auto (opt-in) > global default**, bounded by the key's `models[]`.
   **Auto runs only when explicitly selected** (request- or skill-level flag) — never global-implicit.
   Write the resolved per-skill model into the effective-contract + propagate to the pod
   (`2-config-map.ts` `models[]`/default). **Anchors:** effective-contract endpoint,
   `apps/operator/src/tenants/deploy/2-config-map.ts`.
-- [ ] **AIR.3 Skill-level model definition.** Let a skill self-define its model in the skill-registry
+- [x] **AIR.3 Skill-level model definition. — LANDED 2026-06-18.** `Skill` gained
+  `modelMode`/`pinnedModel`/`autoConfig`; dedicated `/api/v1/skills/posture` router (the `Skill` model had
+  no prior read/write path — `skill-catalog` operates on the separate `SkillBundle`) keyed by
+  (name,scope,team) + `oc skill-posture` CLI. _(Original:)_ Let a skill self-define its model in the skill-registry
   metadata — a **pinned** model or **`auto`** (with a per-skill auto config) — surfaced via the skill
   API + `oc skill …` + the effective-contract. **Anchors:** skill-registry schema, control-plane skill
   routes, contract compiler.
-- [ ] **AIR.4 "auto" configuration surface.** The opt-in auto knobs (router report §12):
+- [x] **AIR.4 "auto" configuration surface. — LANDED 2026-06-18.** `ModelRoutingDefault` table (scope
+  global|clusterTenant) + `/api/v1/model-routing/defaults` CRUD + `oc model-default` CLI + the
+  `AutoRoutingConfig` type. **Config surface only** — the runtime optimizer that consumes `autoConfig` is
+  AIR.7. _(Original:)_ The opt-in auto knobs (router report §12):
   objective/strategy (cheapest-passing-bar default | best-quality-within-budget | balanced via a
   cost↔quality slider), quality floor (skill bar), budget cap, allowed-model set (= key `models[]`),
   latency ceiling, fallback chain, scope (global|ClusterTenant|skill|request), session-pin (default on),
   exploration toggle. API-first + `oc` + WeOwnAI. **Anchors:** config schema in `openapi/spec.ts`,
   contract, CLI.
-- [ ] **AIR.5 Per-tenant virtual-key hardening.** Extend `_generateLiteLlmVirtualKey` to send `team_id`
+- [x] **AIR.5 Per-tenant virtual-key hardening. — LANDED 2026-06-18.** Operator: richer `/key/generate`
+  params (`team_id` from clusterTenantRef/team, `budget_duration`, config-default tpm/rpm) + a `/key/update`
+  drift-reconcile replacing the no-rotation early-return (key value preserved, no pod restart). Control-plane:
+  revoke now best-effort `/key/delete` by alias, audited. **Deferred:** `org-shared-secrets` broadcast removal
+  (cutover — would break tenants before AIR.2 operator-side lands) + per-key `models[]` allowlist (needs the
+  operator→models data path). _(Original:)_ Extend `_generateLiteLlmVirtualKey` to send `team_id`
   (ClusterTenant→LiteLLM Team), `models[]` allowlist, `budget_duration`, `tpm/rpm`; fix the no-rotation
   early-return; complete revocation (`/key/delete`); stop the `org-shared-secrets` `envFrom` broadcast
   (keys stay at the proxy). **Anchors:** `apps/operator/src/tenants/internal/tenant-litellm-keys.ts`,
   `deploy/3-deployment.ts`, `core/ai-budget/ai-budget.logic.ts`.
-- [ ] **AIR.6 Shadow-mode savings measurement (FIRST loop slice — zero production risk).** LiteLLM
+- [x] **AIR.6 Shadow-mode savings measurement. — LANDED 2026-06-18 (foundation).** `RoutingEvalCase`
+  data model + `/api/v1/model-routing/eval-cases` API + `oc routing eval-case`; pure `savings.ts`
+  estimator (at-bar fraction → `1 - effective/baseline`, bootstrap 95% CI, injectable rng) +
+  `shadow-measure.ts` orchestrator (per-case run+judge → `RoutingMeasurement`, emits a Pending proposal
+  only when CI excludes zero) behind `JudgeClient`/`ModelRunner` seams (`_BuildShadowSeams`, env-gated,
+  no-op when unconfigured); `/model-routing/measurements` (+ `POST /run`) + `oc routing measurement`;
+  Langfuse trace-capture wiring (LiteLLM `LITELLM_SUCCESS_CALLBACK=langfuse` + `LANGFUSE_*`, values-gated
+  default-off, points at an operator-provided Langfuse — not bundled). **Live seams IMPLEMENTED 2026-06-18:**
+  `shadow-seams.ts` now builds a real `ModelRunner` (LiteLLM `/v1/chat/completions`, cost from the
+  `x-litellm-response-cost` header) + a vendor-neutral `JudgeClient` (`ROUTING_JUDGE_MODEL`, robust 0–1 score
+  parse) when `LITELLM_ENDPOINT` + `LITELLM_MASTER_KEY` + `ROUTING_JUDGE_MODEL` are set (null pair / no-op
+  otherwise); hard HTTP failures throw (clean 500, no corrupt sample), soft cases degrade. Ops recipe in
+  `docs/operators/routing-measurement.md`. **Version-stamping LANDED 2026-06-19:** every `RoutingMeasurement`
+  /`RoutingProposal` now records `skillContentHash` + `skillDigest` (live published `SkillBundle`) + the stable
+  `candidateModelId`/`proposedModelId` (`litellmModelId`, not just the slug) + `candidateUpstreamModel` (migration
+  0020, best-effort lookups), and the recommendation feed surfaces them — so performance is attributable to a
+  specific *(skill content version × model deployment)* and stale evidence is detectable. (Residual: a provider
+  drifting a model behind a slug needs dated provider model ids to fully detect.) 352 tests green.
+  **Remaining = the live RUN itself**
+  (deploy DB-backed LiteLLM + provider keys + a judge model, then `oc routing measurement run` → the first real
+  savings number) — an operator step on a live cluster, plus reading sampled production traffic out of Langfuse.
+  _(Original:)_ LiteLLM
   `CustomLogger` → **Langfuse** (skill id, model, cost, latency, propensity); per-skill golden eval set
   + quality bar; nightly shadow-grade a sample with a **neutral judge** (not the candidates' vendor);
   **OPE** (Open Bandit Pipeline, doubly-robust + bootstrap CIs + per-tenant breakdown); produce the
   per-skill **go/no-go savings table**. (Router §11.) **Deliverable:** "routing would save X%±Y at equal
   quality; overhead Z%." Needs AIR.0 + candidate models registered (AIR.1). **Anchors:** new optimizer
   service/job, Langfuse self-host (MIT), LiteLLM callback.
-- [ ] **AIR.7 Nightly improvement loop for "auto" skills (WALK/RUN).** judge → OPE → propose
+- [x] **AIR.7 Nightly improvement loop for "auto" skills. — LANDED 2026-06-18 (foundation).** Human-gated
+  `RoutingProposal` lifecycle (`/api/v1/model-routing/proposals` + `oc routing proposal` approve/reject):
+  a proposal is emitted only when the savings CI excludes zero, and **apply happens ONLY on explicit
+  approve** (pins the skill to `proposedModel` via the AIR.3 write, status→Applied, audited) — never
+  auto-deployed; reject leaves routing untouched. Pure `ope.ts` off-policy estimators (replay +
+  doubly-robust + bootstrap CI) provide the AIR.7 substrate for assessing a candidate policy from logs.
+  **Deferred (live-infra / next slices):** live judge+runner execution, Langfuse-backed sampling, the
+  RouteLLM/bandit policy learner, and staged canary % rollout (proposal status exists; graded traffic-%
+  rollout not implemented). _(Original:)_ judge → OPE → propose
   (cheapest-≥-bar; later RouteLLM matrix-factorization/BERT or a bandit) → gate on a frozen private
   hold-out + significance (95% CI excludes zero) → **canary** → **human-approved diff via the control
   plane** → write per-skill default + LiteLLM `/model/update` + per-key `models[]`. IAM-gated + audited;
@@ -539,13 +621,41 @@ With one agent per lane, wall-clock ≈ 4 sequential slices instead of 7.
   to a fixed model (not auto), run the shadow evaluator continuously and **surface an advisory — never
   auto-change a pinned skill**: WeOwnAI/CLI lists fixed-model skills with *"by changing this skill's
   model you could save up to N% in token cost at equal quality,"* one-click **"switch to recommended"** /
-  **"enable auto."** (Router §12.)
+  **"enable auto."** (Router §12.) **In-repo enablers DONE:** the savings-recommendation feed
+  (`/model-routing/recommendations`, AIR.11) now also carries the skill's `modelMode` (pinned|auto|null) so the
+  console can flag a *fixed-model* skill distinctly; the one-click actions map to existing APIs (proposal
+  approve = AIR.7, enable-auto = `oc skill-posture set --mode auto` = AIR.3). Remaining is the WeOwnAI view itself.
 - [ ] **AIR.9 (FUTURE) Safety / guardrail stream.** If/when a guardrail service is adopted, run it as an
   external OSS service (LiteLLM's built-in callbacks are Enterprise), emit verdicts to Langfuse keyed by
   skill id; use as a hard routing filter + a safety term in the per-skill score — **not** the quality
   judge. No such service exists today.
+- [x] **AIR.10 (FRONTEND ENABLER) Langfuse-metrics proxy. — LANDED 2026-06-18.** `GET /api/v1/model-routing/metrics`
+  proxies Langfuse v1 `/api/public/metrics` (overridable via `LANGFUSE_METRICS_PATH`) with server-side HTTP Basic
+  auth; **503** when unconfigured, **502** on upstream error; non-operators get a tenant-dimension filter injected
+  (fail-closed **403** when their ClusterTenant can't be resolved); `oc routing metrics`. **Open:** the tenant
+  filter field (`metadata.clusterTenant`) is a documented `TODO(AIR.10)` to confirm once the gateway stamps the
+  tenant dimension into trace metadata. _(Original:)_ Control-plane read endpoint proxying
+  Langfuse's **v1** Metrics/Public API (v2 is Cloud-only) with project keys held server-side + scoped
+  per tenant, so the WeOwnAI console can render native eval/cost trend tiles without the browser ever
+  holding Langfuse credentials. IAM-gated. (Verified 2026-06-18: Langfuse has no iframe embed → build
+  native over the API + link out for deep eval UX.)
+- [x] **AIR.11 (FRONTEND ENABLER) Savings-recommendation read endpoint. — LANDED 2026-06-18.**
+  `GET /api/v1/model-routing/recommendations` joins each skill's latest `RoutingMeasurement` with any open
+  Pending `RoutingProposal`, sorted by `projectedSavingsPct` desc, scope-filtered (operator sees all,
+  non-operator only their own ClusterTenant, fail-closed `[]`); new `SavingsRecommendation` contract type;
+  `oc routing recommendation list`. The "save up to N%" feed behind the console differentiator. _(Original:)_ Aggregate the latest
+  `RoutingMeasurement` + open `RoutingProposal` per skill/tenant into a "save up to N%" feed — the API
+  behind the console's headline differentiator (the inline savings-recommendation + one-click human-gated
+  apply, market whitespace; see `litellm-router-autonomous-improvement-research.md` §14). Pure read over
+  data the AIR.6/7 loop already produces.
 
-**Sequencing:** AIR.0/0b (prereqs) → AIR.1 (registry) → {AIR.2 selection ∥ AIR.3 skill model ∥ AIR.4 auto config} → AIR.5 key hardening → **AIR.6 shadow measurement is the recommended first end-to-end slice** (proves the savings before building AIR.7) → AIR.7 loop → AIR.8/9 future.
+> **Frontend (WeOwnAI, separate proprietary repo — out of this AGPL tree):** the management *views* live
+> there as just-another-API-client (`/auth/me` claims hide UI; the API enforces). Prioritized capability
+> catalogue + Langfuse embed/link/native guidance in `litellm-router-autonomous-improvement-research.md`
+> §14. **Eval refinement:** AIR.6's judge should be a thin layer over **Langfuse managed evaluators +
+> trace-curated datasets** (all MIT/free on OSS self-host) rather than a fully bespoke judge — §13.
+
+**Sequencing:** AIR.0/0b (prereqs) → AIR.1 (registry) → {AIR.2 selection ∥ AIR.3 skill model ∥ AIR.4 auto config} → AIR.5 key hardening → **AIR.6 shadow measurement is the recommended first end-to-end slice** (proves the savings before building AIR.7) → AIR.7 loop → {AIR.10 ∥ AIR.11 frontend enablers} → AIR.8/9 future.
 
 ---
 

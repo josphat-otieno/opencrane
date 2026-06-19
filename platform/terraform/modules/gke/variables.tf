@@ -36,3 +36,10 @@ variable "enable_private_nodes"
   type        = bool
   default     = false
 }
+
+variable "enable_secrets_encryption"
+{
+  description = "Encrypt cluster Secrets at rest (etcd) with a customer-managed Cloud KMS key (CMEK). Provisions a key ring + key in var.region and grants the GKE service agent encrypt/decrypt. Protects etcd/backups, not in-cluster `kubectl get secret` (RBAC remains that boundary)."
+  type        = bool
+  default     = true
+}

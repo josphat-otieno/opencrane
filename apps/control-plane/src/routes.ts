@@ -9,6 +9,7 @@ import { groupsRouter } from "./routes/groups.js";
 import { _RegisterObotRegistry } from "./routes/internal/obot-registry.js";
 import { _RegisterInternalBundles } from "./routes/internal/skill-bundles.js";
 import { _RegisterInternalTenantContract } from "./routes/internal/tenant-contract.js";
+import { _RegisterInternalTenantModels } from "./routes/internal/tenant-models.js";
 import { _RegisterInternalParticipation } from "./routes/internal/participation.js";
 import { mcpServersRouter } from "./routes/mcp-servers.js";
 import { metricsRouter } from "./routes/metrics.js";
@@ -16,7 +17,17 @@ import { openapiRouter } from "./routes/openapi-route.js";
 import { policiesRouter } from "./routes/policies.js";
 import { prometheusMetricsRouter } from "./routes/prometheus-metrics.js";
 import { providerKeysRouter } from "./routes/provider-keys.js";
+import { providerCredentialsRouter } from "./routes/provider-credentials.js";
+import { modelRegistryRouter } from "./routes/model-registry.js";
+import { modelRoutingDefaultsRouter } from "./routes/model-routing-defaults.js";
+import { modelRoutingRecommendationsRouter } from "./routes/model-routing-recommendations.js";
+import { modelRoutingMetricsRouter } from "./routes/model-routing-metrics.js";
+import { routingEvalCasesRouter } from "./routes/routing-eval-cases.js";
+import { routingMeasurementsRouter } from "./routes/routing-measurements.js";
+import { routingProposalsRouter } from "./routes/routing-proposals.js";
+import { _BuildShadowSeams } from "./core/model-routing/shadow-seams.js";
 import { skillCatalogRouter } from "./routes/skill-catalog.js";
+import { skillModelPostureRouter } from "./routes/skill-model-posture.js";
 import { tenantsRouter } from "./routes/tenants.js";
 import { thirdPartySourcesRouter } from "./routes/third-party-sources.js";
 import { tokenUsageRouter } from "./routes/token-usage.js";
@@ -82,6 +93,9 @@ export function _RegisterRoutes(app: Express, prisma: PrismaClient, customApi: k
 
   app.use("/api/internal/obot-registry", _RegisterObotRegistry(prisma));
   app.use("/api/internal/bundles", _RegisterInternalBundles(prisma, ociBundleStore));
+  // NetworkPolicy-only (no auth/TokenReview): the operator fetches a tenant's
+  // allowed model set + effective default at reconcile. Best-effort — never 404/500.
+  app.use("/api/internal/tenant-models", _RegisterInternalTenantModels(prisma));
   // Note: /api/internal/contract enforces per-tenant identity via TokenReview — not NetworkPolicy-only.
   app.use("/api/internal/contract", _RegisterInternalTenantContract(prisma, authApi));
   app.use("/api/internal/awareness/participation", _RegisterInternalParticipation(prisma, authApi));
@@ -95,6 +109,13 @@ export function _RegisterRoutes(app: Express, prisma: PrismaClient, customApi: k
   app.use("/api/v1/groups", groupsRouter(prisma));
   app.use("/api/v1/mcp-servers", mcpServersRouter(prisma));
   app.use("/api/v1/skills/catalog", skillCatalogRouter(prisma, ociBundleStore));
+  app.use("/api/v1/skills/posture", skillModelPostureRouter(prisma));
+  app.use("/api/v1/model-routing/defaults", modelRoutingDefaultsRouter(prisma));
+  app.use("/api/v1/model-routing/eval-cases", routingEvalCasesRouter(prisma));
+  app.use("/api/v1/model-routing/measurements", routingMeasurementsRouter(prisma, _BuildShadowSeams));
+  app.use("/api/v1/model-routing/proposals", routingProposalsRouter(prisma));
+  app.use("/api/v1/model-routing/recommendations", modelRoutingRecommendationsRouter(prisma));
+  app.use("/api/v1/model-routing/metrics", modelRoutingMetricsRouter(prisma));
   app.use("/api/v1/third-party-sources", thirdPartySourcesRouter(prisma));
   app.use("/api/v1/org/workspace-docs", companyDocsRouter(prisma, _BuildDocMergeReconciler()));
   app.use("/api/v1/platform/dns", platformDnsRouter(customApi, coreApi));
@@ -104,6 +125,8 @@ export function _RegisterRoutes(app: Express, prisma: PrismaClient, customApi: k
   app.use("/api/v1/sessions", sessionsRouter(prisma));
   app.use("/api/v1/access-tokens", accessTokensRouter(prisma));
   app.use("/api/v1/providers/keys", providerKeysRouter(prisma));
+  app.use("/api/v1/providers/credentials", providerCredentialsRouter(prisma));
+  app.use("/api/v1/models", modelRegistryRouter(prisma));
   app.use("/api/v1/openapi.json", openapiRouter());
   app.get("/healthz", _CheckDbHealth(prisma));
   app.use("/prom", prometheusMetricsRouter(prisma, customApi));

@@ -6,7 +6,9 @@
 #   - Ingress controller: external API traffic routed through the cluster ingress.
 #   - Obot / mcp-gateway pod: polls /api/internal/obot-registry to sync the MCP catalog.
 #   - Skill-registry pod: calls /api/internal/bundles to deliver skill content.
-#   - Operator pod: reconciliation calls to /api/v1/* for tenant and policy state.
+#   - Operator pod: reconciliation calls to /api/v1/* for tenant and policy state,
+#     and /api/internal/tenant-models/:tenant to restrict tenant keys/config to the
+#     tenant's registered model set (best-effort; covered by the same port rule).
 #
 # NetworkPolicy cannot filter by URL path, so this policy covers all control-plane
 # ingress on a single port.  The per-route security boundary is the network layer
@@ -52,7 +54,8 @@ spec:
       ports:
         - protocol: TCP
           port: {{ .Values.controlPlane.service.port }}
-    # Allow the operator to reach /api/v1/* for reconciliation.
+    # Allow the operator to reach /api/v1/* for reconciliation and
+    # /api/internal/tenant-models/:tenant for the per-tenant model allowlist.
     - from:
         - podSelector:
             matchLabels:

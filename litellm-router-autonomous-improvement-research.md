@@ -144,6 +144,7 @@ LiteLLM is the gateway and gives you both halves of the loop:
 ## 8. AGPL / licensing notes
 
 - **Use directly (permissive, self-hostable):** LiteLLM (MIT), RouteLLM (Apache-2.0), semantic-router (MIT), DSPy (MIT/Apache), **Langfuse (MIT)**, Open Bandit Pipeline (Apache-2.0), Hybrid-LLM/BEST-Route (MIT).
+- **Langfuse eval features are MIT/free on the OSS self-hosted build** (verified; relicensed out of `ee/` into MIT in June 2025): managed LLM-as-a-judge evaluators, online (sampled-%) production evals, datasets + experiments, annotation queues, the public + v1 metrics APIs. **Only** enterprise *security/admin* modules are paid (SAML/SCIM SSO, project-level RBAC, audit logs, data-retention, server-side masking) — none of them eval features. Langfuse's core is **MIT** (looser than AGPL), so it imposes no copyleft on the platform. (Source: langfuse.com/docs/open-source, /self-hosting/license-key.)
 - **Avoid bundling:** **Arize Phoenix is Elastic License v2** — source-available, self-hostable, but **not OSI/AGPL-compatible**; Langfuse (MIT) is the cleaner observability pick. **Helicone** (Apache-2.0) is fine but in maintenance mode since its Mar-2026 acquisition.
 - **Cannot self-host:** NotDiamond, Martian, Unify.ai, Requesty, OpenRouter auto-router, GPT-5 router — managed/proprietary. Their approaches are replicable on the OSS stack above.
 
@@ -217,6 +218,31 @@ Routing is **opt-in**. Most calls use an explicitly chosen model; the autonomous
 
 Mechanically the resolved model is written into the effective-contract (per-skill) + the pod's `models[]`/default; the per-tenant virtual key's `models[]` allowlist is the hard ceiling on what *any* mode may select (control-plane-enforced, §4 rules). Auto is a per-skill (or per-tenant-default) flag — never global-implicit.
 
+### How per-skill resolution works — intent → resolution → enforcement
+
+A common misread is "model selection is a property of the skill." It isn't — the skill carries **intent** (its posture); the **concrete model** a tenant runs is `posture × the tenant's scope defaults`, resolved per-tenant when the effective-contract is compiled. Three distinct layers:
+
+| Layer | Where it lives | What it holds |
+|---|---|---|
+| **Intent** | the `Skill` row's posture (`modelMode`/`pinnedModel`/`autoConfig`) | the author's choice: pinned · auto · inherit |
+| **Resolution** | `_ResolveContractSkillModels` → `_ResolveSkillModel` at contract-compile | `posture × scope defaults` → the concrete model for *this* tenant, *now* |
+| **Enforcement** | the per-tenant LiteLLM virtual key's `models[]` allowlist (AIR.0c) | the hard runtime gate on what any selection may reach |
+
+**The resolver** (`apps/control-plane/src/core/model-routing/`): `_ResolveContractSkillModels` (the DB wrapper) loads the scope defaults **once** — the Global `ModelRoutingDefault` plus the tenant's ClusterTenant default when it has one — and the posture rows for the entitled skills (joined by name; a posture-bearing row beats a null one). It then runs the **pure** `_ResolveSkillModel` per entitled skill, emitting `{ skillId, model, auto }` into the contract's `skills.models`. The resolver does **no I/O and never calls LiteLLM** — the wrapper does the loads, so the precedence stays unit-testable and the compile stays cheap.
+
+**Per-posture resolution** (the precedence chain `_ResolveSkillModel` implements):
+- **`pinned`** → `pinnedModel`. The *only* case where the skill itself names the concrete model.
+- **`auto`** → the **scope default** is the anchor model (ClusterTenant default, else Global), with the skill's `autoConfig`, and `auto: true`. The resolver does **not** pick the cheapest-passing model here — there's no live measurement at compile time; the live pick is the runtime/optimization-loop's job (the loop writes a new default, which the next contract re-pull reflects).
+- **`null` (inherit)** → the scope default (and it inherits the default's auto-ness when that default is itself an auto config).
+- **nothing resolves** → `model: null`; the pod falls back to its own configured default.
+
+**Why resolution can't be a skill field:**
+- **Tenant-specific** — one `Skill` (keyed `name/scope/team`, entitled to many tenants) resolves to *different* models per customer, because ClusterTenant defaults differ.
+- **Time-varying** — a scope-default change, or an AIR.7 proposal approval, re-resolves the model with **no edit to the skill**.
+- **Compiled + re-pulled** — the contract is the per-tenant view the pod re-pulls at each agentic-loop boundary; that's the right place to materialise "the model for this tenant, right now."
+
+**Where the other precedence tiers sit:** the **explicit per-request model** (top of the chain) is honoured at request time by the pod/gateway and is deliberately *not* an input to the resolver; the **pod's own configured default** is the `model: null` fallback at the bottom. The resolver owns only the middle tiers (pinned → auto → scope-default). The contract field is emitted by `routes/internal/tenant-contract.ts` (`skills.models`).
+
 ### Skill-level model definition
 A skill can declare its own model in the skill-registry metadata — either a **pinned** model (mode 2) or **`auto`** with a per-skill auto config (mode 3). This is the same artifact as the per-skill eval set (§5): developing a skill includes deciding its model posture. Surfaced API-first + `oc skill …` + WeOwnAI.
 
@@ -237,6 +263,61 @@ When a caller/skill selects auto, expose these knobs (all OSS-implementable; def
 
 ### Future work — fixed-model-skill savings evaluator (advisory)
 For skills pinned to a fixed model (modes 1/2, **not** auto), run the shadow evaluator (§11) continuously and surface an **advisory** — **never auto-change a pinned skill.** WeOwnAI/CLI lists fixed-model skills with a notification like *"By changing this skill's model you could save up to 65% in token cost at equal quality,"* with one-click **"switch to recommended"** or **"enable auto."** This turns the optimization loop into a recommendation engine for the skills a user has deliberately pinned — full user control, savings still surfaced. *(Tracked in plan.md → Track AIR.8.)*
+
+---
+
+## 13. Evals via Langfuse — refinement to AIR.6/7
+
+Verified 2026-06-18 against langfuse.com/docs + the langfuse repo. **All Langfuse eval features are MIT/free on the OSS self-hosted build** (managed LLM-as-a-judge, online sampled-% production evals, datasets + experiments, annotation queues, public + v1 metrics APIs) — relicensed out of `ee/` into MIT in June 2025; only enterprise security/admin is paid (§8). This materially changes AIR.6's build:
+
+- **Lean on Langfuse, don't rebuild the judge.** AIR.6's `shadow-measure.ts` + `JudgeClient`/`ModelRunner` seams should become a **thin layer over Langfuse** rather than a bespoke judge loop: curate per-skill **datasets** in Langfuse, run a **managed LLM-judge evaluator** (offline on the dataset, and/or online on sampled production traces), then read the **Scores** back via Langfuse's v1 Metrics/Public API to compute the savings + CI. Less code, a standard pipeline, and the eval-review UX (evaluator config, experiment A/B, annotation queues, trace inspection) comes for free in the Langfuse UI.
+- **Manual vs automatic.** Grading is **automatic** (the LLM-judge runs without hand-scoring). What is irreducibly **manual** is *authoring golden answers + the judge criteria* — and only for **reference-based** metrics (correctness, semantic-equivalence). **Reference-free** metrics (toxicity, relevance, helpfulness, hallucination-vs-context) need **no golden answer** → fully automatic, including dataset curation from live traces.
+- **Where eval sets come from.** **Curate a small golden set from each skill's own production traces** (Langfuse "add trace → dataset"), plus CSV/SDK import or synthetic generation. Public benchmarks are a **poor fit for a specific skill** (contamination + distribution mismatch) — use them (RouterBench/RouterEval [MIT], MMLU, etc.) only for **broad model smoke-testing when onboarding a model**, never as the per-skill acceptance gate. Calibrate the cheap judge against a **small human-labeled slice**, and keep the judge **vendor-neutral** (never a routed family — §4).
+- **Net effect on the data model:** `RoutingEvalCase` (AIR.6, already landed) becomes the OpenCrane-side index/pointer to a skill's Langfuse dataset + bar; the heavy lifting (judge execution, score storage, experiment comparison) lives in Langfuse.
+
+## 14. Frontend management capabilities (the WeOwnAI console)
+
+WeOwnAI is a **separate proprietary Angular repo** and, per the locked rule, **just another API client**: `/auth/me` claims (`isPlatformOperator`, `clusterTenant`) **hide UI only**; the control-plane API (the AIR.0b scope guard) is the enforcement point. Everything below is backed by AIR APIs that **already exist** plus two small control-plane enablers (see end).
+
+### Langfuse integration pattern (verified)
+- **Embed nothing** — Langfuse has no iframe/embed and no per-request SSO deep-link. Don't try to iframe it.
+- **Build native over the API** for the at-a-glance views (score trends, eval pass-rates, cost/latency tiles, per-tenant rollups): query Langfuse's **v1 Metrics + Public API** (v2 is Cloud-only today — design self-hosted views around **v1**), **proxied through the control-plane** so Langfuse project keys never reach the browser.
+- **Link out** to the full Langfuse UI for the expensive-to-rebuild deep surfaces: trace inspection, LLM-judge evaluator config, experiment A-vs-B comparison, annotation queues. A *seamless* SSO handoff needs enterprise SAML; without it users hit a Langfuse login (acceptable for the admin persona), or scope isolation stays entirely in our proxy.
+
+### Capability catalogue (prioritized) — each mapped to its backing API
+
+| # | Capability | Tier | Backing API (already built unless noted) | R/W |
+|---|---|---|---|---|
+| 1 | **Per-skill model catalog/picker** (filter price/context/modality/provider) | must-have | `GET /models` + `PUT /skills/posture` | R+W |
+| 2 | **Per-skill routing-policy presets** (objective, fallbacks, allowed-models, budget; inheritable tenant→skill) | must-have | `/model-routing/defaults` + `skills/posture.autoConfig` | W |
+| 3 | **BYOK provider-credential management** (per tenant, model-scoped, prioritized+fallback) | must-have | `/providers/credentials` | W |
+| 4 | **Keys + per-key budgets + soft-budget alerts** | must-have | `/ai-budget/*` | W |
+| 5 | **Usage/cost analytics** filterable by tenant/skill/model/provider | table-stakes | Langfuse v1-metrics proxy + `/token-usage` + `/ai-budget/*/spend` | R |
+| 6 | **Eval-score trends + experiment comparison per skill** | differentiator | native trend tiles over the metrics proxy + `/model-routing/measurements`; link-out to Langfuse for A/B | R+W |
+| 7 | **Cost-quality slider + savings-recommendation** (*"switch skill X → model Y, save N%"*) | **differentiator (whitespace)** | `/model-routing/measurements` + `/model-routing/proposals` | W |
+| 8 | **Proposal review queue** (approve/reject the human-gated diff) | differentiator | `/model-routing/proposals/{id}/approve\|reject` | W |
+| 9 | **Eval-set curation + judge config** | core-loop | `/model-routing/eval-cases` + link-out to Langfuse datasets/evaluators | W |
+| 10 | **Credits/billing per tenant** | platform | `/ai-budget` | W |
+| 11 | **Scope-aware hierarchy** (operator vs ClusterTenant views) | platform | `/cluster-tenants`, `/tenants`, `/auth/me` | R+W |
+| 12 | **Branded tenant-facing "skill hub"** | platform | `GET /skills/posture` + `GET /models` | R |
+
+Tiers: **1–4** are the must-have control plane; **5** table-stakes; **6–9** the differentiation; **10–12** round out the platform.
+
+### The differentiator (market whitespace)
+No surveyed product (OpenRouter, LiteLLM, NotDiamond, Portkey, Requesty, Helicone, Langfuse) surfaces a polished **inline savings-recommendation** — *"this skill is pinned to an expensive model; switching to Y saves N% at equal quality"* — with a **one-click human-gated apply**. NotDiamond does it programmatically; the observability tools show the cost data but leave the decision to the user. Combining **Langfuse-style eval trends** with a **NotDiamond-style cost-quality dial** and our **RoutingProposal approve/reject loop** (#6+#7+#8) is a feature OpenCrane can own — and it is backed entirely by the AIR.6/7 APIs already shipped.
+
+### UI inspiration (concepts, not wire-compat — AGPL)
+- **OpenRouter** — model catalog with rich filters; **Presets** (named routing policy decoupled from code) → our per-skill policy; BYOK with prioritized+fallback ordering + "counts toward limit" toggle.
+- **LiteLLM Admin UI** — the org→team→project→key budget tree (= ClusterTenant→Tenant→skill); note LiteLLM *monetizes* the model-hub + SSO, validating their value.
+- **Helicone** — persistent, URL-shareable filters across every dashboard (the UX bar for #5).
+- **NotDiamond** — the single **`cost_quality_tradeoff` 0–10 slider** as the whole auto-config UX (#7).
+- **Requesty** — cascading policy engine through the org hierarchy (= our tenant→skill inheritance).
+
+### Control-plane enablers still needed (so the console stays API-first)
+1. **AIR.10 — Langfuse-metrics proxy**: a control-plane read endpoint that proxies Langfuse's v1 Metrics/Public API with the project keys held server-side + scoped per tenant (the browser never holds Langfuse credentials).
+2. **AIR.11 — savings-recommendation read endpoint**: aggregates the latest `RoutingMeasurement` + open `RoutingProposal` per skill/tenant into the "save up to N%" feed that powers capability #7. (Pure read over data the loop already produces.)
+
+Both are small, additive, and IAM-gated; the frontend *views* themselves live in the WeOwnAI repo (out of this AGPL tree).
 
 ---
 
