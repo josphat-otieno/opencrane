@@ -24,8 +24,10 @@ export interface ControlPlaneAuthUser
   groups: string[];
 
   /**
-   * Whether the caller's groups intersect `OPENCRANE_PLATFORM_OPERATOR_GROUPS`.
-   * Empty/unset config ⇒ false for everyone (fail-closed). Introspection only —
+   * Whether the caller is a platform operator: their groups intersect
+   * `OPENCRANE_PLATFORM_OPERATOR_GROUPS`, OR their VERIFIED email equals the per-cluster
+   * `OPENCRANE_PLATFORM_OPERATOR_SEED_EMAIL` (the bootstrap path for the first operator).
+   * Both inputs empty/unset ⇒ false for everyone (fail-closed). Introspection only —
    * the API stays the enforcement point; a federated frontend uses this to decide
    * what UI to *hide*, never what it may *do*.
    *
@@ -249,7 +251,9 @@ export class OidcAuthService
     };
     await _saveSession(req);
 
-    // 2. Build a generic OIDC authorization redirect that works with Google or any other issuer.
+    // 2. Build a standards-only OIDC authorization redirect. Zitadel is the single trusted
+    //    issuer (Mode-2 broker, no upstream Entra), but this uses nothing Zitadel-specific —
+    //    it works against any spec-compliant issuer at OIDC_ISSUER_URL.
     const loginUrl = client.buildAuthorizationUrl(discoveredConfig, {
       redirect_uri: this.config.redirectUri,
       scope: this.config.scopes,
@@ -383,7 +387,14 @@ export class OidcAuthService
       }
     }
 
-    const identity = _ResolveIdentityClaims(claims, this.config);
+    // The seed only ever bootstraps an operator from a VERIFIED email. The `email_verified
+    // === false` guard above has already thrown, so TypeScript has narrowed `emailVerified`
+    // to `true | undefined` here — i.e. `email` (when present) is verified or its
+    // `email_verified` claim was absent, never explicitly unverified. So an email explicitly
+    // marked unverified can never reach the seed match (fail-closed). `_ResolveIdentityClaims`
+    // treats an absent verified email as a non-match regardless, so the seed grants nothing
+    // unless a real verified email equals it.
+    const identity = _ResolveIdentityClaims(claims, this.config, email);
 
     return {
       sub: subject,
@@ -404,8 +415,8 @@ export class OidcAuthService
  * Project the IdP's group/role claims into the introspection-only authorization
  * facts the control-plane surfaces: the caller's `groups` and a derived
  * `isPlatformOperator`. Pure (no I/O) so it is unit-testable and so the rule
- * "operator iff a group matches a configured operator group" is verified
- * independently of the OIDC flow.
+ * "operator iff a group matches a configured operator group, OR the verified email
+ * matches the per-cluster seed" is verified independently of the OIDC flow.
  *
  * `clusterTenant` is intentionally NOT derived here — it is resolved server-side
  * from the verified email → tenant → `clusterTenantRef` (see `_resolveClusterTenant`),
@@ -414,25 +425,40 @@ export class OidcAuthService
  * TODO: this is the non-presumptuous stopgap until OpenCrane has a first-class
  * role model; a real RBAC model supersedes `isPlatformOperator`.
  *
- * @param claims - The merged ID-token + UserInfo claims for the caller.
- * @param config - OIDC config supplying the claim names and operator group set.
+ * @param claims        - The merged ID-token + UserInfo claims for the caller.
+ * @param config        - OIDC config supplying the claim names, operator group set, and seed email.
+ * @param verifiedEmail - The caller's email when it is verified (lowercased/trimmed); empty/undefined
+ *                        when absent or NOT verified, so an unverified email can never match the seed.
  */
 export function _ResolveIdentityClaims(
   claims: Record<string, unknown>,
-  config: { groupsClaim: string; rolesClaim: string; platformOperatorGroups: string[]; orgAdminGroups: string[] },
+  config: { groupsClaim: string; rolesClaim: string; platformOperatorGroups: string[]; orgAdminGroups: string[]; platformOperatorSeedEmail: string },
+  verifiedEmail?: string,
 ): { groups: string[]; isPlatformOperator: boolean; isOrgAdmin: boolean }
 {
-  // 1. Collect the raw values from both the groups and roles claims — Entra emits
-  //    security groups under `groups` and app roles under `roles`; either may
-  //    grant operator status, so the union is what we authorize against.
+  // 1. Collect the raw values from both the groups and roles claims — Zitadel emits
+  //    group memberships under the configured `groups` claim and project/app roles
+  //    under `roles`; either may grant operator status, so the union is what we
+  //    authorize against. (Mode-2 broker: Zitadel is the single trusted issuer; there
+  //    is no upstream Entra. Claim names are install-configurable via OIDC_GROUPS_CLAIM
+  //    / OIDC_ROLES_CLAIM.)
   const groups = [..._ReadStringArrayClaim(claims[config.groupsClaim]), ..._ReadStringArrayClaim(claims[config.rolesClaim])];
   const lowered = groups.map(value => value.toLowerCase());
 
-  // 2. An empty operator set means nobody is a platform operator — fail-closed.
+  // 2. Operator via group: an empty operator set means nobody qualifies — fail-closed.
   const operatorSet = new Set(config.platformOperatorGroups);
-  const isPlatformOperator = operatorSet.size > 0 && lowered.some(value => operatorSet.has(value));
+  const operatorViaGroup = operatorSet.size > 0 && lowered.some(value => operatorSet.has(value));
 
-  // 3. Org admin iff a group matches the org-admin set (fail-closed when unset).
+  // 3. Operator via seed: the per-cluster bootstrap. True iff a non-empty seed equals the
+  //    caller's VERIFIED email (already lowercased/trimmed). An empty seed grants operator
+  //    to nobody (fail-closed); an unverified email never reaches `verifiedEmail`, so it can
+  //    never match. This is ADDITIVE to the group check — seed OR group ⇒ operator.
+  const seed = config.platformOperatorSeedEmail.trim().toLowerCase();
+  const operatorViaSeed = seed !== "" && typeof verifiedEmail === "string" && verifiedEmail.trim().toLowerCase() === seed;
+
+  const isPlatformOperator = operatorViaGroup || operatorViaSeed;
+
+  // 4. Org admin iff a group matches the org-admin set (fail-closed when unset).
   //    Platform operators are always org admins — operator is the broader role.
   const orgAdminSet = new Set(config.orgAdminGroups);
   const isOrgAdmin = isPlatformOperator || (orgAdminSet.size > 0 && lowered.some(value => orgAdminSet.has(value)));

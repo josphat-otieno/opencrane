@@ -8,6 +8,8 @@ const _CONFIG = {
   rolesClaim: "roles",
   platformOperatorGroups: ["opencrane-operators"],
   orgAdminGroups: ["opencrane-org-admins"],
+  // Empty seed by default — the seed must grant operator to nobody unless a test opts in.
+  platformOperatorSeedEmail: "",
 };
 
 describe("_ResolveIdentityClaims — groups + isPlatformOperator projection (WOI.1)", function _suite()
@@ -73,5 +75,65 @@ describe("_ResolveIdentityClaims — groups + isPlatformOperator projection (WOI
     const result = _ResolveIdentityClaims({ groups: ["opencrane-org-admins"] }, { ..._CONFIG, orgAdminGroups: [] });
 
     expect(result.isOrgAdmin).toBe(false);
+  });
+});
+
+describe("_ResolveIdentityClaims — platform-operator seed email (per-cluster bootstrap)", function _seedSuite()
+{
+  /** A config with one configured seed email and NO operator groups, so only the seed can grant operator. */
+  const _SEED_CONFIG = {
+    ..._CONFIG,
+    platformOperatorGroups: [],
+    platformOperatorSeedEmail: "owner@cluster.example",
+  };
+
+  it("an empty seed never grants platform operator, even when the verified email is non-empty (fail-closed)", function _emptySeed()
+  {
+    const result = _ResolveIdentityClaims({ groups: ["acme-users"] }, { ..._CONFIG, platformOperatorGroups: [] }, "owner@cluster.example");
+
+    expect(result.isPlatformOperator).toBe(false);
+    expect(result.isOrgAdmin).toBe(false);
+  });
+
+  it("a verified email equal to the seed grants platform operator (and therefore org admin)", function _seedMatch()
+  {
+    const result = _ResolveIdentityClaims({ groups: ["acme-users"] }, _SEED_CONFIG, "owner@cluster.example");
+
+    expect(result.isPlatformOperator).toBe(true);
+    expect(result.isOrgAdmin).toBe(true);
+  });
+
+  it("matches the seed case-insensitively and ignores surrounding whitespace", function _seedCaseWhitespace()
+  {
+    const result = _ResolveIdentityClaims({}, { ..._SEED_CONFIG, platformOperatorSeedEmail: "  Owner@Cluster.Example  " }, "owner@cluster.example");
+
+    expect(result.isPlatformOperator).toBe(true);
+  });
+
+  it("a verified email that does not match the seed is not a platform operator", function _seedNoMatch()
+  {
+    const result = _ResolveIdentityClaims({}, _SEED_CONFIG, "someone-else@cluster.example");
+
+    expect(result.isPlatformOperator).toBe(false);
+  });
+
+  it("an UNVERIFIED email equal to the seed is NOT a platform operator (verifiedEmail must be supplied)", function _seedUnverified()
+  {
+    // The caller projects only a verified email into `verifiedEmail`; an unverified email
+    // arrives as undefined, so it can never match the seed — fail-closed.
+    const result = _ResolveIdentityClaims({}, _SEED_CONFIG, undefined);
+
+    expect(result.isPlatformOperator).toBe(false);
+  });
+
+  it("seed is ADDITIVE to groups — a group match still grants operator when the email does not match the seed", function _seedAdditive()
+  {
+    const result = _ResolveIdentityClaims(
+      { groups: ["opencrane-operators"] },
+      { ..._CONFIG, platformOperatorSeedEmail: "owner@cluster.example" },
+      "not-the-seed@cluster.example",
+    );
+
+    expect(result.isPlatformOperator).toBe(true);
   });
 });
