@@ -383,17 +383,27 @@ certManager:
 # `<release>-obot` k8s Secret (resolved by the `opencrane.obotSecretName` helper) with
 # key `dsn` containing the PostgreSQL DSN for Obot's own database. The release prefix
 # stops two instances in one cluster colliding on a fixed `opencrane-obot` name (B5).
-# Authentication is disabled; access is controlled by NetworkPolicy (in-cluster only).
-# Obot polls the control-plane /api/internal/obot-registry endpoint to sync the MCP catalog.
+# By default authentication is disabled and access is controlled by NetworkPolicy
+# (in-cluster only); enable `auth.enabled` for per-user credentials + access policies.
+# The MCP catalogue is loaded from `catalog.path` (a local filesystem dir of entry YAMLs)
+# and/or Git Source URLs added at runtime via Obot Admin — NOT from a control-plane poll.
 mcpGateway:
   enabled: true
   image:
     repository: ghcr.io/obot-platform/obot
-    tag: latest
+    # Pinned to the latest stable Obot tag (verified pullable on ghcr). Bump deliberately;
+    # `latest` would silently roll the gateway across breaking changes.
+    tag: v0.23.1
     pullPolicy: IfNotPresent
   replicas: 1
   service:
     port: 8080
+  # -- Default MCP catalogue (P0.2). A LOCAL FILESYSTEM directory of catalogue-entry YAMLs
+  # that Obot loads for all users (Obot's `default-mcpcatalog-path`). Empty (default) renders
+  # no env var. For GitOps, sync a catalogue git repo into this path (e.g. a git-sync sidecar);
+  # alternatively add Git Source URLs at runtime in Obot Admin once `auth.enabled` is true.
+  catalog:
+    path: ""
   # -- Encryption-at-rest for Obot's credential/token store (P4D.1). Default OFF.
   # ⚠️ ASSUMED, NOT verified against a live Obot. When enabled the deployment
   # sets OBOT_SERVER_ENCRYPTION_PROVIDER=custom and mounts a key from the

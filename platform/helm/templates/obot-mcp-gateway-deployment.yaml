@@ -84,11 +84,19 @@ spec:
             - name: OBOT_SERVER_ENCRYPTION_PROVIDER
               value: "none"
             {{- end }}
-            # Control-plane registry — Obot polls this endpoint to sync the MCP server catalog
-            # with OpenCrane McpServer rows. The control-plane exposes /api/internal/obot-registry
-            # in Obot's /v0.1/servers format.
-            - name: OBOT_SERVER_PROVIDER_REGISTRIES
-              value: "http://{{ include "opencrane.fullname" . }}-control-plane:{{ .Values.controlPlane.service.port }}/api/internal/obot-registry"
+            {{- if .Values.mcpGateway.catalog.path }}
+            # Default MCP catalogue (P0.2) — a LOCAL FILESYSTEM directory of catalogue-entry
+            # YAMLs that Obot loads for all users. This is Obot's real catalogue knob
+            # (`default-mcpcatalog-path`), confirmed against obot v0.23.1 pkg/services/config.go.
+            # GitOps: sync a catalogue git repo into this path (e.g. a git-sync sidecar), or —
+            # once authentication is enabled — add Git Source URLs at runtime via Obot Admin.
+            #
+            # OBOT_SERVER_PROVIDER_REGISTRIES was REMOVED here: upstream confirms it configures
+            # LLM model-provider *filesystem directories*, NOT MCP catalogues, so pointing it at
+            # the control-plane was a silent no-op (Obot held none of OpenCrane's MCP servers).
+            - name: OBOT_SERVER_DEFAULT_MCPCATALOG_PATH
+              value: {{ .Values.mcpGateway.catalog.path | quote }}
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /api/healthz
