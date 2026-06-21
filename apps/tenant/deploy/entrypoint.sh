@@ -315,6 +315,29 @@ function _link_shared_skills()
   echo "$success_message"
 }
 
+# Trigger OpenClaw's hot-reload of mcp.*/agents/models/tools.
+#
+# OpenClaw reloads by WATCHING its config file (openclaw.json); SIGHUP is NOT a
+# documented reload trigger, so the previous `kill -HUP` was a no-op. We atomically
+# rewrite the config in place (same bytes, new mtime) so the file-watcher fires.
+# Atomic via tmp+rename so the watcher never observes a partial/empty file.
+function _trigger_openclaw_reload()
+{
+  local config_file="$STATE_DIR/openclaw.json"
+
+  if [ ! -f "$config_file" ]; then
+    return 0
+  fi
+
+  local tmp_path="${config_file}.reload.tmp"
+  if cp "$config_file" "$tmp_path" 2>/dev/null && mv "$tmp_path" "$config_file" 2>/dev/null; then
+    echo "[opencrane] Rewrote openclaw.json in place to trigger config hot-reload" >&2
+  else
+    rm -f "$tmp_path" 2>/dev/null || true
+    echo "[opencrane] Failed to rewrite openclaw.json; reload not triggered" >&2
+  fi
+}
+
 function _contract_poll_loop()
 {
   local tenant_name="$1"
@@ -322,7 +345,6 @@ function _contract_poll_loop()
   local token_path="$3"
   local writable_path="$4"
   local interval="$5"
-  local openclaw_pid="$6"
 
   while true; do
     sleep "$interval"
@@ -362,13 +384,9 @@ function _contract_poll_loop()
         # in place (pruning de-entitled skills is a separate follow-up).
         _pull_entitled_skills "$writable_path"
 
-        # Re-source the updated policy into local variables, then signal OpenClaw
-        # to restart so the new policy takes effect without a full pod restart.
-        # SIGHUP is used for graceful reload; if OpenClaw exits, the outer wait
-        # loop in _main will restart it.
-        if [ -n "$openclaw_pid" ] && kill -0 "$openclaw_pid" 2>/dev/null; then
-          kill -HUP "$openclaw_pid" 2>/dev/null || true
-        fi
+        # Make the new policy/skills/docs take effect without a full pod restart by
+        # triggering OpenClaw's config-file watcher (file-watch reload, not SIGHUP).
+        _trigger_openclaw_reload
       else
         rm -f "$tmp_path"
       fi
@@ -466,8 +484,8 @@ function _main()
 
   echo "[opencrane] Starting OpenClaw gateway"
 
-  # Start OpenClaw as a background process (not exec) so the polling loop can
-  # run alongside it and send SIGHUP when the contract changes.
+  # Start OpenClaw as a background process (not exec) so the polling loop can run
+  # alongside it and trigger a config-file reload when the contract changes.
   openclaw gateway run --bind lan --port "${OPENCLAW_GATEWAY_PORT:-18789}" &
   OPENCLAW_PID=$!
 
@@ -478,8 +496,7 @@ function _main()
       "$OPENCRANE_CONTROL_PLANE_URL" \
       "$OPENCRANE_CONTRACT_TOKEN_PATH" \
       "$RUNTIME_CONTRACT_WRITABLE" \
-      "$CONTRACT_POLL_INTERVAL" \
-      "$OPENCLAW_PID" &
+      "$CONTRACT_POLL_INTERVAL" &
     echo "[opencrane] Contract re-pull loop started (interval: ${CONTRACT_POLL_INTERVAL}s)"
   fi
 
