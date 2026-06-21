@@ -42,9 +42,9 @@ function _buildApp(session: TestSession, prisma: PrismaClient): Express
 	return app;
 }
 
-describe("POST /auth/pod-token (OpenClaw pairing broker)", function _suite()
+describe("POST /auth/pod-token (OpenClaw connection broker)", function _suite()
 {
-	it("returns the stored pairing link for the caller's tenant", async function _ok()
+	it("returns the gateway connection coordinates for the caller's tenant", async function _ok()
 	{
 		const prisma = _buildPrisma([{
 			name: "alex.oc",
@@ -58,10 +58,11 @@ describe("POST /auth/pod-token (OpenClaw pairing broker)", function _suite()
 		expect(res.status).toBe(200);
 		expect(res.body).toMatchObject({
 			gatewayUrl: "wss://alex.oc.example.com/gateway",
-			bootstrapToken: "boot-1",
 			tenant: "alex.oc",
 			ingressHost: "alex.oc.example.com",
 		});
+		// Trusted-proxy: the broker must never hand the browser a token.
+		expect(res.body.bootstrapToken).toBeUndefined();
 	});
 
 	it("derives the gateway URL from ingressHost when no pairing is stored", async function _derived()
@@ -73,7 +74,7 @@ describe("POST /auth/pod-token (OpenClaw pairing broker)", function _suite()
 
 		expect(res.status).toBe(200);
 		expect(res.body.gatewayUrl).toBe("wss://alex.oc.example.com");
-		expect(res.body.bootstrapToken).toBeNull();
+		expect(res.body.bootstrapToken).toBeUndefined();
 	});
 
 	it("returns 401 without a session", async function _noSession()

@@ -4,16 +4,15 @@ import type { OpenClawPairing } from "./openclaw-pairing.types.js";
 interface _StoredPairing
 {
   gatewayUrl?: unknown;
-  bootstrapToken?: unknown;
 }
 
 /**
- * Resolve a tenant pod's OpenClaw connection details.
+ * Resolve a tenant pod's OpenClaw connection coordinates (the gateway URL).
  *
- * The pairing link is stored under `configOverrides.openclaw` when the pod is
- * provisioned (see plan.md B2). The gateway URL falls back to `wss://<ingressHost>`
- * when only the ingress host is known. Returns null when no gateway URL can be
- * determined — the pod is not yet reachable/paired.
+ * A `wss://` gateway URL stored under `configOverrides.openclaw` takes precedence;
+ * otherwise the URL falls back to `wss://<ingressHost>` when only the ingress host
+ * is known. Returns null when no gateway URL can be determined — the pod is not yet
+ * reachable. Trusted-proxy gateway auth (CONN.4) needs no token, so none is read.
  *
  * @param configOverrides - The tenant's `configOverrides` JSON column (unknown shape).
  * @param ingressHost     - The tenant pod's ingress host, if assigned.
@@ -37,11 +36,7 @@ export function _ResolveOpenClawPairing(configOverrides: unknown, ingressHost: s
     return null;
   }
 
-  const bootstrapToken = typeof stored?.bootstrapToken === "string" && stored.bootstrapToken.length > 0
-    ? stored.bootstrapToken
-    : null;
-
-  return { gatewayUrl, bootstrapToken };
+  return { gatewayUrl };
 }
 
 /**
