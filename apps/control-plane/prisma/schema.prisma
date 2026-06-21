@@ -277,26 +277,113 @@ enum McpServerStatus {
   Draft    @map("draft")
 }
 
+// Consumption shape advertised to the operator API: how a caller connects a
+// downstream MCP server (single-user secret, org-wide shared key, or remote OAuth).
+enum McpServerType {
+  SingleUser  @map("single-user")
+  MultiUser   @map("multi-user")
+  RemoteOauth @map("remote-oauth")
+}
+
+// Governance lifecycle gated by org admins (P1 catalogue review). Only `published`
+// servers are visible to entitled callers in the user-facing catalogue.
+enum McpApprovalStatus {
+  PendingReview @map("pending-review")
+  Approved      @map("approved")
+  Published     @map("published")
+  Disabled      @map("disabled")
+}
+
+// Per-user install connection state surfaced by the operator API. `credentialRef`
+// custody is never serialised — this enum reports state, never secret material.
+enum McpConnectionStatus {
+  NeedsCredential  @map("needs-credential")
+  Activating       @map("activating")
+  Connected        @map("connected")
+  OauthConnected   @map("oauth-connected")
+  SharedKey        @map("shared-key")
+  ActivationFailed @map("activation-failed")
+}
+
 model McpServer {
-  id            String               @id @default(cuid())
-  name          String               @unique
-  description   String               @default("")
-  endpoint      String
-  scope         GrantScope
-  transport     McpServerTransport
-  status        McpServerStatus      @default(Draft)
-  capabilities  String[]             @default([])
-  sourceId      String?              @map("source_id")
-  lastSyncedAt  DateTime?            @map("last_synced_at")
-  createdAt     DateTime             @default(now()) @map("created_at")
-  updatedAt     DateTime             @updatedAt @map("updated_at")
-  grants        Grant[]
-  scopedGrants  McpServerGrant[]
-  credentials   McpServerCredential[]
-  source        ThirdPartySource?    @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  id                 String                 @id @default(cuid())
+  name               String                 @unique
+  description        String                 @default("")
+  endpoint           String
+  scope              GrantScope
+  transport          McpServerTransport
+  status             McpServerStatus        @default(Draft)
+  capabilities       String[]               @default([])
+  publisher          String?
+  glyph              String?
+  serverType         McpServerType          @default(SingleUser) @map("server_type")
+  approvalStatus     McpApprovalStatus      @default(PendingReview) @map("approval_status")
+  credentialSchema   Json                   @default("[]") @map("credential_schema")
+  entitlementSummary String?                @map("entitlement_summary")
+  sourceId           String?                @map("source_id")
+  lastSyncedAt       DateTime?              @map("last_synced_at")
+  createdAt          DateTime               @default(now()) @map("created_at")
+  updatedAt          DateTime               @updatedAt @map("updated_at")
+  grants             Grant[]
+  scopedGrants       McpServerGrant[]
+  credentials        McpServerCredential[]
+  installs           McpServerInstall[]
+  accessPolicy       McpServerAccessPolicy?
+  source             ThirdPartySource?      @relation(fields: [sourceId], references: [id], onDelete: SetNull)
 
   @@index([scope])
+  @@index([approvalStatus])
   @@map("mcp_servers")
+}
+
+// Per-user installation of an MCP server (operator API). Holds the caller's
+// connection state and a write-only `credentialRef` custody handle (the actual
+// secret lives in the gateway plane / Obot, never here and never serialised).
+model McpServerInstall {
+  id               String              @id @default(cuid())
+  mcpServerId      String              @map("mcp_server_id")
+  userId           String              @map("user_id")
+  connectionStatus McpConnectionStatus @default(NeedsCredential) @map("connection_status")
+  credentialRef    String?             @map("credential_ref")
+  connectedAccount String?             @map("connected_account")
+  lastUsedAt       DateTime?           @map("last_used_at")
+  createdAt        DateTime            @default(now()) @map("created_at")
+  updatedAt        DateTime            @updatedAt @map("updated_at")
+  mcpServer        McpServer           @relation(fields: [mcpServerId], references: [id], onDelete: Cascade)
+
+  @@unique([mcpServerId, userId])
+  @@index([userId])
+  @@map("mcp_server_installs")
+}
+
+// Org-admin authored access policy deciding which callers may see and install a
+// server in the user-facing catalogue. `everyoneInOrg` short-circuits the per-user
+// / per-group lists; otherwise membership in `users` or `groups` is required.
+model McpServerAccessPolicy {
+  id            String                @id @default(cuid())
+  mcpServerId   String                @unique @map("mcp_server_id")
+  everyoneInOrg Boolean               @default(false) @map("everyone_in_org")
+  groups        String[]              @default([])
+  createdAt     DateTime              @default(now()) @map("created_at")
+  updatedAt     DateTime              @updatedAt @map("updated_at")
+  mcpServer     McpServer             @relation(fields: [mcpServerId], references: [id], onDelete: Cascade)
+  users         McpServerAccessUser[]
+
+  @@map("mcp_server_access_policies")
+}
+
+// A single user entitled to a server via its access policy. Stored as a child row
+// (rather than a String[]) so entitlement can be queried per user without scanning.
+model McpServerAccessUser {
+  id             String                @id @default(cuid())
+  accessPolicyId String                @map("access_policy_id")
+  userId         String                @map("user_id")
+  createdAt      DateTime              @default(now()) @map("created_at")
+  accessPolicy   McpServerAccessPolicy @relation(fields: [accessPolicyId], references: [id], onDelete: Cascade)
+
+  @@unique([accessPolicyId, userId])
+  @@index([userId])
+  @@map("mcp_server_access_users")
 }
 
 model McpServerGrant {

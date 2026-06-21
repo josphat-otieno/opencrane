@@ -164,6 +164,80 @@ const McpServerSchema = {
   },
 };
 
+const CredentialFieldSchema = {
+  type: "object" as const,
+  required: ["key", "label", "required", "sensitive"],
+  properties: {
+    key: { type: "string", description: "Stable key the value is submitted under." },
+    label: { type: "string", description: "Human-readable field label." },
+    required: { type: "boolean", description: "Whether the field must be supplied." },
+    sensitive: { type: "boolean", description: "Whether the value is secret (masked, never echoed back)." },
+    placeholder: { type: "string", description: "Optional input placeholder." },
+    hint: { type: "string", description: "Optional helper hint." },
+  },
+};
+
+const McpCatalogServerSchema = {
+  type: "object" as const,
+  required: ["id"],
+  description: "A catalogue server as exposed by the operator API (distinct from the registry McpServer). Every field beyond id is optional so the same shape serves the entitled user catalogue and the admin governance view.",
+  properties: {
+    id: { type: "string" },
+    name: { type: "string" },
+    description: { type: "string" },
+    publisher: { type: "string" },
+    glyph: { type: "string" },
+    type: { type: "string", enum: ["single-user", "multi-user", "remote-oauth"], description: "Consumption shape; decides the credential-connect flow." },
+    approvalStatus: { type: "string", enum: ["pending-review", "approved", "published", "disabled"], description: "Governance lifecycle status." },
+    credentialSchema: { type: "array", items: { $ref: "#/components/schemas/CredentialField" } },
+    entitlementSummary: { type: "string", description: "Human-readable summary of who is entitled (admin view)." },
+  },
+};
+
+const McpInstalledSchema = {
+  type: "object" as const,
+  required: ["serverId"],
+  description: "A server installed by the calling user. Never carries credential material — only the connection status and a non-secret account label.",
+  properties: {
+    serverId: { type: "string" },
+    connectionStatus: { type: "string", enum: ["needs-credential", "activating", "connected", "oauth-connected", "shared-key", "activation-failed"] },
+    lastUsed: { type: ["string", "null"], format: "date-time", description: "ISO-8601 timestamp of last use, or null when never used." },
+    connectedAccount: { type: "string", description: "Non-secret display label of the connected account." },
+  },
+};
+
+const EntitledUserSchema = {
+  type: "object" as const,
+  required: ["id", "name", "initials", "color"],
+  properties: {
+    id: { type: "string", description: "Stable user identifier (sub or email)." },
+    name: { type: "string", description: "Display name." },
+    initials: { type: "string", description: "Two-letter initials derived from the name." },
+    color: { type: "string", description: "Deterministic avatar colour derived from the identifier." },
+  },
+};
+
+const McpAccessPolicySchema = {
+  type: "object" as const,
+  required: ["serverId"],
+  properties: {
+    serverId: { type: "string" },
+    everyoneInOrg: { type: "boolean", description: "When true, every caller in the org is entitled (lists ignored)." },
+    groups: { type: "array", items: { type: "string" }, description: "Entitled group identifiers / names." },
+    users: { type: "array", items: { $ref: "#/components/schemas/EntitledUser" } },
+  },
+};
+
+const McpDirectorySchema = {
+  type: "object" as const,
+  required: ["users", "groups"],
+  description: "The selectable universe of users and groups for the admin access editor.",
+  properties: {
+    users: { type: "array", items: { $ref: "#/components/schemas/EntitledUser" } },
+    groups: { type: "array", items: { type: "string" } },
+  },
+};
+
 const ClusterTenantResourceQuotaSchema = {
   type: "object" as const,
   properties: {
@@ -660,6 +734,12 @@ export const spec = {
       Policy: PolicySchema,
       McpServer: McpServerSchema,
       McpServerCredential: McpServerCredentialSchema,
+      McpCatalogServer: McpCatalogServerSchema,
+      CredentialField: CredentialFieldSchema,
+      McpInstalled: McpInstalledSchema,
+      McpAccessPolicy: McpAccessPolicySchema,
+      EntitledUser: EntitledUserSchema,
+      McpDirectory: McpDirectorySchema,
       ClusterTenant: ClusterTenantSchema,
       ClusterTenantWrite: ClusterTenantWriteSchema,
       ClusterTenantUpdate: ClusterTenantUpdateSchema,
@@ -1463,6 +1543,226 @@ export const spec = {
         responses: {
           200: ok("Credential deleted.", { type: "object", properties: { id: { type: "string" }, status: { type: "string" } } }),
           404: notFound("MCP server or credential not found."),
+        },
+      },
+    },
+
+    // ------------------------------------------------------------------
+    // MCP Operator API — catalogue / install / credential-connect (user-facing)
+    // + governance + access policy (org-admin gated). Layered on /mcp-servers.
+    // ------------------------------------------------------------------
+
+    "/mcp/catalog": {
+      get: {
+        operationId: "listMcpCatalog",
+        summary: "List the published MCP servers the calling user is entitled to",
+        tags: ["MCP Operator"],
+        responses: {
+          200: ok("Entitlement-scoped catalogue.", { type: "array", items: { $ref: "#/components/schemas/McpCatalogServer" } }),
+        },
+      },
+    },
+
+    "/mcp/installed": {
+      get: {
+        operationId: "listMcpInstalled",
+        summary: "List the servers the calling user has installed",
+        tags: ["MCP Operator"],
+        responses: {
+          200: ok("Install list.", { type: "array", items: { $ref: "#/components/schemas/McpInstalled" } }),
+        },
+      },
+      post: {
+        operationId: "installMcpServer",
+        summary: "Install a catalogue server for the calling user",
+        tags: ["MCP Operator"],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { type: "object", required: ["serverId"], properties: { serverId: { type: "string" } } } } },
+        },
+        responses: {
+          201: created("Server installed.", { $ref: "#/components/schemas/McpInstalled" }),
+          400: badRequest("serverId is required."),
+          404: notFound("MCP server not found."),
+        },
+      },
+    },
+
+    "/mcp/installed/{serverId}": {
+      delete: {
+        operationId: "uninstallMcpServer",
+        summary: "Uninstall a server for the calling user (clears the stored credential)",
+        tags: ["MCP Operator"],
+        parameters: [{ name: "serverId", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          204: { description: "Server uninstalled." },
+          404: notFound("MCP install not found."),
+        },
+      },
+    },
+
+    "/mcp/installed/{serverId}/credential": {
+      put: {
+        operationId: "setMcpCredential",
+        summary: "Author a per-user credential (write-only) and mark the install connected",
+        description: "The submitted values are write-only: stored server-side as an opaque custody handle and NEVER returned by any response.",
+        tags: ["MCP Operator"],
+        parameters: [{ name: "serverId", in: "path", required: true, schema: { type: "string" } }],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { type: "object", required: ["values"], properties: { values: { type: "object", additionalProperties: { type: "string" }, description: "Field values keyed by CredentialField.key. Write-only — never echoed back." } } } } },
+        },
+        responses: {
+          200: ok("Credential connected.", { $ref: "#/components/schemas/McpInstalled" }),
+          404: notFound("MCP install not found."),
+        },
+      },
+      delete: {
+        operationId: "clearMcpCredential",
+        summary: "Clear a per-user credential, returning the install to needs-credential",
+        tags: ["MCP Operator"],
+        parameters: [{ name: "serverId", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          200: ok("Credential cleared.", { $ref: "#/components/schemas/McpInstalled" }),
+          404: notFound("MCP install not found."),
+        },
+      },
+    },
+
+    "/mcp/installed/{serverId}/oauth": {
+      post: {
+        operationId: "connectMcpOauth",
+        summary: "Mark a remote-OAuth install connected after a successful handshake",
+        tags: ["MCP Operator"],
+        parameters: [{ name: "serverId", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          200: ok("OAuth connected.", { $ref: "#/components/schemas/McpInstalled" }),
+          404: notFound("MCP install not found."),
+        },
+      },
+      delete: {
+        operationId: "disconnectMcpOauth",
+        summary: "Disconnect a remote-OAuth install, returning it to needs-credential",
+        tags: ["MCP Operator"],
+        parameters: [{ name: "serverId", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          200: ok("OAuth disconnected.", { $ref: "#/components/schemas/McpInstalled" }),
+          404: notFound("MCP install not found."),
+        },
+      },
+    },
+
+    "/mcp/servers": {
+      get: {
+        operationId: "listMcpGovernanceServers",
+        summary: "List every catalogue server regardless of status (org-admin governance view)",
+        tags: ["MCP Operator"],
+        responses: {
+          200: ok("All catalogue servers.", { type: "array", items: { $ref: "#/components/schemas/McpCatalogServer" } }),
+          403: { description: "Caller is not an organisation admin.", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+        },
+      },
+    },
+
+    "/mcp/servers/{id}/approve": {
+      post: {
+        operationId: "approveMcpServer",
+        summary: "Approve a server (pending-review → approved). Org-admin only",
+        tags: ["MCP Operator"],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          200: ok("Server approved.", { $ref: "#/components/schemas/McpCatalogServer" }),
+          403: { description: "Caller is not an organisation admin.", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+          404: notFound("MCP server not found."),
+        },
+      },
+    },
+
+    "/mcp/servers/{id}/publish": {
+      post: {
+        operationId: "publishMcpServer",
+        summary: "Publish a server (approved → published). Org-admin only",
+        tags: ["MCP Operator"],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          200: ok("Server published.", { $ref: "#/components/schemas/McpCatalogServer" }),
+          403: { description: "Caller is not an organisation admin.", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+          404: notFound("MCP server not found."),
+        },
+      },
+    },
+
+    "/mcp/servers/{id}/reject": {
+      post: {
+        operationId: "rejectMcpServer",
+        summary: "Reject a server (→ disabled). Org-admin only",
+        tags: ["MCP Operator"],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          200: ok("Server rejected.", { $ref: "#/components/schemas/McpCatalogServer" }),
+          403: { description: "Caller is not an organisation admin.", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+          404: notFound("MCP server not found."),
+        },
+      },
+    },
+
+    "/mcp/servers/{id}/enabled": {
+      post: {
+        operationId: "setMcpServerEnabled",
+        summary: "Toggle a server's availability (true → published, false → disabled). Org-admin only",
+        tags: ["MCP Operator"],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { type: "object", required: ["enabled"], properties: { enabled: { type: "boolean" } } } } },
+        },
+        responses: {
+          200: ok("Server availability updated.", { $ref: "#/components/schemas/McpCatalogServer" }),
+          400: badRequest("enabled (boolean) is required."),
+          403: { description: "Caller is not an organisation admin.", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+          404: notFound("MCP server not found."),
+        },
+      },
+    },
+
+    "/mcp/servers/{id}/access": {
+      get: {
+        operationId: "getMcpAccessPolicy",
+        summary: "Read a server's access policy. Org-admin only",
+        tags: ["MCP Operator"],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          200: ok("Access policy.", { $ref: "#/components/schemas/McpAccessPolicy" }),
+          403: { description: "Caller is not an organisation admin.", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+          404: notFound("MCP server not found."),
+        },
+      },
+      put: {
+        operationId: "setMcpAccessPolicy",
+        summary: "Replace a server's access policy wholesale. Org-admin only",
+        tags: ["MCP Operator"],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { type: "object", required: ["everyoneInOrg", "groups", "users"], properties: { everyoneInOrg: { type: "boolean" }, groups: { type: "array", items: { type: "string" } }, users: { type: "array", items: { type: "string" }, description: "Entitled user identifiers." } } } } },
+        },
+        responses: {
+          200: ok("Access policy updated.", { $ref: "#/components/schemas/McpAccessPolicy" }),
+          400: badRequest("everyoneInOrg (boolean), groups (array), and users (array) are required."),
+          403: { description: "Caller is not an organisation admin.", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+          404: notFound("MCP server not found."),
+        },
+      },
+    },
+
+    "/mcp/directory": {
+      get: {
+        operationId: "getMcpDirectory",
+        summary: "List the selectable users and groups for the access editor. Org-admin only",
+        tags: ["MCP Operator"],
+        responses: {
+          200: ok("Directory.", { $ref: "#/components/schemas/McpDirectory" }),
+          403: { description: "Caller is not an organisation admin.", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
         },
       },
     },
