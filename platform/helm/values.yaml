@@ -404,12 +404,13 @@ mcpGateway:
   # alternatively add Git Source URLs at runtime in Obot Admin once `auth.enabled` is true.
   catalog:
     path: ""
-  # -- Encryption-at-rest for Obot's credential/token store (P4D.1). Default OFF.
-  # ⚠️ ASSUMED, NOT verified against a live Obot. When enabled the deployment
-  # sets OBOT_SERVER_ENCRYPTION_PROVIDER=custom and mounts a key from the
-  # `opencrane-obot-enc` Secret. Obot's valid encryption-provider values and the
-  # exact key-mount env var are not in the public docs — confirm against the
-  # pinned Obot version before enabling in any real environment.
+  # -- Encryption-at-rest for Obot's credential/token store (P0.3). Default OFF.
+  # When enabled, an `encryptionsetup` init container (replicated verbatim from obot
+  # v0.23.1) materialises an apiserver EncryptionConfiguration from the key below into a
+  # Memory-backed volume, and the gateway reads it via OBOT_SERVER_ENCRYPTION_CONFIG_FILE
+  # (provider=custom never consumes the bare key directly). Provision the key Secret
+  # out-of-band, e.g. `kubectl create secret generic opencrane-obot-enc \
+  #   --from-literal=encryption-key=$(openssl rand -base64 32)`.
   encryptionAtRest:
     enabled: false
     # Secret holding the encryption key (operator-provisioned; not templated here).
