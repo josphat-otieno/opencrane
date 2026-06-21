@@ -182,6 +182,206 @@
           }
         }
       },
+      "McpCatalogServer": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "description": "A catalogue server as exposed by the operator API (distinct from the registry McpServer). Every field beyond id is optional so the same shape serves the entitled user catalogue and the admin governance view.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "publisher": {
+            "type": "string"
+          },
+          "glyph": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "single-user",
+              "multi-user",
+              "remote-oauth"
+            ],
+            "description": "Consumption shape; decides the credential-connect flow."
+          },
+          "approvalStatus": {
+            "type": "string",
+            "enum": [
+              "pending-review",
+              "approved",
+              "published",
+              "disabled"
+            ],
+            "description": "Governance lifecycle status."
+          },
+          "credentialSchema": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CredentialField"
+            }
+          },
+          "entitlementSummary": {
+            "type": "string",
+            "description": "Human-readable summary of who is entitled (admin view)."
+          }
+        }
+      },
+      "CredentialField": {
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "required",
+          "sensitive"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Stable key the value is submitted under."
+          },
+          "label": {
+            "type": "string",
+            "description": "Human-readable field label."
+          },
+          "required": {
+            "type": "boolean",
+            "description": "Whether the field must be supplied."
+          },
+          "sensitive": {
+            "type": "boolean",
+            "description": "Whether the value is secret (masked, never echoed back)."
+          },
+          "placeholder": {
+            "type": "string",
+            "description": "Optional input placeholder."
+          },
+          "hint": {
+            "type": "string",
+            "description": "Optional helper hint."
+          }
+        }
+      },
+      "McpInstalled": {
+        "type": "object",
+        "required": [
+          "serverId"
+        ],
+        "description": "A server installed by the calling user. Never carries credential material — only the connection status and a non-secret account label.",
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "connectionStatus": {
+            "type": "string",
+            "enum": [
+              "needs-credential",
+              "activating",
+              "connected",
+              "oauth-connected",
+              "shared-key",
+              "activation-failed"
+            ]
+          },
+          "lastUsed": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "ISO-8601 timestamp of last use, or null when never used."
+          },
+          "connectedAccount": {
+            "type": "string",
+            "description": "Non-secret display label of the connected account."
+          }
+        }
+      },
+      "McpAccessPolicy": {
+        "type": "object",
+        "required": [
+          "serverId"
+        ],
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "everyoneInOrg": {
+            "type": "boolean",
+            "description": "When true, every caller in the org is entitled (lists ignored)."
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Entitled group identifiers / names."
+          },
+          "users": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EntitledUser"
+            }
+          }
+        }
+      },
+      "EntitledUser": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "initials",
+          "color"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stable user identifier (sub or email)."
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name."
+          },
+          "initials": {
+            "type": "string",
+            "description": "Two-letter initials derived from the name."
+          },
+          "color": {
+            "type": "string",
+            "description": "Deterministic avatar colour derived from the identifier."
+          }
+        }
+      },
+      "McpDirectory": {
+        "type": "object",
+        "required": [
+          "users",
+          "groups"
+        ],
+        "description": "The selectable universe of users and groups for the admin access editor.",
+        "properties": {
+          "users": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EntitledUser"
+            }
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "ClusterTenant": {
         "type": "object",
         "required": [
@@ -3883,6 +4083,768 @@
         }
       }
     },
+    "/mcp/catalog": {
+      "get": {
+        "operationId": "listMcpCatalog",
+        "summary": "List the published MCP servers the calling user is entitled to",
+        "tags": [
+          "MCP Operator"
+        ],
+        "responses": {
+          "200": {
+            "description": "Entitlement-scoped catalogue.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/McpCatalogServer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/installed": {
+      "get": {
+        "operationId": "listMcpInstalled",
+        "summary": "List the servers the calling user has installed",
+        "tags": [
+          "MCP Operator"
+        ],
+        "responses": {
+          "200": {
+            "description": "Install list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/McpInstalled"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "installMcpServer",
+        "summary": "Install a catalogue server for the calling user",
+        "tags": [
+          "MCP Operator"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "serverId"
+                ],
+                "properties": {
+                  "serverId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Server installed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpInstalled"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "serverId is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "MCP server not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/installed/{serverId}": {
+      "delete": {
+        "operationId": "uninstallMcpServer",
+        "summary": "Uninstall a server for the calling user (clears the stored credential)",
+        "tags": [
+          "MCP Operator"
+        ],
+        "parameters": [
+          {
+            "name": "serverId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Server uninstalled."
+          },
+          "404": {
+            "description": "MCP install not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/installed/{serverId}/credential": {
+      "put": {
+        "operationId": "setMcpCredential",
+        "summary": "Author a per-user credential (write-only) and mark the install connected",
+        "description": "The submitted values are write-only: stored server-side as an opaque custody handle and NEVER returned by any response.",
+        "tags": [
+          "MCP Operator"
+        ],
+        "parameters": [
+          {
+            "name": "serverId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "values"
+                ],
+                "properties": {
+                  "values": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "description": "Field values keyed by CredentialField.key. Write-only — never echoed back."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Credential connected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpInstalled"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "MCP install not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "clearMcpCredential",
+        "summary": "Clear a per-user credential, returning the install to needs-credential",
+        "tags": [
+          "MCP Operator"
+        ],
+        "parameters": [
+          {
+            "name": "serverId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Credential cleared.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpInstalled"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "MCP install not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/installed/{serverId}/oauth": {
+      "post": {
+        "operationId": "connectMcpOauth",
+        "summary": "Mark a remote-OAuth install connected after a successful handshake",
+        "tags": [
+          "MCP Operator"
+        ],
+        "parameters": [
+          {
+            "name": "serverId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OAuth connected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpInstalled"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "MCP install not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "disconnectMcpOauth",
+        "summary": "Disconnect a remote-OAuth install, returning it to needs-credential",
+        "tags": [
+          "MCP Operator"
+        ],
+        "parameters": [
+          {
+            "name": "serverId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OAuth disconnected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpInstalled"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "MCP install not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/servers": {
+      "get": {
+        "operationId": "listMcpGovernanceServers",
+        "summary": "List every catalogue server regardless of status (org-admin governance view)",
+        "tags": [
+          "MCP Operator"
+        ],
+        "responses": {
+          "200": {
+            "description": "All catalogue servers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/McpCatalogServer"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller is not an organisation admin.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/servers/{id}/approve": {
+      "post": {
+        "operationId": "approveMcpServer",
+        "summary": "Approve a server (pending-review → approved). Org-admin only",
+        "tags": [
+          "MCP Operator"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Server approved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpCatalogServer"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller is not an organisation admin.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "MCP server not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/servers/{id}/publish": {
+      "post": {
+        "operationId": "publishMcpServer",
+        "summary": "Publish a server (approved → published). Org-admin only",
+        "tags": [
+          "MCP Operator"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Server published.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpCatalogServer"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller is not an organisation admin.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "MCP server not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/servers/{id}/reject": {
+      "post": {
+        "operationId": "rejectMcpServer",
+        "summary": "Reject a server (→ disabled). Org-admin only",
+        "tags": [
+          "MCP Operator"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Server rejected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpCatalogServer"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller is not an organisation admin.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "MCP server not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/servers/{id}/enabled": {
+      "post": {
+        "operationId": "setMcpServerEnabled",
+        "summary": "Toggle a server's availability (true → published, false → disabled). Org-admin only",
+        "tags": [
+          "MCP Operator"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "enabled"
+                ],
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Server availability updated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpCatalogServer"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "enabled (boolean) is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller is not an organisation admin.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "MCP server not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/servers/{id}/access": {
+      "get": {
+        "operationId": "getMcpAccessPolicy",
+        "summary": "Read a server's access policy. Org-admin only",
+        "tags": [
+          "MCP Operator"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Access policy.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpAccessPolicy"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller is not an organisation admin.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "MCP server not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "setMcpAccessPolicy",
+        "summary": "Replace a server's access policy wholesale. Org-admin only",
+        "tags": [
+          "MCP Operator"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "everyoneInOrg",
+                  "groups",
+                  "users"
+                ],
+                "properties": {
+                  "everyoneInOrg": {
+                    "type": "boolean"
+                  },
+                  "groups": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "users": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Entitled user identifiers."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Access policy updated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpAccessPolicy"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "everyoneInOrg (boolean), groups (array), and users (array) are required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller is not an organisation admin.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "MCP server not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/directory": {
+      "get": {
+        "operationId": "getMcpDirectory",
+        "summary": "List the selectable users and groups for the access editor. Org-admin only",
+        "tags": [
+          "MCP Operator"
+        ],
+        "responses": {
+          "200": {
+            "description": "Directory.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpDirectory"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller is not an organisation admin.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/groups": {
       "get": {
         "operationId": "listGroups",
@@ -6996,36 +7958,28 @@
     },
     "/auth/pod-token": {
       "post": {
-        "operationId": "exchangePodToken",
-        "summary": "Exchange the current OIDC session for a short-lived token to the caller's OpenClaw pod",
-        "description": "Single sign-on across the control plane and the tenant pod: requires an established OIDC session (cookie) and returns a short-lived, audience-bound token minted via the Kubernetes TokenRequest API for the caller's tenant. The token targets the OpenClaw pod's session audience (reachable at `ingressHost`) — it is NOT an `obot-gateway` token; Obot is called only from inside the pod. The tenant is resolved solely from the session's verified email, so a caller cannot obtain a token for another user's pod. Re-call before `expiresAt`; re-login only when the session itself expires. Returns 401 without a session, 403 when no tenant matches the session email, 409 when the pod has no ingress host yet or when the email maps to more than one tenant.",
+        "operationId": "getPodConnection",
+        "summary": "Resolve the caller's OpenClaw pod gateway connection coordinates from their OIDC session",
+        "description": "Single sign-on across the control plane and the tenant pod: requires an established OIDC session (cookie) and returns the `wss://` gateway URL for the caller's own pod. Under trusted-proxy gateway auth the browser holds no credential — the gateway socket is authorised at the ingress against the live session (`/auth/gateway-verify`), so no token is returned. The tenant is resolved solely from the session's verified email, so a caller cannot obtain another user's pod connection. Returns 401 without a session, 403 when no tenant matches the session email, 409 when the pod has no gateway URL / ingress host yet or when the email maps to more than one tenant.",
         "tags": [
           "Auth"
         ],
         "security": [],
         "responses": {
           "200": {
-            "description": "Short-lived pod access token.",
+            "description": "The caller's OpenClaw pod gateway connection coordinates.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "required": [
-                    "token",
-                    "expiresAt",
-                    "tenant",
-                    "ingressHost",
-                    "audience"
+                    "gatewayUrl",
+                    "tenant"
                   ],
                   "properties": {
-                    "token": {
+                    "gatewayUrl": {
                       "type": "string",
-                      "description": "Short-lived bearer token bound to the OpenClaw pod session audience."
-                    },
-                    "expiresAt": {
-                      "type": "string",
-                      "format": "date-time",
-                      "description": "ISO-8601 expiry reported by the API server."
+                      "description": "The `wss://` OpenClaw gateway URL to open."
                     },
                     "tenant": {
                       "type": "string",
@@ -7033,11 +7987,7 @@
                     },
                     "ingressHost": {
                       "type": "string",
-                      "description": "Host to reach the tenant's OpenClaw pod session API."
-                    },
-                    "audience": {
-                      "type": "string",
-                      "description": "Audience the token is bound to (the OpenClaw pod session, not obot-gateway)."
+                      "description": "Host the tenant's OpenClaw pod is reachable at, when known."
                     }
                   }
                 }
@@ -7081,7 +8031,7 @@
             }
           },
           "409": {
-            "description": "The tenant pod has no ingress host yet.",
+            "description": "The tenant pod has no gateway URL / ingress host yet.",
             "content": {
               "application/json": {
                 "schema": {

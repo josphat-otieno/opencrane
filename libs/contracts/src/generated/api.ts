@@ -464,6 +464,217 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/mcp/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the published MCP servers the calling user is entitled to */
+        get: operations["listMcpCatalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mcp/installed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the servers the calling user has installed */
+        get: operations["listMcpInstalled"];
+        put?: never;
+        /** Install a catalogue server for the calling user */
+        post: operations["installMcpServer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mcp/installed/{serverId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Uninstall a server for the calling user (clears the stored credential) */
+        delete: operations["uninstallMcpServer"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mcp/installed/{serverId}/credential": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Author a per-user credential (write-only) and mark the install connected
+         * @description The submitted values are write-only: stored server-side as an opaque custody handle and NEVER returned by any response.
+         */
+        put: operations["setMcpCredential"];
+        post?: never;
+        /** Clear a per-user credential, returning the install to needs-credential */
+        delete: operations["clearMcpCredential"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mcp/installed/{serverId}/oauth": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark a remote-OAuth install connected after a successful handshake */
+        post: operations["connectMcpOauth"];
+        /** Disconnect a remote-OAuth install, returning it to needs-credential */
+        delete: operations["disconnectMcpOauth"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mcp/servers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List every catalogue server regardless of status (org-admin governance view) */
+        get: operations["listMcpGovernanceServers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mcp/servers/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve a server (pending-review → approved). Org-admin only */
+        post: operations["approveMcpServer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mcp/servers/{id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Publish a server (approved → published). Org-admin only */
+        post: operations["publishMcpServer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mcp/servers/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject a server (→ disabled). Org-admin only */
+        post: operations["rejectMcpServer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mcp/servers/{id}/enabled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Toggle a server's availability (true → published, false → disabled). Org-admin only */
+        post: operations["setMcpServerEnabled"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mcp/servers/{id}/access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read a server's access policy. Org-admin only */
+        get: operations["getMcpAccessPolicy"];
+        /** Replace a server's access policy wholesale. Org-admin only */
+        put: operations["setMcpAccessPolicy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mcp/directory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the selectable users and groups for the access editor. Org-admin only */
+        get: operations["getMcpDirectory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/groups": {
         parameters: {
             query?: never;
@@ -1199,10 +1410,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Exchange the current OIDC session for a short-lived token to the caller's OpenClaw pod
-         * @description Single sign-on across the control plane and the tenant pod: requires an established OIDC session (cookie) and returns a short-lived, audience-bound token minted via the Kubernetes TokenRequest API for the caller's tenant. The token targets the OpenClaw pod's session audience (reachable at `ingressHost`) — it is NOT an `obot-gateway` token; Obot is called only from inside the pod. The tenant is resolved solely from the session's verified email, so a caller cannot obtain a token for another user's pod. Re-call before `expiresAt`; re-login only when the session itself expires. Returns 401 without a session, 403 when no tenant matches the session email, 409 when the pod has no ingress host yet or when the email maps to more than one tenant.
+         * Resolve the caller's OpenClaw pod gateway connection coordinates from their OIDC session
+         * @description Single sign-on across the control plane and the tenant pod: requires an established OIDC session (cookie) and returns the `wss://` gateway URL for the caller's own pod. Under trusted-proxy gateway auth the browser holds no credential — the gateway socket is authorised at the ingress against the live session (`/auth/gateway-verify`), so no token is returned. The tenant is resolved solely from the session's verified email, so a caller cannot obtain another user's pod connection. Returns 401 without a session, 403 when no tenant matches the session email, 409 when the pod has no gateway URL / ingress host yet or when the email maps to more than one tenant.
          */
-        post: operations["exchangePodToken"];
+        post: operations["getPodConnection"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1408,6 +1619,77 @@ export interface components {
             brokeringMode?: "static" | "obo";
             /** @description Secret reference for 'static' brokering; null for 'obo'. */
             secretRef?: string | null;
+        };
+        /** @description A catalogue server as exposed by the operator API (distinct from the registry McpServer). Every field beyond id is optional so the same shape serves the entitled user catalogue and the admin governance view. */
+        McpCatalogServer: {
+            id: string;
+            name?: string;
+            description?: string;
+            publisher?: string;
+            glyph?: string;
+            /**
+             * @description Consumption shape; decides the credential-connect flow.
+             * @enum {string}
+             */
+            type?: "single-user" | "multi-user" | "remote-oauth";
+            /**
+             * @description Governance lifecycle status.
+             * @enum {string}
+             */
+            approvalStatus?: "pending-review" | "approved" | "published" | "disabled";
+            credentialSchema?: components["schemas"]["CredentialField"][];
+            /** @description Human-readable summary of who is entitled (admin view). */
+            entitlementSummary?: string;
+        };
+        CredentialField: {
+            /** @description Stable key the value is submitted under. */
+            key: string;
+            /** @description Human-readable field label. */
+            label: string;
+            /** @description Whether the field must be supplied. */
+            required: boolean;
+            /** @description Whether the value is secret (masked, never echoed back). */
+            sensitive: boolean;
+            /** @description Optional input placeholder. */
+            placeholder?: string;
+            /** @description Optional helper hint. */
+            hint?: string;
+        };
+        /** @description A server installed by the calling user. Never carries credential material — only the connection status and a non-secret account label. */
+        McpInstalled: {
+            serverId: string;
+            /** @enum {string} */
+            connectionStatus?: "needs-credential" | "activating" | "connected" | "oauth-connected" | "shared-key" | "activation-failed";
+            /**
+             * Format: date-time
+             * @description ISO-8601 timestamp of last use, or null when never used.
+             */
+            lastUsed?: string | null;
+            /** @description Non-secret display label of the connected account. */
+            connectedAccount?: string;
+        };
+        McpAccessPolicy: {
+            serverId: string;
+            /** @description When true, every caller in the org is entitled (lists ignored). */
+            everyoneInOrg?: boolean;
+            /** @description Entitled group identifiers / names. */
+            groups?: string[];
+            users?: components["schemas"]["EntitledUser"][];
+        };
+        EntitledUser: {
+            /** @description Stable user identifier (sub or email). */
+            id: string;
+            /** @description Display name. */
+            name: string;
+            /** @description Two-letter initials derived from the name. */
+            initials: string;
+            /** @description Deterministic avatar colour derived from the identifier. */
+            color: string;
+        };
+        /** @description The selectable universe of users and groups for the admin access editor. */
+        McpDirectory: {
+            users: components["schemas"]["EntitledUser"][];
+            groups: string[];
         };
         ClusterTenant: {
             /** @description Stable cluster-scoped identifier (the customer key). */
@@ -3419,6 +3701,583 @@ export interface operations {
             };
             /** @description MCP server or credential not found. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listMcpCatalog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Entitlement-scoped catalogue. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpCatalogServer"][];
+                };
+            };
+        };
+    };
+    listMcpInstalled: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Install list. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpInstalled"][];
+                };
+            };
+        };
+    };
+    installMcpServer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    serverId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Server installed. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpInstalled"];
+                };
+            };
+            /** @description serverId is required. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description MCP server not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    uninstallMcpServer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                serverId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Server uninstalled. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description MCP install not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    setMcpCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                serverId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Field values keyed by CredentialField.key. Write-only — never echoed back. */
+                    values: {
+                        [key: string]: string;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description Credential connected. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpInstalled"];
+                };
+            };
+            /** @description MCP install not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    clearMcpCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                serverId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Credential cleared. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpInstalled"];
+                };
+            };
+            /** @description MCP install not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    connectMcpOauth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                serverId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OAuth connected. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpInstalled"];
+                };
+            };
+            /** @description MCP install not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    disconnectMcpOauth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                serverId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OAuth disconnected. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpInstalled"];
+                };
+            };
+            /** @description MCP install not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listMcpGovernanceServers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description All catalogue servers. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpCatalogServer"][];
+                };
+            };
+            /** @description Caller is not an organisation admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    approveMcpServer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Server approved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpCatalogServer"];
+                };
+            };
+            /** @description Caller is not an organisation admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description MCP server not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    publishMcpServer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Server published. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpCatalogServer"];
+                };
+            };
+            /** @description Caller is not an organisation admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description MCP server not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    rejectMcpServer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Server rejected. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpCatalogServer"];
+                };
+            };
+            /** @description Caller is not an organisation admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description MCP server not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    setMcpServerEnabled: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    enabled: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Server availability updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpCatalogServer"];
+                };
+            };
+            /** @description enabled (boolean) is required. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Caller is not an organisation admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description MCP server not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getMcpAccessPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Access policy. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpAccessPolicy"];
+                };
+            };
+            /** @description Caller is not an organisation admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description MCP server not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    setMcpAccessPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    everyoneInOrg: boolean;
+                    groups: string[];
+                    /** @description Entitled user identifiers. */
+                    users: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description Access policy updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpAccessPolicy"];
+                };
+            };
+            /** @description everyoneInOrg (boolean), groups (array), and users (array) are required. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Caller is not an organisation admin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description MCP server not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getMcpDirectory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Directory. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpDirectory"];
+                };
+            };
+            /** @description Caller is not an organisation admin. */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5590,7 +6449,7 @@ export interface operations {
             };
         };
     };
-    exchangePodToken: {
+    getPodConnection: {
         parameters: {
             query?: never;
             header?: never;
@@ -5599,26 +6458,19 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Short-lived pod access token. */
+            /** @description The caller's OpenClaw pod gateway connection coordinates. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": {
-                        /** @description Short-lived bearer token bound to the OpenClaw pod session audience. */
-                        token: string;
-                        /**
-                         * Format: date-time
-                         * @description ISO-8601 expiry reported by the API server.
-                         */
-                        expiresAt: string;
+                        /** @description The `wss://` OpenClaw gateway URL to open. */
+                        gatewayUrl: string;
                         /** @description Resolved tenant (pod) name. */
                         tenant: string;
-                        /** @description Host to reach the tenant's OpenClaw pod session API. */
-                        ingressHost: string;
-                        /** @description Audience the token is bound to (the OpenClaw pod session, not obot-gateway). */
-                        audience: string;
+                        /** @description Host the tenant's OpenClaw pod is reachable at, when known. */
+                        ingressHost?: string;
                     };
                 };
             };
@@ -5646,7 +6498,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description The tenant pod has no ingress host yet. */
+            /** @description The tenant pod has no gateway URL / ingress host yet. */
             409: {
                 headers: {
                     [name: string]: unknown;

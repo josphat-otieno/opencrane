@@ -10,6 +10,7 @@ import { _RegisterInternalBundles } from "./routes/internal/skill-bundles.js";
 import { _RegisterInternalTenantContract } from "./routes/internal/tenant-contract.js";
 import { _RegisterInternalTenantModels } from "./routes/internal/tenant-models.js";
 import { _RegisterInternalParticipation } from "./routes/internal/participation.js";
+import { mcpOperatorRouter } from "./routes/mcp-operator.js";
 import { mcpServersRouter } from "./routes/mcp-servers.js";
 import { metricsRouter } from "./routes/metrics.js";
 import { openapiRouter } from "./routes/openapi-route.js";
@@ -106,6 +107,7 @@ export function _RegisterRoutes(app: Express, prisma: PrismaClient, customApi: k
   app.use("/api/v1/token-usage", tokenUsageRouter(prisma));
   app.use("/api/v1/groups", groupsRouter(prisma));
   app.use("/api/v1/mcp-servers", mcpServersRouter(prisma));
+  app.use("/api/v1/mcp", mcpOperatorRouter(prisma));
   app.use("/api/v1/skills/catalog", skillCatalogRouter(prisma, ociBundleStore));
   app.use("/api/v1/skills/posture", skillModelPostureRouter(prisma));
   app.use("/api/v1/model-routing/defaults", modelRoutingDefaultsRouter(prisma));
