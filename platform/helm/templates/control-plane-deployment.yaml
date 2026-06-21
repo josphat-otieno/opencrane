@@ -85,6 +85,62 @@ spec:
               value: {{ .Values.controlPlane.cognee.permissionsTimeoutMs | quote }}
             - name: COGNEE_ENABLE_BACKEND_ACCESS_CONTROL
               value: {{ ternary "true" "false" .Values.controlPlane.cognee.backendAccessControl | quote }}
+            {{- with .Values.controlPlane.oidc }}
+            {{- if .issuerUrl }}
+            # -- OIDC human-login session (control-plane only). Rendered iff issuerUrl is
+            #    set; otherwise the control-plane stays in token/development auth mode.
+            #    Zitadel is the single trusted issuer (Mode-2 broker, no upstream Entra) —
+            #    standards-only, so any spec-compliant issuer at OIDC_ISSUER_URL works.
+            - name: OIDC_ISSUER_URL
+              value: {{ .issuerUrl | quote }}
+            - name: OIDC_CLIENT_ID
+              value: {{ .clientId | quote }}
+            - name: OIDC_REDIRECT_URI
+              value: {{ .redirectUri | quote }}
+            {{- if .existingSecret }}
+            - name: OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .existingSecret }}
+                  key: {{ .clientSecretKey }}
+            - name: OIDC_SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .existingSecret }}
+                  key: {{ .sessionSecretKey }}
+            {{- else }}
+            {{- if .clientSecret }}
+            - name: OIDC_CLIENT_SECRET
+              value: {{ .clientSecret | quote }}
+            {{- end }}
+            - name: OIDC_SESSION_SECRET
+              value: {{ .sessionSecret | quote }}
+            {{- end }}
+            {{- if .groupsClaim }}
+            - name: OIDC_GROUPS_CLAIM
+              value: {{ .groupsClaim | quote }}
+            {{- end }}
+            {{- if .rolesClaim }}
+            - name: OIDC_ROLES_CLAIM
+              value: {{ .rolesClaim | quote }}
+            {{- end }}
+            {{- if .platformOperatorGroups }}
+            - name: OPENCRANE_PLATFORM_OPERATOR_GROUPS
+              value: {{ .platformOperatorGroups | quote }}
+            {{- end }}
+            {{- if .orgAdminGroups }}
+            - name: OPENCRANE_ORG_ADMIN_GROUPS
+              value: {{ .orgAdminGroups | quote }}
+            {{- end }}
+            {{- if .platformOperatorSeedEmail }}
+            # -- Per-cluster platform-operator SEED. A caller whose VERIFIED email equals
+            #    this becomes a platform operator (OR-ed with the group check). Empty →
+            #    rendered as no env var, so the seed grants operator to NOBODY (fail-closed).
+            - name: OPENCRANE_PLATFORM_OPERATOR_SEED_EMAIL
+              value: {{ .platformOperatorSeedEmail | quote }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
             # -- LiteLLM base endpoint, resolved via sharedPlatform scope (B5):
             #    instance mode → release-prefixed in-cluster Service; shared mode →
             #    sharedPlatform.litellm.shared.endpoint.
