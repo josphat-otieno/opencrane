@@ -23,7 +23,9 @@ multiInstance:
   rbac: namespaced
   # -- When true the operator fails closed (refuses to start) if WATCH_NAMESPACE is
   #    empty, so an instance can never reconcile another instance's Tenants (brief B2).
-  requireWatchNamespace: true
+  #    Default false (single-instance installs watch all namespaces with an empty
+  #    WATCH_NAMESPACE). Set true only when multiInstance.enabled is also true.
+  requireWatchNamespace: false
   # -- Cert issuance scope (brief B4): `cluster` renders a cluster-singleton
   #    ClusterIssuer (legacy default — shared across instances) or `namespaced`
   #    renders a per-instance-namespace Issuer so instances never collide on one

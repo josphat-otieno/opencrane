@@ -109,7 +109,7 @@ spec:
             # Hostname — used by Obot for OAuth callbacks; set to the in-cluster service URL.
             - name: OBOT_SERVER_HOSTNAME
               value: "http://{{ include "opencrane.fullname" . }}-mcp-gateway.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.mcpGateway.service.port }}"
-            {{- if .Values.mcpGateway.auth.enabled }}
+            {{- if ((.Values.mcpGateway.auth).enabled) }}
             # Authentication ENABLED (P0.1) — the prerequisite for per-user credentials +
             # MCP access policies (Obot can only differentiate users it authenticates).
             # Federating to OpenCrane's OIDC IdP is a one-time RUNTIME step (Obot has no
@@ -183,7 +183,7 @@ spec:
             - name: OBOT_SERVER_ENCRYPTION_PROVIDER
               value: "none"
             {{- end }}
-            {{- if .Values.mcpGateway.catalog.path }}
+            {{- if ((.Values.mcpGateway.catalog).path) }}
             # Default MCP catalogue (P0.2) — a LOCAL FILESYSTEM directory of catalogue-entry
             # YAMLs that Obot loads for all users. This is Obot's real catalogue knob
             # (`default-mcpcatalog-path`), confirmed against obot v0.23.1 pkg/services/config.go.
@@ -194,7 +194,7 @@ spec:
             # LLM model-provider *filesystem directories*, NOT MCP catalogues, so pointing it at
             # the control-plane was a silent no-op (Obot held none of OpenCrane's MCP servers).
             - name: OBOT_SERVER_DEFAULT_MCPCATALOG_PATH
-              value: {{ .Values.mcpGateway.catalog.path | quote }}
+              value: {{ (.Values.mcpGateway.catalog).path | quote }}
             {{- end }}
           livenessProbe:
             httpGet:
