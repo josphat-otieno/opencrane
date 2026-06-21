@@ -14,7 +14,7 @@ import type { OpenClawGatewayAdmin } from "../../core/connections/gateway-admin.
 /**
  * Build the auth router covering:
  *  - Session introspection (GET /me)
- *  - OpenClaw pairing broker (POST /pod-token)
+ *  - OpenClaw connection broker (POST /pod-token)
  *  - OIDC browser flow (GET /login, GET /callback, POST /logout)
  *  - Device authorization grant for CLI (POST /device, GET /device/activate, GET /device/token)
  *
@@ -48,21 +48,52 @@ export function ___AuthRouter(authService: OidcAuthService, prisma: PrismaClient
     }
   });
 
+  /**
+   * Reverse-proxy auth check for a tenant's OpenClaw gateway (trusted-proxy mode,
+   * OC-2 / CONN.4). The pod's ingress runs this as an nginx `auth_request` on the
+   * WebSocket upgrade: a valid OIDC session returns 204 with the caller's verified
+   * email in `X-Forwarded-User`; the ingress injects that header (overwriting any
+   * client-supplied value) so the gateway — configured `gateway.auth.mode =
+   * trusted-proxy`, trusting only the ingress source — authenticates the socket as
+   * that user, with no credential ever held by the browser.
+   *
+   * This makes the control-plane the connection **broker**: every gateway socket
+   * is authorised here against the live session. **Central cut** falls out for
+   * free — revoking the session makes this return 401, so the ingress refuses new
+   * upgrades (live sockets are still severed by the pod-delete kill-switch).
+   *
+   * Public (mounted before `___AuthMiddleware`); enforces the session inline.
+   */
+  router.get("/gateway-verify", function _gatewayVerify(req, res)
+  {
+    const authUser = req.session?.authUser;
+    const email = typeof authUser?.email === "string" ? authUser.email.trim().toLowerCase() : "";
+    if (!authUser || email.length === 0)
+    {
+      res.status(401).json({ error: "Authentication required", code: "UNAUTHORIZED" });
+      return;
+    }
+    // Identity the ingress copies into the upstream `X-Forwarded-User` header
+    // (and strips any client-supplied one) for the gateway to trust.
+    res.setHeader("X-Forwarded-User", email);
+    res.status(204).end();
+  });
+
   // --------------------------------------------------------------------------
   // OpenClaw pairing broker (single sign-on across control plane + pod)
   // --------------------------------------------------------------------------
 
   /**
-   * Hand the caller the connection details for **their own** OpenClaw pod's
+   * Hand the caller the connection coordinates for **their own** OpenClaw pod's
    * Gateway, derived from their OIDC session — so they log in once and the pod
    * connection follows, never a second login (see `docs/auth.md`).
    *
-   * OpenClaw authenticates with a **pairing link** (`{ url, bootstrapToken }`):
-   * the gateway WebSocket URL plus a short-lived bootstrap token whose pairing
-   * profile auto-grants a `node` role + bounded `operator` scopes. We return
-   * those so cli can run the gateway's `connect` handshake (see plan.md). We
-   * do **not** mint a Kubernetes token — that was a wrong guess at the pod's
-   * auth; the pairing link is OpenClaw's native mechanism.
+   * Under trusted-proxy gateway auth (CONN.4) the browser holds **no credential**:
+   * it opens the returned `wss://` gateway URL, and the ingress authorises that
+   * socket against the live session via `/auth/gateway-verify` (injecting the
+   * verified user). So this route returns only the gateway URL — no token. The
+   * earlier designs (a minted Kubernetes token, then a bootstrap pairing token)
+   * are both retired.
    *
    * **Cross-tenant safety:** the target tenant is resolved solely from the
    * session's IdP-verified email — there is no request-supplied tenant input —
@@ -113,7 +144,7 @@ export function ___AuthRouter(authService: OidcAuthService, prisma: PrismaClient
 
       const tenant = matches[0];
 
-      // 3. Resolve the pod's pairing link (gateway URL + bootstrap token).
+      // 3. Resolve the pod's gateway URL (the connection coordinate).
       const pairing = _ResolveOpenClawPairing(tenant.configOverrides, tenant.ingressHost);
       if (!pairing)
       {
@@ -134,10 +165,10 @@ export function ___AuthRouter(authService: OidcAuthService, prisma: PrismaClient
         _log.warn({ tenant: tenant.name, subject, err }, "failed to record brokered device (connection still granted)");
       }
 
-      // 5. Return the connection details for the gateway `connect` handshake.
+      // 5. Return the connection coordinates for the gateway `connect` handshake;
+      //    trusted-proxy auth happens at the ingress, so no token is handed back.
       res.status(200).json({
         gatewayUrl: pairing.gatewayUrl,
-        bootstrapToken: pairing.bootstrapToken,
         tenant: tenant.name,
         ingressHost: tenant.ingressHost,
       });

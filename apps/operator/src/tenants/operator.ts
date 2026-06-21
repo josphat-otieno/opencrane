@@ -10,7 +10,7 @@ import { TenantPolicyResolutionState, TenantStatusPhase } from "./models/tenant-
 import { __K8sApplyResource } from "../infra/k8s.js";
 import { _RunWatchLoop, K8sWatchEventType } from "../shared/watch-runner.js";
 import { OPENCRANE_API_GROUP, OPENCRANE_API_VERSION, TENANT_CRD_PLURAL } from "../shared/crd-constants.js";
-import { _BuildClusterTenantLimitRange, _BuildClusterTenantNamespace, _BuildClusterTenantResourceQuota, _BuildConfigMap, _BuildDeployment, _BuildIngress, _BuildIngressHost, _BuildService, _BuildServiceAccount, _BuildStatePvc } from "./deploy/index.js";
+import { _BuildClusterTenantLimitRange, _BuildClusterTenantNamespace, _BuildClusterTenantResourceQuota, _BuildConfigMap, _BuildDeployment, _BuildGatewayNetworkPolicy, _BuildIngress, _BuildIngressHost, _BuildService, _BuildServiceAccount, _BuildStatePvc } from "./deploy/index.js";
 import { TenantCleanup } from "./destroy/tenant-cleanup.js";
 
 import { TenantEncryptionKeys } from "./internal/tenant-encryption-keys.js";
@@ -280,6 +280,10 @@ export class TenantOperator
       //    Ingress class and annotations come from the adapter (nginx on-prem, gce on GKE).
       const ingressBinding = this.hosting.buildIngressBinding();
       await __K8sApplyResource(this.networkingApi, _BuildIngress(this.config, ingressBinding, effectiveTenant, namespace, ingressDomain), this.log);
+
+      // 9b. NetworkPolicy — lock the gateway port to the ingress controller so the
+      //     trusted-proxy auth (CONN.4) can't be abused by other in-cluster pods.
+      await __K8sApplyResource(this.networkingApi, _BuildGatewayNetworkPolicy(this.config, effectiveTenant, namespace), this.log);
 
       // 10. Status — write the observed Running state back to the Tenant CR so that
       //    kubectl, the control-plane API, and the UI all see the current phase.

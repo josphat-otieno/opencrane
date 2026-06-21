@@ -99,6 +99,8 @@ async function _createResource(client: any, resource: k8s.KubernetesObject, name
       return client.createNamespacedDeployment({ namespace, body: resource });
     case "Ingress":
       return client.createNamespacedIngress({ namespace, body: resource });
+    case "NetworkPolicy":
+      return client.createNamespacedNetworkPolicy({ namespace, body: resource });
     default:
       throw new Error(`unsupported resource kind for typed create client: ${resource.kind ?? "unknown"}`);
   }
@@ -134,6 +136,8 @@ async function _readResource(client: any, resource: k8s.KubernetesObject, namesp
       return client.readNamespacedDeployment({ name, namespace });
     case "Ingress":
       return client.readNamespacedIngress({ name, namespace });
+    case "NetworkPolicy":
+      return client.readNamespacedNetworkPolicy({ name, namespace });
     default:
       throw new Error(`unsupported resource kind for typed read client: ${resource.kind ?? "unknown"}`);
   }
@@ -169,6 +173,8 @@ async function _replaceResource(client: any, resource: k8s.KubernetesObject, nam
       return client.replaceNamespacedDeployment({ name, namespace, body: resource });
     case "Ingress":
       return client.replaceNamespacedIngress({ name, namespace, body: resource });
+    case "NetworkPolicy":
+      return client.replaceNamespacedNetworkPolicy({ name, namespace, body: resource });
     default:
       throw new Error(`unsupported resource kind for typed replace client: ${resource.kind ?? "unknown"}`);
   }

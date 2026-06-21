@@ -17,6 +17,8 @@ function _buildConfig(overrides: Partial<OpenClawTenantOperatorConfig> = {}): Op
     ingressTlsEnabled: false,
     ingressTlsSecretName: "opencrane-wildcard-tls",
     gatewayPort: 18789,
+    gatewayTrustedProxies: ["10.0.0.0/8"],
+    gatewayTrustedProxyUserHeader: "X-Forwarded-User",
     hostingProvider: HostingProvider.OnPrem,
     idleTimeoutMinutes: 0,
     idleCheckIntervalSeconds: 60,

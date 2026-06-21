@@ -63,6 +63,9 @@ export function _BuildDeployment(config: OpenClawTenantOperatorConfig, stateVolu
     ...(config.liteLlmEnabled ? [{ name: "LITELLM_ENDPOINT", value: config.liteLlmEndpoint }] : []),
     ...(tenant.spec.team ? [{ name: "OPENCRANE_TEAM", value: tenant.spec.team }] : []),
     ...(tenant.spec.policyRef ? [{ name: "OPENCRANE_POLICY_REF", value: tenant.spec.policyRef }] : []),
+    // Gateway auth is trusted-proxy (OC-2 / CONN.4), configured in openclaw.json
+    // (see 2-config-map.ts) — no OPENCLAW_GATEWAY_TOKEN here (mutually exclusive
+    // with trusted-proxy; the gateway binds because trusted-proxy is a valid mode).
   ];
 
   if (config.liteLlmEnabled)

@@ -573,40 +573,38 @@ export function tenantsRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCli
   });
 
   /**
-   * Store or rotate a tenant's OpenClaw pairing link (CONN.3).
+   * Set a tenant's OpenClaw gateway URL override (CONN.3).
    *
-   * The provisioner (or an admin) writes the `{ gatewayUrl?, bootstrapToken }`
-   * captured from the pod's `openclaw qr --setup-code-only` setup code into
+   * The provisioner (or an admin) writes the pod's `wss://` gateway URL into
    * `configOverrides.openclaw`; `_ResolveOpenClawPairing` reads it back when the
-   * browser brokers a connection. Bootstrap tokens are short-lived single-use, so
-   * this endpoint is the rotation path: each call replaces the stored token.
+   * browser brokers a connection (otherwise the URL is derived from the ingress
+   * host). Under trusted-proxy gateway auth (CONN.4) the gateway needs no bootstrap
+   * token, so none is accepted or stored — only the connection URL.
    *
-   * Security: only ever stores a `wss://` gateway URL (never downgrades the
-   * transport), and never echoes the bootstrap token back in the response.
+   * Security: only ever stores a `wss://` gateway URL (never downgrades the transport).
    */
   router.put("/:name/pairing", async function _setTenantPairing(req, res, next)
   {
     try
     {
       const name = req.params.name;
-      const bootstrapToken = typeof req.body?.bootstrapToken === "string" ? req.body.bootstrapToken.trim() : "";
       const gatewayUrl = typeof req.body?.gatewayUrl === "string" ? req.body.gatewayUrl.trim() : "";
 
-      // 1. Validate inputs — a non-empty bootstrap token is required, and any
-      //    supplied gateway URL must be `wss://` so we never persist a downgrade.
-      if (bootstrapToken.length === 0)
+      // 1. Validate inputs — a `wss://` gateway URL is required so we never persist
+      //    a transport downgrade (trusted-proxy auth needs no bootstrap token).
+      if (gatewayUrl.length === 0)
       {
-        res.status(400).json({ error: "bootstrapToken is required", code: "VALIDATION_ERROR" });
+        res.status(400).json({ error: "gatewayUrl is required", code: "VALIDATION_ERROR" });
         return;
       }
-      if (gatewayUrl.length > 0 && !gatewayUrl.startsWith("wss://"))
+      if (!gatewayUrl.startsWith("wss://"))
       {
         res.status(400).json({ error: "gatewayUrl must be a wss:// URL", code: "VALIDATION_ERROR" });
         return;
       }
 
       // 2. Merge into the existing configOverrides.openclaw block so unrelated
-      //    overrides are preserved across a rotation.
+      //    overrides are preserved; any legacy stored bootstrapToken is dropped.
       const tenant = await prisma.tenant.findUnique({ where: { name }, select: { configOverrides: true } });
       if (!tenant)
       {
@@ -615,12 +613,9 @@ export function tenantsRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCli
       }
 
       const existing = (tenant.configOverrides ?? {}) as Record<string, unknown>;
-      const existingOpenclaw = (typeof existing.openclaw === "object" && existing.openclaw !== null ? existing.openclaw : {}) as Record<string, unknown>;
-      const mergedOpenclaw: Record<string, unknown> = { ...existingOpenclaw, bootstrapToken };
-      if (gatewayUrl.length > 0)
-      {
-        mergedOpenclaw.gatewayUrl = gatewayUrl;
-      }
+      const existingOpenclaw = (typeof existing.openclaw === "object" && existing.openclaw !== null ? { ...existing.openclaw } : {}) as Record<string, unknown>;
+      delete existingOpenclaw.bootstrapToken;
+      const mergedOpenclaw: Record<string, unknown> = { ...existingOpenclaw, gatewayUrl };
 
       // 3. Persist the rotated pairing and audit the change (without the token).
       await prisma.tenant.update({
@@ -631,13 +626,13 @@ export function tenantsRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCli
       await prisma.auditEntry.create({
         data: {
           tenant: name,
-          action: "PairingRotated",
+          action: "GatewayUrlSet",
           resource: `Tenant/${name}`,
-          message: `OpenClaw pairing rotated for ${name}${gatewayUrl ? ` (gateway ${gatewayUrl})` : ""}`,
+          message: `OpenClaw gateway URL set for ${name} (${gatewayUrl})`,
         },
       });
 
-      res.json({ name, paired: true, gatewayUrl: gatewayUrl || undefined });
+      res.json({ name, gatewayUrl });
     }
     catch (err)
     {

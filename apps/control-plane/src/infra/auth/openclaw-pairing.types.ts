@@ -1,15 +1,12 @@
 /**
- * Resolved OpenClaw pairing details for a tenant pod, derived from the pod's
- * pairing link (`{ url, bootstrapToken }`).
+ * Resolved OpenClaw connection coordinates for a tenant pod.
+ *
+ * Under trusted-proxy gateway auth (CONN.4) the browser holds no credential —
+ * the gateway socket is authorised at the ingress against the live OIDC session
+ * (`/auth/gateway-verify`), so only the gateway URL is needed to connect.
  */
 export interface OpenClawPairing
 {
   /** Gateway WebSocket URL (`wss://…`) the browser connects to. */
   gatewayUrl: string;
-
-  /**
-   * One-time bootstrap token for first pairing, or null once a device has been
-   * paired (the client then reconnects with its persisted device token).
-   */
-  bootstrapToken: string | null;
 }

@@ -57,6 +57,13 @@ export function _BuildConfigMap(config: OpenClawTenantOperatorConfig, tenant: Te
       mode: "local",
       port: config.gatewayPort,
       bind: "lan",
+      // OC-2 / CONN.4 — the gateway delegates auth to the control-plane: the pod
+      // ingress validates the OIDC session and injects the user header, and the
+      // gateway trusts it only from the configured proxy source. No shared token
+      // (mutually exclusive with trusted-proxy); a NetworkPolicy locks the port
+      // to the ingress so the trusted range can't be abused by other pods.
+      trustedProxies: config.gatewayTrustedProxies,
+      auth: { mode: "trusted-proxy", trustedProxy: { userHeader: config.gatewayTrustedProxyUserHeader } },
     },
     ...(config.liteLlmEnabled
       ? {

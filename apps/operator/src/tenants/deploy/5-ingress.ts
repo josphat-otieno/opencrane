@@ -43,7 +43,18 @@ export function _BuildIngress(config: OpenClawTenantOperatorConfig, ingressBindi
       name: `openclaw-${name}`,
       namespace,
       labels: _BuildTenantLabels(name),
-      annotations: ingressBinding.annotations,
+      // OC-2 / CONN.4 — trusted-proxy broker. Every gateway WS upgrade is
+      // authenticated against the OIDC session by the control-plane: a valid
+      // session → 204 + the verified user in `auth-response-headers`, which nginx
+      // injects into the upstream request (overwriting any client-supplied value —
+      // header hygiene), and the gateway (trusted-proxy mode) trusts it. No
+      // session → 401 → the upgrade is refused, which is the central-cut hook
+      // (revoke the session and re-connects are blocked).
+      annotations: {
+        ...ingressBinding.annotations,
+        "nginx.ingress.kubernetes.io/auth-url": `${config.controlPlaneInternalUrl}/api/v1/auth/gateway-verify`,
+        "nginx.ingress.kubernetes.io/auth-response-headers": config.gatewayTrustedProxyUserHeader,
+      },
     },
     spec: {
       ingressClassName: ingressBinding.ingressClassName,

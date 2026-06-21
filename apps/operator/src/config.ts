@@ -34,6 +34,18 @@ export interface OpenClawTenantOperatorConfig
   /** Port number exposed by the OpenClaw gateway inside tenant pods. */
   gatewayPort: number;
 
+  /**
+   * Reverse-proxy CIDRs/IPs the OpenClaw gateway trusts for `trusted-proxy` auth
+   * (OC-2 / CONN.4). The gateway authenticates a connection as the user named in
+   * {@link gatewayTrustedProxyUserHeader} only when the TCP source is one of these.
+   * Set to the ingress source range; a NetworkPolicy additionally restricts the
+   * gateway port to the ingress so this range can't be abused by other pods.
+   */
+  gatewayTrustedProxies: string[];
+
+  /** Header the trusted proxy injects with the authenticated user identity. */
+  gatewayTrustedProxyUserHeader: string;
+
   /** Active hosting substrate. Defaults to on-prem. */
   hostingProvider: HostingProvider;
 
@@ -126,6 +138,9 @@ export function _LoadOperatorConfig(): OpenClawTenantOperatorConfig
     ingressTlsEnabled: _readEnvValue<boolean>("INGRESS_TLS_ENABLED", "boolean", false, false),
     ingressTlsSecretName: _readEnvValue<string>("INGRESS_TLS_SECRET_NAME", "string", false, "opencrane-wildcard-tls"),
     gatewayPort: _readEnvValue<number>("GATEWAY_PORT", "number"),
+    gatewayTrustedProxies: _readEnvValue<string>("GATEWAY_TRUSTED_PROXIES", "string", false, "")
+      .split(",").map((entry) => entry.trim()).filter((entry) => entry.length > 0),
+    gatewayTrustedProxyUserHeader: _readEnvValue<string>("GATEWAY_TRUSTED_PROXY_USER_HEADER", "string", false, "X-Forwarded-User"),
     hostingProvider,
     gcp: hostingProvider === HostingProvider.Gcp
       ? {

@@ -4,22 +4,22 @@ import { _ResolveOpenClawPairing } from "../../infra/auth/openclaw-pairing.js";
 
 describe("_ResolveOpenClawPairing", function _suite()
 {
-	it("uses the stored gateway URL + bootstrap token", function _stored()
+	it("uses the stored wss gateway URL", function _stored()
 	{
-		const pairing = _ResolveOpenClawPairing({ openclaw: { gatewayUrl: "wss://pod/gateway", bootstrapToken: "boot" } }, "pod.example.com");
-		expect(pairing).toEqual({ gatewayUrl: "wss://pod/gateway", bootstrapToken: "boot" });
+		const pairing = _ResolveOpenClawPairing({ openclaw: { gatewayUrl: "wss://pod/gateway" } }, "pod.example.com");
+		expect(pairing).toEqual({ gatewayUrl: "wss://pod/gateway" });
 	});
 
 	it("derives the gateway URL from ingressHost when none is stored", function _derived()
 	{
 		const pairing = _ResolveOpenClawPairing(null, "pod.example.com");
-		expect(pairing).toEqual({ gatewayUrl: "wss://pod.example.com", bootstrapToken: null });
+		expect(pairing).toEqual({ gatewayUrl: "wss://pod.example.com" });
 	});
 
-	it("returns null bootstrapToken once a device is paired", function _paired()
+	it("ignores any legacy stored bootstrapToken (trusted-proxy needs none)", function _ignoresToken()
 	{
-		const pairing = _ResolveOpenClawPairing({ openclaw: { gatewayUrl: "wss://pod/gateway" } }, "pod.example.com");
-		expect(pairing?.bootstrapToken).toBeNull();
+		const pairing = _ResolveOpenClawPairing({ openclaw: { gatewayUrl: "wss://pod/gateway", bootstrapToken: "boot" } }, "pod.example.com");
+		expect(pairing).toEqual({ gatewayUrl: "wss://pod/gateway" });
 	});
 
 	it("returns null when there is no URL and no ingress host", function _notReady()
@@ -36,8 +36,8 @@ describe("_ResolveOpenClawPairing", function _suite()
 
 	it("rejects a non-wss stored gateway URL, falling back to wss ingress", function _rejectsWs()
 	{
-		const pairing = _ResolveOpenClawPairing({ openclaw: { gatewayUrl: "ws://pod/gateway", bootstrapToken: "boot" } }, "pod.example.com");
-		expect(pairing).toEqual({ gatewayUrl: "wss://pod.example.com", bootstrapToken: "boot" });
+		const pairing = _ResolveOpenClawPairing({ openclaw: { gatewayUrl: "ws://pod/gateway" } }, "pod.example.com");
+		expect(pairing).toEqual({ gatewayUrl: "wss://pod.example.com" });
 	});
 
 	it("returns null when the stored URL is non-wss and there is no ingress host", function _rejectsWsNoFallback()
