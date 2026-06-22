@@ -166,15 +166,16 @@ When an org is created (`POST /api/v1/cluster-tenants`), the control plane persi
 hands off the cluster-side side effects (per-org DNS record + per-org wildcard TLS cert) to the
 ClusterTenant operator/CR watcher. The interface the reconciler calls is
 `OrgDomainProvisioner.provisionOrgDomain(...)`
-(`apps/control-plane/src/core/cluster-tenants/org-domain-provisioner.types.ts`), implemented by
-`DefaultOrgDomainProvisioner` (`org-domain.provisioner.ts`): it applies the per-org wildcard
-`Certificate` (`*.<org>.<base>` + apex/vanity SANs) via cert-manager DNS-01 and ensures the
-`*.<org>.<base>` / `<org>.<base>` A records in the terraform-managed Cloud DNS zone. Both side effects
-are idempotent. It is **fail-closed + gated**: when the cluster has no cert-manager (the dev cluster
-currently does not), it returns `ready:false` with a reason and never crashes, while the
-resource-authoring path stays real. The Cloud DNS SDK is an optional dependency loaded lazily, so
-on-prem installs never pull it. The create path itself never mutates DNS or cert-manager — only the
-reconciler does (fail-closed, API-first).
+(`apps/operator/src/cluster-tenants/internal/org-domain-provisioner.types.ts`), implemented by
+`DefaultOrgDomainProvisioner` (`apps/operator/src/cluster-tenants/internal/org-domain.provisioner.ts`):
+it applies the per-org wildcard `Certificate` (`*.<org>.<base>` + apex/vanity SANs) via cert-manager
+DNS-01 and, when a Cloud DNS zone is configured, ensures the `*.<org>.<base>` / `<org>.<base>` A records
+in the terraform-managed Cloud DNS zone. Both side effects are idempotent. It is **fail-closed + runtime-
+gated by real capability detection**: when the cluster has no cert-manager (the dev cluster currently does
+not) AND no DNS zone is configured, it returns `{ready:false, skipped:true}` and never crashes, while the
+resource-authoring path stays real (the Certificate manifest is genuinely built and applied). The Cloud
+DNS SDK is an optional dependency loaded lazily, so on-prem installs never pull it. The create path itself
+never mutates DNS or cert-manager — only the reconciler (in the operator) does (fail-closed, API-first).
 
 ## Isolation Tiers
 

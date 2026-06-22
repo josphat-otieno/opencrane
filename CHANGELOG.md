@@ -54,10 +54,11 @@ follows [Keep a Changelog](https://keepachangelog.com/); the project uses
   (`*.<org>.<base>` + the org apex, plus any vanity domain) through cert-manager and ensures the
   matching `*.<org>.<base>` / `<org>.<base>` A records in the platform's Cloud DNS zone — so every user
   under the org both resolves and is browser-trusted with no per-user setup. It is idempotent and
-  fail-closed: on a cluster without cert-manager it reports the org as not-yet-ready with a clear reason
-  instead of failing, and the Cloud DNS integration is an optional dependency that on-prem installs never
-  load. As before, this runs only from the org reconciler — creating an org over the API never touches
-  DNS or cert-manager directly.
+  fail-closed: on a cluster without cert-manager (and no Cloud DNS zone) it records the domain step as
+  skipped with a clear reason and lets the org still reach ready — the namespace boundary, not the cert,
+  gates attachment — instead of failing the reconcile, and the Cloud DNS integration is an optional
+  dependency that on-prem installs never load. This runs only from the operator's org reconciler —
+  creating an org over the API never touches DNS or cert-manager directly.
 
 ### Changed
 

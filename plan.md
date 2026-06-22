@@ -87,8 +87,9 @@ creates a billing account, then creates an org and becomes its root admin.
 - **Derivation:** `isOrgAdmin` + the caller's `ownedOrgs` are derived from `OrgMembership` (per-org) and surfaced
   on `/auth/me` (additive — existing `isOrgAdmin`/`clusterTenant` fields unchanged so WeOwnAI keeps working). The
   platform-operator seed path stays intact + fail-closed.
-- **Deferred to the cluster-tenants operator track:** create still only persists `pending`; the provisioner/CR
-  watcher that reconciles `pending → ready` is a separate workstream (a named hand-off hook is left in place).
+- **Cluster-tenants operator track — CLOSED by PR #50:** create persists `pending` and the DB→K8s bridge
+  projects a `clustertenants` CR; the operator's ClusterTenant reconciler now drives `pending → ready` and
+  calls the real per-org domain provisioner (see Track DOMAIN → PR #50).
 - Tests: billing-account create, create-records-owner, the full guard matrix, membership-derived `isOrgAdmin`
   (+20; control-plane suite 407 green).
 
@@ -112,23 +113,29 @@ Stacked on `feat/org-admin-billing`.
   cert-manager DNS-01 (reference manifest `platform/helm/examples/per-org-wildcard-cert.yaml`).
 - **DNS automation:** `modules/dns` extended — platform wildcard + apex + control-plane-host records, and a
   `var.org_wildcards`-driven per-org `*.<org>.<base>` record matching the operator hook's shape.
-- **Per-org provisioning — IMPLEMENTED:** `DefaultOrgDomainProvisioner`
-  (`core/cluster-tenants/org-domain.provisioner.ts`) behind the `OrgDomainProvisioner` interface. It applies
-  the per-org wildcard `Certificate` (`*.<org>.<base>` + apex/vanity SANs) via cert-manager DNS-01
-  (`CertManagerClient` over the custom-objects API, mirroring `apply-dns-config.ts`) and ensures the
-  `*.<org>.<base>`/`<org>.<base>` A records in the terraform-managed Cloud DNS zone (`CloudDnsClient`, a thin
-  wrapper over `@google-cloud/dns` as an **optional** dep, lazy-loaded like the operator's `GcsBucketClient`).
-  Both side effects idempotent. **Fail-closed + gated:** an absent cert-manager CRD yields `ready:false` + a
-  reason and never crashes, while the resource-authoring path stays real (not a no-op stub). Wired from env via
-  `_BuildOrgDomainProvisioner`; the create path never mutates DNS/cert-manager — only the reconciler does
-  (fail-closed, API-first).
+- **Per-org provisioning — IMPLEMENTED (operator-owned, PR #50):** `DefaultOrgDomainProvisioner`
+  (`apps/operator/src/cluster-tenants/internal/org-domain.provisioner.ts`) behind the `OrgDomainProvisioner`
+  interface. It applies the per-org wildcard `Certificate` (`*.<org>.<base>` + apex/vanity SANs) via
+  cert-manager DNS-01 (`CertManagerClient` over the custom-objects API) and, when a Cloud DNS zone is
+  configured, ensures the `*.<org>.<base>`/`<org>.<base>` A records in the terraform-managed zone
+  (`CloudDnsClient`, a thin wrapper over `@google-cloud/dns` as an **optional** dep, lazy-loaded like the
+  operator's `GcsBucketClient`). Both side effects idempotent. **Fail-closed + runtime-gated by real
+  capability detection:** an absent cert-manager CRD short-circuits fail-closed and, when DNS is also
+  unconfigured, the step reports `{ready:false, skipped:true}` — never crashes — while the resource-authoring
+  path stays real (the Certificate manifest is genuinely built and applied, not a no-op stub). Wired by
+  `_BuildOrgDomainProvisioner` from operator config; the create path never mutates DNS/cert-manager — only the
+  reconciler (in the operator) does (fail-closed, API-first).
 - **Docs:** `docs/agents/cluster-architecture.md` + `website/operators/dns-config.md` rewritten to the new
   topology with the exact customer CNAME instruction.
-- **Remaining (PR #50):** the CR watcher that CALLS `provisionOrgDomain(...)` on the `pending → ready`
-  reconcile. The provisioner itself is done; live cert/DNS apply remains the batched human-authorised step
-  (cert-manager is not installed on the shared dev cluster) — prepared, not executed.
-- Validation: `helm template` + `kubectl --dry-run=server` (control-plane Ingress) green; operator (105),
-  control-plane (424; +17 provisioner/cert/DNS unit tests), cli (4) suites green; touched-package build + lint clean.
+- **PR #50 (org-provision-wiring) — LANDED:** the ClusterTenant reconciler (`apps/operator/src/cluster-tenants/operator.ts`)
+  now CALLS the real `provisionOrgDomain(...)` on every reconcile. The dead control-plane copies of the
+  provisioner/cert/DNS clients (never invoked there) and the hardcoded always-skip `GatedOrgDomainProvisioner`
+  stub were deleted; the one real provisioner is owned by the operator (the reconciler/executor). Helm wires
+  `INGRESS_IP`/`DNS_MANAGED_ZONE`/`CERT_MANAGER_ISSUER_*` + cert-manager Certificate RBAC (gated on
+  `certManager.enabled`). Live cert/DNS apply remains the batched human-authorised step (cert-manager is not
+  installed on the shared dev cluster) — prepared, not executed.
+- Validation: `helm template` (operator + RBAC) green; operator (132; +21 provisioner/cert/DNS/gating unit
+  tests), control-plane (408) suites green; touched-package build + lint clean.
 
 ### Track P5 — Close Phase 5 — ✅ COMPLETE · full history: plan-done.md § Completed Tracks (archived 2026-06-15)
 

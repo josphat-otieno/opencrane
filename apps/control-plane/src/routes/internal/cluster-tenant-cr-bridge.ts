@@ -23,14 +23,23 @@ import { CLUSTER_TENANT_CRD_PLURAL, OPENCRANE_API_GROUP, OPENCRANE_API_VERSION }
 /** The cluster-scoped ClusterTenant custom resource shape the control plane emits. */
 interface ClusterTenantCr
 {
+  /** API group/version of the ClusterTenant CRD (`opencrane.io/<version>`). */
   apiVersion: string;
+  /** CRD kind discriminator — always `ClusterTenant`. */
   kind: "ClusterTenant";
+  /** Object metadata; the org name is the cluster-scoped CR name. */
   metadata: { name: string };
+  /** Desired-state spec projected from the persisted org row (never status). */
   spec: {
+    /** Human-readable org display name. */
     displayName: string;
+    /** Optional customer-vanity domain CNAMEd onto the org apex. */
     vanityDomain?: string;
+    /** Isolation tier driving the operator's boundary provisioner selection. */
     isolationTier: string;
+    /** Compute placement: shared cluster or a dedicated node pool. */
     compute: { mode: string; nodePool?: string };
+    /** Resource governance for the org's bound namespace (quota map). */
     resources: { quota: Record<string, unknown> };
   };
 }
