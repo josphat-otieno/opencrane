@@ -19,6 +19,7 @@
 #                            [--oidc-redirect-uri URI]
 #                            [--platform-operator-seed-email EMAIL]
 #                            [--no-ingress-nginx]
+#                            [--no-external-dns]
 #                            [--cert-manager] [--acme-email EMAIL]
 #                            [--dns01-provider clouddns] [--dns01-credentials FILE]
 #                            [--dns01-project PROJECT_ID]
@@ -52,6 +53,15 @@
 #
 # Bundled cluster singletons (default ON, auto-skip if already present):
 #   ingress-nginx — the ingress controller (skip with --no-ingress-nginx to BYO one).
+#   external-dns  — the DNS-record controller (skip with --no-external-dns to BYO one).
+#                   The operator emits namespaced DNSEndpoint CRs; external-dns (run with
+#                   --source=crd) reconciles them into Google Cloud DNS, scoped to
+#                   --base-domain, against the SAME managed zone as the cert-manager
+#                   DNS-01 solver. It needs zone write access → it SHARES the cert-manager
+#                   DNS-01 credentials: Workload Identity (the cert-manager SA's GSA bound
+#                   roles/dns.admin) by default, or the --dns01-credentials SA-key file for
+#                   an external zone. external-dns is only bundled in acme/clouddns mode
+#                   (that is where the shared zone + WI binding are established).
 #   Cognee        — the required graph-RAG service, installed IN-CHART via
 #                   controlPlane.cognee.install=true (set false to BYO an external one).
 # Each is gated by a `*.install` flag SEPARATE from the chart's `*.enabled`, so an
@@ -132,6 +142,18 @@ CERT_MANAGER_NAMESPACE="cert-manager"
 INSTALL_INGRESS_NGINX="${OPENCRANE_INSTALL_INGRESS_NGINX:-1}"
 INGRESS_NGINX_NAMESPACE="ingress-nginx"
 
+# external-dns bundling (a cluster singleton like ingress-nginx / cert-manager). The
+# operator emits namespaced DNSEndpoint CRs and external-dns (--source=crd) reconciles
+# them into Google Cloud DNS, scoped to --base-domain, against the SAME managed zone as
+# the cert-manager DNS-01 solver and SHARING its zone-write credentials (WI roles/dns.admin
+# or the --dns01-credentials SA key). Installed by default, auto-skips when a controller is
+# already present. `--no-external-dns` (or OPENCRANE_INSTALL_EXTERNAL_DNS=0) turns the
+# bundling off to BYO a controller. SEPARATE from the chart's externalDns.enabled (whether
+# the operator declares DNSEndpoint CRs at all) — see values.yaml `externalDns`. Only
+# bundled in acme/clouddns mode, which is where the shared zone + WI binding are set up.
+INSTALL_EXTERNAL_DNS="${OPENCRANE_INSTALL_EXTERNAL_DNS:-1}"
+EXTERNAL_DNS_NAMESPACE="external-dns"
+
 DB_CLUSTER="opencrane-db"
 DB_SECRET="opencrane-db"
 DB_USER="opencrane"
@@ -158,6 +180,7 @@ while [[ $# -gt 0 ]]; do
     --oidc-redirect-uri) OIDC_REDIRECT_URI="$2"; shift 2 ;;
     --platform-operator-seed-email) PLATFORM_OPERATOR_SEED_EMAIL="$2"; shift 2 ;;
     --no-ingress-nginx) INSTALL_INGRESS_NGINX="0"; shift ;;
+    --no-external-dns)  INSTALL_EXTERNAL_DNS="0"; shift ;;
     --cert-manager)  CERT_MANAGER="on"; shift ;;
     --acme-email)    ACME_EMAIL="$2"; shift 2 ;;
     --dns01-provider)    DNS01_PROVIDER="$2"; shift 2 ;;
@@ -276,6 +299,68 @@ _install_ingress_nginx() {
 }
 
 _install_ingress_nginx
+
+# 2.35. external-dns (a cluster singleton). The operator declares per-org records as
+# namespaced DNSEndpoint CRs; the external-dns controller (run with --source=crd)
+# reconciles them into Google Cloud DNS. It needs zone-WRITE access, so it shares the
+# cert-manager DNS-01 zone + credentials exactly:
+#   - Workload Identity (no --dns01-credentials): the SAME GSA bound roles/dns.admin that
+#     the cert-manager solver impersonates. We DO NOT create a second binding — the
+#     DNS-01 preflight (Step 2.5) already fails closed unless that binding exists.
+#   - External zone (--dns01-credentials FILE): the SAME SA-key, mounted as a Secret.
+# external-dns is therefore only bundled in acme/clouddns mode (off/selfSigned have no
+# managed zone to write). Installed AFTER Step 2.5 so DNS01_PROJECT / DNS01_CREDENTIALS
+# are already resolved + validated. Gated by externalDns.install (--no-external-dns to BYO).
+_external_dns_present() {
+  kubectl get deploy -A -l app.kubernetes.io/name=external-dns -o name 2>/dev/null | grep -q . && return 0
+  return 1
+}
+
+_install_external_dns() {
+  if [[ "$INSTALL_EXTERNAL_DNS" != "1" ]]; then
+    log "external-dns: bundling disabled (--no-external-dns). Bring your own controller."
+    return
+  fi
+  if [[ "$CERT_MODE" != "acme" ]]; then
+    log "external-dns: skipped (no managed DNS zone in mode='$CERT_MODE'; bundled only in acme/clouddns mode). The operator's DNSEndpoint CRs are reconciled by a BYO controller if you run one."
+    return
+  fi
+  if _external_dns_present; then
+    log "external-dns: a controller is already present — skipping the bundled install."
+    return
+  fi
+  log "Installing external-dns controller (--source=crd → Cloud DNS, zone for '$BASE_DOMAIN')…"
+  helm repo add external-dns https://kubernetes-sigs.github.io/external-dns --force-update >/dev/null
+
+  # external-dns flags: reconcile DNSEndpoint CRs (--source=crd, with its CRD installed)
+  # into Google Cloud DNS, scoped to --base-domain so it never touches records outside the
+  # platform zone, against the same project as the cert-manager solver.
+  local ed_args=(upgrade --install external-dns external-dns/external-dns
+    --namespace "$EXTERNAL_DNS_NAMESPACE" --create-namespace --wait
+    --set "provider=google"
+    --set-string "google.project=$DNS01_PROJECT"
+    --set "sources={crd}"
+    --set "installCRDs=true"
+    --set-string "domainFilters={$BASE_DOMAIN}"
+    --set "policy=sync")
+
+  if [[ -n "$DNS01_CREDENTIALS" ]]; then
+    # External-zone path: SHARE the cert-manager solver Secret's SA key. external-dns reads
+    # GCP creds from a file, so we create the key Secret in its namespace and mount it.
+    kubectl create secret generic clouddns-external-dns \
+      -n "$EXTERNAL_DNS_NAMESPACE" \
+      --from-file=credentials.json="$DNS01_CREDENTIALS" \
+      --dry-run=client -o yaml | kubectl apply -f -
+    ed_args+=(--set-string "google.serviceAccountSecret=clouddns-external-dns"
+      --set-string "google.serviceAccountSecretKey=credentials.json")
+  else
+    # Workload Identity path: external-dns picks up the GSA via the GKE metadata server. The
+    # SAME GSA the cert-manager DNS-01 solver impersonates (roles/dns.admin) — the Step 2.5
+    # preflight already fail-closed unless that binding exists, so we add no second binding.
+    log "external-dns: using Workload Identity (shares the cert-manager DNS-01 GSA — roles/dns.admin on '$DNS01_PROJECT')."
+  fi
+  helm "${ed_args[@]}"
+}
 
 # 2.5. cert-manager / TLS. MUST run before the chart's `helm install`: the chart
 # renders cert-manager.io/v1 Issuer + Certificate objects, so the CRDs (and, for acme,
@@ -402,6 +487,15 @@ case "$CERT_MODE" in
     ;;
 esac
 
+# external-dns is bundled here — after Step 2.5 resolved CERT_MODE + the shared DNS-01
+# project/credentials it reuses. When it (or a BYO controller) is in place, tell the chart
+# to switch the operator's DNSEndpoint declaration ON so per-org records are reconciled.
+_install_external_dns
+EXTERNAL_DNS_HELM_FLAGS=()
+if [[ "$CERT_MODE" == "acme" ]] && { [[ "$INSTALL_EXTERNAL_DNS" == "1" ]] || _external_dns_present; }; then
+  EXTERNAL_DNS_HELM_FLAGS+=(--set "externalDns.enabled=true")
+fi
+
 # 3. The OpenCrane chart.
 log "Installing the OpenCrane Helm release '$RELEASE'…"
 helm_args=(upgrade --install "$RELEASE" "$CHART_DIR" --namespace "$NAMESPACE" --create-namespace
@@ -437,6 +531,9 @@ fi
 # cert-manager flags resolved in Step 2.5 (empty in mode=off). Placed before --set
 # overrides so an operator can still override individual issuer fields on the CLI.
 helm_args+=("${CERT_MANAGER_HELM_FLAGS[@]}")
+# external-dns wiring resolved above (empty unless a controller is in place). Placed before
+# --set overrides so an operator can still override externalDns.* on the CLI.
+helm_args+=("${EXTERNAL_DNS_HELM_FLAGS[@]}")
 helm_args+=("${EXTRA_SET[@]}")
 helm "${helm_args[@]}"
 

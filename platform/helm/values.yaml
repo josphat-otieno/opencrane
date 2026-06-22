@@ -473,7 +473,20 @@ monitoring:
 # and access to the platform's DNS zone. When disabled (or its CRD is absent) the operator
 # skips the per-org DNS side effect at runtime; the Certificate is still applied.
 externalDns:
+  # -- Grant the operator RBAC to create `DNSEndpoint` CRs and have its ClusterTenant
+  #    reconciler declare per-org records. This is the CHART/operator switch (consumed by
+  #    Helm templates). DELIBERATELY SEPARATE from `install` below — an operator can BYO an
+  #    external-dns controller (`install: false`) while the chart still wires against it.
   enabled: false
+  # -- Install the upstream external-dns controller + its CRDs (incl. `DNSEndpoint`) from
+  #    the deploy scripts, as a cluster singleton like ingress-nginx / cert-manager.
+  #    Default true so a fresh cluster reconciles the operator's DNSEndpoint CRs into Cloud
+  #    DNS with no extra step; auto-skips when a controller is already present. Set false to
+  #    BYO a controller. Not consumed by Helm templates — the scripts read
+  #    `--set externalDns.install=…` / the wizard's choice (mirrors `ingressNginx.install`).
+  install: true
+  # -- Namespace the bundled external-dns controller is installed into.
+  namespace: external-dns
 
 certManager:
   enabled: false
