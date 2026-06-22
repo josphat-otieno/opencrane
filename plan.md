@@ -70,6 +70,28 @@ isolation model).
 
 **Track WOI complete (2026-06-21).** WeOwnAI can re-sync the spec (its LIVE.8) and drop the three stopgaps; a fresh cluster can now seed its first platform operator at install (WOI.5).
 
+### Track ORG-ADMIN — Organisation creation, billing gate & membership-derived admin — LANDED 2026-06-21
+
+Closed the org-creation authz + ownership gaps the WOI fact-check surfaced: `POST /cluster-tenants` was an
+unguarded, persist-only shell with no owner and a flat global `isOrgAdmin`. Now a normal authenticated user
+creates a billing account, then creates an org and becomes its root admin.
+- **Schema (`migrations/0023_org_admin_billing`):** `BillingAccount` (keyed to the OIDC subject) + `OrgMembership`
+  `{clusterTenant, subject, role: owner|admin|member}` with one-owner-per-org uniqueness.
+- **Billing:** `POST /api/v1/billing-accounts` (idempotent per subject).
+- **Create flow:** the caller is recorded as the org's single `owner` in the SAME `$transaction` as the
+  ClusterTenant row — atomic root-admin assignment.
+- **Guards:** create requires an authenticated session WITH a billing account (a user becomes admin BY creating,
+  so create cannot require pre-existing org-admin — chicken-and-egg); read + destructive ops require
+  platform-operator OR owner/admin membership of the named org. Anonymous ⇒ 401 in real deployments (fail-closed;
+  the dev-mode bypass posture is unchanged).
+- **Derivation:** `isOrgAdmin` + the caller's `ownedOrgs` are derived from `OrgMembership` (per-org) and surfaced
+  on `/auth/me` (additive — existing `isOrgAdmin`/`clusterTenant` fields unchanged so WeOwnAI keeps working). The
+  platform-operator seed path stays intact + fail-closed.
+- **Deferred to the cluster-tenants operator track:** create still only persists `pending`; the provisioner/CR
+  watcher that reconciles `pending → ready` is a separate workstream (a named hand-off hook is left in place).
+- Tests: billing-account create, create-records-owner, the full guard matrix, membership-derived `isOrgAdmin`
+  (+20; control-plane suite 407 green).
+
 ### Track P5 — Close Phase 5 — ✅ COMPLETE · full history: plan-done.md § Completed Tracks (archived 2026-06-15)
 
 ### Track P4-A — Finish Phase 4 runtime-plane enforcement gaps — ✅ COMPLETE · full history: plan-done.md § Completed Tracks (archived 2026-06-15)
