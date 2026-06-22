@@ -44,6 +44,21 @@ spec:
               value: {{ .Values.tenant.defaultOpenclawVersion | quote }}
             - name: INGRESS_DOMAIN
               value: {{ .Values.ingress.domain | quote }}
+            # -- Per-org domain provisioning (fixed-wildcard topology). The operator's
+            #    ClusterTenant reconciler applies a per-org `*.<org>.<domain>` Certificate
+            #    (cert-manager) and, when externalIp + dnsManagedZone are set, the per-org
+            #    A records. All optional: unset values make the operator skip the affected
+            #    side effect at runtime rather than fail.
+            - name: INGRESS_IP
+              value: {{ .Values.ingress.externalIp | quote }}
+            - name: DNS_MANAGED_ZONE
+              value: {{ .Values.ingress.dnsManagedZone | quote }}
+            - name: CERT_MANAGER_ISSUER_NAME
+              value: {{ .Values.certManager.issuerName | quote }}
+            # -- Namespaced Issuer in multi-instance cert mode (MI.4), else the shared
+            #    cluster-singleton ClusterIssuer.
+            - name: CERT_MANAGER_ISSUER_KIND
+              value: {{ if eq (include "opencrane.namespacedCertIssuer" .) "true" }}"Issuer"{{ else }}"ClusterIssuer"{{ end }}
             - name: INGRESS_TLS_ENABLED
               value: {{ .Values.ingress.tls.enabled | quote }}
             - name: INGRESS_TLS_SECRET_NAME
