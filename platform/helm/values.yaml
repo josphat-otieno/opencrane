@@ -147,6 +147,46 @@ controlPlane:
     backendAccessControl: true
     # -- Permission sync timeout in milliseconds
     permissionsTimeoutMs: 5000
+  # -- OIDC human-login session config for the control-plane. Zitadel is the single
+  #    trusted issuer (Mode-2 broker, no upstream Entra), but nothing here is
+  #    Zitadel-specific — any spec-compliant issuer works. OIDC is OFF unless
+  #    `issuerUrl` is set; when set, supply the client id + a session secret
+  #    (use `existingSecret` in production — never inline secrets in values).
+  oidc:
+    # -- Issuer URL used for OIDC discovery (OIDC_ISSUER_URL). Empty → OIDC disabled.
+    issuerUrl: ""
+    # -- Registered OAuth client id (OIDC_CLIENT_ID).
+    clientId: ""
+    # -- Callback URL on the control-plane (OIDC_REDIRECT_URI), e.g.
+    #    https://<control-plane-host>/api/auth/callback.
+    redirectUri: ""
+    # -- Existing K8s Secret carrying the OIDC client secret + session secret. Strongly
+    #    preferred over inline values in production. Keys are configurable below.
+    existingSecret: ""
+    clientSecretKey: OIDC_CLIENT_SECRET
+    sessionSecretKey: OIDC_SESSION_SECRET
+    # -- Inline fallbacks used ONLY for dev when no existingSecret is set (rendered as
+    #    plain env). Leave empty in production and use existingSecret instead.
+    clientSecret: ""
+    sessionSecret: ""
+    # -- Claim names carrying the caller's group memberships and roles. Defaults match
+    #    the loader (`groups` / `roles`); override for your Zitadel claim mapping
+    #    (OIDC_GROUPS_CLAIM / OIDC_ROLES_CLAIM).
+    groupsClaim: "groups"
+    rolesClaim: "roles"
+    # -- Comma-separated, lowercased group names that grant platform-operator
+    #    (OPENCRANE_PLATFORM_OPERATOR_GROUPS) and org-admin (OPENCRANE_ORG_ADMIN_GROUPS).
+    #    Empty → nobody is granted via groups (fail-closed).
+    platformOperatorGroups: ""
+    orgAdminGroups: ""
+    # -- Per-cluster platform-operator SEED email (OPENCRANE_PLATFORM_OPERATOR_SEED_EMAIL).
+    #    Bootstraps the FIRST platform operator before any IdP group mapping exists: a
+    #    caller whose VERIFIED email equals this (case-insensitive) becomes a platform
+    #    operator, OR-ed with the group check above. MUST stay empty unless you are
+    #    seeding an operator — an empty seed grants operator to NOBODY (fail-closed). Set
+    #    it per cluster at install (the wizard/installer can prompt for it); never commit
+    #    a real owner email into values.
+    platformOperatorSeedEmail: ""
 
 # -- LiteLLM integration settings
 litellm:

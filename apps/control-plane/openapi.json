@@ -607,6 +607,57 @@
           }
         }
       },
+      "BillingAccount": {
+        "type": "object",
+        "required": [
+          "id",
+          "subject",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Surrogate identifier."
+          },
+          "subject": {
+            "type": "string",
+            "description": "IdP-verified subject (OIDC sub) that owns this billing account."
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The caller's verified email at create time (for human reconciliation; not the key)."
+          },
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional human-readable billing name (company / individual)."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "BillingAccountWrite": {
+        "type": "object",
+        "description": "Create payload for the caller's own billing account. The subject and email come from the session (never the body); only an optional displayName is accepted.",
+        "properties": {
+          "displayName": {
+            "type": "string",
+            "description": "Optional human-readable billing name (company / individual)."
+          }
+        }
+      },
       "Group": {
         "type": "object",
         "properties": {
@@ -3416,7 +3467,8 @@
     "/cluster-tenants": {
       "get": {
         "operationId": "listClusterTenants",
-        "summary": "List all cluster tenants",
+        "summary": "List all cluster tenants (fleet view — platform-operator only)",
+        "description": "Fleet-wide list. Restricted to platform operators; a per-org owner/admin reads only their own org via GET /cluster-tenants/{name}.",
         "tags": [
           "Cluster Tenants"
         ],
@@ -3433,12 +3485,33 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "No authenticated session (real-auth deployments).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller is not a platform operator.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       },
       "post": {
         "operationId": "createClusterTenant",
-        "summary": "Create a cluster tenant (rejects an isolation tier no provisioner can serve)",
+        "summary": "Create a cluster tenant (organisation) and become its owner",
+        "description": "Any authenticated user WITH an existing billing account may create an organisation; the caller is recorded as the org's single owner transactionally. Requires a billing account first (POST /billing-accounts), NOT pre-existing org-admin — a user becomes an org admin by creating their first org. Rejects an isolation tier no provisioner can serve.",
         "tags": [
           "Cluster Tenants"
         ],
@@ -3454,7 +3527,7 @@
         },
         "responses": {
           "201": {
-            "description": "Cluster tenant created.",
+            "description": "Cluster tenant created; caller recorded as owner.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3465,6 +3538,26 @@
           },
           "400": {
             "description": "Request body failed validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No authenticated session (real-auth deployments).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller has no billing account (code BILLING_ACCOUNT_REQUIRED).",
             "content": {
               "application/json": {
                 "schema": {
@@ -3489,7 +3582,7 @@
     "/cluster-tenants/{name}": {
       "get": {
         "operationId": "getClusterTenant",
-        "summary": "Get a single cluster tenant by name",
+        "summary": "Get a single cluster tenant by name (operator OR owner/admin of that org)",
         "tags": [
           "Cluster Tenants"
         ],
@@ -3514,6 +3607,26 @@
               }
             }
           },
+          "401": {
+            "description": "No authenticated session (real-auth deployments).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller is neither a platform operator nor an owner/admin of this org.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Cluster tenant not found.",
             "content": {
@@ -3528,7 +3641,7 @@
       },
       "put": {
         "operationId": "updateClusterTenant",
-        "summary": "Update a cluster tenant (re-gates the isolation tier when it changes)",
+        "summary": "Update a cluster tenant (operator OR owner/admin of that org); re-gates the isolation tier when it changes",
         "tags": [
           "Cluster Tenants"
         ],
@@ -3573,6 +3686,26 @@
               }
             }
           },
+          "401": {
+            "description": "No authenticated session (real-auth deployments).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller is neither a platform operator nor an owner/admin of this org.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Cluster tenant not found.",
             "content": {
@@ -3597,7 +3730,7 @@
       },
       "delete": {
         "operationId": "deleteClusterTenant",
-        "summary": "Delete a cluster tenant",
+        "summary": "Delete a cluster tenant (operator OR owner/admin of that org)",
         "tags": [
           "Cluster Tenants"
         ],
@@ -3630,6 +3763,26 @@
               }
             }
           },
+          "401": {
+            "description": "No authenticated session (real-auth deployments).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller is neither a platform operator nor an owner/admin of this org.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Cluster tenant not found.",
             "content": {
@@ -3646,7 +3799,7 @@
     "/cluster-tenants/{name}/status": {
       "get": {
         "operationId": "getClusterTenantStatus",
-        "summary": "Get the observed status of a cluster tenant",
+        "summary": "Get the observed status of a cluster tenant (operator OR owner/admin of that org)",
         "tags": [
           "Cluster Tenants"
         ],
@@ -3691,8 +3844,121 @@
               }
             }
           },
+          "401": {
+            "description": "No authenticated session (real-auth deployments).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller is neither a platform operator nor an owner/admin of this org.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Cluster tenant not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/billing-accounts": {
+      "post": {
+        "operationId": "createBillingAccount",
+        "summary": "Create the caller's own billing account (idempotent per subject)",
+        "description": "Any authenticated user creates their OWN billing account, keyed to their IdP-verified subject (never request input). Idempotent: a repeat call returns the existing account (200) instead of failing. Having a billing account is the gate for creating an organisation (POST /cluster-tenants).",
+        "tags": [
+          "Billing"
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BillingAccountWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Billing account already existed (idempotent).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingAccount"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Billing account created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingAccount"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No authenticated session (real-auth deployments).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/billing-accounts/me": {
+      "get": {
+        "operationId": "getMyBillingAccount",
+        "summary": "Return the caller's own billing account",
+        "tags": [
+          "Billing"
+        ],
+        "responses": {
+          "200": {
+            "description": "Billing account detail.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingAccount"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No authenticated session (real-auth deployments).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Caller has no billing account (code BILLING_ACCOUNT_NOT_FOUND).",
             "content": {
               "application/json": {
                 "schema": {
@@ -7929,6 +8195,31 @@
                             "null"
                           ],
                           "description": "The caller's ClusterTenant (customer) key, resolved server-side from their IdP-verified email → tenant → clusterTenantRef. Null when unresolved or ambiguous."
+                        },
+                        "ownedOrgs": {
+                          "type": "array",
+                          "description": "Organisations the caller owns or administers, derived fresh from their OrgMembership rows (owner/admin only; members excluded). Empty when the caller administers no org. The org-scope half of the membership-derived isOrgAdmin. Introspection only — never taken from request input.",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "clusterTenant",
+                              "role"
+                            ],
+                            "properties": {
+                              "clusterTenant": {
+                                "type": "string",
+                                "description": "The organisation (ClusterTenant) key."
+                              },
+                              "role": {
+                                "type": "string",
+                                "enum": [
+                                  "owner",
+                                  "admin"
+                                ],
+                                "description": "The administering role the caller holds in this org."
+                              }
+                            }
+                          }
                         },
                         "email": {
                           "type": "string"

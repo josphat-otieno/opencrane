@@ -28,6 +28,7 @@ export function ___LoadOidcAuthConfig(): OidcAuthConfig
       rolesClaim: process.env.OIDC_ROLES_CLAIM?.trim() || "roles",
       platformOperatorGroups: _readPlatformOperatorGroups(),
       orgAdminGroups: _readCsv(process.env.OPENCRANE_ORG_ADMIN_GROUPS),
+      platformOperatorSeedEmail: _readPlatformOperatorSeedEmail(),
     };
   }
 
@@ -60,6 +61,7 @@ export function ___LoadOidcAuthConfig(): OidcAuthConfig
     rolesClaim: process.env.OIDC_ROLES_CLAIM?.trim() || "roles",
     platformOperatorGroups: _readPlatformOperatorGroups(),
     orgAdminGroups: _readCsv(process.env.OPENCRANE_ORG_ADMIN_GROUPS),
+    platformOperatorSeedEmail: _readPlatformOperatorSeedEmail(),
   };
 }
 
@@ -75,6 +77,19 @@ function _readPlatformOperatorGroups(): string[]
 {
   const primary = _readCsv(process.env.OPENCRANE_PLATFORM_OPERATOR_GROUPS);
   return primary.length ? primary : _readCsv(process.env.OIDC_PLATFORM_OPERATOR_GROUPS);
+}
+
+/**
+ * Read the per-cluster platform-operator seed email that bootstraps the first operator.
+ *
+ * Sourced from `OPENCRANE_PLATFORM_OPERATOR_SEED_EMAIL`, lowercased and trimmed so the
+ * later comparison against the caller's verified email is case- and whitespace-insensitive.
+ * Empty when unset, so the seed grants operator to NOBODY until a platform admin sets it at
+ * install (fail-closed). This is a per-cluster INSTALL parameter — never hardcoded here.
+ */
+function _readPlatformOperatorSeedEmail(): string
+{
+  return process.env.OPENCRANE_PLATFORM_OPERATOR_SEED_EMAIL?.trim().toLowerCase() ?? "";
 }
 
 /**

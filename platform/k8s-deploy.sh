@@ -13,9 +13,18 @@
 # Usage:
 #   ./platform/k8s-deploy.sh [--domain DOMAIN] [--namespace NS] [--release NAME]
 #                            [--image-tag TAG] [--storage-class SC]
+#                            [--oidc-issuer-url URL] [--oidc-client-id ID]
+#                            [--oidc-redirect-uri URI]
+#                            [--platform-operator-seed-email EMAIL]
 #                            [--control-plane-tag TAG] [--operator-tag TAG]
 #                            [--tenant-tag TAG]
 #                            [--values FILE] [--set k=v ...]
+#
+# The platform-operator seed email bootstraps the FIRST platform operator: the
+# caller whose VERIFIED OIDC email equals it becomes a platform operator. It is a
+# per-cluster INSTALL parameter — DEFAULTS TO EMPTY, which grants operator to
+# nobody (fail-closed). Also accepted via the OPENCRANE_PLATFORM_OPERATOR_SEED_EMAIL
+# env var. Never commit a real owner email into the repo.
 #
 # --image-tag pins all three platform images (control-plane, operator, tenant)
 # to the same tag. To roll a SINGLE component to a different build, pass the
@@ -43,6 +52,14 @@ STORAGE_CLASS=""        # empty → cluster default StorageClass
 VALUES_FILE=""
 EXTRA_SET=()
 
+# OIDC + per-cluster operator bootstrap. All default empty (OIDC stays disabled and the
+# seed grants operator to nobody — fail-closed). The seed also accepts an env var so a
+# secret manager / CI can supply it without it appearing on the command line.
+OIDC_ISSUER_URL="${OIDC_ISSUER_URL:-}"
+OIDC_CLIENT_ID="${OIDC_CLIENT_ID:-}"
+OIDC_REDIRECT_URI="${OIDC_REDIRECT_URI:-}"
+PLATFORM_OPERATOR_SEED_EMAIL="${OPENCRANE_PLATFORM_OPERATOR_SEED_EMAIL:-}"
+
 DB_CLUSTER="opencrane-db"
 DB_SECRET="opencrane-db"
 DB_USER="opencrane"
@@ -63,6 +80,10 @@ while [[ $# -gt 0 ]]; do
     --operator-tag)     OPERATOR_TAG="$2"; shift 2 ;;
     --tenant-tag)       TENANT_TAG="$2"; shift 2 ;;
     --storage-class) STORAGE_CLASS="$2"; shift 2 ;;
+    --oidc-issuer-url)   OIDC_ISSUER_URL="$2"; shift 2 ;;
+    --oidc-client-id)    OIDC_CLIENT_ID="$2"; shift 2 ;;
+    --oidc-redirect-uri) OIDC_REDIRECT_URI="$2"; shift 2 ;;
+    --platform-operator-seed-email) PLATFORM_OPERATOR_SEED_EMAIL="$2"; shift 2 ;;
     --values)        VALUES_FILE="$2"; shift 2 ;;
     --set)           EXTRA_SET+=(--set "$2"); shift 2 ;;
     -h|--help)       grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
@@ -151,6 +172,17 @@ TN_TAG="${TENANT_TAG:-$IMAGE_TAG}"
 [[ -n "$OP_TAG" ]] && helm_args+=(--set "operator.image.tag=$OP_TAG")
 [[ -n "$TN_TAG" ]] && helm_args+=(--set "tenant.image.tag=$TN_TAG")
 [[ -n "$DOMAIN" ]]    && helm_args+=(--set "ingress.domain=$DOMAIN")
+# OIDC human-login (control-plane only). Rendered iff an issuer URL is given; otherwise
+# the chart emits no OIDC env and the control-plane stays in token/development mode.
+[[ -n "$OIDC_ISSUER_URL" ]]   && helm_args+=(--set "controlPlane.oidc.issuerUrl=$OIDC_ISSUER_URL")
+[[ -n "$OIDC_CLIENT_ID" ]]    && helm_args+=(--set "controlPlane.oidc.clientId=$OIDC_CLIENT_ID")
+[[ -n "$OIDC_REDIRECT_URI" ]] && helm_args+=(--set "controlPlane.oidc.redirectUri=$OIDC_REDIRECT_URI")
+# Per-cluster platform-operator SEED. Set ONLY when a non-empty value is supplied; an
+# empty seed is never passed, so the chart grants operator to nobody (fail-closed).
+if [[ -n "$PLATFORM_OPERATOR_SEED_EMAIL" ]]; then
+  helm_args+=(--set-string "controlPlane.oidc.platformOperatorSeedEmail=$PLATFORM_OPERATOR_SEED_EMAIL")
+  warn "Seeding platform operator for the cluster (verified OIDC email match). Remove the seed once a group mapping is in place."
+fi
 [[ -n "$VALUES_FILE" ]] && helm_args+=(--values "$VALUES_FILE")
 helm_args+=("${EXTRA_SET[@]}")
 helm "${helm_args[@]}"

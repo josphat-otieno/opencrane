@@ -94,7 +94,7 @@ echo -e "${DIM}  Press Enter to accept defaults shown in [brackets].${NC}"
 
 # ---- Step 1: Choose mode -----------------------------------------------------
 
-_step "Step 1 of 4 — Install target"
+_step "Step 1 of 5 — Install target"
 
 echo -e "  Where do you want to install OpenCrane?\n"
 echo -e "  ${BOLD}1)${NC} Local   — k3d cluster on this machine (development / full stack)"
@@ -120,7 +120,7 @@ echo -e "  ${GREEN}✓${NC} Target: ${BOLD}$mode${NC}"
 
 if [[ "$mode" == "local" ]]; then
 
-  _step "Step 2 of 4 — Local cluster settings"
+  _step "Step 2 of 5 — Local cluster settings"
 
   _prompt "Cluster name"    "opencrane-local"   CLUSTER_NAME
   _prompt "Namespace"       "opencrane-system"  NAMESPACE
@@ -140,7 +140,7 @@ if [[ "$mode" == "local" ]]; then
 
 else
 
-  _step "Step 2 of 4 — GCP configuration"
+  _step "Step 2 of 5 — GCP configuration"
 
   _prompt "GCP Project ID"              ""               PROJECT_ID
   _prompt "Region"                      "europe-west1"   REGION
@@ -158,9 +158,35 @@ else
 
 fi
 
-# ---- Step 3: Pre-flight check ------------------------------------------------
+# ---- Step 3: Platform-operator seed ------------------------------------------
+#
+# Optional, per-cluster bootstrap of the FIRST platform operator. The caller whose
+# VERIFIED OIDC email equals this becomes a platform operator (OR-ed with any IdP
+# group mapping). Press Enter to SKIP — an empty seed grants operator to nobody
+# (fail-closed). This is never persisted in the repo; it is passed to the installer
+# at deploy time only.
 
-_step "Step 3 of 4 — Pre-flight checks"
+_step "Step 3 of 5 — Platform-operator seed (optional)"
+
+echo -e "  ${DIM}Bootstrap the first platform operator by email — useful before you"
+echo -e "  have an IdP group mapping. The caller whose VERIFIED OIDC email matches"
+echo -e "  becomes a platform operator. Leave blank to skip (nobody is seeded).${NC}"
+echo ""
+_prompt "Platform-operator seed email (Enter to skip)" "" PLATFORM_OPERATOR_SEED_EMAIL
+
+if [[ -n "$PLATFORM_OPERATOR_SEED_EMAIL" ]]; then
+  seed_label="$PLATFORM_OPERATOR_SEED_EMAIL"
+  echo ""
+  echo -e "  ${GREEN}✓${NC} Will seed platform operator: ${BOLD}$PLATFORM_OPERATOR_SEED_EMAIL${NC}"
+else
+  seed_label="(none — fail-closed)"
+  echo ""
+  echo -e "  ${DIM}No seed — platform-operator access is granted only via IdP groups.${NC}"
+fi
+
+# ---- Step 4: Pre-flight check ------------------------------------------------
+
+_step "Step 4 of 5 — Pre-flight checks"
 
 has_error=0
 
@@ -185,9 +211,9 @@ fi
 echo ""
 echo -e "  ${GREEN}✓${NC} All required tools found."
 
-# ---- Step 4: Summary + confirm -----------------------------------------------
+# ---- Step 5: Summary + confirm -----------------------------------------------
 
-_step "Step 4 of 4 — Summary"
+_step "Step 5 of 5 — Summary"
 
 echo ""
 if [[ "$mode" == "local" ]]; then
@@ -196,6 +222,7 @@ if [[ "$mode" == "local" ]]; then
   _summary_row "Namespace"      "$NAMESPACE"
   _summary_row "Profile"        "$LOCAL_PROFILE"
   _summary_row "Keep cluster"   "$keep_label"
+  _summary_row "Operator seed"  "$seed_label"
   _summary_row "Script"         "platform/tests/k3d-local.sh"
 else
   _summary_row "Mode"           "GCP"
@@ -203,6 +230,7 @@ else
   _summary_row "Region"         "$REGION"
   _summary_row "Domain"         "$DOMAIN"
   _summary_row "Environment"    "$ENVIRONMENT"
+  _summary_row "Operator seed"  "$seed_label"
   _summary_row "Script"         "platform/deploy.sh"
 fi
 echo ""
@@ -222,16 +250,20 @@ echo ""
 echo -e "${GREEN}${BOLD}  ✦ Starting install...${NC}"
 echo ""
 
+# The per-cluster operator seed flows through as an env var both paths honour:
+# k3d-local.sh and k8s-deploy.sh both read OPENCRANE_PLATFORM_OPERATOR_SEED_EMAIL and
+# pass it to Helm only when non-empty. Empty → never set → operator granted to nobody.
 if [[ "$mode" == "local" ]]; then
   KEEP_CLUSTER="$KEEP_CLUSTER" \
   CLUSTER_NAME="$CLUSTER_NAME" \
   NAMESPACE="$NAMESPACE" \
   LOCAL_PROFILE="$LOCAL_PROFILE" \
+  OPENCRANE_PLATFORM_OPERATOR_SEED_EMAIL="$PLATFORM_OPERATOR_SEED_EMAIL" \
     "$SCRIPT_DIR/tests/k3d-local.sh"
 else
   printf "%s\n%s\n%s\n%s\nY\n" \
     "$PROJECT_ID" "$REGION" "$DOMAIN" "$ENVIRONMENT" \
-    | "$SCRIPT_DIR/deploy.sh"
+    | OPENCRANE_PLATFORM_OPERATOR_SEED_EMAIL="$PLATFORM_OPERATOR_SEED_EMAIL" "$SCRIPT_DIR/deploy.sh"
 fi
 
 echo ""
