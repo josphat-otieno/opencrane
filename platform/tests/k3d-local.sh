@@ -241,6 +241,14 @@ else
   helm_args+=(--set-string "litellm.masterKey=$LITELLM_MASTER_KEY")
 fi
 
+# Per-cluster platform-operator seed (optional). Passed to Helm only when non-empty,
+# so a default local install grants operator to nobody (fail-closed). Set via the
+# OPENCRANE_PLATFORM_OPERATOR_SEED_EMAIL env (e.g. from the wizard).
+if [[ -n "${OPENCRANE_PLATFORM_OPERATOR_SEED_EMAIL:-}" ]]; then
+  helm_args+=(--set-string "controlPlane.oidc.platformOperatorSeedEmail=${OPENCRANE_PLATFORM_OPERATOR_SEED_EMAIL}")
+  echo "[local] Seeding platform operator (verified OIDC email match) for this cluster"
+fi
+
 helm "${helm_args[@]}"
 
 # 7. Run schema migrations so the control-plane and LiteLLM share an initialized database.

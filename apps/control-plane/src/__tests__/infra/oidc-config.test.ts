@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ___LoadOidcAuthConfig } from "../../infra/auth/oidc.config.js";
 
 /** OIDC env vars this suite mutates, snapshotted so each test starts clean. */
-const _ENV_KEYS = ["OIDC_ISSUER_URL", "OIDC_CLIENT_ID", "OIDC_REDIRECT_URI", "OIDC_SESSION_SECRET", "OIDC_COOKIE_SECURE", "NODE_ENV"] as const;
+const _ENV_KEYS = ["OIDC_ISSUER_URL", "OIDC_CLIENT_ID", "OIDC_REDIRECT_URI", "OIDC_SESSION_SECRET", "OIDC_COOKIE_SECURE", "NODE_ENV", "OPENCRANE_PLATFORM_OPERATOR_SEED_EMAIL"] as const;
 
 describe("___LoadOidcAuthConfig — cookieSecure fail-closed", function _suite()
 {
@@ -53,5 +53,18 @@ describe("___LoadOidcAuthConfig — cookieSecure fail-closed", function _suite()
 		expect(___LoadOidcAuthConfig().cookieSecure).toBe(false);
 		process.env.OIDC_REDIRECT_URI = "https://cp.example.com/callback";
 		expect(___LoadOidcAuthConfig().cookieSecure).toBe(true);
+	});
+
+	it("defaults the platform-operator seed email to empty when unset (fail-closed)", function _seedDefaultEmpty()
+	{
+		process.env.OIDC_REDIRECT_URI = "https://cp.example.com/callback";
+		expect(___LoadOidcAuthConfig().platformOperatorSeedEmail).toBe("");
+	});
+
+	it("reads OPENCRANE_PLATFORM_OPERATOR_SEED_EMAIL, lowercased and trimmed", function _seedNormalised()
+	{
+		process.env.OIDC_REDIRECT_URI = "https://cp.example.com/callback";
+		process.env.OPENCRANE_PLATFORM_OPERATOR_SEED_EMAIL = "  Owner@Cluster.Example  ";
+		expect(___LoadOidcAuthConfig().platformOperatorSeedEmail).toBe("owner@cluster.example");
 	});
 });

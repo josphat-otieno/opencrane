@@ -1,10 +1,13 @@
 import { Router } from "express";
+import type { Request } from "express";
 import { ClusterTenantPhase, ClusterTenantTierUnavailableCode } from "@opencrane/contracts";
 import type { ClusterTenantProvisionerRegistry } from "@opencrane/contracts";
 import type { Prisma, PrismaClient } from "@prisma/client";
 
 import type { ClusterTenantCreateRequest, ClusterTenantUpdateRequest } from "./cluster-tenants.models.js";
 import { _IsIsolationTier, _ToContract, _ToPrismaCompute, _ToPrismaTier, _ValidateCompute, _ValidateResources } from "./cluster-tenants.service.js";
+import { _IsDevAuthMode } from "../infra/auth/auth-mode.js";
+import { _RequireBillingAccountForOrgCreate, _RequireOrgManager } from "../infra/middleware/cluster-tenant-org-admin.js";
 
 /** RFC-1123-ish DNS domain: lowercase labels, ≥1 dot, alpha TLD, ≤253 chars. */
 const _BASE_DOMAIN_PATTERN = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/;
@@ -30,15 +33,21 @@ export function clusterTenantsRouter(prisma: PrismaClient, registry: ClusterTena
 {
   const router = Router();
 
-  /** List all cluster tenants. */
-  router.get("/", async function _listClusterTenants(req, res)
+  // Org-management guards (operator OR owner/admin member of the named org). Applied
+  // to the fleet list/get reads and the destructive mutations below; the create path
+  // uses the billing gate instead (a user becomes admin BY creating, so create cannot
+  // require pre-existing org-admin).
+  const requireOrgManager = _RequireOrgManager(prisma);
+
+  /** List all cluster tenants (fleet view — platform-operator only via the guard). */
+  router.get("/", requireOrgManager, async function _listClusterTenants(req, res)
   {
     const rows = await prisma.clusterTenant.findMany({ orderBy: { createdAt: "asc" } });
     res.json(rows.map(_ToContract));
   });
 
-  /** Get a single cluster tenant by name. */
-  router.get("/:name", async function _getClusterTenant(req, res)
+  /** Get a single cluster tenant by name (operator OR owner/admin of that org). */
+  router.get("/:name", requireOrgManager, async function _getClusterTenant(req: Request<{ name: string }>, res)
   {
     const row = await prisma.clusterTenant.findUnique({ where: { name: req.params.name } });
     if (!row)
@@ -49,8 +58,8 @@ export function clusterTenantsRouter(prisma: PrismaClient, registry: ClusterTena
     res.json(_ToContract(row));
   });
 
-  /** Get just the observed status of a cluster tenant. */
-  router.get("/:name/status", async function _getClusterTenantStatus(req, res)
+  /** Get just the observed status of a cluster tenant (operator OR owner/admin of that org). */
+  router.get("/:name/status", requireOrgManager, async function _getClusterTenantStatus(req: Request<{ name: string }>, res)
   {
     const row = await prisma.clusterTenant.findUnique({ where: { name: req.params.name } });
     if (!row)
@@ -61,10 +70,27 @@ export function clusterTenantsRouter(prisma: PrismaClient, registry: ClusterTena
     res.json(_ToContract(row).status);
   });
 
-  /** Create a cluster tenant, gating the requested isolation tier on the registry. */
-  router.post("/", async function _createClusterTenant(req, res)
+  /**
+   * Create a cluster tenant (organisation), gating on the caller's billing account
+   * and recording the caller as the org's single `owner` membership transactionally.
+   * The billing gate (not pre-existing org-admin) is what authorises create — a user
+   * becomes an org admin BY creating their first org.
+   */
+  router.post("/", _RequireBillingAccountForOrgCreate(prisma), async function _createClusterTenant(req, res)
   {
     const body = req.body as ClusterTenantCreateRequest;
+
+    // 0. Resolve the caller's subject — the future owner. The billing gate ahead has
+    //    already established an authenticated session (or the dev-mode bypass), so a
+    //    missing subject here can only be the dev-mode path: stamp a synthetic owner.
+    const ownerSubject = (typeof req.session?.authUser?.sub === "string" && req.session.authUser.sub.trim())
+      ? req.session.authUser.sub.trim()
+      : (_IsDevAuthMode() ? "dev-local-subject" : "");
+    if (!ownerSubject)
+    {
+      res.status(401).json({ error: "Authentication required", code: "UNAUTHORIZED" });
+      return;
+    }
 
     // 1. Validate identity + isolation tier up front so a malformed request never
     //    reaches the database or the tier-availability gate.
@@ -107,24 +133,41 @@ export function clusterTenantsRouter(prisma: PrismaClient, registry: ClusterTena
       return;
     }
 
-    // 4. Dual-write the row in `pending`; the operator reconciles it to `ready`.
-    const created = await prisma.clusterTenant.create({
-      data: {
-        name: body.name.trim(),
-        displayName: body.displayName.trim(),
-        baseDomain: body.baseDomain?.trim() || null,
-        isolationTier: _ToPrismaTier(body.isolationTier),
-        computeMode: _ToPrismaCompute(body.compute.mode),
-        nodePool: body.compute.nodePool?.trim() || null,
-        quota: (body.resources.quota as Prisma.InputJsonValue),
-        phase: ClusterTenantPhase.Pending,
-      },
+    // 4. Persist the org and its single owner membership in ONE transaction: the
+    //    caller becomes the org's root admin (owner) atomically with the org row.
+    //    Dual-write the org in `pending`; the operator reconciles it to `ready`.
+    //    NOTE (provisioning hand-off): a separate workstream owns the ClusterTenant
+    //    operator/CR watcher that reconciles `pending` → `ready`. This handler only
+    //    persists the desired state; see the cluster-tenants operator track.
+    const created = await prisma.$transaction(async function _createOrgWithOwner(tx)
+    {
+      const org = await tx.clusterTenant.create({
+        data: {
+          name: body.name.trim(),
+          displayName: body.displayName.trim(),
+          baseDomain: body.baseDomain?.trim() || null,
+          isolationTier: _ToPrismaTier(body.isolationTier),
+          computeMode: _ToPrismaCompute(body.compute.mode),
+          nodePool: body.compute.nodePool?.trim() || null,
+          quota: (body.resources.quota as Prisma.InputJsonValue),
+          phase: ClusterTenantPhase.Pending,
+        },
+      });
+
+      // The creator is the org's single `owner` (one-owner-per-org is enforced by the
+      // partial unique index). Written in the same tx so an org can never exist
+      // without its owner, and vice versa.
+      await tx.orgMembership.create({
+        data: { clusterTenant: org.name, subject: ownerSubject, role: "Owner" },
+      });
+
+      return org;
     });
     res.status(201).json(_ToContract(created));
   });
 
-  /** Update a cluster tenant, re-gating the isolation tier when it changes. */
-  router.put("/:name", async function _updateClusterTenant(req, res)
+  /** Update a cluster tenant (operator OR owner/admin of that org), re-gating the isolation tier when it changes. */
+  router.put("/:name", requireOrgManager, async function _updateClusterTenant(req: Request<{ name: string }>, res)
   {
     const body = req.body as ClusterTenantUpdateRequest;
     const existing = await prisma.clusterTenant.findUnique({ where: { name: req.params.name } });
@@ -206,8 +249,8 @@ export function clusterTenantsRouter(prisma: PrismaClient, registry: ClusterTena
     res.json(_ToContract(updated));
   });
 
-  /** Delete a cluster tenant. */
-  router.delete("/:name", async function _deleteClusterTenant(req, res)
+  /** Delete a cluster tenant (operator OR owner/admin of that org). */
+  router.delete("/:name", requireOrgManager, async function _deleteClusterTenant(req: Request<{ name: string }>, res)
   {
     const existing = await prisma.clusterTenant.findUnique({ where: { name: req.params.name } });
     if (!existing)

@@ -7,6 +7,8 @@ import type { Logger } from "pino";
 import type { PrismaClient } from "@prisma/client";
 
 import { ___LoadOidcAuthConfig } from "./oidc.config.js";
+import { _ResolveOrgMembershipFacts } from "./org-membership.js";
+import type { OwnedOrg } from "./org-membership.js";
 
 /** Auth mode exposed to the UI so it can decide whether login is required. */
 export type ControlPlaneAuthMode = "development" | "oidc" | "token";
@@ -24,8 +26,10 @@ export interface ControlPlaneAuthUser
   groups: string[];
 
   /**
-   * Whether the caller's groups intersect `OPENCRANE_PLATFORM_OPERATOR_GROUPS`.
-   * Empty/unset config ⇒ false for everyone (fail-closed). Introspection only —
+   * Whether the caller is a platform operator: their groups intersect
+   * `OPENCRANE_PLATFORM_OPERATOR_GROUPS`, OR their VERIFIED email equals the per-cluster
+   * `OPENCRANE_PLATFORM_OPERATOR_SEED_EMAIL` (the bootstrap path for the first operator).
+   * Both inputs empty/unset ⇒ false for everyone (fail-closed). Introspection only —
    * the API stays the enforcement point; a federated frontend uses this to decide
    * what UI to *hide*, never what it may *do*.
    *
@@ -35,10 +39,12 @@ export interface ControlPlaneAuthUser
   isPlatformOperator: boolean;
 
   /**
-   * Whether the caller is an organisation admin — the role allowed to curate the MCP
-   * catalogue and approve servers (`requireOrgAdmin`, P0.5). Derived from the caller's
-   * groups intersecting `OPENCRANE_ORG_ADMIN_GROUPS`; platform operators are always org
-   * admins (superset). Empty/unset config ⇒ false for everyone (fail-closed). Enforcement
+   * Whether the caller is an organisation admin. This session-cached value is the
+   * value resolved AT LOGIN (groups intersecting `OPENCRANE_ORG_ADMIN_GROUPS`, or
+   * platform-operator superset). `/auth/me` re-derives the EFFECTIVE flag fresh at
+   * read time by OR-ing this with membership (owner/admin of ≥1 org via
+   * `OrgMembership`), so a user who creates an org becomes an org admin without
+   * re-logging-in. Empty config + no membership ⇒ false (fail-closed). Enforcement
    * stays at the API; a federated frontend uses this only to decide what UI to hide.
    */
   isOrgAdmin: boolean;
@@ -72,6 +78,14 @@ export interface ControlPlaneAuthStatusUser extends ControlPlaneAuthUser
    * (fail-closed; never taken from request input or a self-asserted claim).
    */
   clusterTenant: string | null;
+
+  /**
+   * The organisations the caller owns or administers, derived fresh from their
+   * `OrgMembership` rows (owner/admin only; members excluded). Empty when the caller
+   * administers no org. The org-scope half of the membership-derived `isOrgAdmin`.
+   * Introspection only — never taken from request input.
+   */
+  ownedOrgs: OwnedOrg[];
 }
 
 /** Session auth status returned to the SPA bootstrap logic. */
@@ -150,9 +164,11 @@ export class OidcAuthService
    * Return the auth mode and current human session details for the SPA.
    *
    * Surfaces introspection-only authorization facts: the caller's `groups`,
-   * the derived `isPlatformOperator`, and their `clusterTenant`. The first two
-   * come from the session (resolved at login); `clusterTenant` is resolved fresh
-   * here from the IdP-verified email so a post-login reparent is reflected.
+   * the derived `isPlatformOperator`, their `clusterTenant`, and their
+   * membership-derived `isOrgAdmin` + `ownedOrgs`. `groups`/`isPlatformOperator`
+   * come from the session (resolved at login); `clusterTenant`, `isOrgAdmin`, and
+   * `ownedOrgs` are resolved FRESH here so a post-login change (a reparent, or the
+   * caller creating an org and becoming its owner) is reflected without re-login.
    */
   async getStatus(req: Request): Promise<ControlPlaneAuthStatus>
   {
@@ -165,13 +181,23 @@ export class OidcAuthService
         return { mode: "oidc", authenticated: false, user: null };
       }
 
-      // 2. Resolve the ClusterTenant from the session's verified email (fail-closed)
-      //    and return it alongside the cached identity facts.
-      const clusterTenant = await this._resolveClusterTenant(authUser.email);
+      // 2. Resolve the ClusterTenant (from the verified email) and the org-admin facts
+      //    (from OrgMembership) fresh — both fail-closed. The effective `isOrgAdmin`
+      //    OR-s the login-time flag (groups/operator) with membership-derived authority,
+      //    so a user who just created an org is an org admin without re-logging-in.
+      const [clusterTenant, membership] = await Promise.all([
+        this._resolveClusterTenant(authUser.email),
+        _ResolveOrgMembershipFacts(this.prisma, authUser.sub),
+      ]);
       return {
         mode: "oidc",
         authenticated: true,
-        user: { ...authUser, clusterTenant },
+        user: {
+          ...authUser,
+          isOrgAdmin: authUser.isOrgAdmin || membership.isOrgAdmin,
+          clusterTenant,
+          ownedOrgs: membership.ownedOrgs,
+        },
       };
     }
 
@@ -249,7 +275,9 @@ export class OidcAuthService
     };
     await _saveSession(req);
 
-    // 2. Build a generic OIDC authorization redirect that works with Google or any other issuer.
+    // 2. Build a standards-only OIDC authorization redirect. Zitadel is the single trusted
+    //    issuer (Mode-2 broker, no upstream Entra), but this uses nothing Zitadel-specific —
+    //    it works against any spec-compliant issuer at OIDC_ISSUER_URL.
     const loginUrl = client.buildAuthorizationUrl(discoveredConfig, {
       redirect_uri: this.config.redirectUri,
       scope: this.config.scopes,
@@ -352,7 +380,9 @@ export class OidcAuthService
       throw new Error("OIDC login succeeded without a usable subject claim");
     }
 
-    const email = typeof claims.email === "string" ? claims.email.toLowerCase() : undefined;
+    // Normalise once (trim + lowercase) so every consumer — the seed match, the
+    // email→tenant resolution, and the persisted session — sees the same canonical form.
+    const email = typeof claims.email === "string" ? claims.email.trim().toLowerCase() : undefined;
     const emailVerified = typeof claims.email_verified === "boolean" ? claims.email_verified : undefined;
 
     if ((this.config.allowedEmailDomains.length || this.config.allowedEmails.length) && !email)
@@ -383,7 +413,14 @@ export class OidcAuthService
       }
     }
 
-    const identity = _ResolveIdentityClaims(claims, this.config);
+    // The seed only ever bootstraps an operator from a VERIFIED email. The `email_verified
+    // === false` guard above has already thrown, so TypeScript has narrowed `emailVerified`
+    // to `true | undefined` here — i.e. `email` (when present) is verified or its
+    // `email_verified` claim was absent, never explicitly unverified. So an email explicitly
+    // marked unverified can never reach the seed match (fail-closed). `_ResolveIdentityClaims`
+    // treats an absent verified email as a non-match regardless, so the seed grants nothing
+    // unless a real verified email equals it.
+    const identity = _ResolveIdentityClaims(claims, this.config, email);
 
     return {
       sub: subject,
@@ -404,8 +441,8 @@ export class OidcAuthService
  * Project the IdP's group/role claims into the introspection-only authorization
  * facts the control-plane surfaces: the caller's `groups` and a derived
  * `isPlatformOperator`. Pure (no I/O) so it is unit-testable and so the rule
- * "operator iff a group matches a configured operator group" is verified
- * independently of the OIDC flow.
+ * "operator iff a group matches a configured operator group, OR the verified email
+ * matches the per-cluster seed" is verified independently of the OIDC flow.
  *
  * `clusterTenant` is intentionally NOT derived here — it is resolved server-side
  * from the verified email → tenant → `clusterTenantRef` (see `_resolveClusterTenant`),
@@ -414,26 +451,45 @@ export class OidcAuthService
  * TODO: this is the non-presumptuous stopgap until OpenCrane has a first-class
  * role model; a real RBAC model supersedes `isPlatformOperator`.
  *
- * @param claims - The merged ID-token + UserInfo claims for the caller.
- * @param config - OIDC config supplying the claim names and operator group set.
+ * @param claims        - The merged ID-token + UserInfo claims for the caller.
+ * @param config        - OIDC config supplying the claim names, operator group set, and seed email.
+ * @param verifiedEmail - The caller's email when it is verified (lowercased/trimmed); empty/undefined
+ *                        when absent or NOT verified, so an unverified email can never match the seed.
  */
 export function _ResolveIdentityClaims(
   claims: Record<string, unknown>,
-  config: { groupsClaim: string; rolesClaim: string; platformOperatorGroups: string[]; orgAdminGroups: string[] },
+  config: { groupsClaim: string; rolesClaim: string; platformOperatorGroups: string[]; orgAdminGroups: string[]; platformOperatorSeedEmail: string },
+  verifiedEmail?: string,
 ): { groups: string[]; isPlatformOperator: boolean; isOrgAdmin: boolean }
 {
-  // 1. Collect the raw values from both the groups and roles claims — Entra emits
-  //    security groups under `groups` and app roles under `roles`; either may
-  //    grant operator status, so the union is what we authorize against.
+  // 1. Collect the raw values from both the groups and roles claims — Zitadel emits
+  //    group memberships under the configured `groups` claim and project/app roles
+  //    under `roles`; either may grant operator status, so the union is what we
+  //    authorize against. (Mode-2 broker: Zitadel is the single trusted issuer; there
+  //    is no upstream Entra. Claim names are install-configurable via OIDC_GROUPS_CLAIM
+  //    / OIDC_ROLES_CLAIM.)
   const groups = [..._ReadStringArrayClaim(claims[config.groupsClaim]), ..._ReadStringArrayClaim(claims[config.rolesClaim])];
   const lowered = groups.map(value => value.toLowerCase());
 
-  // 2. An empty operator set means nobody is a platform operator — fail-closed.
+  // 2. Operator via group: an empty operator set means nobody qualifies — fail-closed.
   const operatorSet = new Set(config.platformOperatorGroups);
-  const isPlatformOperator = operatorSet.size > 0 && lowered.some(value => operatorSet.has(value));
+  const operatorViaGroup = operatorSet.size > 0 && lowered.some(value => operatorSet.has(value));
 
-  // 3. Org admin iff a group matches the org-admin set (fail-closed when unset).
-  //    Platform operators are always org admins — operator is the broader role.
+  // 3. Operator via seed: the per-cluster bootstrap. True iff a non-empty seed equals the
+  //    caller's VERIFIED email (already lowercased/trimmed). An empty seed grants operator
+  //    to nobody (fail-closed); an unverified email never reaches `verifiedEmail`, so it can
+  //    never match. This is ADDITIVE to the group check — seed OR group ⇒ operator.
+  const seed = config.platformOperatorSeedEmail.trim().toLowerCase();
+  const operatorViaSeed = seed !== "" && typeof verifiedEmail === "string" && verifiedEmail.trim().toLowerCase() === seed;
+
+  const isPlatformOperator = operatorViaGroup || operatorViaSeed;
+
+  // 4. Org admin (login-time component) iff a group matches the org-admin set
+  //    (fail-closed when unset). Platform operators are always org admins — operator
+  //    is the broader role. NOTE: this is only the GROUP-derived half; `/auth/me`
+  //    OR-s it with the MEMBERSHIP-derived half (owner/admin of ≥1 org via
+  //    `OrgMembership`, resolved fresh at read time), so a user who creates an org is
+  //    an org admin even with no org-admin group claim.
   const orgAdminSet = new Set(config.orgAdminGroups);
   const isOrgAdmin = isPlatformOperator || (orgAdminSet.size > 0 && lowered.some(value => orgAdminSet.has(value)));
 

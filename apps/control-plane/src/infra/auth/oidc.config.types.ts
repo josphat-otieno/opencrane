@@ -62,4 +62,20 @@ export interface OidcAuthConfig
    * from `OPENCRANE_ORG_ADMIN_GROUPS`; aligns with Obot's Admin role (P0.1/P0.5).
    */
   orgAdminGroups: string[];
+
+  /**
+   * Lowercased, trimmed per-cluster seed email that bootstraps the FIRST platform
+   * operator before any IdP group/role mapping exists. A caller is a platform operator
+   * if their **verified** email equals this value (compared case-insensitively + trimmed),
+   * which is OR-ed with the group-based check in {@link platformOperatorGroups} — seed
+   * OR group ⇒ operator.
+   *
+   * Empty by default, so the seed grants operator to NOBODY until a platform admin sets
+   * it at install (fail-closed). It is a per-cluster INSTALL parameter — never hardcoded —
+   * sourced from `OPENCRANE_PLATFORM_OPERATOR_SEED_EMAIL`.
+   *
+   * TODO: superseded once OpenCrane gains a first-class role model — this is the
+   * non-presumptuous, config-driven bootstrap, not a role system.
+   */
+  platformOperatorSeedEmail: string;
 }

@@ -66,6 +66,22 @@ function unprocessable(description: string)
   };
 }
 
+function unauthorized(description: string)
+{
+  return {
+    description,
+    content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
+  };
+}
+
+function forbidden(description: string)
+{
+  return {
+    description,
+    content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } },
+  };
+}
+
 function upstreamError()
 {
   return {
@@ -303,6 +319,27 @@ const ClusterTenantWriteSchema = {
       required: ["quota"],
       properties: { quota: { $ref: "#/components/schemas/ClusterTenantResourceQuota" } },
     },
+  },
+};
+
+const BillingAccountSchema = {
+  type: "object" as const,
+  required: ["id", "subject", "createdAt", "updatedAt"],
+  properties: {
+    id: { type: "string", description: "Surrogate identifier." },
+    subject: { type: "string", description: "IdP-verified subject (OIDC sub) that owns this billing account." },
+    email: { type: ["string", "null"], description: "The caller's verified email at create time (for human reconciliation; not the key)." },
+    displayName: { type: ["string", "null"], description: "Optional human-readable billing name (company / individual)." },
+    createdAt: { type: "string", format: "date-time" },
+    updatedAt: { type: "string", format: "date-time" },
+  },
+};
+
+const BillingAccountWriteSchema = {
+  type: "object" as const,
+  description: "Create payload for the caller's own billing account. The subject and email come from the session (never the body); only an optional displayName is accepted.",
+  properties: {
+    displayName: { type: "string", description: "Optional human-readable billing name (company / individual)." },
   },
 };
 
@@ -744,6 +781,8 @@ export const spec = {
       ClusterTenantWrite: ClusterTenantWriteSchema,
       ClusterTenantUpdate: ClusterTenantUpdateSchema,
       ClusterTenantResourceQuota: ClusterTenantResourceQuotaSchema,
+      BillingAccount: BillingAccountSchema,
+      BillingAccountWrite: BillingAccountWriteSchema,
       Group: GroupSchema,
       SkillBundle: SkillBundleSchema,
       AuditEntry: AuditEntrySchema,
@@ -1345,23 +1384,29 @@ export const spec = {
     "/cluster-tenants": {
       get: {
         operationId: "listClusterTenants",
-        summary: "List all cluster tenants",
+        summary: "List all cluster tenants (fleet view — platform-operator only)",
+        description: "Fleet-wide list. Restricted to platform operators; a per-org owner/admin reads only their own org via GET /cluster-tenants/{name}.",
         tags: ["Cluster Tenants"],
         responses: {
           200: ok("Cluster tenant list.", { type: "array", items: { $ref: "#/components/schemas/ClusterTenant" } }),
+          401: unauthorized("No authenticated session (real-auth deployments)."),
+          403: forbidden("Caller is not a platform operator."),
         },
       },
       post: {
         operationId: "createClusterTenant",
-        summary: "Create a cluster tenant (rejects an isolation tier no provisioner can serve)",
+        summary: "Create a cluster tenant (organisation) and become its owner",
+        description: "Any authenticated user WITH an existing billing account may create an organisation; the caller is recorded as the org's single owner transactionally. Requires a billing account first (POST /billing-accounts), NOT pre-existing org-admin — a user becomes an org admin by creating their first org. Rejects an isolation tier no provisioner can serve.",
         tags: ["Cluster Tenants"],
         requestBody: {
           required: true,
           content: { "application/json": { schema: { $ref: "#/components/schemas/ClusterTenantWrite" } } },
         },
         responses: {
-          201: created("Cluster tenant created.", { $ref: "#/components/schemas/ClusterTenant" }),
+          201: created("Cluster tenant created; caller recorded as owner.", { $ref: "#/components/schemas/ClusterTenant" }),
           400: badRequest("Request body failed validation."),
+          401: unauthorized("No authenticated session (real-auth deployments)."),
+          403: forbidden("Caller has no billing account (code BILLING_ACCOUNT_REQUIRED)."),
           422: unprocessable("Requested isolation tier is not served by any registered provisioner (code TIER_UNAVAILABLE)."),
         },
       },
@@ -1370,17 +1415,19 @@ export const spec = {
     "/cluster-tenants/{name}": {
       get: {
         operationId: "getClusterTenant",
-        summary: "Get a single cluster tenant by name",
+        summary: "Get a single cluster tenant by name (operator OR owner/admin of that org)",
         tags: ["Cluster Tenants"],
         parameters: [{ name: "name", in: "path", required: true, schema: { type: "string" } }],
         responses: {
           200: ok("Cluster tenant detail.", { $ref: "#/components/schemas/ClusterTenant" }),
+          401: unauthorized("No authenticated session (real-auth deployments)."),
+          403: forbidden("Caller is neither a platform operator nor an owner/admin of this org."),
           404: notFound("Cluster tenant not found."),
         },
       },
       put: {
         operationId: "updateClusterTenant",
-        summary: "Update a cluster tenant (re-gates the isolation tier when it changes)",
+        summary: "Update a cluster tenant (operator OR owner/admin of that org); re-gates the isolation tier when it changes",
         tags: ["Cluster Tenants"],
         parameters: [{ name: "name", in: "path", required: true, schema: { type: "string" } }],
         requestBody: {
@@ -1390,17 +1437,21 @@ export const spec = {
         responses: {
           200: ok("Cluster tenant updated.", { $ref: "#/components/schemas/ClusterTenant" }),
           400: badRequest("Request body failed validation."),
+          401: unauthorized("No authenticated session (real-auth deployments)."),
+          403: forbidden("Caller is neither a platform operator nor an owner/admin of this org."),
           404: notFound("Cluster tenant not found."),
           422: unprocessable("Requested isolation tier is not served by any registered provisioner (code TIER_UNAVAILABLE)."),
         },
       },
       delete: {
         operationId: "deleteClusterTenant",
-        summary: "Delete a cluster tenant",
+        summary: "Delete a cluster tenant (operator OR owner/admin of that org)",
         tags: ["Cluster Tenants"],
         parameters: [{ name: "name", in: "path", required: true, schema: { type: "string" } }],
         responses: {
           200: ok("Cluster tenant deleted.", { type: "object", properties: { name: { type: "string" }, status: { type: "string" } } }),
+          401: unauthorized("No authenticated session (real-auth deployments)."),
+          403: forbidden("Caller is neither a platform operator nor an owner/admin of this org."),
           404: notFound("Cluster tenant not found."),
         },
       },
@@ -1409,7 +1460,7 @@ export const spec = {
     "/cluster-tenants/{name}/status": {
       get: {
         operationId: "getClusterTenantStatus",
-        summary: "Get the observed status of a cluster tenant",
+        summary: "Get the observed status of a cluster tenant (operator OR owner/admin of that org)",
         tags: ["Cluster Tenants"],
         parameters: [{ name: "name", in: "path", required: true, schema: { type: "string" } }],
         responses: {
@@ -1422,7 +1473,44 @@ export const spec = {
               provisioner: { type: "string" },
             },
           }),
+          401: unauthorized("No authenticated session (real-auth deployments)."),
+          403: forbidden("Caller is neither a platform operator nor an owner/admin of this org."),
           404: notFound("Cluster tenant not found."),
+        },
+      },
+    },
+
+    // ------------------------------------------------------------------
+    // Billing accounts — the prerequisite for creating an organisation
+    // ------------------------------------------------------------------
+
+    "/billing-accounts": {
+      post: {
+        operationId: "createBillingAccount",
+        summary: "Create the caller's own billing account (idempotent per subject)",
+        description: "Any authenticated user creates their OWN billing account, keyed to their IdP-verified subject (never request input). Idempotent: a repeat call returns the existing account (200) instead of failing. Having a billing account is the gate for creating an organisation (POST /cluster-tenants).",
+        tags: ["Billing"],
+        requestBody: {
+          required: false,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/BillingAccountWrite" } } },
+        },
+        responses: {
+          201: created("Billing account created.", { $ref: "#/components/schemas/BillingAccount" }),
+          200: ok("Billing account already existed (idempotent).", { $ref: "#/components/schemas/BillingAccount" }),
+          401: unauthorized("No authenticated session (real-auth deployments)."),
+        },
+      },
+    },
+
+    "/billing-accounts/me": {
+      get: {
+        operationId: "getMyBillingAccount",
+        summary: "Return the caller's own billing account",
+        tags: ["Billing"],
+        responses: {
+          200: ok("Billing account detail.", { $ref: "#/components/schemas/BillingAccount" }),
+          401: unauthorized("No authenticated session (real-auth deployments)."),
+          404: notFound("Caller has no billing account (code BILLING_ACCOUNT_NOT_FOUND)."),
         },
       },
     },
@@ -2786,6 +2874,18 @@ export const spec = {
                   clusterTenant: {
                     type: ["string", "null"],
                     description: "The caller's ClusterTenant (customer) key, resolved server-side from their IdP-verified email → tenant → clusterTenantRef. Null when unresolved or ambiguous.",
+                  },
+                  ownedOrgs: {
+                    type: "array",
+                    description: "Organisations the caller owns or administers, derived fresh from their OrgMembership rows (owner/admin only; members excluded). Empty when the caller administers no org. The org-scope half of the membership-derived isOrgAdmin. Introspection only — never taken from request input.",
+                    items: {
+                      type: "object",
+                      required: ["clusterTenant", "role"],
+                      properties: {
+                        clusterTenant: { type: "string", description: "The organisation (ClusterTenant) key." },
+                        role: { type: "string", enum: ["owner", "admin"], description: "The administering role the caller holds in this org." },
+                      },
+                    },
                   },
                   email: { type: "string" },
                   emailVerified: { type: "boolean" },

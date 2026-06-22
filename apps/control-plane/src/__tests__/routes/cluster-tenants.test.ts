@@ -14,7 +14,8 @@ type Row = Record<string, unknown>;
 /** Build a Prisma stub over an in-memory map keyed by tenant name. */
 function _mockPrisma(store: Map<string, Row>): PrismaClient
 {
-  return {
+  const memberships: Row[] = [];
+  const prisma = {
     clusterTenant: {
       findMany: vi.fn(async function _findMany() { return Array.from(store.values()); }),
       findUnique: vi.fn(async function _findUnique(args: { where: { name: string } }) { return store.get(args.where.name) ?? null; }),
@@ -32,7 +33,14 @@ function _mockPrisma(store: Map<string, Row>): PrismaClient
       }),
       delete: vi.fn(async function _delete(args: { where: { name: string } }) { store.delete(args.where.name); return {}; }),
     },
+    orgMembership: {
+      create: vi.fn(async function _createMembership(args: { data: Row }) { memberships.push(args.data); return args.data; }),
+    },
+    // Run the callback inline against the same stub — the in-memory store has no real
+    // transaction boundary, which is fine for these unit tests.
+    $transaction: vi.fn(async function _tx(fn: (tx: PrismaClient) => Promise<unknown>) { return fn(prisma); }),
   } as unknown as PrismaClient;
+  return prisma;
 }
 
 /** Registry stub: serves shared + dedicatedNodes; dedicatedCluster gated by flag. */

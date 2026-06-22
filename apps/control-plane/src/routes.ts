@@ -5,6 +5,7 @@ import type { PrismaClient } from "@prisma/client";
 import { accessTokensRouter } from "./routes/access-tokens.js";
 import { aiBudgetRouter } from "./routes/ai-budget.js";
 import { auditRouter } from "./routes/audit.js";
+import { billingAccountsRouter } from "./routes/billing-accounts.js";
 import { groupsRouter } from "./routes/groups.js";
 import { _RegisterInternalBundles } from "./routes/internal/skill-bundles.js";
 import { _RegisterInternalTenantContract } from "./routes/internal/tenant-contract.js";
@@ -119,6 +120,7 @@ export function _RegisterRoutes(app: Express, prisma: PrismaClient, customApi: k
   app.use("/api/v1/third-party-sources", thirdPartySourcesRouter(prisma));
   app.use("/api/v1/org/workspace-docs", companyDocsRouter(prisma, _BuildDocMergeReconciler()));
   app.use("/api/v1/platform/dns", platformDnsRouter(customApi, coreApi));
+  app.use("/api/v1/billing-accounts", billingAccountsRouter(prisma));
   app.use("/api/v1/cluster-tenants", clusterTenantsRouter(prisma, clusterTenantRegistry));
   app.use("/api/v1/awareness/rollout", awarenessRolloutRouter(prisma));
   app.use("/api/v1/awareness/participation", awarenessParticipationRouter(prisma));
