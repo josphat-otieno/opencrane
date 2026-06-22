@@ -164,11 +164,17 @@ authorised on the zone.
 
 When an org is created (`POST /api/v1/cluster-tenants`), the control plane persists desired state and
 hands off the cluster-side side effects (per-org DNS record + per-org wildcard TLS cert) to the
-cluster-tenants operator/CR watcher (a **separate workstream**). The interface the reconciler calls is
+ClusterTenant operator/CR watcher. The interface the reconciler calls is
 `OrgDomainProvisioner.provisionOrgDomain(...)`
-(`apps/control-plane/src/core/cluster-tenants/org-domain-provisioner.types.ts`) — the same `pending →
-ready` hand-off seam already documented in the create flow. The create path itself never mutates DNS or
-cert-manager (fail-closed, API-first).
+(`apps/control-plane/src/core/cluster-tenants/org-domain-provisioner.types.ts`), implemented by
+`DefaultOrgDomainProvisioner` (`org-domain.provisioner.ts`): it applies the per-org wildcard
+`Certificate` (`*.<org>.<base>` + apex/vanity SANs) via cert-manager DNS-01 and ensures the
+`*.<org>.<base>` / `<org>.<base>` A records in the terraform-managed Cloud DNS zone. Both side effects
+are idempotent. It is **fail-closed + gated**: when the cluster has no cert-manager (the dev cluster
+currently does not), it returns `ready:false` with a reason and never crashes, while the
+resource-authoring path stays real. The Cloud DNS SDK is an optional dependency loaded lazily, so
+on-prem installs never pull it. The create path itself never mutates DNS or cert-manager — only the
+reconciler does (fail-closed, API-first).
 
 ## Isolation Tiers
 

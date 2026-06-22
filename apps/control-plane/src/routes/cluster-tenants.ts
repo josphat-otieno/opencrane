@@ -142,9 +142,9 @@ export function clusterTenantsRouter(prisma: PrismaClient, registry: ClusterTena
     // 4. Persist the org and its single owner membership in ONE transaction: the
     //    caller becomes the org's root admin (owner) atomically with the org row.
     //    Dual-write the org in `pending`; the operator reconciles it to `ready`.
-    //    NOTE (provisioning hand-off): a separate workstream owns the ClusterTenant
-    //    operator/CR watcher that reconciles `pending` → `ready`. This handler only
-    //    persists the desired state; see the cluster-tenants operator track.
+    //    NOTE (provisioning hand-off): the ClusterTenant operator/CR watcher reconciles
+    //    `pending` → `ready` and drives the domain provisioner. This handler only
+    //    persists the desired state; it performs no cluster-side side effects.
     const created = await prisma.$transaction(async function _createOrgWithOwner(tx)
     {
       const org = await tx.clusterTenant.create({
@@ -175,10 +175,18 @@ export function clusterTenantsRouter(prisma: PrismaClient, registry: ClusterTena
     //    that turns the `pending` row into something that actually provisions: the
     //    reconciler picks up the CR, calls the registered provisioner, and patches
     //    `status.phase` (`pending → provisioning → ready`) + `boundNamespace` back.
-    //    The bridge writes ONLY spec (never status) and is idempotent. Domain
-    //    provisioning (per-org DNS + wildcard TLS via `OrgDomainProvisioner`) is a
-    //    GATED step the reconciler runs — never executed inline here; this handler
-    //    only persists/declares desired state and does not mutate DNS or cert-manager.
+    //    The bridge writes ONLY spec (never status) and is idempotent.
+    //
+    //    Domain provisioning hand-off (fixed-wildcard topology) follows the same path:
+    //    the org is addressable at its derived apex `<name>.<platformBaseDomain>` and
+    //    its users at `<user>.<name>.<base>`. Two cluster-side side effects must follow
+    //    — the per-org DNS record (`*.<org>.<base>` → ingress IP) and the per-org
+    //    wildcard TLS cert — both implemented by `DefaultOrgDomainProvisioner` and
+    //    driven by the ClusterTenant operator/CR watcher on the `pending` → `ready`
+    //    reconcile via the single typed interface `OrgDomainProvisioner.provisionOrgDomain(...)`
+    //    (see core/cluster-tenants/org-domain-provisioner.types.ts). It is GATED and
+    //    never executed inline here; this handler only persists/declares desired state
+    //    and does not mutate DNS or cert-manager.
     const orgContract = _ToContract(created);
     await _ApplyClusterTenantCr(customApi, orgContract);
 

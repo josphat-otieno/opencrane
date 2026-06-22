@@ -112,15 +112,23 @@ Stacked on `feat/org-admin-billing`.
   cert-manager DNS-01 (reference manifest `platform/helm/examples/per-org-wildcard-cert.yaml`).
 - **DNS automation:** `modules/dns` extended — platform wildcard + apex + control-plane-host records, and a
   `var.org_wildcards`-driven per-org `*.<org>.<base>` record matching the operator hook's shape.
-- **Per-org provisioning hook (interface only):** `OrgDomainProvisioner.provisionOrgDomain(...)`
-  (`core/cluster-tenants/org-domain-provisioner.types.ts`), wired to the same WS4 `pending → ready` hand-off
-  the create flow leaves in place; the create path never mutates DNS/cert-manager (fail-closed, API-first).
+- **Per-org provisioning — IMPLEMENTED:** `DefaultOrgDomainProvisioner`
+  (`core/cluster-tenants/org-domain.provisioner.ts`) behind the `OrgDomainProvisioner` interface. It applies
+  the per-org wildcard `Certificate` (`*.<org>.<base>` + apex/vanity SANs) via cert-manager DNS-01
+  (`CertManagerClient` over the custom-objects API, mirroring `apply-dns-config.ts`) and ensures the
+  `*.<org>.<base>`/`<org>.<base>` A records in the terraform-managed Cloud DNS zone (`CloudDnsClient`, a thin
+  wrapper over `@google-cloud/dns` as an **optional** dep, lazy-loaded like the operator's `GcsBucketClient`).
+  Both side effects idempotent. **Fail-closed + gated:** an absent cert-manager CRD yields `ready:false` + a
+  reason and never crashes, while the resource-authoring path stays real (not a no-op stub). Wired from env via
+  `_BuildOrgDomainProvisioner`; the create path never mutates DNS/cert-manager — only the reconciler does
+  (fail-closed, API-first).
 - **Docs:** `docs/agents/cluster-architecture.md` + `website/operators/dns-config.md` rewritten to the new
   topology with the exact customer CNAME instruction.
-- **Deferred to the cluster-tenants operator workstream:** the CR watcher that CALLS the hook to create the
-  live per-org DNS record + wildcard cert. Live cert/DNS apply prepared (not executed) for human authorisation.
-- Validation: `helm template` + `kubectl --dry-run=server` (control-plane Ingress) green; operator (104),
-  control-plane (407), cli (4) suites green; touched-package build + lint clean.
+- **Remaining (PR #50):** the CR watcher that CALLS `provisionOrgDomain(...)` on the `pending → ready`
+  reconcile. The provisioner itself is done; live cert/DNS apply remains the batched human-authorised step
+  (cert-manager is not installed on the shared dev cluster) — prepared, not executed.
+- Validation: `helm template` + `kubectl --dry-run=server` (control-plane Ingress) green; operator (105),
+  control-plane (424; +17 provisioner/cert/DNS unit tests), cli (4) suites green; touched-package build + lint clean.
 
 ### Track P5 — Close Phase 5 — ✅ COMPLETE · full history: plan-done.md § Completed Tracks (archived 2026-06-15)
 
