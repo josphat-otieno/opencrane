@@ -67,6 +67,13 @@ export function _BuildConfigMap(config: OpenClawTenantOperatorConfig, tenant: Te
       // gateway trusts it only from the configured proxy source. No shared token
       // (mutually exclusive with trusted-proxy); a NetworkPolicy locks the port
       // to the ingress so the trusted range can't be abused by other pods.
+      //
+      // Fail-closed: when the operator was given no proxy source
+      // (`gatewayTrustNothing`), render an empty allowlist AND an explicit
+      // `trustNothing: true` marker so the runtime can never read the empty
+      // `trustedProxies: []` as the ambiguous "trust every source". With no
+      // trusted source the user header is never honoured and no connection
+      // authenticates — an unconfigured operator denies, it does not trust-all.
       trustedProxies: config.gatewayTrustedProxies,
       // CONN.10 — pin the pod to its OWNER. trusted-proxy trusts whatever identity
       // the proxy injects, so without `allowUsers` ANY authenticated platform user
@@ -75,7 +82,16 @@ export function _BuildConfigMap(config: OpenClawTenantOperatorConfig, tenant: Te
       // secrets / MCP connections / model keys. `allowUsers` makes the gateway reject
       // any X-Forwarded-User that isn't the owner, so per-pod ownership is enforced
       // server-side regardless of how the connection is routed (host or identity proxy).
-      auth: { mode: "trusted-proxy", trustedProxy: { userHeader: config.gatewayTrustedProxyUserHeader, allowUsers: [ownerEmail] } },
+      auth: {
+        mode: "trusted-proxy",
+        trustedProxy: {
+          userHeader: config.gatewayTrustedProxyUserHeader,
+          // Fail-closed proxy-trust marker (CONN.9): empty allowlist => trust nothing,
+          // never read `trustedProxies: []` as "trust every source".
+          trustNothing: config.gatewayTrustNothing,
+          allowUsers: [ownerEmail],
+        },
+      },
     },
     ...(config.liteLlmEnabled
       ? {

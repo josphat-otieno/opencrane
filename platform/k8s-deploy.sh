@@ -20,6 +20,12 @@
 #                            [--platform-operator-seed-email EMAIL]
 #                            [--values FILE] [--set k=v ...]
 #
+# The platform-operator seed email bootstraps the FIRST platform operator: the
+# caller whose VERIFIED OIDC email equals it becomes a platform operator. It is a
+# per-cluster INSTALL parameter — DEFAULTS TO EMPTY, which grants operator to
+# nobody (fail-closed). Also accepted via the OPENCRANE_PLATFORM_OPERATOR_SEED_EMAIL
+# env var. Never commit a real owner email into the repo.
+#
 # --image-tag pins all three platform images (control-plane, operator, tenant)
 # to the same tag. To roll a SINGLE component to a different build, pass the
 # matching per-component flag (e.g. --control-plane-tag sha-abc123); it overrides
@@ -27,12 +33,6 @@
 # never `kubectl set image` / `kubectl patch` a managed deployment. An imperative
 # patch creates a `kubectl-*` field manager that owns the image field on the live
 # object and makes every later `helm upgrade` fail with a field-ownership conflict.
-#
-# The platform-operator seed email bootstraps the FIRST platform operator: the
-# caller whose VERIFIED OIDC email equals it becomes a platform operator. It is a
-# per-cluster INSTALL parameter — DEFAULTS TO EMPTY, which grants operator to
-# nobody (fail-closed). Also accepted via the OPENCRANE_PLATFORM_OPERATOR_SEED_EMAIL
-# env var. Never commit a real owner email into the repo.
 #
 # Prereqs: kubectl (pointed at the target cluster) and helm.
 # =============================================================================

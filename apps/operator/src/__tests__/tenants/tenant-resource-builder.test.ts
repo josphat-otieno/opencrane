@@ -47,6 +47,9 @@ describe("TenantResourceBuilder", () =>
     // injected identity (cross-tenant guard); _makeTenant("cfg") → cfg@example.com.
     expect(payload.gateway.auth.trustedProxy.allowUsers).toEqual(["cfg@example.com"]);
     expect(payload.gateway.trustedProxies).toEqual(defaultConfig.gatewayTrustedProxies);
+    // Fail-closed marker mirrors config.gatewayTrustNothing so an empty allowlist
+    // can never be read by the runtime as trust-all.
+    expect(payload.gateway.auth.trustedProxy.trustNothing).toBe(false);
     expect(payload.agents.defaults.model).toBe("gpt-4o");
     expect(runtimeContract.mode).toBe("managed");
     expect(runtimeContract.tenant.name).toBe("cfg");
@@ -66,6 +69,22 @@ describe("TenantResourceBuilder", () =>
     const payload = JSON.parse(configMap.data?.["openclaw.json"] ?? "{}");
 
     expect(payload.gateway.auth.trustedProxy.allowUsers).toEqual(["mike.owner@example.com"]);
+  });
+
+  it("renders an unambiguous trust-nothing gateway config when no proxy is configured (OC-2 / CONN.4)", () =>
+  {
+    // An operator with no GATEWAY_TRUSTED_PROXIES resolves to trust-nothing; the
+    // ConfigMap must emit both an empty allowlist AND the explicit trustNothing
+    // marker so the runtime never reads `trustedProxies: []` as trust-all.
+    const trustNothingConfig = { ...defaultConfig, gatewayTrustedProxies: [], gatewayTrustNothing: true };
+    const tenant = _makeTenant("trust-none");
+
+    const configMap = _BuildConfigMap(trustNothingConfig, tenant, "default");
+    const payload = JSON.parse(configMap.data?.["openclaw.json"] ?? "{}");
+
+    expect(payload.gateway.auth.mode).toBe("trusted-proxy");
+    expect(payload.gateway.trustedProxies).toEqual([]);
+    expect(payload.gateway.auth.trustedProxy.trustNothing).toBe(true);
   });
 
   it("populates litellm-proxy models[] when a non-empty model set is supplied", () =>
