@@ -7,6 +7,8 @@ import type { Logger } from "pino";
 import type { PrismaClient } from "@prisma/client";
 
 import { ___LoadOidcAuthConfig } from "./oidc.config.js";
+import { _ResolveOrgMembershipFacts } from "./org-membership.js";
+import type { OwnedOrg } from "./org-membership.js";
 
 /** Auth mode exposed to the UI so it can decide whether login is required. */
 export type ControlPlaneAuthMode = "development" | "oidc" | "token";
@@ -37,10 +39,12 @@ export interface ControlPlaneAuthUser
   isPlatformOperator: boolean;
 
   /**
-   * Whether the caller is an organisation admin — the role allowed to curate the MCP
-   * catalogue and approve servers (`requireOrgAdmin`, P0.5). Derived from the caller's
-   * groups intersecting `OPENCRANE_ORG_ADMIN_GROUPS`; platform operators are always org
-   * admins (superset). Empty/unset config ⇒ false for everyone (fail-closed). Enforcement
+   * Whether the caller is an organisation admin. This session-cached value is the
+   * value resolved AT LOGIN (groups intersecting `OPENCRANE_ORG_ADMIN_GROUPS`, or
+   * platform-operator superset). `/auth/me` re-derives the EFFECTIVE flag fresh at
+   * read time by OR-ing this with membership (owner/admin of ≥1 org via
+   * `OrgMembership`), so a user who creates an org becomes an org admin without
+   * re-logging-in. Empty config + no membership ⇒ false (fail-closed). Enforcement
    * stays at the API; a federated frontend uses this only to decide what UI to hide.
    */
   isOrgAdmin: boolean;
@@ -74,6 +78,14 @@ export interface ControlPlaneAuthStatusUser extends ControlPlaneAuthUser
    * (fail-closed; never taken from request input or a self-asserted claim).
    */
   clusterTenant: string | null;
+
+  /**
+   * The organisations the caller owns or administers, derived fresh from their
+   * `OrgMembership` rows (owner/admin only; members excluded). Empty when the caller
+   * administers no org. The org-scope half of the membership-derived `isOrgAdmin`.
+   * Introspection only — never taken from request input.
+   */
+  ownedOrgs: OwnedOrg[];
 }
 
 /** Session auth status returned to the SPA bootstrap logic. */
@@ -152,9 +164,11 @@ export class OidcAuthService
    * Return the auth mode and current human session details for the SPA.
    *
    * Surfaces introspection-only authorization facts: the caller's `groups`,
-   * the derived `isPlatformOperator`, and their `clusterTenant`. The first two
-   * come from the session (resolved at login); `clusterTenant` is resolved fresh
-   * here from the IdP-verified email so a post-login reparent is reflected.
+   * the derived `isPlatformOperator`, their `clusterTenant`, and their
+   * membership-derived `isOrgAdmin` + `ownedOrgs`. `groups`/`isPlatformOperator`
+   * come from the session (resolved at login); `clusterTenant`, `isOrgAdmin`, and
+   * `ownedOrgs` are resolved FRESH here so a post-login change (a reparent, or the
+   * caller creating an org and becoming its owner) is reflected without re-login.
    */
   async getStatus(req: Request): Promise<ControlPlaneAuthStatus>
   {
@@ -167,13 +181,23 @@ export class OidcAuthService
         return { mode: "oidc", authenticated: false, user: null };
       }
 
-      // 2. Resolve the ClusterTenant from the session's verified email (fail-closed)
-      //    and return it alongside the cached identity facts.
-      const clusterTenant = await this._resolveClusterTenant(authUser.email);
+      // 2. Resolve the ClusterTenant (from the verified email) and the org-admin facts
+      //    (from OrgMembership) fresh — both fail-closed. The effective `isOrgAdmin`
+      //    OR-s the login-time flag (groups/operator) with membership-derived authority,
+      //    so a user who just created an org is an org admin without re-logging-in.
+      const [clusterTenant, membership] = await Promise.all([
+        this._resolveClusterTenant(authUser.email),
+        _ResolveOrgMembershipFacts(this.prisma, authUser.sub),
+      ]);
       return {
         mode: "oidc",
         authenticated: true,
-        user: { ...authUser, clusterTenant },
+        user: {
+          ...authUser,
+          isOrgAdmin: authUser.isOrgAdmin || membership.isOrgAdmin,
+          clusterTenant,
+          ownedOrgs: membership.ownedOrgs,
+        },
       };
     }
 
@@ -460,8 +484,12 @@ export function _ResolveIdentityClaims(
 
   const isPlatformOperator = operatorViaGroup || operatorViaSeed;
 
-  // 4. Org admin iff a group matches the org-admin set (fail-closed when unset).
-  //    Platform operators are always org admins — operator is the broader role.
+  // 4. Org admin (login-time component) iff a group matches the org-admin set
+  //    (fail-closed when unset). Platform operators are always org admins — operator
+  //    is the broader role. NOTE: this is only the GROUP-derived half; `/auth/me`
+  //    OR-s it with the MEMBERSHIP-derived half (owner/admin of ≥1 org via
+  //    `OrgMembership`, resolved fresh at read time), so a user who creates an org is
+  //    an org admin even with no org-admin group claim.
   const orgAdminSet = new Set(config.orgAdminGroups);
   const isOrgAdmin = isPlatformOperator || (orgAdminSet.size > 0 && lowered.some(value => orgAdminSet.has(value)));
 
