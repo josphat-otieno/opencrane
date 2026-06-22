@@ -44,10 +44,14 @@ function _makeStubCoreApi(): { api: k8s.CoreV1Api; createdNamespaces: string[] }
   return { api, createdNamespaces };
 }
 
+/** A single recorded `deprovisionOrgDomain` invocation. */
+interface DeprovisionCall { orgName: string; platformBaseDomain: string; boundNamespace: string }
+
 /** A domain provisioner whose result and invocations a test controls. */
-function _makeDomainProvisioner(result: Partial<OrgDomainProvisionResult>): { provisioner: OrgDomainProvisioner; calls: OrgDomainProvisionRequest[] }
+function _makeDomainProvisioner(result: Partial<OrgDomainProvisionResult>, deprovisionImpl?: () => Promise<void>): { provisioner: OrgDomainProvisioner; calls: OrgDomainProvisionRequest[]; deprovisions: DeprovisionCall[] }
 {
   const calls: OrgDomainProvisionRequest[] = [];
+  const deprovisions: DeprovisionCall[] = [];
   const provisioner: OrgDomainProvisioner = {
     async provisionOrgDomain(req: OrgDomainProvisionRequest): Promise<OrgDomainProvisionResult>
     {
@@ -60,12 +64,19 @@ function _makeDomainProvisioner(result: Partial<OrgDomainProvisionResult>): { pr
         ...result,
       };
     },
-    async deprovisionOrgDomain(): Promise<void>
+    async deprovisionOrgDomain(orgName: string, platformBaseDomain: string, boundNamespace: string): Promise<void>
     {
-      // No-op: the reconcile path under test never deprovisions.
+      deprovisions.push({ orgName, platformBaseDomain, boundNamespace });
+      if (deprovisionImpl) await deprovisionImpl();
     },
   };
-  return { provisioner, calls };
+  return { provisioner, calls, deprovisions };
+}
+
+/** Cast helper to drive the operator's private watch-event handler in a test. */
+function _emit(operator: ClusterTenantOperator, type: string, ct: ClusterTenantResource): Promise<void>
+{
+  return (operator as unknown as { handleEvent(t: string, c: ClusterTenantResource): Promise<void> }).handleEvent(type, ct);
 }
 
 /** Assemble a ClusterTenantOperator over the supplied stubs. */
@@ -175,5 +186,49 @@ describe("ClusterTenantOperator.reconcile", () =>
     await expect(operator.reconcile(_makeClusterTenant("acme"))).rejects.toThrow(/apiserver down/);
     expect(patches.at(-1)!.phase).toBe("failed");
     expect(patches.at(-1)!.message).toMatch(/apiserver down/);
+  });
+});
+
+describe("ClusterTenantOperator delete handling (DOMAIN.T2)", () =>
+{
+  beforeEach(() => vi.clearAllMocks());
+
+  it("deprovisions the per-org domain on a DELETED event, using status.boundNamespace", async () =>
+  {
+    const { api: customApi } = _makeStubCustomApi();
+    const { api: coreApi } = _makeStubCoreApi();
+    const { provisioner, deprovisions } = _makeDomainProvisioner({ skipped: true });
+    const operator = _buildOperator(customApi, coreApi, provisioner);
+
+    await _emit(operator, "DELETED", _makeClusterTenant("acme", "opencrane-acme"));
+
+    expect(deprovisions).toHaveLength(1);
+    expect(deprovisions[0].orgName).toBe("acme");
+    expect(deprovisions[0].boundNamespace).toBe("opencrane-acme");
+    expect(deprovisions[0].platformBaseDomain).toBe(defaultConfig.ingressDomain);
+  });
+
+  it("re-derives the bound namespace deterministically when status is already stripped", async () =>
+  {
+    const { api: customApi } = _makeStubCustomApi();
+    const { api: coreApi } = _makeStubCoreApi();
+    const { provisioner, deprovisions } = _makeDomainProvisioner({ skipped: true });
+    const operator = _buildOperator(customApi, coreApi, provisioner);
+
+    // No boundNamespace in status (deletion races can strip it) → falls back to opencrane-<name>.
+    await _emit(operator, "DELETED", _makeClusterTenant("acme"));
+
+    expect(deprovisions).toHaveLength(1);
+    expect(deprovisions[0].boundNamespace).toBe("opencrane-acme");
+  });
+
+  it("swallows a deprovision error (no throw) so a teardown failure cannot wedge the watch loop", async () =>
+  {
+    const { api: customApi } = _makeStubCustomApi();
+    const { api: coreApi } = _makeStubCoreApi();
+    const { provisioner } = _makeDomainProvisioner({ skipped: true }, async () => { throw new Error("apiserver down"); });
+    const operator = _buildOperator(customApi, coreApi, provisioner);
+
+    await expect(_emit(operator, "DELETED", _makeClusterTenant("acme", "opencrane-acme"))).resolves.toBeUndefined();
   });
 });
