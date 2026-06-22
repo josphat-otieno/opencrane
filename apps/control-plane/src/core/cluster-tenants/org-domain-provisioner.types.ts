@@ -10,17 +10,19 @@
  *      because the platform `*.<base>` cert does NOT cover the extra label
  *      `<user>.<name>.<base>` (DNS wildcards match exactly one label).
  *
- * This module defines ONLY the interface. The concrete implementation — and the
- * ClusterTenant operator/CR watcher that CALLS it on the `pending → ready` reconcile
- * — is a SEPARATE workstream (the cluster-tenants operator track) and is intentionally
- * NOT built here. The control-plane create flow
- * (`routes/cluster-tenants.ts → _createClusterTenant`) persists desired state and
- * hands off to that reconciler; the reconciler invokes `provisionOrgDomain(...)`.
+ * This module defines the interface. The concrete implementation is
+ * `DefaultOrgDomainProvisioner` (org-domain.provisioner.js), wired from env via
+ * `_BuildOrgDomainProvisioner`: it applies the per-org wildcard Certificate through
+ * cert-manager (DNS-01) and the per-org A records through the terraform-managed
+ * Cloud DNS zone. The ClusterTenant operator/CR watcher that CALLS it on the
+ * `pending → ready` reconcile lands with that reconciler. The control-plane create
+ * flow (`routes/cluster-tenants.ts → _createClusterTenant`) persists desired state
+ * and hands off to that reconciler; the reconciler invokes `provisionOrgDomain(...)`.
  *
- * Keeping this an interface (no live cert-manager / Cloud DNS calls in the create
- * path) preserves the API-first, fail-closed posture: a malformed or unauthorised
- * create never reaches DNS or TLS issuance, and the side effects are idempotent and
- * separately ownable.
+ * Keeping the create path free of live cert-manager / Cloud DNS calls (they run only
+ * from the reconciler, behind this interface) preserves the API-first, fail-closed
+ * posture: a malformed or unauthorised create never reaches DNS or TLS issuance, and
+ * the side effects are idempotent and separately ownable.
  */
 
 /** Inputs the reconciler passes when provisioning an org's domain + TLS. */
@@ -56,9 +58,9 @@ export interface OrgDomainProvisionResult
 
 /**
  * Backend that materialises an org's DNS record + wildcard TLS certificate. The
- * concrete implementation is provided by the cluster-tenants operator workstream;
- * the control plane only depends on this signature so the two can be built and
- * tested independently (mirrors the `ClusterTenantProvisioner` seam).
+ * concrete implementation is `DefaultOrgDomainProvisioner`; callers depend only on
+ * this signature so the provisioner and the reconciler that drives it can be built
+ * and tested independently (mirrors the `ClusterTenantProvisioner` seam).
  */
 export interface OrgDomainProvisioner
 {

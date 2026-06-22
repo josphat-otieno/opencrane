@@ -136,9 +136,9 @@ export function clusterTenantsRouter(prisma: PrismaClient, registry: ClusterTena
     // 4. Persist the org and its single owner membership in ONE transaction: the
     //    caller becomes the org's root admin (owner) atomically with the org row.
     //    Dual-write the org in `pending`; the operator reconciles it to `ready`.
-    //    NOTE (provisioning hand-off): a separate workstream owns the ClusterTenant
-    //    operator/CR watcher that reconciles `pending` → `ready`. This handler only
-    //    persists the desired state; see the cluster-tenants operator track.
+    //    NOTE (provisioning hand-off): the ClusterTenant operator/CR watcher reconciles
+    //    `pending` → `ready` and drives the domain provisioner. This handler only
+    //    persists the desired state; it performs no cluster-side side effects.
     const created = await prisma.$transaction(async function _createOrgWithOwner(tx)
     {
       const org = await tx.clusterTenant.create({
@@ -168,9 +168,9 @@ export function clusterTenantsRouter(prisma: PrismaClient, registry: ClusterTena
     //    addressable at its derived apex `<name>.<platformBaseDomain>` and its users
     //    at `<user>.<name>.<base>`. Two cluster-side side effects must follow — the
     //    per-org DNS record (`*.<org>.<base>` → ingress IP) and the per-org wildcard
-    //    TLS cert — but BOTH are owned by the ClusterTenant operator/CR watcher (the
-    //    same WS4 hand-off seam that reconciles `pending` → `ready`), never executed
-    //    inline here. The reconciler calls the single typed interface
+    //    TLS cert — both implemented by `DefaultOrgDomainProvisioner` and driven by
+    //    the ClusterTenant operator/CR watcher on the `pending` → `ready` reconcile,
+    //    never executed inline here. The reconciler calls the single typed interface
     //    `OrgDomainProvisioner.provisionOrgDomain(...)` (see
     //    core/cluster-tenants/org-domain-provisioner.types.ts). This handler only
     //    persists desired state; it does not mutate DNS or cert-manager.
