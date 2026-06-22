@@ -5,7 +5,7 @@ import pino from "pino";
 import { defaultConfig, _makeClusterTenant } from "../fixtures.js";
 import { ClusterTenantOperator } from "../../cluster-tenants/operator.js";
 import { ClusterTenantStatusWriter } from "../../cluster-tenants/internal/cluster-tenant-status-writer.js";
-import type { OrgDomainProvisioner, OrgDomainProvisionRequest, OrgDomainProvisionResult } from "../../cluster-tenants/internal/org-domain-provisioner.js";
+import type { OrgDomainProvisioner, OrgDomainProvisionRequest, OrgDomainProvisionResult } from "../../cluster-tenants/internal/org-domain-provisioner.types.js";
 import type { ClusterTenantResource } from "../../tenants/internal/cluster-tenant-resolution.types.js";
 
 const log = pino({ level: "silent" });
@@ -59,6 +59,10 @@ function _makeDomainProvisioner(result: Partial<OrgDomainProvisionResult>): { pr
         skipped: true,
         ...result,
       };
+    },
+    async deprovisionOrgDomain(): Promise<void>
+    {
+      // No-op: the reconcile path under test never deprovisions.
     },
   };
   return { provisioner, calls };

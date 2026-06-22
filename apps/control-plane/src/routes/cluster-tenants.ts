@@ -181,12 +181,11 @@ export function clusterTenantsRouter(prisma: PrismaClient, registry: ClusterTena
     //    the org is addressable at its derived apex `<name>.<platformBaseDomain>` and
     //    its users at `<user>.<name>.<base>`. Two cluster-side side effects must follow
     //    — the per-org DNS record (`*.<org>.<base>` → ingress IP) and the per-org
-    //    wildcard TLS cert — both implemented by `DefaultOrgDomainProvisioner` and
-    //    driven by the ClusterTenant operator/CR watcher on the `pending` → `ready`
-    //    reconcile via the single typed interface `OrgDomainProvisioner.provisionOrgDomain(...)`
-    //    (see core/cluster-tenants/org-domain-provisioner.types.ts). It is GATED and
-    //    never executed inline here; this handler only persists/declares desired state
-    //    and does not mutate DNS or cert-manager.
+    //    wildcard TLS cert — both owned by the OPERATOR's `DefaultOrgDomainProvisioner`
+    //    (apps/operator/src/cluster-tenants/internal), which the ClusterTenant reconciler
+    //    drives on the `pending` → `ready` reconcile via `provisionOrgDomain(...)`. It is
+    //    runtime-gated there and never executed inline here; this handler only persists/
+    //    declares desired state and does not mutate DNS or cert-manager.
     const orgContract = _ToContract(created);
     await _ApplyClusterTenantCr(customApi, orgContract);
 

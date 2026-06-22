@@ -1,61 +1,25 @@
 import type * as k8s from "@kubernetes/client-node";
 
-/** cert-manager API group/version for the Certificate custom resource. */
+import type { CertManagerOperations, CertificateReadiness } from "./org-domain-provisioner.types.js";
+
+/** cert-manager API group for the Certificate custom resource. */
 const _CM_GROUP = "cert-manager.io";
+/** cert-manager API version for the Certificate custom resource. */
 const _CM_VERSION = "v1";
 /** Plural for the namespaced `Certificate` custom resource. */
 const _CM_CERTIFICATE_PLURAL = "certificates";
 
-/** The readiness a cert-manager Certificate reports once issuance completes. */
-export interface CertificateReadiness
-{
-  /** Whether the Certificate's `Ready` condition is `True` (issuance complete). */
-  ready: boolean;
-  /** Whether cert-manager is installed (the Certificate CRD is served). */
-  certManagerInstalled: boolean;
-  /** Human-readable reason when not ready (condition message, or CRD-absent note). */
-  reason?: string;
-}
-
 /**
- * Minimal interface over the cert-manager Certificate operations the
- * OrgDomainProvisioner needs. Injected so unit tests can substitute a fake
- * without a live cluster or the CustomObjectsApi.
- */
-export interface CertManagerOperations
-{
-  /**
-   * Apply (create-or-replace) a Certificate CR, idempotently. A re-apply carries
-   * the live resourceVersion so it never conflicts. Surfaces `certManagerInstalled:
-   * false` (fail-closed, never throws) when the Certificate CRD is absent.
-   *
-   * @param namespace - Namespace the Certificate (and its Secret) live in.
-   * @param manifest  - The Certificate manifest to apply.
-   */
-  applyCertificate(namespace: string, manifest: Record<string, unknown>): Promise<CertificateReadiness>;
-
-  /**
-   * Delete the named Certificate if present; absence (404) and a missing CRD are
-   * both no-ops (idempotent teardown).
-   *
-   * @param namespace - Namespace the Certificate lives in.
-   * @param name      - Certificate name.
-   */
-  deleteCertificate(namespace: string, name: string): Promise<void>;
-}
-
-/**
- * Production cert-manager client over the Kubernetes custom-objects API. Mirrors
- * the proven create-then-replace-on-409 pattern in
- * `core/platform-dns/apply-dns-config.ts`, and reads the Certificate's `Ready`
- * condition back so the caller can reflect issuance state.
+ * Production cert-manager client over the operator's Kubernetes custom-objects API.
+ * Mirrors the proven create-then-replace-on-409 pattern the operator uses for its
+ * own child resources, and reads the Certificate's `Ready` condition back so the
+ * caller can reflect issuance state.
  *
- * Fail-closed: when the dev/target cluster has NO cert-manager (the Certificate
- * CRD is not served), apply does NOT crash — it returns `certManagerInstalled:
- * false` so the provisioner can surface a clear `ready:false` + reason. The
- * resource-authoring path is real (not a no-op stub): the exact manifest that
- * WOULD be applied is built and the API call IS issued; only an absent CRD short-
- * circuits it.
+ * Fail-closed: when the dev/target cluster has NO cert-manager (the Certificate CRD
+ * is not served), apply does NOT crash — it returns `certManagerInstalled: false`
+ * so the provisioner can surface a clear `ready:false` + reason. The resource-
+ * authoring path is real (not a no-op stub): the exact manifest that WOULD be
+ * applied is built and the API call IS issued; only an absent CRD short-circuits it.
  */
 export class CertManagerClient implements CertManagerOperations
 {
@@ -78,20 +42,24 @@ export class CertManagerClient implements CertManagerOperations
     let applied: unknown;
     try
     {
+      // 1. Create first — the common path on a fresh org. A 409 (already exists)
+      //    falls through to an in-place replace; an absent CRD short-circuits to
+      //    a fail-closed not-installed result rather than crashing the reconcile.
       applied = await this.customApi.createNamespacedCustomObject({
         group: _CM_GROUP, version: _CM_VERSION, namespace, plural: _CM_CERTIFICATE_PLURAL, body: manifest,
       });
     }
     catch (err)
     {
-      // No cert-manager → the Certificate CRD is not served. Fail closed, never crash.
-      if (_IsCrdAbsent(err))
+      // 2. No cert-manager → the Certificate CRD is not served. Fail closed, never crash.
+      if (_isCrdAbsent(err))
       {
         return { ready: false, certManagerInstalled: false, reason: "cert-manager is not installed (certificates.cert-manager.io CRD is absent); no Certificate was created." };
       }
 
-      // 409 Conflict → already exists; fetch live resourceVersion and replace in-place.
-      if (_IsConflict(err))
+      // 3. 409 Conflict → already exists; fetch live resourceVersion and replace in-place
+      //    so a re-apply converges (idempotent) without a content-type patch pitfall.
+      if (_isConflict(err))
       {
         const existing = await this.customApi.getNamespacedCustomObject({ group: _CM_GROUP, version: _CM_VERSION, namespace, plural: _CM_CERTIFICATE_PLURAL, name });
         const resourceVersion = (existing as { metadata?: { resourceVersion?: string } }).metadata?.resourceVersion;
@@ -114,8 +82,8 @@ export class CertManagerClient implements CertManagerOperations
     }
     catch (err)
     {
-      // 404 (already gone) and an absent CRD are both no-ops.
-      if (_IsNotFound(err) || _IsCrdAbsent(err))
+      // 404 (already gone) and an absent CRD are both no-ops (idempotent teardown).
+      if (_isNotFound(err) || _isCrdAbsent(err))
       {
         return;
       }
@@ -128,6 +96,9 @@ export class CertManagerClient implements CertManagerOperations
  * Read the `Ready` condition off a Certificate object. cert-manager stamps
  * `status.conditions[type=Ready].status` once DNS-01 issuance completes; absent or
  * `False` means issuance is still in flight (the gated `ready:false` case).
+ *
+ * @param obj - The Certificate object returned by the API.
+ * @returns The readiness derived from the object's `Ready` condition.
  */
 function _readReadiness(obj: unknown): CertificateReadiness
 {
@@ -140,14 +111,24 @@ function _readReadiness(obj: unknown): CertificateReadiness
   return { ready: false, certManagerInstalled: true, reason: ready?.message ?? "Certificate issuance is still in flight (DNS-01 challenge not yet complete)." };
 }
 
-/** Detect a Kubernetes 409 Conflict (already-exists) across client error shapes. */
-function _IsConflict(err: unknown): boolean
+/**
+ * Detect a Kubernetes 409 Conflict (already-exists) across client error shapes.
+ *
+ * @param err - The thrown error to classify.
+ * @returns True when the error carries a 409 status.
+ */
+function _isConflict(err: unknown): boolean
 {
   return _statusOf(err) === 409;
 }
 
-/** Detect a Kubernetes 404 Not Found across client error shapes. */
-function _IsNotFound(err: unknown): boolean
+/**
+ * Detect a Kubernetes 404 Not Found across client error shapes.
+ *
+ * @param err - The thrown error to classify.
+ * @returns True when the error carries a 404 status.
+ */
+function _isNotFound(err: unknown): boolean
 {
   return _statusOf(err) === 404;
 }
@@ -167,8 +148,11 @@ function _IsNotFound(err: unknown): boolean
  * ONLY when it carries the unserved-type signature (group cert-manager.io, or the
  * discovery message, or no `details.kind`/`details.name` pinning it to another object).
  * Any other 404 returns false here and is re-thrown by the caller (fail-loud).
+ *
+ * @param err - The thrown error to classify.
+ * @returns True only when the 404 unambiguously means the Certificate CRD is absent.
  */
-function _IsCrdAbsent(err: unknown): boolean
+function _isCrdAbsent(err: unknown): boolean
 {
   if (_statusOf(err) !== 404)
   {
@@ -200,7 +184,12 @@ function _IsCrdAbsent(err: unknown): boolean
   return false;
 }
 
-/** Extract a Kubernetes API status code from common client error shapes. */
+/**
+ * Extract a Kubernetes API status code from common client error shapes.
+ *
+ * @param err - The thrown error to inspect.
+ * @returns The numeric status code, or undefined when none is present.
+ */
 function _statusOf(err: unknown): number | undefined
 {
   const e = err as { code?: number; statusCode?: number; response?: { statusCode?: number }; body?: { code?: number } };

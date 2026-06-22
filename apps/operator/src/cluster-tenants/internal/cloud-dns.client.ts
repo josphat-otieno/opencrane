@@ -2,31 +2,7 @@
 // on @google-cloud/dns. The actual module is loaded lazily in _getDns().
 import type { DNS } from "@google-cloud/dns";
 
-/**
- * Minimal interface over the Cloud DNS record operations the OrgDomainProvisioner
- * needs. Injected so unit tests can substitute a fake without importing the SDK.
- */
-export interface CloudDnsOperations
-{
-  /**
-   * Ensure an A record exists for `name` pointing at `rrdatas`, idempotently. A
-   * re-apply with the same data is a no-op; an existing record with different data
-   * is replaced. `name` is the fully-qualified record name WITHOUT a trailing dot
-   * (e.g. `*.acme.weownai.eu`); implementations append the dot Cloud DNS requires.
-   *
-   * @param name    - FQDN of the record (no trailing dot).
-   * @param rrdatas - Record data (the ingress IP for an A record).
-   * @param ttl     - Record TTL in seconds.
-   */
-  ensureARecord(name: string, rrdatas: string[], ttl: number): Promise<void>;
-
-  /**
-   * Delete the A record `name` if present; absence is a no-op (idempotent teardown).
-   *
-   * @param name - FQDN of the record (no trailing dot).
-   */
-  deleteARecord(name: string): Promise<void>;
-}
+import type { CloudDnsOperations } from "./org-domain-provisioner.types.js";
 
 /**
  * Production Cloud DNS client wrapper, scoped to a single managed zone.
@@ -34,7 +10,7 @@ export interface CloudDnsOperations
  * The `@google-cloud/dns` SDK is an OPTIONAL dependency loaded lazily via dynamic
  * import only when a DNS operation actually runs. This keeps the on-prem default
  * (and any non-GCP install) free of the cloud SDK at install and runtime — an
- * on-prem image can omit the package entirely and the control-plane still starts,
+ * on-prem image can omit the package entirely and the operator still starts,
  * because this code path is never taken there. Mirrors the operator's
  * `GcpBucketClient` posture.
  *
@@ -109,6 +85,8 @@ export class CloudDnsClient implements CloudDnsOperations
   /**
    * Lazily import @google-cloud/dns and memoise the client. Throws a precise,
    * actionable error if the optional dependency is missing.
+   *
+   * @returns The memoised Cloud DNS SDK client.
    */
   private async _getDns(): Promise<DNS>
   {
@@ -135,13 +113,23 @@ export class CloudDnsClient implements CloudDnsOperations
   }
 }
 
-/** Append the trailing dot Cloud DNS requires on FQDNs, idempotently. */
+/**
+ * Append the trailing dot Cloud DNS requires on FQDNs, idempotently.
+ *
+ * @param name - The record name, with or without a trailing dot.
+ * @returns The name guaranteed to end in a dot.
+ */
 function _withTrailingDot(name: string): string
 {
   return name.endsWith(".") ? name : `${name}.`;
 }
 
-/** Normalise a record's `data` (string | string[] | undefined) to a string array. */
+/**
+ * Normalise a record's `data` (string | string[] | undefined) to a string array.
+ *
+ * @param data - The raw record data from the SDK metadata.
+ * @returns The data as a string array (empty when undefined).
+ */
 function _recordData(data: string | string[] | undefined): string[]
 {
   if (data === undefined)
@@ -151,7 +139,13 @@ function _recordData(data: string | string[] | undefined): string[]
   return Array.isArray(data) ? data : [data];
 }
 
-/** Compare two record-data arrays as sets (order-insensitive). */
+/**
+ * Compare two record-data arrays as sets (order-insensitive).
+ *
+ * @param a - The first record-data array.
+ * @param b - The second record-data array.
+ * @returns True when both arrays contain the same members.
+ */
 function _sameRecordData(a: string[], b: string[]): boolean
 {
   if (a.length !== b.length)

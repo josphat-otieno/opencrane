@@ -10,8 +10,8 @@ import type { ClusterTenantResource } from "../tenants/internal/cluster-tenant-r
 
 import { ClusterTenantStatusWriter } from "./internal/cluster-tenant-status-writer.js";
 import { ClusterTenantReconcilePhase, _ProvisionBoundary } from "./internal/shared-cluster.provisioner.js";
-import type { OrgDomainProvisioner } from "./internal/org-domain-provisioner.js";
-import { GatedOrgDomainProvisioner } from "./internal/org-domain-provisioner.js";
+import type { OrgDomainProvisioner } from "./internal/org-domain-provisioner.types.js";
+import { _BuildOrgDomainProvisioner } from "./internal/org-domain.provisioner.factory.js";
 
 /**
  * Watches the cluster-scoped ClusterTenant custom resource and drives each org
@@ -29,8 +29,10 @@ import { GatedOrgDomainProvisioner } from "./internal/org-domain-provisioner.js"
  *      `opencrane-<name>` namespace for in-cluster tiers; `failed` for an
  *      unsupported tier).
  *   3. Fence the bound namespace (PSA `restricted`) idempotently.
- *   4. Invoke the GATED `OrgDomainProvisioner.provisionOrgDomain(...)` — a no-op
- *      that records a skip condition when cert-manager/DNS is absent; never throws.
+ *   4. Invoke the real `OrgDomainProvisioner.provisionOrgDomain(...)` — it applies the
+ *      per-org wildcard Certificate and (when a Cloud DNS zone is configured) the A
+ *      records, runtime-gating to a recorded skip condition when cert-manager/DNS is
+ *      genuinely absent; it never throws, so a missing backend cannot fail reconcile.
  *   5. `ready` — stamp `boundNamespace` + provisioner + domain status so
  *      `_ResolveClusterTenant` stops hard-failing and openclaws can attach.
  *
@@ -50,7 +52,7 @@ export class ClusterTenantOperator
   /** Helper for patching ClusterTenant status. */
   private statusWriter: ClusterTenantStatusWriter;
 
-  /** Gated per-org domain (DNS + wildcard TLS) provisioner. */
+  /** Per-org domain (DNS + wildcard TLS) provisioner; runtime-gated, never throws. */
   private domainProvisioner: OrgDomainProvisioner;
 
   /** Operator runtime configuration loaded from environment. */
@@ -162,13 +164,15 @@ export class ClusterTenantOperator
       //    exists is treated as a converged no-op by __K8sApplyResource.
       await __K8sApplyResource(this.coreApi, _BuildClusterTenantNamespace(boundary.boundNamespace, name), this.log);
 
-      // 4. Per-org domain (DNS + wildcard TLS) — GATED. The default provisioner skips
-      //    gracefully (returns ready:false, skipped:true) when cert-manager/DNS is
+      // 4. Per-org domain (DNS + wildcard TLS) — runtime-gated. The provisioner applies
+      //    the real Certificate (and A records when a DNS zone is configured), returning
+      //    ready:false, skipped:true ONLY when cert-manager and DNS are both genuinely
       //    absent; it never throws, so a missing backend cannot fail the reconcile.
       const domain = await this.domainProvisioner.provisionOrgDomain({
         orgName: name,
         platformBaseDomain: this.config.ingressDomain,
         vanityDomain: clusterTenant.spec.vanityDomain,
+        ingressIp: this.config.ingressIp || undefined,
       });
       if (domain.skipped)
       {
@@ -205,10 +209,12 @@ export class ClusterTenantOperator
 /**
  * Wire all dependencies from a KubeConfig and return a ready-to-start operator.
  *
- * Owns K8s client construction so the operator class depends only on the
- * abstractions it needs. The domain provisioner defaults to the GATED backend
- * (cert-manager absent on the dev cluster) — swap in a live DNS-01 backend here
- * once cert-manager is installed.
+ * Owns K8s client construction so the operator class depends only on the abstractions
+ * it needs. The domain provisioner is the real `DefaultOrgDomainProvisioner`, built by
+ * `_BuildOrgDomainProvisioner` from operator config: it applies the per-org Certificate
+ * through cert-manager and, when a Cloud DNS zone is configured, the per-org A records.
+ * It is runtime-gated — cert-manager / DNS absence is detected at apply time and
+ * surfaced as a skip, never a crash — so it is safe on the dev cluster as-is.
  *
  * @param kc - Resolved KubeConfig.
  * @param config - Operator runtime configuration.
@@ -222,7 +228,7 @@ export function _CreateClusterTenantOperator(kc: k8s.KubeConfig, config: OpenCla
   const log = baseLog.child({ component: "cluster-tenant-operator" });
 
   const statusWriter = new ClusterTenantStatusWriter(customApi, log);
-  const domainProvisioner = new GatedOrgDomainProvisioner(log);
+  const domainProvisioner = _BuildOrgDomainProvisioner(customApi, config);
 
   return new ClusterTenantOperator(watch, customApi, coreApi, statusWriter, domainProvisioner, config, log);
 }
