@@ -604,7 +604,7 @@ export function tenantsRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCli
       }
 
       // 2. Merge into the existing configOverrides.openclaw block so unrelated
-      //    overrides are preserved; any legacy stored bootstrapToken is dropped.
+      //    overrides are preserved.
       const tenant = await prisma.tenant.findUnique({ where: { name }, select: { configOverrides: true } });
       if (!tenant)
       {
@@ -614,10 +614,9 @@ export function tenantsRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCli
 
       const existing = (tenant.configOverrides ?? {}) as Record<string, unknown>;
       const existingOpenclaw = (typeof existing.openclaw === "object" && existing.openclaw !== null ? { ...existing.openclaw } : {}) as Record<string, unknown>;
-      delete existingOpenclaw.bootstrapToken;
       const mergedOpenclaw: Record<string, unknown> = { ...existingOpenclaw, gatewayUrl };
 
-      // 3. Persist the rotated pairing and audit the change (without the token).
+      // 3. Persist the gateway URL and audit the change.
       await prisma.tenant.update({
         where: { name },
         data: { configOverrides: { ...existing, openclaw: mergedOpenclaw } as Prisma.InputJsonValue },

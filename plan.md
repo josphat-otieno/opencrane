@@ -141,12 +141,14 @@ isolation model).
   (`gatewayUrl`/`bootstrapToken`/`tenant`/`ingressHost`); fail-closed email→tenant resolution. Landed.
 - [x] **CONN.2 Transport hardening** — HSTS, prod-forced `Secure` cookies, `wss://`-only broker guard,
   opt-in HTTP→HTTPS redirect. Landed. (`__Host-` cookie prefix deferred to CONN.6 doc review.)
-- [ ] **CONN.3 Pairing-link provisioning + short bootstrap.** *Persist + decode halves landed*
-  (`PUT /api/v1/tenants/:name/pairing` stores/rotates into `configOverrides.openclaw`; operator
-  `_ParseOpenClawSetupCode` decodes the base64 setup code); mint command resolved
-  (`openclaw qr --setup-code-only --json`). **Remaining (live seam):** the in-pod `openclaw qr` exec
-  (k8s pod-exec; issue-#19352 chicken-and-egg gateway token) wired into operator reconcile → the
-  rotate endpoint. Anchor: operator pod provisioning + `routes/tenants.ts`.
+- [~] **CONN.3 Pairing-link provisioning + short bootstrap.** **Superseded by trusted-proxy (CONN.9 / #48).**
+  The bootstrap-token pairing model is no longer the connection method; the gateway authenticates via
+  the ingress `auth_request` trusted-proxy header, so no per-pod `bootstrapToken` is minted or stored.
+  The operator-side decode half (`_ParseOpenClawSetupCode` + `openclaw-pairing-provision.*`) and the
+  control-plane `bootstrapToken` machinery (the `routes/tenants.ts` strip-guard + the legacy-token test
+  scaffolding) have all been **removed** — no live cluster holds a stored token, so the defensive strip
+  is unnecessary. `PUT /:name/pairing` now stores only the `wss://` gateway URL; `_ResolveOpenClawPairing`
+  and the `/auth/pod-token` broker resolve the connection coordinate (URL only), never a token.
 - [ ] **CONN.4 CP-held operator device + device registry.** *Device-registry half landed*
   (`BrokeredDevice` model + `0008` migration; every `/auth/pod-token` broker upserts a row). **B1
   device-signature fully resolved** — Ed25519 (NOT ECDSA-P256), byte-exact against `openclaw@2026.6.6`
