@@ -345,10 +345,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List all cluster tenants */
+        /**
+         * List all cluster tenants (fleet view — platform-operator only)
+         * @description Fleet-wide list. Restricted to platform operators; a per-org owner/admin reads only their own org via GET /cluster-tenants/{name}.
+         */
         get: operations["listClusterTenants"];
         put?: never;
-        /** Create a cluster tenant (rejects an isolation tier no provisioner can serve) */
+        /**
+         * Create a cluster tenant (organisation) and become its owner
+         * @description Any authenticated user WITH an existing billing account may create an organisation; the caller is recorded as the org's single owner transactionally. Requires a billing account first (POST /billing-accounts), NOT pre-existing org-admin — a user becomes an org admin by creating their first org. Rejects an isolation tier no provisioner can serve.
+         */
         post: operations["createClusterTenant"];
         delete?: never;
         options?: never;
@@ -363,12 +369,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get a single cluster tenant by name */
+        /** Get a single cluster tenant by name (operator OR owner/admin of that org) */
         get: operations["getClusterTenant"];
-        /** Update a cluster tenant (re-gates the isolation tier when it changes) */
+        /** Update a cluster tenant (operator OR owner/admin of that org); re-gates the isolation tier when it changes */
         put: operations["updateClusterTenant"];
         post?: never;
-        /** Delete a cluster tenant */
+        /** Delete a cluster tenant (operator OR owner/admin of that org) */
         delete: operations["deleteClusterTenant"];
         options?: never;
         head?: never;
@@ -382,8 +388,45 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get the observed status of a cluster tenant */
+        /** Get the observed status of a cluster tenant (operator OR owner/admin of that org) */
         get: operations["getClusterTenantStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/billing-accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create the caller's own billing account (idempotent per subject)
+         * @description Any authenticated user creates their OWN billing account, keyed to their IdP-verified subject (never request input). Idempotent: a repeat call returns the existing account (200) instead of failing. Having a billing account is the gate for creating an organisation (POST /cluster-tenants).
+         */
+        post: operations["createBillingAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/billing-accounts/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Return the caller's own billing account */
+        get: operations["getMyBillingAccount"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1770,6 +1813,25 @@ export interface components {
             storage?: string;
             /** @description Total GPUs the customer may request. */
             gpu?: number;
+        };
+        BillingAccount: {
+            /** @description Surrogate identifier. */
+            id: string;
+            /** @description IdP-verified subject (OIDC sub) that owns this billing account. */
+            subject: string;
+            /** @description The caller's verified email at create time (for human reconciliation; not the key). */
+            email?: string | null;
+            /** @description Optional human-readable billing name (company / individual). */
+            displayName?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description Create payload for the caller's own billing account. The subject and email come from the session (never the body); only an optional displayName is accepted. */
+        BillingAccountWrite: {
+            /** @description Optional human-readable billing name (company / individual). */
+            displayName?: string;
         };
         Group: {
             id?: string;
@@ -3259,6 +3321,24 @@ export interface operations {
                     "application/json": components["schemas"]["ClusterTenant"][];
                 };
             };
+            /** @description No authenticated session (real-auth deployments). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Caller is not a platform operator. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     createClusterTenant: {
@@ -3274,7 +3354,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Cluster tenant created. */
+            /** @description Cluster tenant created; caller recorded as owner. */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -3285,6 +3365,24 @@ export interface operations {
             };
             /** @description Request body failed validation. */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description No authenticated session (real-auth deployments). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Caller has no billing account (code BILLING_ACCOUNT_REQUIRED). */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3321,6 +3419,24 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ClusterTenant"];
+                };
+            };
+            /** @description No authenticated session (real-auth deployments). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Caller is neither a platform operator nor an owner/admin of this org. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
             /** @description Cluster tenant not found. */
@@ -3360,6 +3476,24 @@ export interface operations {
             };
             /** @description Request body failed validation. */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description No authenticated session (real-auth deployments). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Caller is neither a platform operator nor an owner/admin of this org. */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3410,6 +3544,24 @@ export interface operations {
                     };
                 };
             };
+            /** @description No authenticated session (real-auth deployments). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Caller is neither a platform operator nor an owner/admin of this org. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             /** @description Cluster tenant not found. */
             404: {
                 headers: {
@@ -3447,7 +3599,105 @@ export interface operations {
                     };
                 };
             };
+            /** @description No authenticated session (real-auth deployments). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Caller is neither a platform operator nor an owner/admin of this org. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             /** @description Cluster tenant not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createBillingAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["BillingAccountWrite"];
+            };
+        };
+        responses: {
+            /** @description Billing account already existed (idempotent). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingAccount"];
+                };
+            };
+            /** @description Billing account created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingAccount"];
+                };
+            };
+            /** @description No authenticated session (real-auth deployments). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getMyBillingAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Billing account detail. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingAccount"];
+                };
+            };
+            /** @description No authenticated session (real-auth deployments). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Caller has no billing account (code BILLING_ACCOUNT_NOT_FOUND). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -6437,6 +6687,16 @@ export interface operations {
                             isOrgAdmin: boolean;
                             /** @description The caller's ClusterTenant (customer) key, resolved server-side from their IdP-verified email → tenant → clusterTenantRef. Null when unresolved or ambiguous. */
                             clusterTenant?: string | null;
+                            /** @description Organisations the caller owns or administers, derived fresh from their OrgMembership rows (owner/admin only; members excluded). Empty when the caller administers no org. The org-scope half of the membership-derived isOrgAdmin. Introspection only — never taken from request input. */
+                            ownedOrgs?: {
+                                /** @description The organisation (ClusterTenant) key. */
+                                clusterTenant: string;
+                                /**
+                                 * @description The administering role the caller holds in this org.
+                                 * @enum {string}
+                                 */
+                                role: "owner" | "admin";
+                            }[];
                             email?: string;
                             emailVerified?: boolean;
                             name?: string;

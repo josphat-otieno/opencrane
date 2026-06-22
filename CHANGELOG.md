@@ -25,6 +25,17 @@ follows [Keep a Changelog](https://keepachangelog.com/); the project uses
   group mapping exists in the IdP, remove the seed. It is fail-closed — an empty/unset
   seed grants operator to nobody, and an email the IdP marks unverified never matches.
 
+- **Any signed-in user can create an organisation and instantly becomes its root admin.**
+  A user first creates a billing account (`POST /api/v1/billing-accounts`), then creating a
+  ClusterTenant (`POST /api/v1/cluster-tenants`) records them as the org's single `owner` in the
+  same transaction — so an organisation always has exactly one root admin. `isOrgAdmin` and the
+  caller's owned/administered orgs are now derived from real per-org `OrgMembership` (not a global
+  flag) and surface on `/auth/me` as `ownedOrgs`. The cluster-tenants API is no longer unguarded:
+  creating requires an authenticated session **with** a billing account (not pre-existing admin — a
+  user becomes admin *by* creating); reading and destructive operations require a platform operator
+  or an owner/admin member of that specific org. Anonymous callers are rejected (401) in any real
+  deployment.
+
 ### Changed
 
 - **The control-plane Helm chart now wires human-login OIDC end to end.** A new

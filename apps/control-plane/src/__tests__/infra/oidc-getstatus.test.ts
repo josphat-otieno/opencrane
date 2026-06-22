@@ -33,11 +33,21 @@ function _reqWithUser(email: string | undefined): Request
         issuer: "https://idp.test",
         groups: ["acme-users"],
         isPlatformOperator: false,
+        isOrgAdmin: false,
         ...(email ? { email } : {}),
         authenticatedAt: "2026-01-01T00:00:00.000Z",
       },
     },
   } as unknown as Request;
+}
+
+/** Prisma stub for getStatus: tenant.findMany (email→ref) + orgMembership.findMany (owned orgs). */
+function _prismaWith(tenantRows: { clusterTenantRef: string | null }[], membershipRows: { clusterTenant: string; role: string }[]): PrismaClient
+{
+  return {
+    tenant: { findMany: vi.fn().mockResolvedValue(tenantRows) },
+    orgMembership: { findMany: vi.fn().mockResolvedValue(membershipRows) },
+  } as unknown as PrismaClient;
 }
 
 describe("OidcAuthService.getStatus — /auth/me identity surface (WOI.1)", function _suite()
@@ -94,5 +104,29 @@ describe("OidcAuthService.getStatus — /auth/me identity surface (WOI.1)", func
     expect(status.authenticated).toBe(false);
     expect(status.user).toBeNull();
     expect(findMany).not.toHaveBeenCalled();
+  });
+
+  it("derives isOrgAdmin + ownedOrgs from OrgMembership at read time, even with no org-admin group (ORG-ADMIN.5)", async function _membershipDerived()
+  {
+    // The session was established with isOrgAdmin=false (no group/operator), but the
+    // user later created an org and became its owner — /auth/me must reflect that.
+    const prisma = _prismaWith([{ clusterTenantRef: null }], [{ clusterTenant: "acme", role: "Owner" }]);
+    const service = ___CreateOidcAuthService(pino({ enabled: false }), prisma);
+
+    const status = await service.getStatus(_reqWithUser("owner@acme.io"));
+
+    expect(status.user?.isOrgAdmin).toBe(true);
+    expect(status.user?.ownedOrgs).toEqual([{ clusterTenant: "acme", role: "owner" }]);
+  });
+
+  it("reports isOrgAdmin false + empty ownedOrgs for a user who administers no org", async function _notAdmin()
+  {
+    const prisma = _prismaWith([{ clusterTenantRef: "acme" }], []);
+    const service = ___CreateOidcAuthService(pino({ enabled: false }), prisma);
+
+    const status = await service.getStatus(_reqWithUser("member@acme.io"));
+
+    expect(status.user?.isOrgAdmin).toBe(false);
+    expect(status.user?.ownedOrgs).toEqual([]);
   });
 });
