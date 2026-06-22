@@ -141,12 +141,40 @@ controlPlane:
     secretKey: DATABASE_URL
   # -- Cognee integration for control-plane permission synchronization
   cognee:
-    # -- Cognee HTTP endpoint used by control-plane permission sync routes
+    # -- Install an in-cluster Cognee as part of this release. Cognee is a REQUIRED
+    #    service (the control-plane's permission sync + the awareness retrieval ACL
+    #    both depend on it), so this defaults true — a fresh cluster gets a working
+    #    Cognee with no extra step. Set false to bring your own (BYO): the endpoint
+    #    below then points at your external/shared Cognee and no workload is rendered.
+    #    Separate from `backendAccessControl` (the runtime enforcement switch) so an
+    #    operator can BYO Cognee while still enforcing the backend ACL.
+    install: true
+    # -- Cognee HTTP endpoint used by control-plane permission sync routes. When
+    #    `install` is true the in-chart Service is reachable at this name; point it
+    #    elsewhere only when BYO (`install: false`).
     endpoint: "http://cognee:8000"
-    # -- Enable Cognee backend access controls (tenant isolation + RBAC enforcement)
+    # -- Enable Cognee backend access controls (tenant isolation + RBAC enforcement).
+    #    Defaults true: the bundled Cognee makes this a real, enforced default rather
+    #    than a latent fresh-cluster gap pointing at a service nobody installed.
     backendAccessControl: true
     # -- Permission sync timeout in milliseconds
     permissionsTimeoutMs: 5000
+    # -- In-chart Cognee workload settings (only consumed when `install` is true).
+    image:
+      repository: cognee/cognee
+      # -- Pinned to an audited stable tag for supply-chain integrity + reproducible
+      #    deploys. Bump deliberately after re-auditing; never use a rolling `latest`.
+      tag: "0.1.43"
+      pullPolicy: IfNotPresent
+    service:
+      port: 8000
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
   # -- OIDC human-login session config for the control-plane. Zitadel is the single
   #    trusted issuer (Mode-2 broker, no upstream Entra), but nothing here is
   #    Zitadel-specific — any spec-compliant issuer works. OIDC is OFF unless
@@ -326,6 +354,21 @@ hosting:
     #    Identity binding. Optional: when empty, external-secrets discovers it from
     #    the GKE metadata server. Only consumed when externalSecrets is enabled.
     clusterLocation: ""
+
+# -- ingress-nginx controller bundling (a cluster singleton, like cert-manager). The
+#    deploy scripts install ingress-nginx by default so a fresh cluster has a working
+#    ingress class with no extra step, and auto-skip when a controller is already
+#    present. `install` is the bundling switch (deploy-script only); it is deliberately
+#    SEPARATE from `ingress.enabled` below (whether the chart renders Ingress objects)
+#    so an operator can BYO their own controller (`install: false`) while the chart
+#    still renders Ingress against it. Not consumed by Helm templates — the scripts
+#    read `--set ingressNginx.install=…` / the wizard's choice.
+ingressNginx:
+  # -- Install the upstream ingress-nginx controller from the deploy scripts. Default
+  #    true; set false to BYO an existing controller (the install step is skipped).
+  install: true
+  # -- Namespace the controller is installed into (matches networkPolicy.ingressNamespace).
+  namespace: ingress-nginx
 
 # -- Ingress settings
 ingress:

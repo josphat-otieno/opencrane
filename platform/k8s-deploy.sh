@@ -18,6 +18,7 @@
 #                            [--oidc-issuer-url URL] [--oidc-client-id ID]
 #                            [--oidc-redirect-uri URI]
 #                            [--platform-operator-seed-email EMAIL]
+#                            [--no-ingress-nginx]
 #                            [--cert-manager] [--acme-email EMAIL]
 #                            [--dns01-provider clouddns] [--dns01-credentials FILE]
 #                            [--values FILE] [--set k=v ...]
@@ -39,6 +40,13 @@
 #
 # This step installs only the PLATFORM-WILDCARD issuer + cert. Per-org certs are a
 # runtime concern of the ClusterTenant reconciler, NOT an install concern.
+#
+# Bundled cluster singletons (default ON, auto-skip if already present):
+#   ingress-nginx — the ingress controller (skip with --no-ingress-nginx to BYO one).
+#   Cognee        — the required graph-RAG service, installed IN-CHART via
+#                   controlPlane.cognee.install=true (set false to BYO an external one).
+# Each is gated by a `*.install` flag SEPARATE from the chart's `*.enabled`, so an
+# operator can bring their own while the chart still wires against it.
 #
 # --image-tag pins all three platform images (control-plane, operator, tenant)
 # to the same tag. To roll a SINGLE component to a different build, pass the
@@ -97,6 +105,14 @@ DNS01_PROVIDER="${OPENCRANE_DNS01_PROVIDER:-${DNS01_PROVIDER:-}}"
 DNS01_CREDENTIALS="${OPENCRANE_DNS01_CREDENTIALS:-${DNS01_CREDENTIALS:-}}"
 CERT_MANAGER_NAMESPACE="cert-manager"
 
+# ingress-nginx bundling (a cluster singleton like cert-manager). Installed by default
+# so a fresh cluster gets a working ingress class with no extra step; auto-skips when a
+# controller is already present. `--no-ingress-nginx` (or OPENCRANE_INSTALL_INGRESS_NGINX=0)
+# turns the bundling off to BYO a controller. This is SEPARATE from the chart's
+# ingress.enabled (whether Ingress objects render) — see values.yaml `ingressNginx`.
+INSTALL_INGRESS_NGINX="${OPENCRANE_INSTALL_INGRESS_NGINX:-1}"
+INGRESS_NGINX_NAMESPACE="ingress-nginx"
+
 DB_CLUSTER="opencrane-db"
 DB_SECRET="opencrane-db"
 DB_USER="opencrane"
@@ -121,6 +137,7 @@ while [[ $# -gt 0 ]]; do
     --oidc-client-id)    OIDC_CLIENT_ID="$2"; shift 2 ;;
     --oidc-redirect-uri) OIDC_REDIRECT_URI="$2"; shift 2 ;;
     --platform-operator-seed-email) PLATFORM_OPERATOR_SEED_EMAIL="$2"; shift 2 ;;
+    --no-ingress-nginx) INSTALL_INGRESS_NGINX="0"; shift ;;
     --cert-manager)  CERT_MANAGER="on"; shift ;;
     --acme-email)    ACME_EMAIL="$2"; shift 2 ;;
     --dns01-provider)    DNS01_PROVIDER="$2"; shift 2 ;;
@@ -196,6 +213,33 @@ kubectl create secret generic opencrane-litellm-db -n "$NAMESPACE" \
 
 kubectl create secret generic opencrane-litellm -n "$NAMESPACE" \
   --from-literal=LITELLM_MASTER_KEY="$LITELLM_MASTER_KEY" --dry-run=client -o yaml | kubectl apply -f -
+
+# 2.25. ingress-nginx (a cluster singleton). Installed by default; auto-skips when a
+# controller is already present (existing IngressClass or an ingress-nginx Deployment)
+# so bundling never clobbers a BYO controller. helm upgrade --install is itself
+# idempotent, but we check first so a BYO controller in another namespace is respected.
+_ingress_nginx_present() {
+  kubectl get ingressclass -o name 2>/dev/null | grep -q . && return 0
+  kubectl get deploy -A -l app.kubernetes.io/name=ingress-nginx -o name 2>/dev/null | grep -q . && return 0
+  return 1
+}
+
+_install_ingress_nginx() {
+  if [[ "$INSTALL_INGRESS_NGINX" != "1" ]]; then
+    log "ingress-nginx: bundling disabled (--no-ingress-nginx). Bring your own controller."
+    return
+  fi
+  if _ingress_nginx_present; then
+    log "ingress-nginx: a controller is already present — skipping the bundled install."
+    return
+  fi
+  log "Installing ingress-nginx controller…"
+  helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx --force-update >/dev/null
+  helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+    --namespace "$INGRESS_NGINX_NAMESPACE" --create-namespace --wait
+}
+
+_install_ingress_nginx
 
 # 2.5. cert-manager / TLS. MUST run before the chart's `helm install`: the chart
 # renders cert-manager.io/v1 Issuer + Certificate objects, so the CRDs (and, for acme,
