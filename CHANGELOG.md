@@ -59,6 +59,32 @@ follows [Keep a Changelog](https://keepachangelog.com/); the project uses
   gates attachment — instead of failing the reconcile, and the Cloud DNS integration is an optional
   dependency that on-prem installs never load. This runs only from the operator's org reconciler —
   creating an org over the API never touches DNS or cert-manager directly.
+- **Bring up a fresh cluster end-to-end with one command, in the profile you need.** Two thin profile
+  scripts over a shared install core install everything: `./platform/deploy-single-tenant.sh
+  --base-domain … --org-name … --org-owner-email …` stands up one organisation (self-service org creation
+  and billing off), and `./platform/deploy-multi-tenant.sh --base-domain …` stands up the full self-service
+  fleet. Both install the cluster prerequisites for you — in-cluster PostgreSQL, an ingress controller,
+  Cognee, and (in acme mode) cert-manager and external-dns — each as a cluster singleton that auto-skips
+  when you already run your own (`--no-ingress-nginx` / `--no-external-dns` to bring your own).
+- **Per-org DNS records are now created automatically at runtime.** Instead of writing per-org records in
+  Terraform, the install bundles the **external-dns** controller (`acme`/`clouddns` mode); the operator
+  declares each org's records and external-dns reconciles them into your Cloud DNS zone — and reaps them
+  when the org is removed. Terraform provisions only the zone, the install-time platform records, the
+  reserved ingress IP, and a **single** `roles/dns.admin` Workload-Identity binding that external-dns and
+  cert-manager DNS-01 **share** (no duplicate credential to manage).
+- **Choose your TLS posture explicitly at install.** cert-manager runs in one of three modes: **off**
+  (TLS terminated elsewhere), **selfSigned** (instant, dev/k3d/bare-IP, not browser-trusted), or **acme**
+  (browser-trusted wildcard via Let's Encrypt DNS-01, which now also bundles external-dns and runs a DNS-01
+  preflight that fails fast with exact remediation).
+- **Catch a broken cluster before you install it.** `./platform/k8s-deploy.sh --preflight` runs a read-only
+  check — default StorageClass present, a NetworkPolicy-enforcing CNI, first-party images pullable, your
+  base domain's registrar NS-delegation resolves, and the DNS-write capability shared by external-dns +
+  cert-manager is in place — and exits before changing anything, so you fix the environment once instead of
+  debugging a half-installed, crash-looping cluster.
+- **OIDC login works on a fresh install without a hand-created Secret.** When you pass OIDC settings, the
+  installer creates the Kubernetes Secret holding the client secret and an auto-generated session secret and
+  wires the chart at it — previously the Secret was assumed to already exist, so a fresh OIDC install
+  crash-looped. Supply the client secret via `--oidc-client-secret` (or `OPENCRANE_OIDC_CLIENT_SECRET`).
 
 ### Changed
 
