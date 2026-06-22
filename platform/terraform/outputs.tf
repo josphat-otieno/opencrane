@@ -42,7 +42,13 @@ output "dns_name_servers"
 output "dns_setup_instructions"
 {
   description = "Manual DNS guidance when Cloud DNS is disabled."
-  value = length(module.dns) > 0 ? "Cloud DNS managed by Terraform — delegate ${var.domain} to the dns_name_servers output." : "Point an A record for your domain and a wildcard *.<domain> at the ingress IP (run: kubectl get ingress -A) at your DNS provider."
+  value       = length(module.dns) > 0 ? "Cloud DNS zone managed by Terraform — delegate ${var.domain} to the dns_name_servers output at your registrar (NS delegation). external-dns reconciles per-org records into this zone at runtime." : "Point an A record for your domain and a wildcard *.<domain> at the ingress IP (run: kubectl get ingress -A) at your DNS provider."
+}
+
+output "dns_writer_service_account_email"
+{
+  description = "Shared DNS-writer GSA (roles/dns.admin) impersonated by external-dns + cert-manager DNS-01 (empty unless enable_cloud_dns is on)."
+  value       = length(module.dns) > 0 ? module.dns[0].dns_writer_service_account_email : ""
 }
 
 output "database_url"

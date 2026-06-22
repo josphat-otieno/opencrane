@@ -141,12 +141,40 @@ controlPlane:
     secretKey: DATABASE_URL
   # -- Cognee integration for control-plane permission synchronization
   cognee:
-    # -- Cognee HTTP endpoint used by control-plane permission sync routes
+    # -- Install an in-cluster Cognee as part of this release. Cognee is a REQUIRED
+    #    service (the control-plane's permission sync + the awareness retrieval ACL
+    #    both depend on it), so this defaults true — a fresh cluster gets a working
+    #    Cognee with no extra step. Set false to bring your own (BYO): the endpoint
+    #    below then points at your external/shared Cognee and no workload is rendered.
+    #    Separate from `backendAccessControl` (the runtime enforcement switch) so an
+    #    operator can BYO Cognee while still enforcing the backend ACL.
+    install: true
+    # -- Cognee HTTP endpoint used by control-plane permission sync routes. When
+    #    `install` is true the in-chart Service is reachable at this name; point it
+    #    elsewhere only when BYO (`install: false`).
     endpoint: "http://cognee:8000"
-    # -- Enable Cognee backend access controls (tenant isolation + RBAC enforcement)
+    # -- Enable Cognee backend access controls (tenant isolation + RBAC enforcement).
+    #    Defaults true: the bundled Cognee makes this a real, enforced default rather
+    #    than a latent fresh-cluster gap pointing at a service nobody installed.
     backendAccessControl: true
     # -- Permission sync timeout in milliseconds
     permissionsTimeoutMs: 5000
+    # -- In-chart Cognee workload settings (only consumed when `install` is true).
+    image:
+      repository: cognee/cognee
+      # -- Pinned to an audited stable tag for supply-chain integrity + reproducible
+      #    deploys. Bump deliberately after re-auditing; never use a rolling `latest`.
+      tag: "0.1.43"
+      pullPolicy: IfNotPresent
+    service:
+      port: 8000
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
   # -- OIDC human-login session config for the control-plane. Zitadel is the single
   #    trusted issuer (Mode-2 broker, no upstream Entra), but nothing here is
   #    Zitadel-specific — any spec-compliant issuer works. OIDC is OFF unless
@@ -342,6 +370,21 @@ hosting:
     #    the GKE metadata server. Only consumed when externalSecrets is enabled.
     clusterLocation: ""
 
+# -- ingress-nginx controller bundling (a cluster singleton, like cert-manager). The
+#    deploy scripts install ingress-nginx by default so a fresh cluster has a working
+#    ingress class with no extra step, and auto-skip when a controller is already
+#    present. `install` is the bundling switch (deploy-script only); it is deliberately
+#    SEPARATE from `ingress.enabled` below (whether the chart renders Ingress objects)
+#    so an operator can BYO their own controller (`install: false`) while the chart
+#    still renders Ingress against it. Not consumed by Helm templates — the scripts
+#    read `--set ingressNginx.install=…` / the wizard's choice.
+ingressNginx:
+  # -- Install the upstream ingress-nginx controller from the deploy scripts. Default
+  #    true; set false to BYO an existing controller (the install step is skipped).
+  install: true
+  # -- Namespace the controller is installed into (matches networkPolicy.ingressNamespace).
+  namespace: ingress-nginx
+
 # -- Ingress settings
 ingress:
   enabled: true
@@ -430,7 +473,20 @@ monitoring:
 # and access to the platform's DNS zone. When disabled (or its CRD is absent) the operator
 # skips the per-org DNS side effect at runtime; the Certificate is still applied.
 externalDns:
+  # -- Grant the operator RBAC to create `DNSEndpoint` CRs and have its ClusterTenant
+  #    reconciler declare per-org records. This is the CHART/operator switch (consumed by
+  #    Helm templates). DELIBERATELY SEPARATE from `install` below — an operator can BYO an
+  #    external-dns controller (`install: false`) while the chart still wires against it.
   enabled: false
+  # -- Install the upstream external-dns controller + its CRDs (incl. `DNSEndpoint`) from
+  #    the deploy scripts, as a cluster singleton like ingress-nginx / cert-manager.
+  #    Default true so a fresh cluster reconciles the operator's DNSEndpoint CRs into Cloud
+  #    DNS with no extra step; auto-skips when a controller is already present. Set false to
+  #    BYO a controller. Not consumed by Helm templates — the scripts read
+  #    `--set externalDns.install=…` / the wizard's choice (mirrors `ingressNginx.install`).
+  install: true
+  # -- Namespace the bundled external-dns controller is installed into.
+  namespace: external-dns
 
 certManager:
   enabled: false
@@ -610,42 +666,24 @@ skillRegistry:
 # forwards to the resolved `openclaw-<user>.<ns>.svc` pod. OFF by default — enabling
 # it is the per-org-host cutover (see website/security/connection-security.md); until
 # then the operator keeps minting per-user Ingresses.
+# -- Identity-routing gateway proxy (DOMAIN.T4), folded IN-PROCESS into the operator
+# (interim — can be split into its own pod later). When enabled, the operator runs a WS
+# proxy on `port`: the per-org host's gateway WS upgrade is path-routed here, the proxy
+# delegates auth to the control plane (/auth/gateway-resolve), injects X-Forwarded-User,
+# and reverse-proxies to the user's pod. OFF by default — enabling it makes the operator
+# pod internet-facing (via the wildcard Ingress), a deliberate interim trade-off.
 gatewayProxy:
   enabled: false
-  image:
-    repository: ghcr.io/italanta/opencrane-gateway-proxy
-    tag: latest
-    pullPolicy: IfNotPresent
-  replicas: 1
-  service:
-    port: 8090
-  # -- Exact `Origin` values allowed on a gateway WS upgrade (scheme://host[:port]).
-  #    EMPTY = fail closed (every browser upgrade refused). Set to the org host(s)
-  #    this proxy fronts, e.g. ["https://acme.opencrane.ai"]. CORS does not cover
-  #    WebSockets, so this allowlist is the only Origin defence.
+  # -- TCP port the operator's proxy server listens on (distinct from the gateway port).
+  port: 8090
+  # -- Exact `Origin` values allowed on a gateway WS upgrade (CSWSH), for vanity hosts.
   allowedOrigins: []
-  # -- Max gateway sockets one identity may open per minute (per replica abuse backstop).
+  # -- Platform base domains; any `https://<org>.<base>` host is allowed without
+  #    enumeration. Defaults to [ingress.domain] when empty. Empty AND no exact origins
+  #    = fail closed (every browser upgrade refused). CORS does not cover WebSockets.
+  allowedOriginBaseDomains: []
+  # -- Max gateway sockets one identity may open per minute (per operator replica).
   rateLimitPerMinute: 60
-  podSecurityContext:
-    runAsNonRoot: true
-    runAsUser: 10001
-    runAsGroup: 10001
-    fsGroup: 10001
-    seccompProfile:
-      type: RuntimeDefault
-  securityContext:
-    allowPrivilegeEscalation: false
-    capabilities:
-      drop:
-        - ALL
-    readOnlyRootFilesystem: true
-  resources:
-    requests:
-      cpu: 50m
-      memory: 64Mi
-    limits:
-      cpu: 500m
-      memory: 128Mi
 
 # -- Audience-bound projected token settings for tenant access into ingress planes
 projectedIdentity:
@@ -682,6 +720,12 @@ externalSecrets:
   enabled: false
   # -- Secret store provider: gcp-secret-manager, azure-key-vault, aws-secrets-manager
   provider: ""
+  # -- Annotations placed on the `<fullname>-external-secrets` ServiceAccount the
+  #    (Cluster)SecretStore's Workload-Identity ref points at. On GKE set
+  #    `iam.gke.io/gcp-service-account: <gsa>@<project>.iam.gserviceaccount.com` to bind
+  #    the GSA that holds Secret Manager access. The ServiceAccount itself is always
+  #    rendered when enabled (the store references it), so external-secrets can bind it.
+  serviceAccountAnnotations: {}
 
 # -- Cloud-native observability (no in-cluster stack needed)
 observability:
@@ -732,7 +776,38 @@ observability:
 #    (the default), `dedicatedCluster` stays unavailable and the control-plane API
 #    rejects it with 422 TIER_UNAVAILABLE (fail-closed). The control plane refuses a
 #    non-`https://` URL so the bearer token is never sent in plaintext.
+# -- Tenancy profile toggles (Chunk 4). Default ON = the MULTI-tenant profile: callers
+#    self-serve a billing account then create their own organisations (ClusterTenants).
+#    The SINGLE-tenant profile sets BOTH to false and seeds ONE org instead (see
+#    `clusterTenant.seed` below) — there is no self-service billing or org management on a
+#    single-tenant box. Wired to the control-plane as OPENCRANE_BILLING_ENABLED /
+#    OPENCRANE_CLUSTER_TENANT_MANAGER_ENABLED; when false the matching self-service router
+#    is not mounted. `multiInstance` is a separate, lower-level switch and stays OFF here.
+clusterTenantManager:
+  # -- Expose the self-service ClusterTenant management API (POST/PATCH/DELETE
+  #    /cluster-tenants). Single-tenant: false (the one org is seeded directly).
+  enabled: true
+billing:
+  # -- Expose the self-service billing-accounts API (the gate for org creation).
+  #    Single-tenant: false (no billing relationship on a single-tenant install).
+  enabled: true
+
 clusterTenant:
+  # -- Single-tenant SEED (Chunk 4). When `name` is set the control-plane seeds ONE org
+  #    DIRECTLY at boot — the ClusterTenant CR + its `owner` OrgMembership — bypassing the
+  #    billing-gated POST. The #50 reconciler then provisions it. Idempotent and
+  #    fail-soft; a re-run converges. Leave `name` empty (the default, multi-tenant
+  #    profile) to seed nothing. Wired as OPENCRANE_SEED_CLUSTER_TENANT_*.
+  seed:
+    # -- Stable org name (the ClusterTenant id + CR name). Empty → no seed.
+    name: ""
+    # -- Human-readable org display name; defaults to `name` when empty.
+    displayName: ""
+    # -- Owner email, recorded as the org's single `owner` membership subject (the
+    #    OIDC-sub-else-email fallback, since the owner has not logged in at install).
+    ownerEmail: ""
+    # -- Isolation tier for the seeded org: shared | dedicatedNodes | dedicatedCluster.
+    tier: shared
   provisionerWebhook:
     # -- HTTPS base URL of the external provisioner (must start with https://).
     url: ""

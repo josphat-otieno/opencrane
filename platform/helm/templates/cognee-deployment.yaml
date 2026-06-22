@@ -1,0 +1,101 @@
+{{- /* In-cluster Cognee — the graph-RAG service the control-plane syncs awareness
+       grants/permissions to and that tenant pods query for org context. Cognee is a
+       REQUIRED service, so it is installed by default (controlPlane.cognee.install:
+       true). Set that false to BYO an external/shared Cognee — the control-plane then
+       talks to controlPlane.cognee.endpoint and no workload is rendered here.
+
+       The Service is named `cognee` (a cluster singleton, like ingress-nginx) so it
+       matches the default endpoint `http://cognee:8000`; if you BYO, point the endpoint
+       elsewhere. This `*.install` flag is deliberately separate from
+       `*.backendAccessControl` (the runtime ACL-enforcement switch) so an operator can
+       BYO Cognee while still enforcing the backend access control.
+
+       The Service name is the cluster-singleton `cognee`, so the bundled workload is
+       only rendered in single-install mode. Under multiInstance the in-chart Cognee is
+       suppressed (an unprefixed singleton can't be per-release); a multi-instance
+       cluster must point each instance at a shared Cognee via the endpoint instead. */ -}}
+{{- if and .Values.controlPlane.cognee.install (not .Values.multiInstance.enabled) }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cognee
+  labels:
+    {{- include "opencrane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cognee
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "opencrane.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: cognee
+  ports:
+    - name: http
+      port: {{ .Values.controlPlane.cognee.service.port }}
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "opencrane.fullname" . }}-cognee
+  labels:
+    {{- include "opencrane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cognee
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "opencrane.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: cognee
+  template:
+    metadata:
+      labels:
+        {{- include "opencrane.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: cognee
+    spec:
+      containers:
+        - name: cognee
+          image: "{{ .Values.controlPlane.cognee.image.repository }}:{{ .Values.controlPlane.cognee.image.tag }}"
+          imagePullPolicy: {{ .Values.controlPlane.cognee.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.controlPlane.cognee.service.port }}
+          env:
+            - name: HOST
+              value: "0.0.0.0"
+            - name: PORT
+              value: {{ .Values.controlPlane.cognee.service.port | quote }}
+          resources:
+            {{- toYaml .Values.controlPlane.cognee.resources | nindent 12 }}
+{{- if .Values.networkPolicy.enabled }}
+---
+# Defence-in-depth ingress policy for the bundled Cognee. Only the control-plane
+# (awareness grant / permission sync) and tenant pods (direct org-context queries via
+# the awareness SDK) reach it; everything else is denied at the network layer.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "opencrane.fullname" . }}-cognee-ingress
+  labels:
+    {{- include "opencrane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cognee
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "opencrane.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: cognee
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "opencrane.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: control-plane
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: tenant
+      ports:
+        - protocol: TCP
+          port: {{ .Values.controlPlane.cognee.service.port }}
+{{- end }}
+{{- end }}

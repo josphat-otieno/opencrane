@@ -1,8 +1,10 @@
 # -----------------------------------------------------------------------------
 # OpenCrane GCP Infrastructure
 #
-# Provisions networking, GKE, Artifact Registry, Cloud DNS, and then applies
-# the cloud-agnostic core module onto the resulting cluster.
+# Provisions networking, GKE, Artifact Registry, the Cloud DNS zone + shared
+# DNS-writer Workload-Identity binding, and then applies the cloud-agnostic core
+# module onto the resulting cluster. Per-org DNS records are reconciled at runtime
+# by external-dns from the operator's DNSEndpoint CRs, not by Terraform.
 #
 # Bucket provisioning is handled in-operator via GcpHostingAdapter +
 # @google-cloud/storage + Workload Identity.
@@ -86,7 +88,13 @@ module "app_deploy"
   depends_on = [module.gke]
 }
 
-# ---- Phase 5: Cloud DNS (wildcard → ingress IP) ----
+# ---- Phase 5: Cloud DNS (zone + platform records + shared DNS-writer WI) ----
+#
+# Provisions the managed zone, the install-time platform records (apex, `*.<base>`,
+# control-plane host) and the shared `roles/dns.admin` Workload-Identity binding that
+# external-dns and the cert-manager DNS-01 solver impersonate. Per-org/per-host records
+# are reconciled at runtime by external-dns from the operator's DNSEndpoint CRs — never
+# written here.
 
 module "dns"
 {

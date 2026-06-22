@@ -44,6 +44,13 @@ subjects:
     name: {{ include "opencrane.fullname" $ }}-control-plane
     namespace: {{ $.Release.Namespace }}
 {{- end }}
+{{- /*
+  NOTE: ClusterTenant is cluster-scoped, but a cluster-wide clustertenants grant is a
+  cross-instance isolation breach in multi-instance mode (one instance could manage
+  another's orgs). So in this mode NO clustertenants ClusterRole is rendered — fleet-wide
+  ClusterTenant management belongs to a single, non-multi-instance control plane, not to
+  a per-instance one. The single-install branch below grants it (gated on need).
+*/}}
 {{- if and .Values.certManager.enabled (ne (include "opencrane.namespacedCertIssuer" .) "true") }}
 ---
 # CONN.8a (cluster-scoped residual): the `oc platform dns set` endpoint upserts a
@@ -99,6 +106,16 @@ rules:
   - apiGroups: ["cert-manager.io"]
     resources: ["clusterissuers"]
     verbs: ["get", "create", "update", "patch"]
+  {{- if or .Values.clusterTenantManager.enabled .Values.clusterTenant.seed.name }}
+  # ClusterTenant is CLUSTER-SCOPED, so the control-plane's DB→CR bridge (the
+  # billing-gated POST /cluster-tenants AND the single-tenant boot seed) needs a
+  # cluster-wide grant — it cannot live in the namespaced Role. Status is owned by
+  # the operator; the control-plane writes spec only. Granted only when the
+  # self-service manager is on OR a single-tenant org is seeded (least privilege).
+  - apiGroups: ["opencrane.io"]
+    resources: ["clustertenants"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

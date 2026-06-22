@@ -289,13 +289,6 @@ resource "helm_release" "opencrane"
     value = "true"
   }
 
-  # Shared skills PVC
-  set
-  {
-    name  = "sharedSkills.pvc.storageClass"
-    value = "standard-rwx"
-  }
-
   depends_on = [
     kubernetes_secret.database_url,
     kubernetes_secret.database_url_litellm,

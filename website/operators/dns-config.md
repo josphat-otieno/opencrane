@@ -45,6 +45,40 @@ is provisioned. Once an org exists, every user under it resolves and gets HTTPS 
 they are created — no per-user record. All names land on the same ingress; the ingress
 controller routes by the HTTP `Host:` header to the right gateway.
 
+### Who writes the records: external-dns (runtime substrate)
+
+The platform records (`platform.<base>`, the apex, and the platform wildcard `*.<base>`)
+are written **once at install** — by Terraform when it owns the Cloud DNS zone, or by you
+at your provider otherwise. Everything **per-org** is written at **runtime** by the
+in-cluster **external-dns** controller: the cluster-tenants operator declares each org's
+records as a namespaced `DNSEndpoint` custom resource
+(`externaldns.k8s.io/v1alpha1`), and external-dns (run with `--source=crd`) reconciles
+those into the zone — adding records when an org is provisioned and reaping them when the
+`DNSEndpoint` (or its namespace) is deleted. The operator therefore talks to **no cloud
+DNS API directly**; the record substrate is provider-agnostic. The install scripts bundle
+external-dns as a cluster singleton in `acme`/`clouddns` mode (`--no-external-dns` to BYO a
+controller); the `externalDns.enabled` chart value gates the operator's `DNSEndpoint` RBAC.
+
+### The shared zone-write identity
+
+external-dns (writing records) and the cert-manager DNS-01 solver (writing the temporary
+`_acme-challenge` `TXT` records below) both need **write** access to the same zone, so they
+**share one credential** — there is exactly one binding, never a per-controller copy:
+
+- **Google Cloud, Workload Identity (default):** one Google service account bound
+  `roles/dns.admin` on the zone's project, impersonated by both controllers'
+  Kubernetes service accounts. Terraform's `dns` module provisions it.
+- **External zone:** hand the same service-account key to both controllers via
+  `--dns01-credentials` at install.
+
+### Registrar NS-delegation (one-time)
+
+When Terraform owns the Cloud DNS zone, delegate your domain to that zone's name servers
+(the `dns_name_servers` Terraform output) at your **registrar** — an NS delegation. Until
+that resolves, both DNS-01 issuance and external-dns reconciliation will hang. The
+`./platform/k8s-deploy.sh --preflight` check verifies the delegation resolves before you
+install.
+
 ### Why a provider token is still needed
 
 Wildcards solve **routing**; HTTPS needs a certificate valid for the name in the browser.

@@ -94,7 +94,7 @@ echo -e "${DIM}  Press Enter to accept defaults shown in [brackets].${NC}"
 
 # ---- Step 1: Choose mode -----------------------------------------------------
 
-_step "Step 1 of 5 — Install target"
+_step "Step 1 of 6 — Install target"
 
 echo -e "  Where do you want to install OpenCrane?\n"
 echo -e "  ${BOLD}1)${NC} Local   — k3d cluster on this machine (development / full stack)"
@@ -120,7 +120,7 @@ echo -e "  ${GREEN}✓${NC} Target: ${BOLD}$mode${NC}"
 
 if [[ "$mode" == "local" ]]; then
 
-  _step "Step 2 of 5 — Local cluster settings"
+  _step "Step 2 of 6 — Local cluster settings"
 
   _prompt "Cluster name"    "opencrane-local"   CLUSTER_NAME
   _prompt "Namespace"       "opencrane-system"  NAMESPACE
@@ -140,7 +140,7 @@ if [[ "$mode" == "local" ]]; then
 
 else
 
-  _step "Step 2 of 5 — GCP configuration"
+  _step "Step 2 of 6 — GCP configuration"
 
   _prompt "GCP Project ID"              ""               PROJECT_ID
   _prompt "Region"                      "europe-west1"   REGION
@@ -166,7 +166,7 @@ fi
 # (fail-closed). This is never persisted in the repo; it is passed to the installer
 # at deploy time only.
 
-_step "Step 3 of 5 — Platform-operator seed (optional)"
+_step "Step 3 of 6 — Platform-operator seed (optional)"
 
 echo -e "  ${DIM}Bootstrap the first platform operator by email — useful before you"
 echo -e "  have an IdP group mapping. The caller whose VERIFIED OIDC email matches"
@@ -184,9 +184,66 @@ else
   echo -e "  ${DIM}No seed — platform-operator access is granted only via IdP groups.${NC}"
 fi
 
-# ---- Step 4: Pre-flight check ------------------------------------------------
+# ---- Step 4: TLS / cert-manager ----------------------------------------------
+#
+# Three modes mirror k8s-deploy.sh Step 2.5: off (TLS handled elsewhere), selfSigned
+# (dev/local — not browser-trusted), and acme/DNS-01 (production wildcard via Cloud DNS).
+# acme additionally collects the ACME contact email and (for an external zone) a
+# service-account key file. The choices flow to the installer as env vars (same pattern
+# as the operator seed); k8s-deploy.sh re-validates and runs the DNS-01 preflight.
 
-_step "Step 4 of 5 — Pre-flight checks"
+_step "Step 4 of 6 — TLS / certificates"
+
+echo -e "  How should OpenCrane obtain TLS certificates?\n"
+echo -e "  ${BOLD}1)${NC} Off        — TLS terminated elsewhere (load balancer / external ingress)"
+echo -e "  ${BOLD}2)${NC} Self-signed — dev / k3d / bare IP (instant, NOT browser-trusted)"
+echo -e "  ${BOLD}3)${NC} ACME (DNS-01) — production wildcard via Let's Encrypt + Google Cloud DNS"
+echo ""
+printf "  ${BOLD}Choose [1/2/3]${NC}: "
+read -r cert_choice
+cert_choice="${cert_choice:-1}"
+
+CERT_MODE_ENV="off"
+ACME_EMAIL=""
+DNS01_PROVIDER=""
+DNS01_CREDENTIALS=""
+
+case "$cert_choice" in
+  1)
+    cert_label="off"
+    ;;
+  2)
+    CERT_MODE_ENV="selfSigned"
+    cert_label="self-signed"
+    ;;
+  3)
+    CERT_MODE_ENV="acme"
+    DNS01_PROVIDER="clouddns"
+    _prompt "ACME contact email" "" ACME_EMAIL
+    if [[ -z "$ACME_EMAIL" ]]; then
+      echo -e "\n  ${RED}✗  ACME mode requires a contact email.${NC}"
+      exit 1
+    fi
+    echo ""
+    echo -e "  ${DIM}On GKE Workload Identity the cert-manager service account needs"
+    echo -e "  roles/dns.admin on the DNS zone's project. For an EXTERNAL zone, supply a"
+    echo -e "  service-account key file below (Enter to skip = Workload Identity).${NC}"
+    echo ""
+    _prompt "Cloud DNS SA key file (Enter for Workload Identity)" "" DNS01_CREDENTIALS
+    cert_label="acme / DNS-01 (clouddns)"
+    ;;
+  *)
+    echo -e "${RED}  Invalid choice: $cert_choice${NC}"
+    exit 1
+    ;;
+esac
+
+echo ""
+echo -e "  ${GREEN}✓${NC} TLS: ${BOLD}$cert_label${NC}"
+
+# ---- Step 5: Pre-flight check ------------------------------------------------
+
+_step "Step 5 of 6 — Pre-flight checks"
 
 has_error=0
 
@@ -213,7 +270,7 @@ echo -e "  ${GREEN}✓${NC} All required tools found."
 
 # ---- Step 5: Summary + confirm -----------------------------------------------
 
-_step "Step 5 of 5 — Summary"
+_step "Step 6 of 6 — Summary"
 
 echo ""
 if [[ "$mode" == "local" ]]; then
@@ -223,6 +280,7 @@ if [[ "$mode" == "local" ]]; then
   _summary_row "Profile"        "$LOCAL_PROFILE"
   _summary_row "Keep cluster"   "$keep_label"
   _summary_row "Operator seed"  "$seed_label"
+  _summary_row "TLS"            "$cert_label"
   _summary_row "Script"         "platform/tests/k3d-local.sh"
 else
   _summary_row "Mode"           "GCP"
@@ -231,6 +289,7 @@ else
   _summary_row "Domain"         "$DOMAIN"
   _summary_row "Environment"    "$ENVIRONMENT"
   _summary_row "Operator seed"  "$seed_label"
+  _summary_row "TLS"            "$cert_label"
   _summary_row "Script"         "platform/deploy.sh"
 fi
 echo ""
@@ -250,20 +309,31 @@ echo ""
 echo -e "${GREEN}${BOLD}  ✦ Starting install...${NC}"
 echo ""
 
-# The per-cluster operator seed flows through as an env var both paths honour:
-# k3d-local.sh and k8s-deploy.sh both read OPENCRANE_PLATFORM_OPERATOR_SEED_EMAIL and
-# pass it to Helm only when non-empty. Empty → never set → operator granted to nobody.
+# The per-cluster operator seed and the cert-manager choice both flow through as env
+# vars the installers honour: k3d-local.sh / k8s-deploy.sh read
+# OPENCRANE_PLATFORM_OPERATOR_SEED_EMAIL and the OPENCRANE_CERT_* set below, passing each
+# to Helm/Step-2.5 only when non-empty. Empty seed → operator granted to nobody; cert
+# mode "off" → no cert-manager. k8s-deploy.sh re-validates and runs the DNS-01 preflight.
 if [[ "$mode" == "local" ]]; then
   KEEP_CLUSTER="$KEEP_CLUSTER" \
   CLUSTER_NAME="$CLUSTER_NAME" \
   NAMESPACE="$NAMESPACE" \
   LOCAL_PROFILE="$LOCAL_PROFILE" \
   OPENCRANE_PLATFORM_OPERATOR_SEED_EMAIL="$PLATFORM_OPERATOR_SEED_EMAIL" \
+  OPENCRANE_CERT_MODE="$CERT_MODE_ENV" \
+  OPENCRANE_ACME_EMAIL="$ACME_EMAIL" \
+  OPENCRANE_DNS01_PROVIDER="$DNS01_PROVIDER" \
+  OPENCRANE_DNS01_CREDENTIALS="$DNS01_CREDENTIALS" \
     "$SCRIPT_DIR/tests/k3d-local.sh"
 else
   printf "%s\n%s\n%s\n%s\nY\n" \
     "$PROJECT_ID" "$REGION" "$DOMAIN" "$ENVIRONMENT" \
-    | OPENCRANE_PLATFORM_OPERATOR_SEED_EMAIL="$PLATFORM_OPERATOR_SEED_EMAIL" "$SCRIPT_DIR/deploy.sh"
+    | OPENCRANE_PLATFORM_OPERATOR_SEED_EMAIL="$PLATFORM_OPERATOR_SEED_EMAIL" \
+      OPENCRANE_CERT_MODE="$CERT_MODE_ENV" \
+      OPENCRANE_ACME_EMAIL="$ACME_EMAIL" \
+      OPENCRANE_DNS01_PROVIDER="$DNS01_PROVIDER" \
+      OPENCRANE_DNS01_CREDENTIALS="$DNS01_CREDENTIALS" \
+      "$SCRIPT_DIR/deploy.sh"
 fi
 
 echo ""

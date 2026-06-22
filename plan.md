@@ -93,6 +93,29 @@ creates a billing account, then creates an org and becomes its root admin.
 - Tests: billing-account create, create-records-owner, the full guard matrix, membership-derived `isOrgAdmin`
   (+20; control-plane suite 407 green).
 
+### Track INSTALL — Complete deploy (one-command install over a shared core) — LANDED 2026-06-22 (PR #52)
+
+A guided, fail-fast install that brings a fresh cluster up end-to-end, with two thin profile
+scripts over one shared core (`platform/k8s-deploy.sh`) so the profiles cannot diverge.
+- **Bundled cluster singletons (default ON, auto-skip if present, `*.install` flag SEPARATE from the
+  chart's `*.enabled`):** ingress-nginx, **external-dns** (acme mode; `--source=crd` → Cloud DNS, scoped
+  to `--base-domain`), and Cognee (in-chart). cert-manager Step 2.5 has three modes — off / selfSigned /
+  acme(DNS-01) — with a DNS-01 preflight that fails fast.
+- **Shared zone-write identity:** external-dns + the cert-manager DNS-01 solver share ONE `roles/dns.admin`
+  Workload-Identity GSA (or one `--dns01-credentials` SA key) — no second binding.
+- **Terraform aligned to external-dns:** `modules/dns` provisions the zone + install-time platform records +
+  the shared WI binding; per-org/per-host records are runtime (external-dns), never Terraform (the
+  `org_wildcards` direct-record path removed). Static ingress IP stays in `app-deploy`.
+- **`--preflight`:** read-only, fail-fast core check — default StorageClass, NetworkPolicy-enforcing CNI,
+  first-party image pullability, registrar NS-delegation for `--base-domain`, and the DNS-write capability
+  shared by external-dns + cert-manager. Exits before any cluster mutation.
+- **Fixes:** the installer now CREATES the OIDC secret (client + auto-generated session secret) and wires
+  `controlPlane.oidc.existingSecret` (previously assumed to exist → crash-loop); the missing
+  `<fullname>-external-secrets` ServiceAccount the SecretStore's WI ref points at is rendered in-chart; the
+  dead `sharedSkills.pvc.storageClass` Terraform set removed; a stale ClusterTenant-seed import path fixed.
+- Validation: operator (155) + control-plane (411) suites green; `helm template` for both profiles clean;
+  tsc/lint clean. `--dry-run=server` for both profiles prepared in the PR (shared cluster is READ-ONLY).
+
 ### Track DOMAIN — Fixed wildcard + CNAME domain topology — LANDED 2026-06-22
 
 Replaced the "each customer brings their own domain + delegated DNS-01" model with a **fixed-wildcard
@@ -111,8 +134,12 @@ Stacked on `feat/org-admin-billing`.
 - **Multi-level wildcard TLS (decided):** `*.<base>` covers org apexes but NOT `<user>.<org>.<base>` (a
   wildcard matches one label) → a **per-org** `*.<org>.<base>` `Certificate` issued at org-provision via
   cert-manager DNS-01 (reference manifest `platform/helm/examples/per-org-wildcard-cert.yaml`).
-- **DNS automation:** `modules/dns` extended — platform wildcard + apex + control-plane-host records, and a
-  `var.org_wildcards`-driven per-org `*.<org>.<base>` record matching the operator hook's shape.
+- **DNS automation (aligned to external-dns):** `modules/dns` provisions the zone + the install-time
+  platform records (apex, `*.<base>`, control-plane host) + the shared `roles/dns.admin` Workload-Identity
+  binding that external-dns and the cert-manager DNS-01 solver impersonate. **Per-org/per-host records are
+  NOT written by Terraform** — external-dns reconciles them at runtime from the operator's `DNSEndpoint` CRs
+  (the old `var.org_wildcards` direct-record path is removed). The install scripts bundle external-dns as a
+  value-gated cluster singleton (`externalDns.install`, default ON in acme mode, `--no-external-dns` to BYO).
 - **Per-org provisioning — IMPLEMENTED (operator-owned, PR #50):** `DefaultOrgDomainProvisioner`
   (`apps/operator/src/cluster-tenants/internal/org-domain.provisioner.ts`) behind the `OrgDomainProvisioner`
   interface. It applies the per-org wildcard `Certificate` (`*.<org>.<base>` + apex/vanity SANs) via

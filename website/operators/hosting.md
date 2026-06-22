@@ -388,7 +388,8 @@ Explicit, not implied. A blank cell means "not implemented" — the provider is 
 | Ingress class | nginx | gce | azure/application-gateway | alb |
 | Ingress TLS | cert-manager wildcard (§6.3) | cert-manager wildcard (§6.3) | cert-manager wildcard | cert-manager wildcard |
 | Secrets backing | in-cluster Secret | in-cluster Secret (ESO optional) | in-cluster Secret (ESO optional) | in-cluster Secret (ESO optional) |
-| DNS | external-dns / manual | Cloud DNS (infra layer) | Azure DNS | Route 53 |
+| DNS records | external-dns (`DNSEndpoint` CRs) | external-dns → Cloud DNS | external-dns → Azure DNS | external-dns → Route 53 |
+| DNS zone + write identity | manual / your provider | Terraform `dns` module (zone + shared `roles/dns.admin` WI) | infra layer | infra layer |
 
 TLS is provider-agnostic on purpose: a single k8s-native mechanism (cert-manager
 issuing a wildcard cert via ACME DNS-01) works the same on every substrate, rather
@@ -467,6 +468,25 @@ The control plane runs on the platform's own separate domain (e.g. `example.com`
 - The chart renders a `ClusterIssuer` + wildcard `Certificate`
   (`platform/helm/templates/cluster-issuer.yaml`) when `certManager.enabled=true` —
   `mode: selfSigned` for dev/local, `mode: acme` with a DNS-01 solver for production.
+- **Install-time cert modes (the deploy core's Step 2.5)** — three explicit modes, picked
+  by the deploy scripts / wizard:
+  - **off** (default) — no cert-manager; the chart renders no issuer/cert. Use when TLS is
+    terminated elsewhere (load balancer / external ingress).
+  - **selfSigned** — `--cert-manager` alone. Installs cert-manager + a self-signed
+    `ClusterIssuer`. Issues instantly, no DNS challenge, **not** browser-trusted. For
+    dev / k3d / bare-IP clusters.
+  - **acme (DNS-01)** — `--cert-manager --acme-email … --dns01-provider clouddns`.
+    Installs cert-manager, runs a DNS-01 preflight that **fails fast** with exact
+    remediation, then issues a browser-trusted wildcard via Let's Encrypt. Requires
+    `--base-domain` (a wildcard for `*.<empty>` is meaningless).
+- **Record substrate — external-dns.** In `acme`/`clouddns` mode the deploy core also
+  bundles the **external-dns** controller (cluster singleton, `--no-external-dns` to BYO).
+  The operator declares per-org records as `DNSEndpoint` CRs and external-dns reconciles
+  them into the zone, so per-org DNS is automatic at runtime. external-dns and the
+  cert-manager DNS-01 solver **share one zone-write credential** — the same Workload-Identity
+  GSA bound `roles/dns.admin` (Terraform's `dns` module provisions it), or the same
+  `--dns01-credentials` SA key for an external zone. No second binding. See
+  [DNS configuration](/operators/dns-config).
 - The operator adds a `tls:` block to each **UserTenant** Ingress (one Ingress per
   UserTenant at `<name>.<ingress.domain>`, referencing the shared wildcard Secret) when
   `ingress.tls.enabled=true`, driven by `INGRESS_TLS_ENABLED` / `INGRESS_TLS_SECRET_NAME`
@@ -536,7 +556,11 @@ are **done**; step 6 (Azure/AWS) remains a future extension that needs no core c
 
 - [ ] Bucket retention on tenant deletion: retain (current) vs. policy-driven delete — affects `deprovisionTenantStorage`.
 - [ ] Secrets backing: keep in-cluster Secrets as the cross-provider default, or add an optional External Secrets Operator capability to the adapter interface.
-- [ ] DNS ownership: external-dns (works on-prem + cloud uniformly) vs. per-cloud DNS modules in the infra layer.
+- [x] DNS ownership: **decided — external-dns** (works on-prem + cloud uniformly). The
+  operator emits provider-agnostic `DNSEndpoint` CRs and external-dns reconciles them into
+  the zone at runtime; Terraform provisions only the zone, the install-time platform
+  records, and the shared `roles/dns.admin` Workload-Identity binding — never per-org
+  records. The old imperative per-cloud DNS client is removed.
 - [ ] Whether `IngressBinding.ingressClassName` defaults belong in config (so on-prem can pick traefik/nginx) rather than hard-coded in the adapter.
 - [ ] ESLint import-boundary tooling choice for enforcing §4.1 rules in CI.
 ```

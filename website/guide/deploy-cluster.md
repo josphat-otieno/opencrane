@@ -33,6 +33,43 @@ first-class guide yet. Contributions welcome.
 3. **Install** — `helm install opencrane platform/helm --set ingress.domain=<your-domain>`.
 4. **Point your domain** at the ingress — see [Set up your domain](/guide/dns).
 
+## Two deploy profiles
+
+The chart is the same; two thin profile scripts over a shared install core
+(`platform/k8s-deploy.sh`) pick the posture for you so the profiles cannot diverge:
+
+| Profile | Script | What you get |
+|---------|--------|--------------|
+| **Single-tenant** (default) | `platform/deploy-single-tenant.sh` | One organisation, seeded at install. Self-service org creation + billing are **off** (a single-tenant box has no self-service signup), and multi-cluster/fleet is off. |
+| **Multi-tenant fleet** | `platform/deploy-multi-tenant.sh` | The full self-service platform — any signed-in user can create an org and become its admin; fleet wildcard + the ClusterTenant manager are on. |
+
+```bash
+# Single-tenant: one org served at <org-name>.<base-domain>
+./platform/deploy-single-tenant.sh \
+  --base-domain dev.opencrane.ai \
+  --org-name acme --org-owner-email owner@acme.example
+
+# Multi-tenant fleet
+./platform/deploy-multi-tenant.sh --base-domain opencrane.example.com
+```
+
+Both forward every shared-core flag (cert-manager mode, OIDC, image tags, …) verbatim.
+
+## Check the cluster first (`--preflight`)
+
+Before installing, run a read-only environment check that fails **fast** with exact
+remediation rather than leaving a half-installed, crash-looping cluster:
+
+```bash
+./platform/k8s-deploy.sh --base-domain <your-domain> --cert-manager \
+  --acme-email you@org --dns01-provider clouddns --preflight
+```
+
+It verifies a default StorageClass exists, a NetworkPolicy-enforcing CNI is present,
+the first-party images are pullable, your base domain's NS delegation resolves, and the
+DNS-write capability shared by external-dns + cert-manager DNS-01 is in place. It makes
+**no** changes; re-run without `--preflight` to install.
+
 ## Google Cloud (GKE) ✅
 
 GKE is treated as a standard Kubernetes cluster — no GCP-only features required.

@@ -42,11 +42,13 @@ variable "vpc_name"
 }
 
 # Cloud DNS is optional. By default the deploy prints the ingress IP and you set
-# DNS manually at your registrar. Set enable_cloud_dns=true to have Terraform
-# create a managed zone + wildcard/apex records.
+# DNS manually at your registrar. Set enable_cloud_dns=true to have Terraform create
+# the managed zone, the install-time platform records (apex, *.<base>, control-plane
+# host), and the shared roles/dns.admin Workload-Identity binding. Per-org records are
+# reconciled at runtime by external-dns from the operator's DNSEndpoint CRs.
 variable "enable_cloud_dns"
 {
-  description = "Create a Cloud DNS managed zone and wildcard/apex records pointing at the ingress IP."
+  description = "Create the Cloud DNS zone, install-time platform records, and the shared roles/dns.admin Workload-Identity binding for external-dns + cert-manager DNS-01. Per-org records are reconciled at runtime by external-dns."
   type        = bool
   default     = false
 }

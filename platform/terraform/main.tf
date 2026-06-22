@@ -113,15 +113,19 @@ module "app_deploy"
   depends_on = [module.gke]
 }
 
-# ---- Phase 5: Cloud DNS (OPT-IN: wildcard → ingress IP) ----
+# ---- Phase 5: Cloud DNS (OPT-IN: zone + platform records + shared DNS-writer WI) ----
 #
-# Default flow prints the ingress IP and you point DNS at it manually. Enable to
-# have Terraform manage a Cloud DNS zone + records.
+# Default flow prints the ingress IP and you point DNS at it manually. Enable to have
+# Terraform manage the Cloud DNS zone, the install-time platform records (apex, `*.<base>`,
+# control-plane host), and the shared `roles/dns.admin` Workload-Identity binding that BOTH
+# external-dns and the cert-manager DNS-01 solver impersonate. Per-org/per-host records are
+# NOT written here — external-dns reconciles them at runtime from the operator's DNSEndpoint
+# CRs.
 
 module "dns"
 {
   source = "./modules/dns"
-  # Cloud DNS records point at the app's ingress IP, so this requires the app to
+  # The platform records point at the app's ingress IP, so this requires the app to
   # be deployed by Terraform too.
   count = (var.enable_cloud_dns && var.enable_app_deploy) ? 1 : 0
 

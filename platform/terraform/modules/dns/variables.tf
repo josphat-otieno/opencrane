@@ -30,9 +30,20 @@ variable "control_plane_host"
   default     = ""
 }
 
-variable "org_wildcards"
+# Shared zone-write identity. Per-host/per-org records are written at RUNTIME by
+# external-dns (from the operator's DNSEndpoint CRs), never by Terraform — so this module
+# provisions the WRITE identity both external-dns and the cert-manager DNS-01 solver share,
+# not the records themselves.
+variable "dns_writer_account_id"
 {
-  description = "Org names to pre-provision a per-org wildcard record (*.<org>.<domain>) for. Empty by default — the cluster-tenants operator owns per-org records at provision time."
-  type        = set(string)
-  default     = []
+  description = "Account id (local part) for the shared DNS-writer Google service account that external-dns + cert-manager DNS-01 impersonate."
+  type        = string
+  default     = "opencrane-dns-writer"
+}
+
+variable "dns_writer_ksa_members"
+{
+  description = "Kubernetes service accounts (as `<namespace>/<name>`) granted Workload-Identity impersonation of the shared DNS-writer GSA — typically the external-dns and cert-manager controllers."
+  type        = list(string)
+  default     = ["external-dns/external-dns", "cert-manager/cert-manager"]
 }

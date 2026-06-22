@@ -6,18 +6,29 @@ domain at OpenCrane and let it handle certificates.
 
 You do this once.
 
-## 1. Point your domain at OpenCrane
+## 1. Delegate your domain to OpenCrane's DNS zone
 
-Add two DNS records at your domain provider, both pointing at your cluster's ingress
-address:
+When OpenCrane manages your DNS (the default on GKE, via a Cloud DNS zone Terraform
+provisions), you do this **once** at your registrar: point your domain's **name servers**
+at the zone OpenCrane created — an **NS delegation**. After that, OpenCrane writes the
+records for you; you never touch individual records again.
 
-| Record | Example | Purpose |
-|--------|---------|---------|
-| Apex | `opencrane.example.com` | The control plane |
-| Wildcard | `*.opencrane.example.com` | Every assistant's subdomain |
+```
+# At your registrar, set the domain's NS records to the zone name servers
+# (Terraform prints them as the `dns_name_servers` output).
+opencrane.example.com.   NS   ns-cloud-a1.googledomains.com.
+opencrane.example.com.   NS   ns-cloud-a2.googledomains.com.   # …etc
+```
 
-The wildcard is what lets a new assistant appear at its own address instantly,
-without you touching DNS again.
+The install-time records (the control-plane host, the apex, and the platform wildcard
+`*.opencrane.example.com` that lets every assistant appear at its own address instantly)
+are created in that zone for you. **Per-org records are written automatically at runtime**
+by the in-cluster **external-dns** controller, from the declarations OpenCrane's operator
+emits — so a new org's address resolves with zero manual DNS work.
+
+Not delegating? You can instead point an apex A record and a wildcard `*.<domain>` A
+record straight at the ingress IP at your own provider — but then per-org records and
+automatic HTTPS are your responsibility.
 
 ## 2. Turn on automatic HTTPS
 

@@ -9,7 +9,10 @@
 #
 # Usage:
 #   ./platform/gke-deploy.sh --project-id ID [--region R] [--cluster NAME]
-#                            [--domain D] [--yes]
+#                            [--base-domain D] [--yes]
+#
+# --base-domain (e.g. dev.opencrane.ai) is threaded to BOTH Terraform's `domain` var
+# (Cloud DNS zone) and k8s-deploy.sh, so the chart, cert issuer, and DNS share one base.
 #
 # Prereqs: gcloud, terraform, kubectl, helm.
 # =============================================================================
@@ -21,7 +24,7 @@ TF_DIR="$SCRIPT_DIR/terraform"
 PROJECT_ID=""
 REGION="europe-west1"
 CLUSTER="opencrane-cluster"
-DOMAIN=""
+BASE_DOMAIN="${OPENCRANE_BASE_DOMAIN:-}"
 ASSUME_YES=0
 
 log()  { echo -e "\033[0;32m[gke-deploy]\033[0m $1"; }
@@ -33,7 +36,8 @@ while [[ $# -gt 0 ]]; do
     --project-id) PROJECT_ID="$2"; shift 2 ;;
     --region)     REGION="$2"; shift 2 ;;
     --cluster)    CLUSTER="$2"; shift 2 ;;
-    --domain)     DOMAIN="$2"; shift 2 ;;
+    --base-domain) BASE_DOMAIN="$2"; shift 2 ;;
+    --domain)     BASE_DOMAIN="$2"; shift 2 ;;  # backwards-compatible alias
     --yes)        ASSUME_YES=1; shift ;;
     -h|--help)    grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *)            err "Unknown flag: $1"; exit 1 ;;
@@ -57,7 +61,8 @@ gcloud services enable container.googleapis.com compute.googleapis.com --project
 log "Provisioning the GKE cluster with Terraform…"
 terraform -chdir="$TF_DIR" init -upgrade -input=false
 terraform -chdir="$TF_DIR" apply -input=false -auto-approve \
-  -var "project_id=$PROJECT_ID" -var "region=$REGION" -var "cluster_name=$CLUSTER"
+  -var "project_id=$PROJECT_ID" -var "region=$REGION" -var "cluster_name=$CLUSTER" \
+  ${BASE_DOMAIN:+-var "domain=$BASE_DOMAIN"}
 
 # 3. Point kubectl at the new cluster.
 log "Fetching cluster credentials…"
@@ -65,9 +70,9 @@ gcloud container clusters get-credentials "$CLUSTER" --region "$REGION" --projec
 
 # 4. Install OpenCrane (published images, GKE default StorageClass).
 log "Installing OpenCrane…"
-"$SCRIPT_DIR/k8s-deploy.sh" ${DOMAIN:+--domain "$DOMAIN"}
+"$SCRIPT_DIR/k8s-deploy.sh" ${BASE_DOMAIN:+--base-domain "$BASE_DOMAIN"}
 
-# 5. Next steps.
-warn "GKE has no ingress controller by default — install one (e.g. ingress-nginx) if you haven't,"
-warn "then point your domain at its external IP:  kubectl get ingress -A"
+# 5. Next steps. k8s-deploy.sh bundles ingress-nginx by default (auto-skipped if a
+# controller is already present), so a fresh GKE cluster gets one with no extra step.
+warn "Point your DNS at the ingress controller's external IP:  kubectl get svc -n ingress-nginx"
 log "Done."
