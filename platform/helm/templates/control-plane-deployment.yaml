@@ -85,6 +85,26 @@ spec:
               value: {{ .Values.controlPlane.cognee.permissionsTimeoutMs | quote }}
             - name: COGNEE_ENABLE_BACKEND_ACCESS_CONTROL
               value: {{ ternary "true" "false" .Values.controlPlane.cognee.backendAccessControl | quote }}
+            # -- Tenancy profile (Chunk 4). Multi-tenant (default): self-service billing +
+            #    ClusterTenant management are exposed. Single-tenant: both false and ONE org
+            #    is seeded directly (the OPENCRANE_SEED_CLUSTER_TENANT_* env below).
+            - name: OPENCRANE_BILLING_ENABLED
+              value: {{ ternary "true" "false" .Values.billing.enabled | quote }}
+            - name: OPENCRANE_CLUSTER_TENANT_MANAGER_ENABLED
+              value: {{ ternary "true" "false" .Values.clusterTenantManager.enabled | quote }}
+            {{- if .Values.clusterTenant.seed.name }}
+            # -- Single-tenant org seed. Read at boot by _SeedClusterTenant: creates the
+            #    ClusterTenant CR + its `owner` OrgMembership directly (idempotent,
+            #    fail-soft). Only rendered when a seed name is configured.
+            - name: OPENCRANE_SEED_CLUSTER_TENANT_NAME
+              value: {{ .Values.clusterTenant.seed.name | quote }}
+            - name: OPENCRANE_SEED_CLUSTER_TENANT_DISPLAY_NAME
+              value: {{ .Values.clusterTenant.seed.displayName | default .Values.clusterTenant.seed.name | quote }}
+            - name: OPENCRANE_SEED_CLUSTER_TENANT_OWNER_EMAIL
+              value: {{ .Values.clusterTenant.seed.ownerEmail | quote }}
+            - name: OPENCRANE_SEED_CLUSTER_TENANT_TIER
+              value: {{ .Values.clusterTenant.seed.tier | quote }}
+            {{- end }}
             {{- with .Values.controlPlane.oidc }}
             {{- if .issuerUrl }}
             # -- OIDC human-login session (control-plane only). Rendered iff issuerUrl is

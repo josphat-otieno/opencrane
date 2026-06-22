@@ -709,7 +709,38 @@ observability:
 #    (the default), `dedicatedCluster` stays unavailable and the control-plane API
 #    rejects it with 422 TIER_UNAVAILABLE (fail-closed). The control plane refuses a
 #    non-`https://` URL so the bearer token is never sent in plaintext.
+# -- Tenancy profile toggles (Chunk 4). Default ON = the MULTI-tenant profile: callers
+#    self-serve a billing account then create their own organisations (ClusterTenants).
+#    The SINGLE-tenant profile sets BOTH to false and seeds ONE org instead (see
+#    `clusterTenant.seed` below) — there is no self-service billing or org management on a
+#    single-tenant box. Wired to the control-plane as OPENCRANE_BILLING_ENABLED /
+#    OPENCRANE_CLUSTER_TENANT_MANAGER_ENABLED; when false the matching self-service router
+#    is not mounted. `multiInstance` is a separate, lower-level switch and stays OFF here.
+clusterTenantManager:
+  # -- Expose the self-service ClusterTenant management API (POST/PATCH/DELETE
+  #    /cluster-tenants). Single-tenant: false (the one org is seeded directly).
+  enabled: true
+billing:
+  # -- Expose the self-service billing-accounts API (the gate for org creation).
+  #    Single-tenant: false (no billing relationship on a single-tenant install).
+  enabled: true
+
 clusterTenant:
+  # -- Single-tenant SEED (Chunk 4). When `name` is set the control-plane seeds ONE org
+  #    DIRECTLY at boot — the ClusterTenant CR + its `owner` OrgMembership — bypassing the
+  #    billing-gated POST. The #50 reconciler then provisions it. Idempotent and
+  #    fail-soft; a re-run converges. Leave `name` empty (the default, multi-tenant
+  #    profile) to seed nothing. Wired as OPENCRANE_SEED_CLUSTER_TENANT_*.
+  seed:
+    # -- Stable org name (the ClusterTenant id + CR name). Empty → no seed.
+    name: ""
+    # -- Human-readable org display name; defaults to `name` when empty.
+    displayName: ""
+    # -- Owner email, recorded as the org's single `owner` membership subject (the
+    #    OIDC-sub-else-email fallback, since the owner has not logged in at install).
+    ownerEmail: ""
+    # -- Isolation tier for the seeded org: shared | dedicatedNodes | dedicatedCluster.
+    tier: shared
   provisionerWebhook:
     # -- HTTPS base URL of the external provisioner (must start with https://).
     url: ""

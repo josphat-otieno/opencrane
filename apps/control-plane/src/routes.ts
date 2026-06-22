@@ -62,6 +62,24 @@ function _BuildOciBundleStore(): OciBundleStore | null
 }
 
 /**
+ * Read a boolean feature flag from the environment, defaulting ON.
+ *
+ * Single-tenant installs turn the multi-tenant self-service surfaces OFF
+ * (`OPENCRANE_BILLING_ENABLED=false`, `OPENCRANE_CLUSTER_TENANT_MANAGER_ENABLED=false`).
+ * The multi-tenant profile leaves them unset, so the default is ON — only an explicit
+ * `false`/`0`/`off`/`no` disables the feature. Defaulting ON keeps existing
+ * (multi-tenant) installs unchanged when the flag is absent.
+ *
+ * @param name - The environment variable name.
+ * @returns True unless the variable is explicitly set to a falsey token.
+ */
+function _featureEnabled(name: string): boolean
+{
+  const raw = process.env[name]?.trim().toLowerCase();
+  return !(raw === "false" || raw === "0" || raw === "off" || raw === "no");
+}
+
+/**
  * Registers all API routes on the given Express application instance.
  * All business routes are namespaced under /api/v1/.
  * Infrastructure routes (/healthz, /prom) remain at the root.
@@ -120,8 +138,18 @@ export function _RegisterRoutes(app: Express, prisma: PrismaClient, customApi: k
   app.use("/api/v1/third-party-sources", thirdPartySourcesRouter(prisma));
   app.use("/api/v1/org/workspace-docs", companyDocsRouter(prisma, _BuildDocMergeReconciler()));
   app.use("/api/v1/platform/dns", platformDnsRouter(customApi, coreApi));
-  app.use("/api/v1/billing-accounts", billingAccountsRouter(prisma));
-  app.use("/api/v1/cluster-tenants", clusterTenantsRouter(prisma, clusterTenantRegistry, customApi));
+  // Multi-tenant self-service surfaces. The single-tenant profile turns these OFF
+  // (billing.enabled=false, clusterTenantManager.enabled=false in Helm): the org is
+  // seeded directly at boot (see _SeedClusterTenant), so there is no self-service
+  // billing or org management to expose. Default ON for the multi-tenant profile.
+  if (_featureEnabled("OPENCRANE_BILLING_ENABLED"))
+  {
+    app.use("/api/v1/billing-accounts", billingAccountsRouter(prisma));
+  }
+  if (_featureEnabled("OPENCRANE_CLUSTER_TENANT_MANAGER_ENABLED"))
+  {
+    app.use("/api/v1/cluster-tenants", clusterTenantsRouter(prisma, clusterTenantRegistry, customApi));
+  }
   app.use("/api/v1/awareness/rollout", awarenessRolloutRouter(prisma));
   app.use("/api/v1/awareness/participation", awarenessParticipationRouter(prisma));
   app.use("/api/v1/sessions", sessionsRouter(prisma));
