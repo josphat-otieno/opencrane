@@ -16,8 +16,10 @@
 #                            [--control-plane-tag TAG] [--operator-tag TAG]
 #                            [--tenant-tag TAG]
 #                            [--oidc-issuer-url URL] [--oidc-client-id ID]
-#                            [--oidc-redirect-uri URI]
+#                            [--oidc-redirect-uri URI] [--oidc-client-secret SECRET]
+#                            [--oidc-session-secret SECRET]
 #                            [--platform-operator-seed-email EMAIL]
+#                            [--preflight]
 #                            [--no-ingress-nginx]
 #                            [--no-external-dns]
 #                            [--cert-manager] [--acme-email EMAIL]
@@ -111,6 +113,15 @@ EXTRA_SET=()
 OIDC_ISSUER_URL="${OIDC_ISSUER_URL:-}"
 OIDC_CLIENT_ID="${OIDC_CLIENT_ID:-}"
 OIDC_REDIRECT_URI="${OIDC_REDIRECT_URI:-}"
+# OIDC client secret (the confidential-client secret from the IdP). Accepted via flag or
+# env so it never has to sit in a values file. When OIDC is configured this installer
+# CREATES the K8s Secret the chart references (client secret + an auto-generated session
+# secret) and wires controlPlane.oidc.existingSecret — previously the secret was ASSUMED
+# to already exist, so a fresh OIDC install rendered a control-plane that crash-looped on a
+# missing Secret. The session secret signs login cookies; we generate one when not supplied.
+OIDC_CLIENT_SECRET="${OPENCRANE_OIDC_CLIENT_SECRET:-${OIDC_CLIENT_SECRET:-}}"
+OIDC_SESSION_SECRET="${OPENCRANE_OIDC_SESSION_SECRET:-${OIDC_SESSION_SECRET:-}}"
+OIDC_SECRET_NAME="opencrane-oidc"
 PLATFORM_OPERATOR_SEED_EMAIL="${OPENCRANE_PLATFORM_OPERATOR_SEED_EMAIL:-}"
 
 # cert-manager / TLS (Step 2.5). CERT_MANAGER stays off unless --cert-manager is given;
@@ -154,6 +165,15 @@ INGRESS_NGINX_NAMESPACE="ingress-nginx"
 INSTALL_EXTERNAL_DNS="${OPENCRANE_INSTALL_EXTERNAL_DNS:-1}"
 EXTERNAL_DNS_NAMESPACE="external-dns"
 
+# --preflight runs a fail-FAST environment check BEFORE any cluster mutation and exits 0/1
+# without installing. It catches the failures that otherwise surface as a half-installed,
+# crash-looping cluster: no default StorageClass (every PVC pends), a CNI that silently
+# ignores NetworkPolicy (the isolation model is a no-op), unpullable first-party images,
+# a base domain whose NS delegation does not resolve (acme orders + external-dns hang), and
+# a missing DNS-write capability shared by external-dns + cert-manager. Also via
+# OPENCRANE_PREFLIGHT=1. It is advisory unless run — the install itself does not auto-run it.
+PREFLIGHT="${OPENCRANE_PREFLIGHT:-0}"
+
 DB_CLUSTER="opencrane-db"
 DB_SECRET="opencrane-db"
 DB_USER="opencrane"
@@ -175,10 +195,13 @@ while [[ $# -gt 0 ]]; do
     --operator-tag)     OPERATOR_TAG="$2"; shift 2 ;;
     --tenant-tag)       TENANT_TAG="$2"; shift 2 ;;
     --storage-class) STORAGE_CLASS="$2"; shift 2 ;;
-    --oidc-issuer-url)   OIDC_ISSUER_URL="$2"; shift 2 ;;
-    --oidc-client-id)    OIDC_CLIENT_ID="$2"; shift 2 ;;
-    --oidc-redirect-uri) OIDC_REDIRECT_URI="$2"; shift 2 ;;
+    --oidc-issuer-url)     OIDC_ISSUER_URL="$2"; shift 2 ;;
+    --oidc-client-id)      OIDC_CLIENT_ID="$2"; shift 2 ;;
+    --oidc-redirect-uri)   OIDC_REDIRECT_URI="$2"; shift 2 ;;
+    --oidc-client-secret)  OIDC_CLIENT_SECRET="$2"; shift 2 ;;
+    --oidc-session-secret) OIDC_SESSION_SECRET="$2"; shift 2 ;;
     --platform-operator-seed-email) PLATFORM_OPERATOR_SEED_EMAIL="$2"; shift 2 ;;
+    --preflight)        PREFLIGHT="1"; shift ;;
     --no-ingress-nginx) INSTALL_INGRESS_NGINX="0"; shift ;;
     --no-external-dns)  INSTALL_EXTERNAL_DNS="0"; shift ;;
     --cert-manager)  CERT_MANAGER="on"; shift ;;
@@ -209,6 +232,99 @@ _validate_base_domain() {
 }
 if [[ -n "$BASE_DOMAIN" ]]; then
   _validate_base_domain "$BASE_DOMAIN"
+fi
+
+# --preflight: fail-FAST environment validation, run BEFORE any cluster mutation. Each
+# check appends to PF_FAILS; a non-empty list at the end exits 1 with every remediation,
+# so the operator fixes the cluster ONCE rather than chasing one half-broken install at a
+# time. Read-only against cloud + cluster (never mutates).
+_run_preflight() {
+  local PF_FAILS=()
+  log "Preflight: validating the target environment (no cluster changes will be made)…"
+
+  # 1. Default StorageClass — without one, every PVC (PostgreSQL, tenant storage) pends
+  #    forever and the install hangs at "waiting for the database".
+  if [[ -z "$STORAGE_CLASS" ]]; then
+    if ! kubectl get storageclass -o jsonpath='{range .items[*]}{.metadata.annotations.storageclass\.kubernetes\.io/is-default-class}{"\n"}{end}' 2>/dev/null | grep -q "true"; then
+      PF_FAILS+=("No default StorageClass found. Mark one default (kubectl patch storageclass <name> -p '{\"metadata\":{\"annotations\":{\"storageclass.kubernetes.io/is-default-class\":\"true\"}}}') or pass --storage-class.")
+    fi
+  else
+    kubectl get storageclass "$STORAGE_CLASS" >/dev/null 2>&1 || PF_FAILS+=("--storage-class '$STORAGE_CLASS' does not exist on the cluster.")
+  fi
+
+  # 2. NetworkPolicy-enforcing CNI — the platform's isolation model is built on
+  #    NetworkPolicy; a CNI that silently ignores them (e.g. stock kindnet/flannel) makes
+  #    every default-deny a no-op. We probe for a known enforcing CNI DaemonSet.
+  if ! kubectl get ds -n kube-system -o name 2>/dev/null | grep -qiE "calico|cilium|weave|antrea|kube-router"; then
+    PF_FAILS+=("No NetworkPolicy-enforcing CNI detected (looked for calico/cilium/weave/antrea/kube-router in kube-system). The platform's NetworkPolicy isolation is a NO-OP on a non-enforcing CNI. Install an enforcing CNI (GKE: enable Dataplane V2 / network-policy).")
+  fi
+
+  # 3. First-party images pullable — catch a private/typo'd registry before the rollout
+  #    sits in ImagePullBackOff. A best-effort manifest check (skopeo/crane/docker) that
+  #    only WARNS if no inspector is available (we never block on a missing local tool).
+  local _img="ghcr.io/italanta/control-plane:${CONTROL_PLANE_TAG:-$IMAGE_TAG}"
+  if command -v skopeo >/dev/null 2>&1; then
+    skopeo inspect "docker://$_img" >/dev/null 2>&1 || PF_FAILS+=("First-party image not pullable: $_img (skopeo inspect failed). Check the registry/tag and your pull credentials.")
+  elif command -v crane >/dev/null 2>&1; then
+    crane manifest "$_img" >/dev/null 2>&1 || PF_FAILS+=("First-party image not pullable: $_img (crane manifest failed). Check the registry/tag and your pull credentials.")
+  elif command -v docker >/dev/null 2>&1; then
+    docker manifest inspect "$_img" >/dev/null 2>&1 || PF_FAILS+=("First-party image not pullable: $_img (docker manifest inspect failed). Check the registry/tag and your pull credentials.")
+  else
+    warn "Preflight: no image inspector (skopeo/crane/docker) — skipping the image-pull check."
+  fi
+
+  # 4. Registrar NS-delegation for --base-domain — acme orders AND external-dns both hang
+  #    if the domain's authoritative name servers are not delegated to the DNS zone. We
+  #    only assert it resolves to SOME name servers (an undelegated domain returns none).
+  if [[ -n "$BASE_DOMAIN" ]]; then
+    if command -v dig >/dev/null 2>&1; then
+      [[ -n "$(dig +short NS "$BASE_DOMAIN" 2>/dev/null)" ]] || PF_FAILS+=("No NS delegation resolves for '$BASE_DOMAIN'. Delegate it to your DNS zone's name servers at your registrar (see Terraform output dns_name_servers), or DNS-01 issuance + external-dns will hang.")
+    elif command -v host >/dev/null 2>&1; then
+      host -t NS "$BASE_DOMAIN" >/dev/null 2>&1 || PF_FAILS+=("No NS delegation resolves for '$BASE_DOMAIN'. Delegate it to your DNS zone's name servers at your registrar, or DNS-01 issuance + external-dns will hang.")
+    else
+      warn "Preflight: no dig/host — skipping the NS-delegation check for '$BASE_DOMAIN'."
+    fi
+  fi
+
+  # 5. DNS-write capability — covers BOTH external-dns and the cert-manager DNS-01 solver,
+  #    which SHARE one zone-write credential. Only relevant when acme/clouddns is requested
+  #    (selfSigned/off write no zone). Acceptable: an external SA-key file (--dns01-credentials)
+  #    OR a Workload-Identity GSA bound roles/dns.admin. We can verify the binding only with
+  #    a project + the gcloud CLI; otherwise we flag that it must be confirmed manually.
+  local _is_acme=0
+  if [[ "$CERT_MANAGER" == "on" && -n "$ACME_EMAIL" && -n "$DNS01_PROVIDER" ]]; then _is_acme=1; fi
+  if [[ "$_is_acme" == "1" ]]; then
+    if [[ -n "$DNS01_CREDENTIALS" ]]; then
+      [[ -f "$DNS01_CREDENTIALS" ]] || PF_FAILS+=("--dns01-credentials '$DNS01_CREDENTIALS' not found. external-dns + cert-manager DNS-01 share this SA key for zone writes.")
+    else
+      local _proj="${DNS01_PROJECT:-$(gcloud config get-value project 2>/dev/null || true)}"
+      if [[ -z "$_proj" || "$_proj" == "(unset)" ]]; then
+        PF_FAILS+=("acme/clouddns DNS-01 needs the GCP project hosting the zone for '$BASE_DOMAIN'. Pass --dns01-project (or set a gcloud active project) so the shared roles/dns.admin binding can be verified.")
+      elif command -v gcloud >/dev/null 2>&1; then
+        # A roles/dns.admin binding must exist for SOME service account on the project; both
+        # external-dns and the cert-manager solver impersonate it via Workload Identity.
+        if ! gcloud projects get-iam-policy "$_proj" --flatten="bindings[].members" --format='value(bindings.role)' 2>/dev/null | grep -q "roles/dns.admin"; then
+          PF_FAILS+=("No roles/dns.admin binding found on project '$_proj'. Bind it to the shared DNS-writer GSA (external-dns + cert-manager DNS-01 impersonate it): gcloud projects add-iam-policy-binding $_proj --member='serviceAccount:GSA@$_proj.iam.gserviceaccount.com' --role='roles/dns.admin'. Or pass --dns01-credentials for an external zone.")
+        fi
+      else
+        warn "Preflight: no gcloud — cannot verify roles/dns.admin on the DNS project; confirm the shared DNS-writer binding manually."
+      fi
+    fi
+  fi
+
+  if [[ ${#PF_FAILS[@]} -gt 0 ]]; then
+    err "Preflight FAILED — fix these before installing:"
+    local i=1
+    for f in "${PF_FAILS[@]}"; do err "  $i. $f"; i=$((i+1)); done
+    exit 1
+  fi
+  log "Preflight: all checks passed."
+}
+
+if [[ "$PREFLIGHT" == "1" ]]; then
+  _run_preflight
+  log "Preflight complete (no install performed). Re-run without --preflight to install."
+  exit 0
 fi
 
 _gen_secret() { openssl rand -hex 16 2>/dev/null || head -c 24 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 32; }
@@ -272,6 +388,25 @@ kubectl create secret generic opencrane-litellm-db -n "$NAMESPACE" \
 
 kubectl create secret generic opencrane-litellm -n "$NAMESPACE" \
   --from-literal=LITELLM_MASTER_KEY="$LITELLM_MASTER_KEY" --dry-run=client -o yaml | kubectl apply -f -
+
+# OIDC secret. The chart references controlPlane.oidc.existingSecret for the client + session
+# secrets; previously this installer set only the issuer/clientId/redirect and ASSUMED the
+# Secret already existed, so a fresh OIDC install crash-looped on a missing Secret. Create it
+# here when OIDC is configured: the client secret is required (a confidential client can't
+# authenticate without it); the session secret signs login cookies and is auto-generated when
+# not supplied. Idempotent (dry-run | apply), so re-runs converge.
+if [[ -n "$OIDC_ISSUER_URL" ]]; then
+  if [[ -z "$OIDC_CLIENT_SECRET" ]]; then
+    err "OIDC is configured (--oidc-issuer-url set) but no client secret was provided. Pass --oidc-client-secret (or OPENCRANE_OIDC_CLIENT_SECRET) — a confidential client cannot authenticate without it."
+    exit 1
+  fi
+  OIDC_SESSION_SECRET="${OIDC_SESSION_SECRET:-$(_gen_secret)}"
+  log "Creating the OIDC secret '$OIDC_SECRET_NAME' (client + session secret)…"
+  kubectl create secret generic "$OIDC_SECRET_NAME" -n "$NAMESPACE" \
+    --from-literal=OIDC_CLIENT_SECRET="$OIDC_CLIENT_SECRET" \
+    --from-literal=OIDC_SESSION_SECRET="$OIDC_SESSION_SECRET" \
+    --dry-run=client -o yaml | kubectl apply -f -
+fi
 
 # 2.25. ingress-nginx (a cluster singleton). Installed by default; auto-skips when a
 # controller is already present (existing IngressClass or an ingress-nginx Deployment)
@@ -521,6 +656,9 @@ TN_TAG="${TENANT_TAG:-$IMAGE_TAG}"
 [[ -n "$OIDC_ISSUER_URL" ]]   && helm_args+=(--set "controlPlane.oidc.issuerUrl=$OIDC_ISSUER_URL")
 [[ -n "$OIDC_CLIENT_ID" ]]    && helm_args+=(--set "controlPlane.oidc.clientId=$OIDC_CLIENT_ID")
 [[ -n "$OIDC_REDIRECT_URI" ]] && helm_args+=(--set "controlPlane.oidc.redirectUri=$OIDC_REDIRECT_URI")
+# Point the chart at the Secret created above (client + session secret) instead of leaving
+# its inline values empty — keeps secrets out of Helm values + the rendered manifest.
+[[ -n "$OIDC_ISSUER_URL" ]]   && helm_args+=(--set-string "controlPlane.oidc.existingSecret=$OIDC_SECRET_NAME")
 # Per-cluster platform-operator SEED. Set ONLY when a non-empty value is supplied; an
 # empty seed is never passed, so the chart grants operator to nobody (fail-closed).
 if [[ -n "$PLATFORM_OPERATOR_SEED_EMAIL" ]]; then

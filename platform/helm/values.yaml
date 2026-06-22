@@ -694,6 +694,12 @@ externalSecrets:
   enabled: false
   # -- Secret store provider: gcp-secret-manager, azure-key-vault, aws-secrets-manager
   provider: ""
+  # -- Annotations placed on the `<fullname>-external-secrets` ServiceAccount the
+  #    (Cluster)SecretStore's Workload-Identity ref points at. On GKE set
+  #    `iam.gke.io/gcp-service-account: <gsa>@<project>.iam.gserviceaccount.com` to bind
+  #    the GSA that holds Secret Manager access. The ServiceAccount itself is always
+  #    rendered when enabled (the store references it), so external-secrets can bind it.
+  serviceAccountAnnotations: {}
 
 # -- Cloud-native observability (no in-cluster stack needed)
 observability:
