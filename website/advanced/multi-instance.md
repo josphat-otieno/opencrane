@@ -261,12 +261,12 @@ resource gating are modeled and enforced rather than implied by how you wrote th
 
 > **Two tenant concepts — keep them straight.** A **ClusterTenant** is the *customer /
 > isolation unit* (cluster-scoped `clustertenants.opencrane.io`): it owns a namespace, a
-> `ResourceQuota`/`LimitRange`, a compute `isolationTier`, and its own base domain. A
+> `ResourceQuota`/`LimitRange`, a compute `isolationTier`, and an org host `<org>.<base>`. A
 > **UserTenant** is the *per-user OpenClaw agent gateway* — the openclaw / `Tenant` CRD
 > (`tenant.opencrane.io`); "UserTenant" is the canonical doc name, while the CRD kind is still
-> `Tenant` in code. They live on separate, independent domains — the customer's own base domain
-> (e.g. `ai.client-company.com`) and a per-user subdomain under it (e.g. `mike.ai.client-company.com`),
-> while the control plane runs on the platform's own domain. See the authoritative
+> `Tenant` in code. All users in an org connect through the org's single host `<org>.<base>`;
+> the identity-routing proxy (in the operator) routes each session to its pod — there are no
+> per-user subdomains. See the authoritative
 > [Tenancy Model](https://github.com/italanta/opencrane/blob/main/docs/agents/cluster-architecture.md#tenancy-model--clustertenant-vs-usertenant)
 > for the full table and DNS hierarchy.
 

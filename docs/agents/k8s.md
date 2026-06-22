@@ -30,19 +30,26 @@ How the operator actually shapes the cluster (verified June 2026):
 
 ### Ingress hosts & DNS hierarchy
 
-The cluster routes **three independent domains** — the platform and each customer bring their own (full
+The cluster routes **two public host shapes** — the platform control-plane host and org hosts (full
 model in [`cluster-architecture.md` → Tenancy Model](./cluster-architecture.md#tenancy-model--clustertenant-vs-usertenant)):
 
 ```
-example.com                  → control plane (platform management API)   [platform's own domain]
-ai.client-company.com        → ClusterTenant "client-company" base domain [per-customer, customer-owned]
-  mike.ai.client-company.com → UserTenant "mike" gateway (wildcard *.ai.client-company.com)  [per-user]
+platform.weownai.eu          → control plane (platform management API)   [fixed super-operator host]
+acme.weownai.eu              → org "acme" — UI, /api/*, gateway WebSocket [org host, explicit A record]
+  (all acme users connect here; identity-routing proxy routes each to their pod)
 ```
 
-- The operator builds **one `Ingress` per UserTenant** at `<name>.<ingress.domain>` (`apps/operator/.../5-ingress.ts`). `ingress.domain` is per-instance and **is** the ClusterTenant base domain (set it to the customer's domain).
-- cert-manager issues `*.<ingress.domain>` + that base domain's own apex (`cluster-issuer.yaml`). The wildcard `*.<domain>` maps to **UserTenant** gateways — **not** the ClusterTenant. The ClusterTenant *owns* the domain; its UserTenants get the hosts.
-- The **control plane's own domain is not wired by an Ingress in the chart** today: its cert/SAN may be covered, but routing the platform domain to the control-plane Service is an installer/out-of-chart step.
-- Auth-less-by-host routing (a UserTenant gateway reachable at its host without an OIDC session) applies to the per-user gateway hosts under the customer wildcard, not the platform domain.
+- The operator emits an **explicit `<org>.<base>` A record** as an external-dns `DNSEndpoint` at org
+  provision time. There are **no per-user Ingress objects** — the operator no longer builds one Ingress
+  per UserTenant.
+- A **single wildcard Ingress** at `*.<base>` path-routes `/api` to the control plane and the gateway
+  WebSocket path to the operator's identity-routing proxy Service.
+- cert-manager issues `*.<base>` + apex + control-plane host (`cluster-issuer.yaml`). The wildcard
+  covers every org host `<org>.<base>`. A per-org HTTP-01 cert is issued only when `vanityDomain` is set.
+- The **control plane's own host is not wired by an Ingress in the chart** today: routing
+  `platform.<base>` to the control-plane Service is an installer/out-of-chart step.
+- The per-pod gateway NetworkPolicy admits the gateway port only from the operator pods (which host
+  the proxy). UserTenant pods are not reachable directly from the ingress controller.
 
 ## Defaults
 

@@ -5,65 +5,52 @@ walks an admin through the happy path; this page documents the model, the full A
 surface, the cert-manager resources OpenCrane creates, and the per-provider and
 multi-instance options.
 
-## The model: one fixed platform wildcard, orgs and users derived under it
-
-::: info Current model — being superseded by the identity-routing proxy
-The per-user-subdomain topology on this page (`<user>.<org>.<base>`) is the **current**
-implementation and is what an operator configures today. The decided direction collapses
-every user in an org onto the org's **single host** `<org>.<base>`: an in-cluster
-identity-routing proxy authenticates the session and routes each user to their own gateway,
-so there are **no per-user subdomains**. Under that model the **second wildcard level**
-(`*.<org>.<base>`) and its DNS-01 wildcard certificate are unnecessary — an org needs only
-`<org>.<base>` (one record + an HTTP-01 certificate). Until the proxy ships, the model below
-applies.
-:::
+## The model: one fixed platform wildcard, orgs derived under it
 
 OpenCrane uses a **fixed wildcard topology**. The platform owns **one base domain**
 (`<base>`, e.g. `weownai.eu`) and a **fixed super-operator / control-plane host**
-(`platform.<base>`). Every org and user name is **derived** under the base — customers do
-not bring their own domain:
+(`platform.<base>`). Every org name is **derived** under the base — customers do
+not bring their own domain (a vanity domain is an optional overlay):
 
 | Name | Where it points | Set how often |
 |------|-----------------|---------------|
 | Control-plane host `platform.<base>` → ingress | platform DNS | once, at install |
 | Apex `<base>` → ingress | platform DNS | once, at install |
-| Platform wildcard `*.<base>` → ingress (resolves every **org apex** `<org>.<base>`) | platform DNS | once, at install |
-| Per-org wildcard `*.<org>.<base>` → ingress (resolves every **user** `<user>.<org>.<base>`) | platform DNS | automatic, per org at provision time |
-| New user `alice.<org>.<base>` resolves **and** gets HTTPS | — | automatic, zero touch |
+| Platform wildcard `*.<base>` → ingress (resolves every **org host** `<org>.<base>`) | platform DNS | once, at install |
+| Per-org host `<org>.<base>` A record → ingress | emitted by the operator at org provision; external-dns reconciles | automatic, per org |
 
-So an org is served at `<org>.<base>` (e.g. `acme.weownai.eu`) and — **in the current
-model** (see the note above) — its users at `<user>.<org>.<base>` (e.g.
-`mike.acme.weownai.eu`); the identity-routing proxy will instead serve them through the org's
-own host `<org>.<base>`.
+An org is served at `<org>.<base>` (e.g. `acme.weownai.eu`). There are **no per-user
+subdomains** — every user in an org connects through the org's single host. An
+identity-routing proxy (folded into the ClusterTenant operator) resolves each user's
+session to their own pod and forwards the WebSocket there.
 
-### Why two wildcard levels
-
-A DNS wildcard matches **exactly one label**. `*.<base>` resolves every org apex
-`<org>.<base>`, but it does **not** reach the extra label in `<user>.<org>.<base>`. So each
-org gets its **own** wildcard `*.<org>.<base>` (record + certificate), created when the org
-is provisioned. Once an org exists, every user under it resolves and gets HTTPS the moment
-they are created — no per-user record. All names land on the same ingress; the ingress
-controller routes by the HTTP `Host:` header to the right gateway.
+::: tip One wildcard level is enough
+Because users share the org host, the platform wildcard `*.<base>` is the only
+wildcard record needed. There are no per-org `*.<org>.<base>` wildcard records and
+no per-org wildcard DNS-01 challenges.
+:::
 
 ### Who writes the records: external-dns (runtime substrate)
 
 The platform records (`platform.<base>`, the apex, and the platform wildcard `*.<base>`)
 are written **once at install** — by Terraform when it owns the Cloud DNS zone, or by you
-at your provider otherwise. Everything **per-org** is written at **runtime** by the
-in-cluster **external-dns** controller: the cluster-tenants operator declares each org's
-records as a namespaced `DNSEndpoint` custom resource
-(`externaldns.k8s.io/v1alpha1`), and external-dns (run with `--source=crd`) reconciles
-those into the zone — adding records when an org is provisioned and reaping them when the
-`DNSEndpoint` (or its namespace) is deleted. The operator therefore talks to **no cloud
-DNS API directly**; the record substrate is provider-agnostic. The install scripts bundle
-external-dns as a cluster singleton in `acme`/`clouddns` mode (`--no-external-dns` to BYO a
-controller); the `externalDns.enabled` chart value gates the operator's `DNSEndpoint` RBAC.
+at your provider otherwise. Each **org record** (`<org>.<base>`) is written at **runtime**
+by the in-cluster **external-dns** controller: the ClusterTenant operator emits an explicit
+`<org>.<base>` A record as a namespaced `DNSEndpoint` custom resource
+(`externaldns.k8s.io/v1alpha1`) pointing at the ingress IP, and external-dns (run with
+`--source=crd`) reconciles that record into the zone — adding it when an org is provisioned
+and reaping it when the `DNSEndpoint` (or its namespace) is deleted. The operator therefore
+talks to **no cloud DNS API directly**; the record substrate is provider-agnostic. The
+install scripts bundle external-dns as a cluster singleton in `acme`/`clouddns` mode
+(`--no-external-dns` to BYO a controller); the `externalDns.enabled` chart value gates the
+operator's `DNSEndpoint` RBAC.
 
 ### The shared zone-write identity
 
-external-dns (writing records) and the cert-manager DNS-01 solver (writing the temporary
-`_acme-challenge` `TXT` records below) both need **write** access to the same zone, so they
-**share one credential** — there is exactly one binding, never a per-controller copy:
+external-dns (writing the org A records) and the cert-manager DNS-01 solver (writing the
+temporary `_acme-challenge` `TXT` records for the platform wildcard cert) both need
+**write** access to the same zone, so they **share one credential** — there is exactly one
+binding, never a per-controller copy:
 
 - **Google Cloud, Workload Identity (default):** one Google service account bound
   `roles/dns.admin` on the zone's project, impersonated by both controllers'
@@ -81,19 +68,18 @@ install.
 
 ### Why a provider token is still needed
 
-Wildcards solve **routing**; HTTPS needs a certificate valid for the name in the browser.
-OpenCrane issues wildcard certificates via Let's Encrypt — the **platform** cert
-(`*.<base>` + apex + control-plane host) and, per org, a `*.<org>.<base>` cert. A wildcard
-certificate can only be validated with the **ACME DNS-01 challenge** — cert-manager briefly
-creates a `_acme-challenge.<zone>` `TXT` record. The provider token you supply is used for
-**exactly that, and only that**: writing and removing that temporary validation record.
-cert-manager then auto-renews (~every 60 days) using the same token.
+The platform wildcard `*.<base>` certificate must be validated with the **ACME DNS-01
+challenge** — cert-manager briefly creates a `_acme-challenge.<zone>` `TXT` record. The
+provider token you supply is used for **exactly that, and only that**: writing and removing
+that temporary validation record. cert-manager then auto-renews (~every 60 days) using the
+same token. No per-org DNS-01 is needed — org hosts ride the platform wildcard cert (see
+[TLS below](#tls-certificates)).
 
 ### Optional: a customer-vanity domain (CNAME)
 
 A customer who wants their **own** domain (e.g. `ai.client-company.com`) does **not**
 delegate or transfer it — they add a single `CNAME` at their own provider pointing it at
-their org apex:
+their org host:
 
 ```
 # At the customer's DNS provider, for org "acme" on base "weownai.eu":
@@ -102,8 +88,19 @@ ai.client-company.com.   CNAME   acme.weownai.eu.
 
 Then set the org's `vanityDomain` (`oc cluster-tenant update acme --vanity-domain
 ai.client-company.com`, or the `vanityDomain` field on the API). OpenCrane adds the vanity
-name to the org's TLS SANs so it is browser-trusted. The vanity domain is an **overlay**:
-the org is always also reachable at its canonical `<org>.<base>` apex.
+name to a per-org TLS certificate (an HTTP-01 cert whose SAN is the vanity host) so it is
+browser-trusted. The vanity domain is an **overlay**: the org is always also reachable at
+its canonical `<org>.<base>` host.
+
+## TLS certificates
+
+| Cert | Covers | Challenge | Issued |
+|------|--------|-----------|--------|
+| **Platform wildcard** `*.<base>` (+ apex + control-plane host) | every org host `<org>.<base>`, the apex, the fixed control-plane host | DNS-01 (wildcard requires DNS-01) | once at install by the chart (`cluster-issuer.yaml`) |
+| **Per-org vanity** (SAN = the vanity host only) | the customer-vanity host only | HTTP-01 (no wildcard, so DNS-01 is unnecessary) | at org provision, only when a `vanityDomain` is set |
+
+The platform wildcard cert is the **only** cert that requires DNS-01 and a zone-write
+credential. Per-org vanity certs use HTTP-01 — no provider token needed for those.
 
 ## Configure it
 
@@ -120,7 +117,7 @@ oc platform dns set \
 | Flag | Required | Meaning |
 |------|----------|---------|
 | `--provider` | yes | DNS-01 solver provider key (`cloudflare`, `digitalocean`, `route53`, `rfc2136`, …) |
-| `--zone` | yes | The platform wildcard **base** the certs cover (e.g. `weownai.eu`) — orgs are `<org>.<base>`, users `<user>.<org>.<base>` |
+| `--zone` | yes | The platform wildcard **base** the cert covers (e.g. `weownai.eu`) — org hosts are `<org>.<base>` |
 | `--email` | yes | ACME account contact address (renewal notices) |
 | `--server` | no | ACME directory URL (defaults to Let's Encrypt production) |
 | `--issuer-name` | no | Issuer name to create/update (defaults to `opencrane-issuer`) |
@@ -236,12 +233,12 @@ token takes effect on re-apply):
    certificate (plus the apex and the control-plane host) into the Secret the chart
    references (`ingress.tls.secretName`, default `opencrane-wildcard-tls`).
 
-This authorises the issuer **on the zone**. Per **org** the cluster-tenants operator then
-issues a `*.<org>.<base>` certificate at provision time, reusing the same issuer/token (see
-[Why two wildcard levels](#why-two-wildcard-levels) above and
-`platform/helm/examples/per-org-wildcard-cert.yaml`). The certificate appearing in a Secret
-happens on a live cluster with real DNS; this endpoint's job is to author and apply the
-issuer + Secret correctly.
+This authorises the issuer **on the zone**. The platform wildcard cert covers every org host
+`<org>.<base>` — no per-org cert issuance is needed at provision time unless a vanity domain
+is set. A per-org vanity cert (HTTP-01) is issued separately when `vanityDomain` is
+configured on the ClusterTenant. The certificate appearing in a Secret happens on a live
+cluster with real DNS; this endpoint's job is to author and apply the issuer + Secret
+correctly.
 
 ## Issuer kind: single vs multi-instance
 

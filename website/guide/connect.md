@@ -5,8 +5,8 @@ Once an assistant exists, the person can start using it. The experience is simpl
 
 ## For the user
 
-1. Go to your assistant's address — `https://<your-name>.<your-company-domain>`
-   (for example `https://alice.opencrane.example.com`).
+1. Go to your organisation's assistant address — `https://<your-company>.<platform-domain>`
+   (for example `https://acme.opencrane.example.com`).
 2. Sign in with your normal work account.
 3. Your assistant opens — chat, search, and canvas are ready to go.
 

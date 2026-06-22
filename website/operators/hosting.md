@@ -4,12 +4,12 @@
 > (default) + `GcpHostingAdapter`, the Terraform `core/` + `cloud/gcp/` split, and the
 > Crossplane removal are all live. The scattered `storageProvider` / `crossplaneEnabled`
 > branching this superseded is gone. §9 records the (completed) migration sequence; the
-> Azure/AWS adapters remain agreed extension points, not yet built. TLS issuance for the
-> per-UserTenant ingress is being wired via cert-manager (§6.3, plan CONN.8).
+> Azure/AWS adapters remain agreed extension points, not yet built.
 >
 > **Tenancy terms:** "tenant" below means a **UserTenant** — the per-user OpenClaw gateway
-> (the openclaw / `Tenant` CRD), exposed at `<user>.<ClusterTenant-domain>`. The
-> **ClusterTenant** is the customer that owns the base domain. See the authoritative
+> (the openclaw / `Tenant` CRD), routed to from the org host `<org>.<ClusterTenant-domain>`
+> via the identity-routing proxy. The **ClusterTenant** is the customer/isolation unit that
+> owns the base domain. See the authoritative
 > [Tenancy Model](https://github.com/italanta/opencrane/blob/main/docs/agents/cluster-architecture.md#tenancy-model--clustertenant-vs-usertenant).
 
 ## 1. Goals & Principles
@@ -452,19 +452,18 @@ cluster-wide and each per-instance release is installed with `--skip-crds`. See
 [`docs/multi-instance.md`](/advanced/multi-instance) for the procedure and the CRD-version
 compatibility contract.
 
-### 6.3 Ingress TLS (cert-manager wildcard — plan CONN.8)
+### 6.3 Ingress TLS (cert-manager wildcard)
 
 TLS is deliberately **k8s-native and provider-agnostic** rather than per-cloud managed
-certs, so the same mechanism works on-prem and on any cloud. `ingress.domain` is
-per-instance, so it **is** the **ClusterTenant base domain** — the customer's own domain
-(e.g. `ai.client-company.com`); the wildcard `*.<domain>` covers that customer's **UserTenant**
-gateway hosts (`<user>.<domain>`, e.g. `mike.ai.client-company.com`), not the ClusterTenant itself.
-The control plane runs on the platform's own separate domain (e.g. `example.com`).
+certs, so the same mechanism works on-prem and on any cloud.
 
-- **cert-manager** issues one **wildcard `*.<ingress.domain>` (+ apex) certificate** via
+- **cert-manager** issues one **wildcard `*.<base>` (+ apex + control-plane host) certificate** via
   ACME **DNS-01** (wildcards require DNS-01) into the `ingress.tls.secretName` Secret
-  (default `opencrane-wildcard-tls`). One cert covers every `<user>.<domain>` UserTenant
-  gateway, so adding a UserTenant needs no new issuance.
+  (default `opencrane-wildcard-tls`). One cert covers every org host `<org>.<base>`, so
+  adding an org needs no new cert issuance. There are no per-org wildcard certs.
+- A **per-org vanity cert** (HTTP-01, SAN = the customer-vanity host) is issued by the
+  operator only when `vanityDomain` is set on a ClusterTenant. HTTP-01 is sufficient here
+  because the vanity host is a non-wildcard name.
 - The chart renders a `ClusterIssuer` + wildcard `Certificate`
   (`platform/helm/templates/cluster-issuer.yaml`) when `certManager.enabled=true` —
   `mode: selfSigned` for dev/local, `mode: acme` with a DNS-01 solver for production.
@@ -481,29 +480,20 @@ The control plane runs on the platform's own separate domain (e.g. `example.com`
     `--base-domain` (a wildcard for `*.<empty>` is meaningless).
 - **Record substrate — external-dns.** In `acme`/`clouddns` mode the deploy core also
   bundles the **external-dns** controller (cluster singleton, `--no-external-dns` to BYO).
-  The operator declares per-org records as `DNSEndpoint` CRs and external-dns reconciles
-  them into the zone, so per-org DNS is automatic at runtime. external-dns and the
-  cert-manager DNS-01 solver **share one zone-write credential** — the same Workload-Identity
-  GSA bound `roles/dns.admin` (Terraform's `dns` module provisions it), or the same
-  `--dns01-credentials` SA key for an external zone. No second binding. See
-  [DNS configuration](/operators/dns-config).
-- The operator adds a `tls:` block to each **UserTenant** Ingress (one Ingress per
-  UserTenant at `<name>.<ingress.domain>`, referencing the shared wildcard Secret) when
-  `ingress.tls.enabled=true`, driven by `INGRESS_TLS_ENABLED` / `INGRESS_TLS_SECRET_NAME`
-  env. Default off → no behaviour change.
-- **Apex / control-plane gap.** The wildcard cert *covers* the apex (`<domain>`) as a SAN,
+  The operator declares per-org `<org>.<base>` A records as `DNSEndpoint` CRs and
+  external-dns reconciles them into the zone, so per-org DNS is automatic at runtime.
+  external-dns and the cert-manager DNS-01 solver **share one zone-write credential** —
+  the same Workload-Identity GSA bound `roles/dns.admin` (Terraform's `dns` module
+  provisions it), or the same `--dns01-credentials` SA key for an external zone. No second
+  binding. See [DNS configuration](/operators/dns-config).
+- The wildcard Ingress references the shared platform wildcard TLS Secret
+  (`ingress.tls.secretName`) when `ingress.tls.enabled=true`. Default off → no behaviour
+  change.
+- **Apex / control-plane gap.** The wildcard cert *covers* the apex (`<base>`) as a SAN,
   and the intended model routes the apex to the control-plane management API. But the
-  **apex→control-plane Ingress is not shipped in the chart today** — only the per-UserTenant
-  Ingresses are operator-built. Routing the (cert-covered) apex to the control-plane Service
-  is currently an installer/out-of-chart step.
-- **Constraint:** TLS Secrets are namespace-scoped, so `certManager.certificateNamespace`
-  must equal the namespace UserTenant Ingresses run in (the operator `watchNamespace`). The
-  one-label-per-UserTenant, apex-as-SAN, host-only-cookie, and delegated-DNS-subzone rules
-  live in plan CONN.8.
-
-Remaining CONN.8 follow-ups: a DNS-provider onboarding CLI/API (`oc platform dns set`),
-cross-namespace cert distribution if tenants ever split across namespaces, dev wildcard
-hostnames via `sslip.io`/`nip.io`, and a live ACME end-to-end check.
+  **apex→control-plane Ingress is not shipped in the chart today**. Routing the
+  (cert-covered) apex to the control-plane Service is currently an installer/out-of-chart
+  step.
 
 ## 7. Configuration Model
 

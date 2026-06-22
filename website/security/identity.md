@@ -5,18 +5,18 @@ access to **both** the control-plane API and the user's own OpenClaw pod.
 
 > **Terminology:** the per-user OpenClaw agent gateway is a **UserTenant** (the openclaw /
 > `Tenant` CRD); "UserTenant" is the canonical doc name while the CRD kind is still `Tenant`
-> in code. It is exposed at `<user>.<ClusterTenant-domain>`. The **ClusterTenant** is the
-> customer that owns that base domain. See the authoritative
+> in code. All users in an org connect through the org's single host `<org>.<base>`; the
+> identity-routing proxy (in the ClusterTenant operator) routes each session to its pod.
+> The **ClusterTenant** is the customer/isolation unit that owns the org host. See the authoritative
 > [Tenancy Model](https://github.com/italanta/opencrane/blob/main/docs/agents/cluster-architecture.md#tenancy-model--clustertenant-vs-usertenant).
 > Below, "tenant pod" / "tenant gateway" means a UserTenant.
 
 > **Status legend:** ✅ implemented · 🔶 planned/target. The OIDC control-plane
-> session and the pairing **broker** (`POST /api/v1/auth/pod-token`) are
-> implemented today. The browser-side OpenClaw **connect handshake** (device
-> signing) is implemented in WeOwnAI but cannot be verified end-to-end until the
-> device-signature scheme and pod pairing-link provisioning land (see Blocked
-> items). The connection-security posture is decided — **Option B**; see
-> [`claw-security-considerations.md`](/security/connection-security).
+> session and the identity-routing proxy (`GET /api/v1/auth/gateway-resolve`) are
+> implemented today. The browser holds **no pod credential** — connection auth is
+> handled entirely by the proxy replaying the OIDC session cookie. The connection
+> security posture is adopted — **trusted-proxy + per-pod owner pinning (CONN.9/10)**;
+> see [`claw-security-considerations.md`](/security/connection-security).
 
 ## Two planes, one identity
 
@@ -25,7 +25,7 @@ OpenCrane has two backends a user touches, and they must not require two logins:
 | Plane | What it serves | How it is reached |
 |-------|----------------|-------------------|
 | **Control plane** | management + metadata: tenants, policies, groups, budgets, skills, audit, auth | the versioned control-plane API (OIDC session) |
-| **UserTenant pod (OpenClaw)** | the live agent session: chat, Cognee retrieval, canvas | the UserTenant's own `gatewayUrl` (`wss://<ingressHost>`, i.e. `<user>.<ClusterTenant-domain>`), via the OpenClaw Gateway v4 protocol |
+| **UserTenant pod (OpenClaw)** | the live agent session: chat, Cognee retrieval, canvas | the org's gateway WebSocket at `wss://<org>.<base>`, routed to the user's pod by the identity-routing proxy, via the OpenClaw Gateway v4 protocol |
 
 The principle is **one identity, brokered access**: the human signs in once via
 OIDC; the control plane then **brokers** the connection to the user's own pod by
@@ -36,54 +36,51 @@ directly rather than minting a parallel bearer token.
 ## End-to-end flow (single sign-on)
 
 ```
-1. Browser → /api/auth/login (OIDC) → IdP → /api/auth/callback → session cookie   ← the ONLY login
-2. Browser/BFF → POST /api/v1/auth/pod-token: "pairing link for my OpenClaw"
-3. Control plane: validates session, resolves the caller's tenant from the
-   verified email ONLY (fail-closed on ambiguity), returns the pod's pairing link
-   { gatewayUrl, bootstrapToken | null, tenant, ingressHost }
-4. Browser opens gatewayUrl (wss://…) and runs the OpenClaw connect handshake:
-     - gateway pushes  connect.challenge { nonce, ts }
-     - client signs the nonce with a persisted device identity and sends
-       connect { auth.token = bootstrapToken (first pair) | auth.deviceToken
-       (reconnect), device { id, publicKey, signature, signedAt, nonce } }
-     - gateway replies hello-ok { auth.deviceToken, role, scopes }
-5. Client persists the deviceToken (Option B target: re-broker instead of persist),
-   then sessions.messages.subscribe. Re-broker / reconnect when needed; re-login
-   only when the OIDC session itself expires.
+1. Browser → /api/v1/auth/login (OIDC) → IdP → /api/v1/auth/callback → session cookie   ← the ONLY login
+2. Browser opens  wss://<org>.<base>  (the org's gateway WebSocket)
+3. Identity-routing proxy (in the operator):
+     - checks Origin against CSWSH allowlist (exact vanity hosts + any https://<org>.<base>)
+     - calls GET /api/v1/auth/gateway-resolve (replaying only the session cookie)
+     - control plane resolves: verified email → tenant → pod  (fail-closed on ambiguity)
+     - proxy strips client-supplied X-Forwarded-User, injects the verified email, and
+       reverse-proxies the WS upgrade to openclaw-<user>.<ns>.svc:<gatewayPort>
+4. Gateway runs in trusted-proxy mode; OpenClaw's owner-pinning guard (CONN.10)
+   rejects any X-Forwarded-User that isn't the pod's registered owner.
+5. Browser holds only the HTTP-only session cookie. Re-login only when the OIDC
+   session itself expires. Re-connect is automatic; no token management required.
 ```
 
-Step 1 and the broker endpoint (steps 2–3) are ✅ implemented. The connect
-handshake (step 4) is implemented client-side but 🔶 until the device-signature
-scheme (B1) and pairing-link provisioning (B2) are confirmed.
+All steps are ✅ implemented (gated by `gatewayProxy.enabled`).
 
 ### Why this shape
 
-- **One login.** Users never authenticate twice for one identity; pod access is
-  brokered from the established session.
-- **OpenClaw-native.** The pairing link (`{ url, bootstrapToken }`) is OpenClaw's
-  own mechanism; OpenCrane brokers it instead of inventing a parallel token path.
-- **Data sovereignty.** The bootstrap token is short-lived and single-device, and
-  the connection is audience-bound to one UserTenant's gateway.
-- **Minimal browser secrets.** The browser holds its HTTP-only session cookie; the
-  long-term posture (Option B) re-brokers a short-lived bootstrap per session
-  rather than persisting a long-lived device token client-side.
+- **One login.** Users never authenticate twice; pod routing is resolved from the
+  established OIDC session.
+- **No browser-held pod credential.** The browser holds only its HTTP-only session
+  cookie; the proxy carries all pod-routing logic, so there is nothing to steal from
+  the browser.
+- **Defence in depth.** Cross-tenant safety rests on two independent layers: the
+  proxy's `gateway-resolve` (routing level) and per-pod owner pinning (pod level) —
+  either alone suffices.
+- **Revocation is immediate.** Invalidating the OIDC session stops the next
+  gateway-resolve call; an already-open socket can be cut via a Kubernetes pod
+  force-disconnect (no parallel credential to revoke).
 
-## Token / credential types (keep them distinct)
+## Credential types (keep them distinct)
 
 | Credential | Subject | Audience / target | TTL / storage | Status |
 |-----------|---------|-------------------|---------------|--------|
-| **Control-plane session cookie** | the human | control plane | server-signed, HTTP-only cookie (~12h) | ✅ |
-| **OpenClaw bootstrap token** | the device, on the human's behalf | the UserTenant pod's Gateway (one pod) | short-lived, single-device; from the pairing link | ✅ broker / 🔶 short-TTL mint |
-| **OpenClaw device token** | the paired device | the UserTenant pod's Gateway | issued in `hello-ok`; persisted per device (Option B target: re-broker, do not persist) | 🔶 |
+| **Control-plane session cookie** | the human | control plane + identity-routing proxy | server-signed, HTTP-only cookie (~12h) | ✅ |
 | **Projected SA token** | a Kubernetes service account | `obot-gateway` / `skill-registry` / `control-plane` | ~600s, kubelet-rotated, in-cluster only | ✅ |
+
+The browser holds **only** the HTTP-only session cookie. There is no bootstrap token, no
+device token, and no pod-specific credential in the browser.
 
 The **projected SA token** is *workload* identity and must **never be handed to a
 browser**. It is how the pod calls *outward* — e.g. OpenClaw → Obot MCP Gateway
 (`aud=obot-gateway`), and the contract re-pull loop → control plane
-(`aud=control-plane`). The **bootstrap / device tokens** carry the device's
-identity (established from the human's brokered session) and are what the browser
-uses to reach the pod's OpenClaw Gateway. The browser never holds an
-`obot-gateway` token and never talks to Obot directly.
+(`aud=control-plane`). The browser never holds an `obot-gateway` token and never talks
+to Obot directly.
 
 ## Control-plane session (OIDC)
 
@@ -206,62 +203,38 @@ standard OpenID Connect discovery.
 - **Automation / CI** uses a static bearer token (`Authorization: Bearer …`).
   Treat this as a migration target; prefer OIDC/IAM where possible.
 
-## UserTenant pod access (pairing broker)
+## UserTenant pod access (identity-routing proxy)
 
-To reach a user's OpenClaw, a caller needs to connect to the UserTenant pod's
-**Gateway** and complete OpenClaw's native pairing handshake. The **control plane is the
-broker**: it authenticates the human and knows the user↔UserTenant mapping (the `Tenant`
-CR's `email` field), so it returns that pod's pairing link.
+To reach a user's OpenClaw, the browser opens the org's gateway WebSocket at
+`wss://<org>.<base>`. The **identity-routing proxy** (folded into the ClusterTenant
+operator) authorises and routes the connection — the browser holds no pod credential.
 
-Implemented as **`POST /api/v1/auth/pod-token`** ✅ (the endpoint name predates the
-broker model). It returns the pairing link, not a minted bearer token:
+The routing authority is **`GET /api/v1/auth/gateway-resolve`** ✅. On each WebSocket
+upgrade the proxy:
 
-1. Resolve the caller's **UserTenant from the session's verified email only** — there
-   is no request-supplied tenant input — matched case-insensitively to the `Tenant`
-   CR's `email`; more than one match fails closed (`409 AMBIGUOUS_TENANT`).
-2. Resolve the pod's pairing details (`_ResolveOpenClawPairing`): read
-   `configOverrides.openclaw.{gatewayUrl,bootstrapToken}`, falling back to
-   `wss://<ingressHost>`. **Only `wss://` is ever returned** (CONN.2). Returns
-   `{ gatewayUrl, bootstrapToken | null, tenant, ingressHost }`; `bootstrapToken`
-   is `null` once a device is paired (the client reconnects with its device token).
-3. The browser opens `gatewayUrl` and runs the OpenClaw connect handshake
-   (answer `connect.challenge`, send `connect` with `auth.token`/`auth.deviceToken`
-   + a signed `device` assertion, receive `hello-ok`), then subscribes.
-4. Re-broker / reconnect as needed; the OpenClaw `tickIntervalMs` reaps half-open
-   clients. Re-login only when the OIDC session expires.
+1. **Checks `Origin`** against the CSWSH allowlist (exact vanity entries + any
+   `https://<org>.<base>`) — fails closed if the Origin is missing or not allowed.
+2. **Calls `GET /api/v1/auth/gateway-resolve`** on the control plane, replaying only
+   the session cookie. The control plane resolves the caller's **UserTenant from the
+   session's verified email only** — no request-supplied tenant input — matched
+   case-insensitively; more than one match fails closed (`403`).
+3. **Strips** any client-supplied `X-Forwarded-User`, **injects** the verified email,
+   and **reverse-proxies** to `openclaw-<user>.<ns>.svc:<gatewayPort>`.
 
-Because the tenant is derived solely from the session, **a caller cannot obtain a
-pairing link for another user's pod.**
+The pod runs in **trusted-proxy** mode and pins the allowed identity via
+`gateway.auth.trustedProxy.allowUsers` (the pod's owner email — CONN.10), so a
+mis-routed socket is rejected at the pod as a second independent guard.
 
-### Where the handshake runs
+Because the tenant is derived solely from the OIDC session, **a caller cannot reach
+another user's pod.**
 
-- **Token-to-client (current).** The control plane returns the pairing link to the
-  browser, which opens the gateway WS and completes the handshake directly. Simple;
-  Option B keeps the brokered credential short-lived so a stripped credential is
-  useless within ~a minute.
-- **Proxy / BFF (deferred — Option C).** The control plane (or an Envoy/mesh
-  sidecar) proxies the WebSocket: per-session cut + per-frame audit + zero browser
-  credential, at a connection-stateful cost. Not adopted now; see the security doc
-  §6/§8 and plan `CONN.7`.
+### Security posture (adopted — CONN.9/10)
 
-### Security posture (Option B)
-
-Decided 2026-06: short-lived, re-brokered credentials (no long-lived token in the
-browser) + a per-user central kill-switch (OpenClaw `device.token.revoke` /
-`device.pair.remove` + a Kubernetes force-disconnect) + transport hardening (HSTS,
-`wss://`-only, fail-closed `Secure` cookie — CONN.2). The control plane stays
-*connection*-stateless. Full trade-off, threat model (MITM/airport, the two clocks,
-K8s force-disconnect levers) and accepted compromises are in
+The adopted model (2026-06): session-authorised trusted-proxy auth with no browser-held
+pod credential + per-pod owner pinning + transport hardening (HSTS, `wss://`-only,
+fail-closed `Secure` cookie — CONN.2). The control plane stays *connection*-stateless.
+Full threat model and accepted trade-offs are in
 [`claw-security-considerations.md`](/security/connection-security).
-
-### Status
-
-The broker endpoint (`POST /api/v1/auth/pod-token`) is implemented ✅ and requires
-a valid OIDC session; it no longer mints a Kubernetes ServiceAccount token. Still
-🔶: the OpenClaw **device-signature scheme** (algorithm / signed bytes / encoding
-— B1) and **pairing-link provisioning** (how a pod's `{ url, bootstrapToken }`
-reaches the control plane, and short-TTL bootstrap mint — B2). TLS for the gateway
-is provisioned by cert-manager wildcard issuance (plan `CONN.8`).
 
 ## Authorization (who can do what)
 
@@ -293,5 +266,6 @@ Authentication establishes *who*; authorization is split across the two planes:
 - Behind an ingress or reverse proxy, preserve forwarded headers so callback and
   secure-cookie handling use the external URL correctly (the control plane sets
   `trust proxy`, so `X-Forwarded-Proto` drives `req.secure` / HSTS).
-- Never expose kubelet-projected SA tokens to browsers; the brokered pairing link
-  (bootstrap / device token) is the only browser-reachable path to a pod.
+- Never expose kubelet-projected SA tokens to browsers; the session cookie is the
+  only browser-held credential, and it never reaches a pod directly — the proxy
+  intermediates all pod connections.
