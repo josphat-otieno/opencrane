@@ -10,12 +10,12 @@ import { _IsDevAuthMode } from "../infra/auth/auth-mode.js";
 import { _RequireBillingAccountForOrgCreate, _RequireOrgManager } from "../infra/middleware/cluster-tenant-org-admin.js";
 
 /** RFC-1123-ish DNS domain: lowercase labels, ≥1 dot, alpha TLD, ≤253 chars. */
-const _BASE_DOMAIN_PATTERN = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/;
+const _VANITY_DOMAIN_PATTERN = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/;
 
-/** Whether a string is a syntactically valid customer base domain. */
-function _isValidBaseDomain(value: string): boolean
+/** Whether a string is a syntactically valid customer-vanity domain. */
+function _isValidVanityDomain(value: string): boolean
 {
-  return _BASE_DOMAIN_PATTERN.test(value);
+  return _VANITY_DOMAIN_PATTERN.test(value);
 }
 
 /**
@@ -104,9 +104,9 @@ export function clusterTenantsRouter(prisma: PrismaClient, registry: ClusterTena
       res.status(400).json({ error: "isolationTier must be 'shared', 'dedicatedNodes', or 'dedicatedCluster'.", code: "VALIDATION_ERROR" });
       return;
     }
-    if (body.baseDomain !== undefined && body.baseDomain.trim() && !_isValidBaseDomain(body.baseDomain.trim()))
+    if (body.vanityDomain !== undefined && body.vanityDomain.trim() && !_isValidVanityDomain(body.vanityDomain.trim()))
     {
-      res.status(400).json({ error: "baseDomain must be a valid lowercase DNS domain (e.g. ai.client-company.com).", code: "VALIDATION_ERROR" });
+      res.status(400).json({ error: "vanityDomain must be a valid lowercase DNS domain (e.g. ai.client-company.com).", code: "VALIDATION_ERROR" });
       return;
     }
 
@@ -145,7 +145,7 @@ export function clusterTenantsRouter(prisma: PrismaClient, registry: ClusterTena
         data: {
           name: body.name.trim(),
           displayName: body.displayName.trim(),
-          baseDomain: body.baseDomain?.trim() || null,
+          vanityDomain: body.vanityDomain?.trim() || null,
           isolationTier: _ToPrismaTier(body.isolationTier),
           computeMode: _ToPrismaCompute(body.compute.mode),
           nodePool: body.compute.nodePool?.trim() || null,
@@ -163,6 +163,17 @@ export function clusterTenantsRouter(prisma: PrismaClient, registry: ClusterTena
 
       return org;
     });
+
+    // 5. Domain provisioning hand-off (fixed-wildcard topology). The org is now
+    //    addressable at its derived apex `<name>.<platformBaseDomain>` and its users
+    //    at `<user>.<name>.<base>`. Two cluster-side side effects must follow — the
+    //    per-org DNS record (`*.<org>.<base>` → ingress IP) and the per-org wildcard
+    //    TLS cert — but BOTH are owned by the ClusterTenant operator/CR watcher (the
+    //    same WS4 hand-off seam that reconciles `pending` → `ready`), never executed
+    //    inline here. The reconciler calls the single typed interface
+    //    `OrgDomainProvisioner.provisionOrgDomain(...)` (see
+    //    core/cluster-tenants/org-domain-provisioner.types.ts). This handler only
+    //    persists desired state; it does not mutate DNS or cert-manager.
     res.status(201).json(_ToContract(created));
   });
 
@@ -190,17 +201,17 @@ export function clusterTenantsRouter(prisma: PrismaClient, registry: ClusterTena
       data.displayName = body.displayName.trim();
     }
 
-    // 1b. Apply base-domain change when present; an empty string clears it (back to
-    //     the per-instance ingress.domain fallback), a non-empty value must be valid.
-    if (body.baseDomain !== undefined)
+    // 1b. Apply vanity-domain change when present; an empty string clears it (back to
+    //     the derived `<name>.<base>` apex only), a non-empty value must be valid.
+    if (body.vanityDomain !== undefined)
     {
-      const trimmed = body.baseDomain.trim();
-      if (trimmed && !_isValidBaseDomain(trimmed))
+      const trimmed = body.vanityDomain.trim();
+      if (trimmed && !_isValidVanityDomain(trimmed))
       {
-        res.status(400).json({ error: "baseDomain must be a valid lowercase DNS domain (e.g. ai.client-company.com).", code: "VALIDATION_ERROR" });
+        res.status(400).json({ error: "vanityDomain must be a valid lowercase DNS domain (e.g. ai.client-company.com).", code: "VALIDATION_ERROR" });
         return;
       }
-      data.baseDomain = trimmed || null;
+      data.vanityDomain = trimmed || null;
     }
 
     // 2. Re-validate and re-gate the isolation tier when it changes — a customer

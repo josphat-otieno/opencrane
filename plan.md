@@ -92,6 +92,36 @@ creates a billing account, then creates an org and becomes its root admin.
 - Tests: billing-account create, create-records-owner, the full guard matrix, membership-derived `isOrgAdmin`
   (+20; control-plane suite 407 green).
 
+### Track DOMAIN — Fixed wildcard + CNAME domain topology — LANDED 2026-06-22
+
+Replaced the "each customer brings their own domain + delegated DNS-01" model with a **fixed-wildcard
+topology**: ONE platform org-wildcard base + a fixed super-operator/control-plane host; orgs are derived at
+`<org>.<base>`, users at `<user>.<org>.<base>`; customers optionally CNAME a vanity domain onto `<org>.<base>`.
+Stacked on `feat/org-admin-billing`.
+- **Chart values:** `ingress.controlPlaneHost` (fixed super-operator host, defaults `platform.<base>`,
+  distinct from the wildcard) + `ingress.domain` reframed as the platform org-wildcard base.
+  `control-plane-ingress.yaml` serves the fixed host; the platform `Certificate` SANs are
+  `*.<base>` + apex + control-plane host (operator/control-plane deployment templates untouched to keep merges trivial).
+- **Host derivation:** `_BuildOrgDomain`/`_BuildUserHost`/`_BuildOrgWildcard` in `libs/contracts`
+  (`domain-topology.types.ts`); operator `_ResolveOrgServingDomain` derives `<user>.<org>.<base>` with the
+  vanity domain as an overlay (ref-less openclaws unchanged at `<user>.<base>`).
+- **Schema:** ClusterTenant `base_domain` → `vanity_domain` (`migrations/0024`), repurposed as the optional
+  CNAME overlay; mirrored through contracts, openapi, CLI (`--vanity-domain`), and the CRD.
+- **Multi-level wildcard TLS (decided):** `*.<base>` covers org apexes but NOT `<user>.<org>.<base>` (a
+  wildcard matches one label) → a **per-org** `*.<org>.<base>` `Certificate` issued at org-provision via
+  cert-manager DNS-01 (reference manifest `platform/helm/examples/per-org-wildcard-cert.yaml`).
+- **DNS automation:** `modules/dns` extended — platform wildcard + apex + control-plane-host records, and a
+  `var.org_wildcards`-driven per-org `*.<org>.<base>` record matching the operator hook's shape.
+- **Per-org provisioning hook (interface only):** `OrgDomainProvisioner.provisionOrgDomain(...)`
+  (`core/cluster-tenants/org-domain-provisioner.types.ts`), wired to the same WS4 `pending → ready` hand-off
+  the create flow leaves in place; the create path never mutates DNS/cert-manager (fail-closed, API-first).
+- **Docs:** `docs/agents/cluster-architecture.md` + `website/operators/dns-config.md` rewritten to the new
+  topology with the exact customer CNAME instruction.
+- **Deferred to the cluster-tenants operator workstream:** the CR watcher that CALLS the hook to create the
+  live per-org DNS record + wildcard cert. Live cert/DNS apply prepared (not executed) for human authorisation.
+- Validation: `helm template` + `kubectl --dry-run=server` (control-plane Ingress) green; operator (104),
+  control-plane (407), cli (4) suites green; touched-package build + lint clean.
+
 ### Track P5 — Close Phase 5 — ✅ COMPLETE · full history: plan-done.md § Completed Tracks (archived 2026-06-15)
 
 ### Track P4-A — Finish Phase 4 runtime-plane enforcement gaps — ✅ COMPLETE · full history: plan-done.md § Completed Tracks (archived 2026-06-15)
