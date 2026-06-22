@@ -15,8 +15,8 @@ oc tenants create \
   --email alice@example.com
 ```
 
-That's it — Alice's assistant is now live at `https://alice.<your-domain>`, ready for
-her to [sign in and use](/guide/connect).
+That's it — Alice's assistant is now live. She can [sign in and use](/guide/connect) it
+at your organisation's address (e.g. `https://acme.<your-domain>`).
 
 You can set a few things up front:
 

@@ -1,8 +1,9 @@
 # Set up your domain
 
-Every employee assistant gets its own web address — `alice.opencrane.example.com`,
-`bob.opencrane.example.com`, and so on. To make that work (with HTTPS), you point a
-domain at OpenCrane and let it handle certificates.
+Every organisation gets its own web address — `acme.opencrane.example.com`,
+`globex.opencrane.example.com`, and so on. All employees in an org use that single address.
+To make that work (with HTTPS), you point a domain at OpenCrane and let it handle
+certificates.
 
 You do this once.
 
