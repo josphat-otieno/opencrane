@@ -24,7 +24,7 @@
 #                            [--no-external-dns]
 #                            [--cert-manager] [--acme-email EMAIL]
 #                            [--dns01-provider clouddns] [--dns01-credentials FILE]
-#                            [--dns01-project PROJECT_ID]
+#                            [--dns01-project PROJECT_ID] [--dns-writer-gsa EMAIL]
 #                            [--values FILE] [--set k=v ...]
 #
 # TLS / cert-manager (Step 2.5) has THREE modes:
@@ -38,9 +38,11 @@
 #                    webhook, runs a DNS-01 preflight that FAILS FAST with the exact
 #                    remediation, then issues a browser-trusted wildcard via Let's
 #                    Encrypt. Wildcards REQUIRE DNS-01 (HTTP-01 cannot issue them).
-#                    On GKE Workload Identity the cert-manager SA needs roles/dns.admin
-#                    on the DNS zone's project; for an external zone pass a SA-key file
-#                    via --dns01-credentials (a Secret is created in the cert-manager NS).
+#                    On GKE Workload Identity pass --dns-writer-gsa EMAIL (Terraform output
+#                    dns_writer_service_account_email): the cert-manager + external-dns
+#                    controller SAs are annotated with this SHARED GSA, which must already be
+#                    bound roles/dns.admin. For an external zone pass a SA-key file via
+#                    --dns01-credentials instead (a Secret is created in the cert-manager NS).
 #
 # This step installs only the PLATFORM-WILDCARD issuer + cert. Per-org certs are a
 # runtime concern of the ClusterTenant reconciler, NOT an install concern.
@@ -164,6 +166,13 @@ INGRESS_NGINX_NAMESPACE="ingress-nginx"
 # bundled in acme/clouddns mode, which is where the shared zone + WI binding are set up.
 INSTALL_EXTERNAL_DNS="${OPENCRANE_INSTALL_EXTERNAL_DNS:-1}"
 EXTERNAL_DNS_NAMESPACE="external-dns"
+# The shared DNS-writer Google service account (Terraform `dns` module output
+# dns_writer_service_account_email) external-dns + the cert-manager DNS-01 solver impersonate
+# via Workload Identity. On GKE the controller's KSA must carry the annotation
+# `iam.gke.io/gcp-service-account=<this>` to complete the WI handshake — Terraform creates the
+# binding, but the KSA annotation is an install-time concern. Required for the WI path (no
+# --dns01-credentials) on GKE; ignored for the external-SA-key path. Also OPENCRANE_DNS_WRITER_GSA.
+DNS_WRITER_GSA="${OPENCRANE_DNS_WRITER_GSA:-${DNS_WRITER_GSA:-}}"
 
 # --preflight runs a fail-FAST environment check BEFORE any cluster mutation and exits 0/1
 # without installing. It catches the failures that otherwise surface as a half-installed,
@@ -204,6 +213,7 @@ while [[ $# -gt 0 ]]; do
     --preflight)        PREFLIGHT="1"; shift ;;
     --no-ingress-nginx) INSTALL_INGRESS_NGINX="0"; shift ;;
     --no-external-dns)  INSTALL_EXTERNAL_DNS="0"; shift ;;
+    --dns-writer-gsa)   DNS_WRITER_GSA="$2"; shift 2 ;;
     --cert-manager)  CERT_MANAGER="on"; shift ;;
     --acme-email)    ACME_EMAIL="$2"; shift 2 ;;
     --dns01-provider)    DNS01_PROVIDER="$2"; shift 2 ;;
@@ -289,14 +299,20 @@ _run_preflight() {
   # 5. DNS-write capability — covers BOTH external-dns and the cert-manager DNS-01 solver,
   #    which SHARE one zone-write credential. Only relevant when acme/clouddns is requested
   #    (selfSigned/off write no zone). Acceptable: an external SA-key file (--dns01-credentials)
-  #    OR a Workload-Identity GSA bound roles/dns.admin. We can verify the binding only with
-  #    a project + the gcloud CLI; otherwise we flag that it must be confirmed manually.
+  #    OR a Workload-Identity GSA bound roles/dns.admin (--dns-writer-gsa, annotating the KSAs).
+  #    The check FAILS (never warn-and-pass) when it cannot positively confirm the capability —
+  #    a green preflight must mean the actual install will not fail closed on the same input.
   local _is_acme=0
   if [[ "$CERT_MANAGER" == "on" && -n "$ACME_EMAIL" && -n "$DNS01_PROVIDER" ]]; then _is_acme=1; fi
   if [[ "$_is_acme" == "1" ]]; then
     if [[ -n "$DNS01_CREDENTIALS" ]]; then
       [[ -f "$DNS01_CREDENTIALS" ]] || PF_FAILS+=("--dns01-credentials '$DNS01_CREDENTIALS' not found. external-dns + cert-manager DNS-01 share this SA key for zone writes.")
     else
+      # Workload-Identity path. The KSAs need the shared DNS-writer GSA to annotate them, so
+      # --dns-writer-gsa is required here too (the install fails closed without it).
+      if [[ -z "$DNS_WRITER_GSA" ]]; then
+        PF_FAILS+=("Workload-Identity DNS writes need the shared DNS-writer GSA. Pass --dns-writer-gsa <gsa>@<project>.iam.gserviceaccount.com (Terraform output dns_writer_service_account_email) so the external-dns + cert-manager KSAs can be annotated, or pass --dns01-credentials for an external zone.")
+      fi
       local _proj="${DNS01_PROJECT:-$(gcloud config get-value project 2>/dev/null || true)}"
       if [[ -z "$_proj" || "$_proj" == "(unset)" ]]; then
         PF_FAILS+=("acme/clouddns DNS-01 needs the GCP project hosting the zone for '$BASE_DOMAIN'. Pass --dns01-project (or set a gcloud active project) so the shared roles/dns.admin binding can be verified.")
@@ -307,7 +323,9 @@ _run_preflight() {
           PF_FAILS+=("No roles/dns.admin binding found on project '$_proj'. Bind it to the shared DNS-writer GSA (external-dns + cert-manager DNS-01 impersonate it): gcloud projects add-iam-policy-binding $_proj --member='serviceAccount:GSA@$_proj.iam.gserviceaccount.com' --role='roles/dns.admin'. Or pass --dns01-credentials for an external zone.")
         fi
       else
-        warn "Preflight: no gcloud — cannot verify roles/dns.admin on the DNS project; confirm the shared DNS-writer binding manually."
+        # gcloud absent → we cannot verify the roles/dns.admin binding. FAIL (do not warn-and-pass):
+        # a green preflight that hides an unverifiable requirement is worse than a clear blocker.
+        PF_FAILS+=("Cannot verify roles/dns.admin on project '$_proj' — gcloud is not installed on this machine. Run the preflight where gcloud is available, or pass --dns01-credentials for an external zone (a file we can check directly).")
       fi
     fi
   fi
@@ -489,10 +507,19 @@ _install_external_dns() {
     ed_args+=(--set-string "google.serviceAccountSecret=clouddns-external-dns"
       --set-string "google.serviceAccountSecretKey=credentials.json")
   else
-    # Workload Identity path: external-dns picks up the GSA via the GKE metadata server. The
-    # SAME GSA the cert-manager DNS-01 solver impersonates (roles/dns.admin) — the Step 2.5
-    # preflight already fail-closed unless that binding exists, so we add no second binding.
-    log "external-dns: using Workload Identity (shares the cert-manager DNS-01 GSA — roles/dns.admin on '$DNS01_PROJECT')."
+    # Workload Identity path: external-dns impersonates the SAME GSA the cert-manager DNS-01
+    # solver does (roles/dns.admin). Terraform creates the WI BINDING, but the controller's
+    # KSA must still carry the `iam.gke.io/gcp-service-account` annotation or the metadata-server
+    # handshake falls back to the node SA and Cloud DNS writes fail at runtime. Require the GSA
+    # here (fail closed) rather than installing a controller that silently cannot authenticate.
+    if [[ -z "$DNS_WRITER_GSA" ]]; then
+      err "external-dns Workload Identity needs the shared DNS-writer GSA to annotate its ServiceAccount."
+      err "Pass --dns-writer-gsa <gsa>@<project>.iam.gserviceaccount.com (Terraform output dns_writer_service_account_email),"
+      err "or --no-external-dns to BYO a controller, or --dns01-credentials <sa-key.json> for an external zone."
+      exit 1
+    fi
+    log "external-dns: Workload Identity via the shared DNS-writer GSA '$DNS_WRITER_GSA' (roles/dns.admin on '$DNS01_PROJECT')."
+    ed_args+=(--set-string "serviceAccount.annotations.iam\.gke\.io/gcp-service-account=$DNS_WRITER_GSA")
   fi
   helm "${ed_args[@]}"
 }
@@ -524,13 +551,20 @@ _resolve_cert_mode() {
 
 # Install the cert-manager controller + CRDs (mirrors the CloudNativePG install shape:
 # upstream chart, crds.enabled, --wait). Idempotent: helm upgrade --install no-ops when
-# cert-manager is already present, so bundling it can never clobber an existing one.
+# cert-manager is already present, so bundling it can never clobber an existing one. In the
+# acme/Workload-Identity path the controller SA is annotated with the SHARED DNS-writer GSA
+# (same one external-dns uses) so the DNS-01 solver can write to the zone; Terraform creates
+# the WI binding, but the KSA annotation is the install-time half of the handshake.
 _install_cert_manager() {
   log "Installing cert-manager (CRDs + controller)…"
   helm repo add jetstack https://charts.jetstack.io --force-update >/dev/null
-  helm upgrade --install cert-manager jetstack/cert-manager \
-    --namespace "$CERT_MANAGER_NAMESPACE" --create-namespace --wait \
-    --set crds.enabled=true
+  local cm_args=(upgrade --install cert-manager jetstack/cert-manager
+    --namespace "$CERT_MANAGER_NAMESPACE" --create-namespace --wait
+    --set crds.enabled=true)
+  if [[ "$CERT_MODE" == "acme" && -z "$DNS01_CREDENTIALS" && -n "$DNS_WRITER_GSA" ]]; then
+    cm_args+=(--set-string "serviceAccount.annotations.iam\.gke\.io/gcp-service-account=$DNS_WRITER_GSA")
+  fi
+  helm "${cm_args[@]}"
 }
 
 # DNS-01 preflight (acme only). FAILS FAST with the exact remediation rather than
@@ -572,17 +606,19 @@ _preflight_dns01() {
       -n "$CERT_MANAGER_NAMESPACE" \
       --from-file=key.json="$DNS01_CREDENTIALS" \
       --dry-run=client -o yaml | kubectl apply -f -
+  elif [[ -n "$DNS_WRITER_GSA" ]]; then
+    # 2b. Workload Identity path WITH the shared DNS-writer GSA: the cert-manager controller
+    #     SA is annotated with this GSA in _install_cert_manager, completing the handshake for
+    #     the SAME identity external-dns uses. We trust Terraform created the roles/dns.admin
+    #     binding (the `--preflight` check verifies it where gcloud is available); here we only
+    #     confirm the GSA was supplied so the solver has an identity to impersonate.
+    log "DNS-01 via Workload Identity using the shared DNS-writer GSA '$DNS_WRITER_GSA' (roles/dns.admin on '$DNS01_PROJECT')."
   else
-    # 2b. Workload Identity path: we cannot verify the IAM binding from here without the
-    #     project/GSA, so we FAIL CLOSED with the precise remediation command. The
-    #     operator must confirm roles/dns.admin is bound, then re-run with the binding in
-    #     place (or supply --dns01-credentials for an external zone).
-    err "DNS-01 via Workload Identity requires roles/dns.admin for the cert-manager service account on the DNS zone's project."
-    err "Bind it (replace PROJECT_ID, and GSA with the GCP service account the cert-manager KSA impersonates):"
-    err "  gcloud projects add-iam-policy-binding PROJECT_ID \\"
-    err "    --member='serviceAccount:GSA@PROJECT_ID.iam.gserviceaccount.com' \\"
-    err "    --role='roles/dns.admin'"
-    err "Then re-run with the same flags. For an EXTERNAL DNS zone instead, pass --dns01-credentials <sa-key.json>."
+    # 2c. No credential at all: FAIL CLOSED. Without either an external SA key or the shared
+    #     DNS-writer GSA the solver has no identity, so the wildcard order would spin forever.
+    err "DNS-01 needs a zone-write identity: either the shared DNS-writer GSA (Workload Identity) or an external SA key."
+    err "Pass --dns-writer-gsa <gsa>@$DNS01_PROJECT.iam.gserviceaccount.com (Terraform output dns_writer_service_account_email; it must have roles/dns.admin),"
+    err "or --dns01-credentials <sa-key.json> for an external DNS zone."
     exit 1
   fi
 }
