@@ -105,6 +105,53 @@ also the prerequisite that makes **collapsing per-user subdomains** safe — onc
 pod self-enforces its owner, an identity-routing proxy on a single per-org host
 carries no new cross-tenant risk. See the domain topology design for that step.
 
+### 0.1 Identity-routing gateway proxy — single per-org host (DOMAIN.T4)
+
+The next step replaces per-user subdomains (`<user>.<org>.<base>`) with **one host
+per org** (`<org>.<base>`): the app UI, `/api/*`, and the gateway WebSocket are all
+served **same-origin** under that host, and an in-cluster **identity-routing proxy**
+forwards each user's gateway socket to their own pod. The proxy is a thin,
+logic-free choke point — it holds **no session store and no secrets**, delegating
+every decision to the control plane (the same delegate-auth shape as the nginx
+`auth_request`, so the express session store is never shared across services).
+
+On each gateway WS upgrade the proxy, in order:
+
+1. **Origin allowlist (CSWSH).** It checks the `Origin` header against an exact
+   allowlist and refuses anything else. WebSocket upgrades are **not** covered by
+   CORS, and the browser sends the session cookie automatically cross-site — so this
+   allowlist is the *only* server-side defence against Cross-Site WebSocket
+   Hijacking. It **fails closed**: a missing or non-allowlisted Origin is rejected,
+   and an empty allowlist refuses every upgrade.
+2. **Delegated auth + routing.** It calls the control plane's
+   `GET /api/v1/auth/gateway-resolve`, replaying **only** the cookie. The control
+   plane verifies the session and resolves `{ user, tenant, podService }` from the
+   IdP-verified email via the **same fail-closed email→tenant rule** as `/pod-token`
+   — no request-supplied tenant input, and a missing/ambiguous mapping returns
+   **403**. The proxy makes no authorization decision itself.
+3. **Per-identity rate limit.** A per-replica fixed-window counter keyed on the
+   resolved identity bounds how many sockets one user opens per minute.
+4. **Forward** to the resolved pod's cluster-internal Service
+   (`openclaw-<user>.<ns>.svc:<gatewayPort>`).
+
+**Defence in depth.** Cross-tenant safety now rests on **two independent layers**:
+the proxy's `gateway-resolve` (routing level) *and* per-pod owner pinning (CONN.10,
+pod level). Neither the routing layer nor the pod will serve a foreign user, and
+either alone is sufficient — so a bug in one is not a breach.
+
+**Same-origin cookie.** Because everything is served under the one org host, the
+OIDC session cookie is **host-scoped** to `<org>.<base>` — never the parent
+`.<base>` — so a cookie minted for one org cannot be replayed at another. (Cutover
+prerequisite: the OIDC redirect-URI allowlist must accept the per-org hosts.)
+
+**Status.** The proxy service (`@opencrane/gateway-proxy`) and the
+`gateway-resolve` endpoint are **built and tested**; the proxy is shipped behind
+`gatewayProxy.enabled` (off by default). The remaining cutover work — one per-org
+Ingress that path-routes `/api`/UI/gateway-WS, retiring the operator's per-user
+Ingress + per-user DNS/cert, and confirming multi-host OIDC redirects — is tracked
+as the final DOMAIN.T4 slice. Until it lands, routing stays per-user-subdomain and
+this proxy is dormant.
+
 ---
 
 ## 1. How the connection works today
