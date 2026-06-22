@@ -154,6 +154,33 @@ Stacked on `feat/org-admin-billing`.
   `getStatus()` / `deprovision()` methods are dead at runtime — only `registry.isTierAvailable(...)` (tier
   gating in `clusterTenantsRouter`) is live. Consider shrinking the `ClusterTenantProvisioner` contract to a
   tier-availability gate so the dead lifecycle methods (and their interface surface) go away.
+- **DOMAIN.T4 — collapse per-user subdomains to a single per-org host with an identity-routing proxy.**
+  **Decisions LOCKED (2026-06):** (a) **per-org host** `company.opencrane.ai` (preserves cross-org origin
+  isolation + vanity CNAMEs; one DNS record + one **HTTP-01** cert per org → no wildcard, no DNS-01, no
+  cert-manager zone access — supersedes the wildcard parts of T1); (b) **same-origin** — the app UI, `/api/*`,
+  and the gateway WS are ALL served under that one host, so the browser is same-origin (no CORS) and the OIDC
+  session cookie is **host-scoped** to it (no parent-domain cross-org leak). The only external CNAME a customer
+  needs is `company.opencrane.ai` (or vanity → it).
+  - **Prerequisite (DONE):** CONN.10 per-pod owner pinning (`allowUsers`), so the pod self-enforces its owner
+    regardless of routing — without it, identity-routing would be the *only* cross-tenant guard.
+  - **New component — identity-routing WS proxy** on the per-org host. On a gateway WS upgrade it calls a new
+    control-plane endpoint `GET /auth/gateway-resolve` (verify session → return `{ user, tenant, podService }`,
+    reusing the existing fail-closed email→tenant resolution; **403** if no/ambiguous tenant), validates the
+    `Origin` header against the same-origin host (CSWSH guard — CORS does NOT cover WS), then reverse-proxies
+    to `openclaw-<user>.<ns>.svc`. The proxy holds NO session logic — the control-plane stays the auth
+    authority (delegate-auth pattern, like today's nginx `auth_request`). This avoids sharing the express
+    session store across services.
+  - **Ingress:** one per-org Ingress for `company.opencrane.ai` — path-route `/api/*`→control-plane, UI→
+    frontend, gateway WS→the proxy. The operator STOPS minting per-user Ingresses + per-user DNS/cert.
+  - **OIDC:** login/callback/session now happen on the per-org host (host-scoped cookie). Confirm the OIDC
+    redirect-URI handling supports per-org hosts (multi-host redirect allowlist) before cutover.
+  - **Security controls (must-haves):** Origin allowlist on the WS upgrade (CSWSH); host-scoped cookie (never
+    parent `.opencrane.ai`); proxy is a thin, logic-free, heavily-logged choke point; per-identity rate limits
+    move into the proxy. Cross-tenant safety rests on CONN.10 (pod-level) + the proxy's `gateway-resolve`
+    (routing-level) — defence in depth.
+  - **Docs:** `website/security/connection-security.md` (extend §0 with the proxy + Origin controls) + a domain-
+    topology doc. **Scope note:** this is a sizable new service (app + Dockerfile + Helm + control-plane
+    endpoint + ingress rework + tests) — implement as its own focused slice.
 
 ### Track P5 — Close Phase 5 — ✅ COMPLETE · full history: plan-done.md § Completed Tracks (archived 2026-06-15)
 
