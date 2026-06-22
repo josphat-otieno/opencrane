@@ -13,7 +13,7 @@ import type { CreateTenantRequest, TenantDatasetsResponse, TenantResponse, Updat
 import type { EffectiveContractResponse } from "./tenants.types.js";
 import { _DetectTenantProjectionDrift } from "./internal/projection-drift.js";
 import { _RepairTenantProjection } from "./internal/projection-repair.js";
-import { OPENCRANE_API_GROUP, OPENCRANE_API_VERSION, TENANT_CRD_PLURAL } from "./internal/crd-constants.js";
+import { OPENCRANE_API_GROUP, OPENCRANE_API_VERSION, TENANT_CRD_PLURAL } from "../shared/crd-constants.js";
 
 /** Tenant CR appearance SLO constants. */
 const TENANT_CR_APPEARANCE_TIMEOUT_MS = 30_000;
@@ -435,7 +435,7 @@ export function tenantsRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCli
 
     // Normalise the parent ClusterTenant ref so a present-but-empty value clears
     // it (stored null, field deleted from the CRD spec via merge-patch), mirroring
-    // how baseDomain is cleared on cluster-tenants. Absent → field left untouched.
+    // how vanityDomain is cleared on cluster-tenants. Absent → field left untouched.
     const clusterTenantRefProvided = body.clusterTenantRef !== undefined;
     const normalizedClusterTenantRef = clusterTenantRefProvided && body.clusterTenantRef!.trim() ? body.clusterTenantRef!.trim() : null;
 

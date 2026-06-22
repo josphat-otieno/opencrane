@@ -33,6 +33,20 @@ export interface OpenClawTenantOperatorConfig
   /** Base domain for tenant ingress hostnames. */
   ingressDomain: string;
 
+  /**
+   * Cluster ingress external IP the per-org wildcard A records (declared as a DNSEndpoint
+   * CR) point at. Empty when unknown (e.g. on-prem or before the LoadBalancer IP is
+   * assigned); the per-org DNS side effect is then skipped and only the Certificate is
+   * applied.
+   */
+  ingressIp: string;
+
+  /** cert-manager issuer name the per-org Certificate references. */
+  certManagerIssuerName: string;
+
+  /** Issuer kind for the per-org Certificate: `ClusterIssuer` (default) or `Issuer`. */
+  certManagerIssuerKind: "ClusterIssuer" | "Issuer";
+
   /** When true, the tenant Ingress gets a `tls:` block referencing the wildcard cert. */
   ingressTlsEnabled: boolean;
 
@@ -162,6 +176,9 @@ export function _LoadOperatorConfig(): OpenClawTenantOperatorConfig
     tenantDefaultImage: _readEnvValue<string>("TENANT_DEFAULT_IMAGE", "string"),
     defaultOpenclawVersion: _readEnvValue<string>("DEFAULT_OPENCLAW_VERSION", "string", false, "2026.6.9"),
     ingressDomain: _readEnvValue<string>("INGRESS_DOMAIN", "string"),
+    ingressIp: _readEnvValue<string>("INGRESS_IP", "string", false, ""),
+    certManagerIssuerName: _readEnvValue<string>("CERT_MANAGER_ISSUER_NAME", "string", false, "opencrane-issuer"),
+    certManagerIssuerKind: _readEnvValue<string>("CERT_MANAGER_ISSUER_KIND", "string", false, "ClusterIssuer") === "Issuer" ? "Issuer" : "ClusterIssuer",
     ingressTlsEnabled: _readEnvValue<boolean>("INGRESS_TLS_ENABLED", "boolean", false, false),
     ingressTlsSecretName: _readEnvValue<string>("INGRESS_TLS_SECRET_NAME", "string", false, "opencrane-wildcard-tls"),
     gatewayPort: _readEnvValue<number>("GATEWAY_PORT", "number"),
