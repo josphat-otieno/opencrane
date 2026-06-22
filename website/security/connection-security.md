@@ -1,6 +1,10 @@
 # OpenClaw connection — security considerations
 
-**Status:** **decided — Option B** (2026-06); see [Decision](#decision-2026-06--option-b).
+**Status:** **superseded by the §0 adopted model** (trusted-proxy gateway auth +
+per-pod owner pinning, CONN.9 / CONN.10) — the live connection holds **no token in
+the browser** at all. The Option-B decision below (2026-06; see
+[Decision](#decision-2026-06--option-b)) and the §1–§11 analysis are kept as the
+**decision record** that led there; read them as history, not current state.
 This document records the connection/auth posture between the **SaaS operator**
 (browser) and a tenant's **OpenClaw pod**, brokered by the **OpenCrane control
 plane**. The concern lives in the control plane (issuance, revocation, and the
@@ -101,23 +105,82 @@ also the prerequisite that makes **collapsing per-user subdomains** safe — onc
 pod self-enforces its owner, an identity-routing proxy on a single per-org host
 carries no new cross-tenant risk. See the domain topology design for that step.
 
+### 0.1 Identity-routing gateway proxy — single per-org host (DOMAIN.T4)
+
+The next step replaces per-user subdomains (`<user>.<org>.<base>`) with **one host
+per org** (`<org>.<base>`): the app UI, `/api/*`, and the gateway WebSocket are all
+served **same-origin** under that host, and an in-cluster **identity-routing proxy**
+forwards each user's gateway socket to their own pod. The proxy is a thin,
+logic-free choke point — it holds **no session store and no secrets**, delegating
+every decision to the control plane (the same delegate-auth shape as the nginx
+`auth_request`, so the express session store is never shared across services).
+
+On each gateway WS upgrade the proxy, in order:
+
+1. **Origin allowlist (CSWSH).** It checks the `Origin` header against an exact
+   allowlist and refuses anything else. WebSocket upgrades are **not** covered by
+   CORS, and the browser sends the session cookie automatically cross-site — so this
+   allowlist is the *only* server-side defence against Cross-Site WebSocket
+   Hijacking. It **fails closed**: a missing or non-allowlisted Origin is rejected,
+   and an empty allowlist refuses every upgrade.
+2. **Delegated auth + routing.** It calls the control plane's
+   `GET /api/v1/auth/gateway-resolve`, replaying **only** the cookie. The control
+   plane verifies the session and resolves `{ user, tenant, podService }` from the
+   IdP-verified email via the **same fail-closed email→tenant rule** as `/pod-token`
+   — no request-supplied tenant input, and a missing/ambiguous mapping returns
+   **403**. The proxy makes no authorization decision itself.
+3. **Per-identity rate limit.** A per-replica fixed-window counter keyed on the
+   resolved identity bounds how many sockets one user opens per minute.
+4. **Forward** to the resolved pod's cluster-internal Service
+   (`openclaw-<user>.<ns>.svc:<gatewayPort>`).
+
+**Defence in depth.** Cross-tenant safety now rests on **two independent layers**:
+the proxy's `gateway-resolve` (routing level) *and* per-pod owner pinning (CONN.10,
+pod level). Neither the routing layer nor the pod will serve a foreign user, and
+either alone is sufficient — so a bug in one is not a breach.
+
+**Same-origin cookie.** Because everything is served under the one org host, the
+OIDC session cookie is **host-scoped** to `<org>.<base>` — never the parent
+`.<base>` — so a cookie minted for one org cannot be replayed at another. (Cutover
+prerequisite: the OIDC redirect-URI allowlist must accept the per-org hosts.)
+
+**Status.** The proxy service (`@opencrane/gateway-proxy`) and the
+`gateway-resolve` endpoint are **built and tested**; the proxy is shipped behind
+`gatewayProxy.enabled` (off by default). The remaining cutover work — one per-org
+Ingress that path-routes `/api`/UI/gateway-WS, retiring the operator's per-user
+Ingress + per-user DNS/cert, and confirming multi-host OIDC redirects — is tracked
+as the final DOMAIN.T4 slice. Until it lands, routing stays per-user-subdomain and
+this proxy is dormant.
+
 ---
 
 ## 1. How the connection works today
 
+See [§0](#_0-adopted-model-trusted-proxy-gateway-auth-per-pod-owner-pinning-conn-9-conn-10)
+for the authoritative description. In brief:
+
 ```
-SaaS ──OpenAPI (OIDC session)──▶ OpenCrane  POST /auth/pod-token
-   │                                   └─ { gatewayUrl, bootstrapToken, tenant }   (the pairing link, brokered)
-   └──Gateway v4 WS: connect handshake + device pairing──▶ tenant OpenClaw pod
+browser ──OIDC session cookie──▶ pod ingress
+   │            └─ auth_request → OpenCrane  GET /auth/gateway-verify  (204 + X-Forwarded-User, or 401)
+   └──Gateway WS (wss://): trusted-proxy auth──▶ tenant OpenClaw pod
 ```
 
-1. The browser, authenticated by its OIDC session, asks OpenCrane for the pod's
-   **pairing link** (`{ url, bootstrapToken }`). OpenCrane resolves it for the
-   caller's own tenant only (fail-closed on an ambiguous email→tenant mapping).
-2. The browser opens the gateway WebSocket and runs the **`connect` handshake**:
-   answers a `connect.challenge` by signing the nonce with a persistent device
-   key, sends `connect` with the bootstrap (or persisted device) token, and on
-   `hello-ok` receives a **device token** it persists for reconnects.
+1. The browser holds **no pod credential** — only its OIDC **session cookie**. It
+   opens the pod's gateway WebSocket directly.
+2. The pod's ingress runs an `auth_request` against OpenCrane
+   (`GET /auth/gateway-verify`): a live session yields `204` plus the verified
+   email injected as `X-Forwarded-User`; no session yields `401` and the upgrade is
+   refused.
+3. The gateway runs in **trusted-proxy** mode, trusts the injected identity, and
+   pins it to the pod's owner via `gateway.auth.trustedProxy.allowUsers` (CONN.10).
+
+> **Retired earlier design.** Before CONN.3 the connection was brokered through a
+> `POST /auth/pod-token` call returning `{ gatewayUrl, bootstrapToken, tenant }`,
+> followed by a `connect` handshake + device-pairing exchange that persisted a
+> long-lived **device token** in the browser. The `bootstrapToken`, the device
+> token, and the whole pairing handshake have been **removed from the codebase**;
+> there is no browser-held token. §2–§3 below retain that mechanism only as the
+> credential-theft analysis that led to the §0 model — read them as history.
 
 **Topology that matters for everything below:** there is **one OpenClaw pod per
 tenant** (`openclaw-<tenant>`), and tenants resolve 1:1 from a user's verified
@@ -126,23 +189,36 @@ effectively per-user.
 
 ---
 
-## 2. The credential model
+## 2. The credential model *(historical — the retired bootstrap/device-token design)*
 
-| Credential | Lifetime | Where it lives | Risk |
+> **Decision record, not current state.** The credentials below were **retired in
+> CONN.3** and no longer exist in the codebase. The live model holds **no token in
+> the browser** (see [§0](#_0-adopted-model-trusted-proxy-gateway-auth-per-pod-owner-pinning-conn-9-conn-10)).
+> This table records the credential-theft risk of the old design — the analysis
+> that motivated moving to session-authorised trusted-proxy auth.
+
+| Credential | Lifetime | Where it lived | Risk |
 |---|---|---|---|
 | **Bootstrap token** | Short-lived, single-device | Transient — broker → browser → spent at handshake | **Low.** HTTPS to an already-authenticated browser; usable only to *open* one pairing, then consumed. |
-| **Device token** (`hello-ok`) | **No documented TTL** — long-lived | Browser `localStorage` (current impl) | **High.** Persistent bearer credential; XSS-exfiltratable; grants `operator.read/write` until explicitly revoked. The weakest link. |
+| **Device token** (`hello-ok`) | **No documented TTL** — long-lived | Browser `localStorage` | **High.** Persistent bearer credential; XSS-exfiltratable; grants `operator.read/write` until explicitly revoked. The weakest link — and the reason this design was retired. |
 
-The bootstrap profile auto-grants `node` + bounded `operator` (read/write/approvals);
-`operator.admin`/`operator.pairing` need a separate approved pairing — so the
-browser deliberately **cannot** revoke or manage devices. The device-signature
-scheme is **[unconfirmed]** (B1).
+The bootstrap profile auto-granted `node` + bounded `operator`
+(read/write/approvals); `operator.admin`/`operator.pairing` needed a separate
+approved pairing — so the browser deliberately **could not** revoke or manage
+devices. The device-signature scheme was **[unconfirmed]** (B1).
 
 ---
 
-## 3. The two clocks (the crux)
+## 3. The two clocks (the crux) *(analysis of the retired token design)*
 
-A token and a socket run on **two independent clocks**; the token only controls
+> **Decision record.** This reasons about the **retired** bootstrap-token handshake
+> (§2). In the live §0 model there is no browser-held token, and "opening a
+> connection" is gated by the OIDC session at the ingress rather than a minted
+> token. The "Clock 2" socket-lifetime analysis below still holds — a live socket
+> runs unbounded regardless of how it was authorised — and it is what motivates the
+> §5 Kubernetes force-disconnect levers.
+
+A token and a socket run on **two independent clocks**; the token only controlled
 the first.
 
 ### Clock 1 — opening a connection (token)
@@ -227,7 +303,7 @@ others up requires session awareness — i.e., the proxy or a mesh sidecar.
 
 ## 6. The options
 
-### Option A — Direct connect, persisted device token *(current impl)*
+### Option A — Direct connect, persisted device token *(retired baseline)*
 - ➖ Long-lived stealable credential in the browser; live-cut only via §5.
 - ➕ Simplest; control plane stateless.
 - **Verdict:** stepping stone only; remove the persisted credential.
@@ -324,8 +400,9 @@ deliberate, scriptable kill-switch.
 ## 10. Man-in-the-middle on a hostile network (e.g. airport WiFi)
 
 Every leg rests on **TLS + the browser's certificate validation**: browser ⇄
-OpenCrane (`POST /auth/pod-token`, OIDC session), browser ⇄ OpenClaw pod gateway
-(WSS), browser ⇄ IdP (OIDC login). A vanilla airport attacker (no certificate the
+OpenCrane (OIDC session — and, in the retired design, the `POST /auth/pod-token`
+broker), browser ⇄ OpenClaw pod gateway (WSS), browser ⇄ IdP (OIDC login). A
+vanilla airport attacker (no certificate the
 browser trusts) **cannot** read or alter any leg — TLS defeats them and the
 browser rejects forged certs.
 

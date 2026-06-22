@@ -9,7 +9,7 @@ import { _BuildClusterTenantNamespace } from "../tenants/deploy/index.js";
 import type { ClusterTenantResource } from "../tenants/internal/cluster-tenant-resolution.types.js";
 
 import { ClusterTenantStatusWriter } from "./internal/cluster-tenant-status-writer.js";
-import { _ProvisionBoundary } from "./internal/shared-cluster.provisioner.js";
+import { _NamespaceForOrg, _ProvisionBoundary } from "./internal/shared-cluster.provisioner.js";
 import { ClusterTenantReconcilePhase } from "./internal/shared-cluster.provisioner.types.js";
 import type { OrgDomainProvisioner } from "./internal/org-domain-provisioner.types.js";
 import { _BuildOrgDomainProvisioner } from "./internal/org-domain.provisioner.factory.js";
@@ -31,9 +31,9 @@ import { _BuildOrgDomainProvisioner } from "./internal/org-domain.provisioner.fa
  *      unsupported tier).
  *   3. Fence the bound namespace (PSA `restricted`) idempotently.
  *   4. Invoke the real `OrgDomainProvisioner.provisionOrgDomain(...)` — it applies the
- *      per-org wildcard Certificate and (when a Cloud DNS zone is configured) the A
- *      records, runtime-gating to a recorded skip condition when cert-manager/DNS is
- *      genuinely absent; it never throws, so a missing backend cannot fail reconcile.
+ *      per-org wildcard Certificate and declares the A records as an external-dns
+ *      `DNSEndpoint`, runtime-gating to a recorded skip condition when cert-manager or the
+ *      DNSEndpoint CRD is genuinely absent; it never throws, so a missing backend cannot fail reconcile.
  *   5. `ready` — stamp `boundNamespace` + provisioner + domain status so
  *      `_ResolveClusterTenant` stops hard-failing and openclaws can attach.
  *
@@ -120,9 +120,13 @@ export class ClusterTenantOperator
       case K8sWatchEventType.Modified:
         await this.reconcile(clusterTenant);
         break;
-      // Delete: the control-plane bridge removes the CR; the bound namespace and any
-      // attached openclaws are torn down by their own lifecycles. No action here.
+      // Delete: namespace GC reclaims the namespaced Certificate/DNSEndpoint CRs, but
+      // external-dns only reaps the records it owns once the DNSEndpoint is actually
+      // gone — so we explicitly deprovision the per-org domain rather than relying on
+      // GC ordering. The bound namespace and attached openclaws are torn down by their
+      // own lifecycles.
       case K8sWatchEventType.Deleted:
+        await this.deprovision(clusterTenant);
         break;
     }
   }
@@ -166,9 +170,9 @@ export class ClusterTenantOperator
       await __K8sApplyResource(this.coreApi, _BuildClusterTenantNamespace(boundary.boundNamespace, name), this.log);
 
       // 4. Per-org domain (DNS + wildcard TLS) — runtime-gated. The provisioner applies
-      //    the real Certificate (and A records when a DNS zone is configured), returning
-      //    ready:false, skipped:true ONLY when cert-manager and DNS are both genuinely
-      //    absent; it never throws, so a missing backend cannot fail the reconcile.
+      //    the real Certificate and declares the A records as an external-dns DNSEndpoint,
+      //    returning ready:false, skipped:true ONLY when cert-manager AND external-dns are
+      //    both genuinely absent; it never throws, so a missing backend cannot fail the reconcile.
       const domain = await this.domainProvisioner.provisionOrgDomain({
         orgName: name,
         boundNamespace: boundary.boundNamespace,
@@ -206,6 +210,40 @@ export class ClusterTenantOperator
       throw err;
     }
   }
+
+  /**
+   * Tear down an org's per-org domain when its ClusterTenant CR is deleted (DOMAIN.T2).
+   *
+   * Deletes the per-org wildcard Certificate + external-dns DNSEndpoint so external-dns
+   * reaps the org's DNS records (it only does so once the owning DNSEndpoint is gone).
+   * The bound namespace is re-derived deterministically (`opencrane-<name>`) — the CR's
+   * `status` may already be stripped on a delete event, so we never depend on it.
+   *
+   * Idempotent and fail-soft: `deprovisionOrgDomain` treats missing CRs / absent CRDs as
+   * no-ops, and any unexpected error is logged but swallowed — there is no CR left to
+   * mark `failed`, and a teardown error must not wedge the watch loop. Namespace GC is
+   * the backstop for everything else in the namespace.
+   *
+   * @param clusterTenant - The ClusterTenant CR being deleted.
+   */
+  private async deprovision(clusterTenant: ClusterTenantResource): Promise<void>
+  {
+    const name = clusterTenant.metadata?.name;
+    if (!name) return;
+
+    const boundNamespace = clusterTenant.status?.boundNamespace ?? _NamespaceForOrg(name);
+    this.log.info({ name, boundNamespace }, "deprovisioning cluster tenant domain");
+
+    try
+    {
+      await this.domainProvisioner.deprovisionOrgDomain(name, this.config.ingressDomain, boundNamespace);
+      this.log.info({ name }, "cluster tenant domain deprovisioned");
+    }
+    catch (err)
+    {
+      this.log.error({ err, name }, "cluster tenant domain deprovision failed (namespace GC remains the backstop)");
+    }
+  }
 }
 
 /**
@@ -214,8 +252,8 @@ export class ClusterTenantOperator
  * Owns K8s client construction so the operator class depends only on the abstractions
  * it needs. The domain provisioner is the real `DefaultOrgDomainProvisioner`, built by
  * `_BuildOrgDomainProvisioner` from operator config: it applies the per-org Certificate
- * through cert-manager and, when a Cloud DNS zone is configured, the per-org A records.
- * It is runtime-gated — cert-manager / DNS absence is detected at apply time and
+ * through cert-manager and declares the per-org A records as an external-dns `DNSEndpoint`.
+ * It is runtime-gated — cert-manager / DNSEndpoint CRD absence is detected at apply time and
  * surfaced as a skip, never a crash — so it is safe on the dev cluster as-is.
  *
  * @param kc - Resolved KubeConfig.

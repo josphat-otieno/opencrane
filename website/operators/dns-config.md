@@ -7,6 +7,17 @@ multi-instance options.
 
 ## The model: one fixed platform wildcard, orgs and users derived under it
 
+::: info Current model — being superseded by the identity-routing proxy
+The per-user-subdomain topology on this page (`<user>.<org>.<base>`) is the **current**
+implementation and is what an operator configures today. The decided direction collapses
+every user in an org onto the org's **single host** `<org>.<base>`: an in-cluster
+identity-routing proxy authenticates the session and routes each user to their own gateway,
+so there are **no per-user subdomains**. Under that model the **second wildcard level**
+(`*.<org>.<base>`) and its DNS-01 wildcard certificate are unnecessary — an org needs only
+`<org>.<base>` (one record + an HTTP-01 certificate). Until the proxy ships, the model below
+applies.
+:::
+
 OpenCrane uses a **fixed wildcard topology**. The platform owns **one base domain**
 (`<base>`, e.g. `weownai.eu`) and a **fixed super-operator / control-plane host**
 (`platform.<base>`). Every org and user name is **derived** under the base — customers do
@@ -20,8 +31,10 @@ not bring their own domain:
 | Per-org wildcard `*.<org>.<base>` → ingress (resolves every **user** `<user>.<org>.<base>`) | platform DNS | automatic, per org at provision time |
 | New user `alice.<org>.<base>` resolves **and** gets HTTPS | — | automatic, zero touch |
 
-So an org is served at `<org>.<base>` (e.g. `acme.weownai.eu`) and its users at
-`<user>.<org>.<base>` (e.g. `mike.acme.weownai.eu`).
+So an org is served at `<org>.<base>` (e.g. `acme.weownai.eu`) and — **in the current
+model** (see the note above) — its users at `<user>.<org>.<base>` (e.g.
+`mike.acme.weownai.eu`); the identity-routing proxy will instead serve them through the org's
+own host `<org>.<base>`.
 
 ### Why two wildcard levels
 
@@ -225,7 +238,7 @@ token takes effect on re-apply):
 
 This authorises the issuer **on the zone**. Per **org** the cluster-tenants operator then
 issues a `*.<org>.<base>` certificate at provision time, reusing the same issuer/token (see
-[Multi-level wildcard TLS](/agents/cluster-architecture#multi-level-wildcard-tls) and
+[Why two wildcard levels](#why-two-wildcard-levels) above and
 `platform/helm/examples/per-org-wildcard-cert.yaml`). The certificate appearing in a Secret
 happens on a live cluster with real DNS; this endpoint's job is to author and apply the
 issuer + Secret correctly.
