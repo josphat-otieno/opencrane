@@ -67,6 +67,19 @@ follows [Keep a Changelog](https://keepachangelog.com/); the project uses
   repurposed as an OPTIONAL customer-vanity domain CNAMEd onto that apex. The API, `oc cluster-tenant`
   CLI (`--vanity-domain`), and the ClusterTenant CRD use the new name; existing values are carried over by
   the migration as vanity overlays.
+- **Tenant gateways now refuse to trust an unconfigured proxy instead of trusting everything.** The
+  trusted-proxy allowlist that decides which source the OpenClaw gateway will believe the
+  `X-Forwarded-User` identity header from is now fail-closed: an operator with no
+  `tenant.gateway.trustedProxies` configured renders a **trust-nothing** gateway — no connection
+  authenticates — rather than an ambiguous empty list a runtime might read as trust-all. A typo'd
+  CIDR/IP now crashes the operator at startup with the offending entry named, so a misconfiguration
+  can never silently widen or narrow the trust boundary. The allowlist is Helm-values-driven
+  (`tenant.gateway.trustedProxies`); the dev GKE overlay ships the cluster's ingress-nginx pod source
+  range as its default so trusted-proxy auth works out of the box there.
+- **Each tenant gateway is pinned to its owner (cross-tenant guard).** trusted-proxy auth trusts whatever
+  identity the proxy injects, so the operator now renders `gateway.auth.trustedProxy.allowUsers` with the
+  tenant owner's verified email — the gateway rejects any other `X-Forwarded-User`, so reaching another
+  tenant's pod no longer grants access to its mounted secrets / MCP connections / model keys.
 
 - **The control-plane Helm chart now wires human-login OIDC end to end.** A new
   `controlPlane.oidc.*` values block (issuer/client/redirect, client+session secret via an

@@ -46,13 +46,12 @@ spec:
               value: {{ .Values.ingress.domain | quote }}
             # -- Per-org domain provisioning (fixed-wildcard topology). The operator's
             #    ClusterTenant reconciler applies a per-org `*.<org>.<domain>` Certificate
-            #    (cert-manager) and, when externalIp + dnsManagedZone are set, the per-org
-            #    A records. All optional: unset values make the operator skip the affected
-            #    side effect at runtime rather than fail.
+            #    (cert-manager) and, when externalIp is set, declares a per-org DNSEndpoint
+            #    CR (reconciled by external-dns) for the `*.<org>.<domain>` A records. Both
+            #    optional: an unset externalIp / absent CRD makes the operator skip the
+            #    affected side effect at runtime rather than fail.
             - name: INGRESS_IP
               value: {{ .Values.ingress.externalIp | quote }}
-            - name: DNS_MANAGED_ZONE
-              value: {{ .Values.ingress.dnsManagedZone | quote }}
             - name: CERT_MANAGER_ISSUER_NAME
               value: {{ .Values.certManager.issuerName | quote }}
             # -- Namespaced Issuer in multi-instance cert mode (MI.4), else the shared
@@ -65,6 +64,14 @@ spec:
               value: {{ .Values.ingress.tls.secretName | quote }}
             - name: GATEWAY_PORT
               value: {{ .Values.tenant.gatewayPort | quote }}
+            # -- OC-2 / CONN.4 trusted-proxy allowlist: the CIDR(s)/IP(s) the OpenClaw
+            #    gateway trusts the X-Forwarded-User identity header from (the ingress
+            #    source range). Comma-joined for the operator's fail-closed parser.
+            #    EMPTY ⇒ trust nothing (the gateway honours no proxy source); a NetworkPolicy
+            #    additionally locks the gateway port to the ingress so this range can't be
+            #    abused by other pods. Set to the ingress controller's pod source range.
+            - name: GATEWAY_TRUSTED_PROXIES
+              value: {{ join "," .Values.tenant.gateway.trustedProxies | quote }}
             - name: HOSTING_PROVIDER
               value: {{ .Values.hosting.provider | quote }}
             {{- if eq .Values.hosting.provider "gcp" }}

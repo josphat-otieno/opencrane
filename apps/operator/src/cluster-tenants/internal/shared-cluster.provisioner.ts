@@ -14,18 +14,8 @@
  * operator with that tier is reported `failed` so it never strands silently.
  */
 
-/** Lifecycle phase the reconciler stamps onto a ClusterTenant's status. */
-export enum ClusterTenantReconcilePhase
-{
-  /** Accepted but not yet acted on. */
-  Pending = "pending",
-  /** A provisioner is building the customer's boundary. */
-  Provisioning = "provisioning",
-  /** The boundary exists and openclaws can attach. */
-  Ready = "ready",
-  /** Provisioning failed; see `message`. */
-  Failed = "failed",
-}
+import { ClusterTenantReconcilePhase } from "./shared-cluster.provisioner.types.js";
+import type { BoundaryProvisionResult } from "./shared-cluster.provisioner.types.js";
 
 /** Prefix applied to a customer key to derive its bound namespace. */
 const _NAMESPACE_PREFIX = "opencrane-";
@@ -45,19 +35,6 @@ const _SHARED_TIERS = new Set(["shared", "dedicatedNodes"]);
 export function _NamespaceForOrg(name: string): string
 {
   return `${_NAMESPACE_PREFIX}${name}`;
-}
-
-/** The outcome of resolving an org's isolation boundary. */
-export interface BoundaryProvisionResult
-{
-  /** Resulting lifecycle phase. */
-  phase: ClusterTenantReconcilePhase;
-  /** The namespace bound to the customer, when provisioned. */
-  boundNamespace?: string;
-  /** Identifier of the provisioner that owns the boundary. */
-  provisioner?: string;
-  /** Human-readable detail, set on failure. */
-  message?: string;
 }
 
 /**

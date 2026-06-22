@@ -9,7 +9,8 @@ import { _BuildClusterTenantNamespace } from "../tenants/deploy/index.js";
 import type { ClusterTenantResource } from "../tenants/internal/cluster-tenant-resolution.types.js";
 
 import { ClusterTenantStatusWriter } from "./internal/cluster-tenant-status-writer.js";
-import { ClusterTenantReconcilePhase, _ProvisionBoundary } from "./internal/shared-cluster.provisioner.js";
+import { _ProvisionBoundary } from "./internal/shared-cluster.provisioner.js";
+import { ClusterTenantReconcilePhase } from "./internal/shared-cluster.provisioner.types.js";
 import type { OrgDomainProvisioner } from "./internal/org-domain-provisioner.types.js";
 import { _BuildOrgDomainProvisioner } from "./internal/org-domain.provisioner.factory.js";
 
@@ -170,6 +171,7 @@ export class ClusterTenantOperator
       //    absent; it never throws, so a missing backend cannot fail the reconcile.
       const domain = await this.domainProvisioner.provisionOrgDomain({
         orgName: name,
+        boundNamespace: boundary.boundNamespace,
         platformBaseDomain: this.config.ingressDomain,
         vanityDomain: clusterTenant.spec.vanityDomain,
         ingressIp: this.config.ingressIp || undefined,

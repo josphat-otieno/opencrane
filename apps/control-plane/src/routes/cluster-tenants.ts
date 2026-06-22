@@ -9,7 +9,7 @@ import type { ClusterTenantCreateRequest, ClusterTenantUpdateRequest } from "./c
 import { _IsIsolationTier, _ToContract, _ToPrismaCompute, _ToPrismaTier, _ValidateCompute, _ValidateResources } from "./cluster-tenants.service.js";
 import { _IsDevAuthMode } from "../infra/auth/auth-mode.js";
 import { _RequireBillingAccountForOrgCreate, _RequireOrgManager } from "../infra/middleware/cluster-tenant-org-admin.js";
-import { _ApplyClusterTenantCr, _DeleteClusterTenantCr } from "./internal/cluster-tenant-cr-bridge.js";
+import { _ApplyClusterTenantCr, _DeleteClusterTenantCr } from "../core/cluster-tenants/cr-bridge.js";
 
 /** RFC-1123-ish DNS domain: lowercase labels, ≥1 dot, alpha TLD, ≤253 chars. */
 const _VANITY_DOMAIN_PATTERN = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/;

@@ -2,7 +2,7 @@ import * as k8s from "@kubernetes/client-node";
 import { ClusterTenantComputeMode } from "@opencrane/contracts";
 import type { ClusterTenant } from "@opencrane/contracts";
 
-import { CLUSTER_TENANT_CRD_PLURAL, OPENCRANE_API_GROUP, OPENCRANE_API_VERSION } from "./crd-constants.js";
+import { CLUSTER_TENANT_CRD_PLURAL, OPENCRANE_API_GROUP, OPENCRANE_API_VERSION } from "../../shared/crd-constants.js";
 
 /**
  * DB → Kubernetes bridge for the cluster-scoped ClusterTenant CRD.
