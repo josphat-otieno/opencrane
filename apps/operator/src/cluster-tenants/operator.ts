@@ -9,7 +9,7 @@ import { _BuildClusterTenantNamespace } from "../tenants/deploy/index.js";
 import type { ClusterTenantResource } from "../tenants/internal/cluster-tenant-resolution.types.js";
 
 import { ClusterTenantStatusWriter } from "./internal/cluster-tenant-status-writer.js";
-import { _ProvisionBoundary } from "./internal/shared-cluster.provisioner.js";
+import { _NamespaceForOrg, _ProvisionBoundary } from "./internal/shared-cluster.provisioner.js";
 import { ClusterTenantReconcilePhase } from "./internal/shared-cluster.provisioner.types.js";
 import type { OrgDomainProvisioner } from "./internal/org-domain-provisioner.types.js";
 import { _BuildOrgDomainProvisioner } from "./internal/org-domain.provisioner.factory.js";
@@ -120,9 +120,13 @@ export class ClusterTenantOperator
       case K8sWatchEventType.Modified:
         await this.reconcile(clusterTenant);
         break;
-      // Delete: the control-plane bridge removes the CR; the bound namespace and any
-      // attached openclaws are torn down by their own lifecycles. No action here.
+      // Delete: namespace GC reclaims the namespaced Certificate/DNSEndpoint CRs, but
+      // external-dns only reaps the records it owns once the DNSEndpoint is actually
+      // gone — so we explicitly deprovision the per-org domain rather than relying on
+      // GC ordering. The bound namespace and attached openclaws are torn down by their
+      // own lifecycles.
       case K8sWatchEventType.Deleted:
+        await this.deprovision(clusterTenant);
         break;
     }
   }
@@ -204,6 +208,40 @@ export class ClusterTenantOperator
         message: err instanceof Error ? err.message : String(err),
       });
       throw err;
+    }
+  }
+
+  /**
+   * Tear down an org's per-org domain when its ClusterTenant CR is deleted (DOMAIN.T2).
+   *
+   * Deletes the per-org wildcard Certificate + external-dns DNSEndpoint so external-dns
+   * reaps the org's DNS records (it only does so once the owning DNSEndpoint is gone).
+   * The bound namespace is re-derived deterministically (`opencrane-<name>`) — the CR's
+   * `status` may already be stripped on a delete event, so we never depend on it.
+   *
+   * Idempotent and fail-soft: `deprovisionOrgDomain` treats missing CRs / absent CRDs as
+   * no-ops, and any unexpected error is logged but swallowed — there is no CR left to
+   * mark `failed`, and a teardown error must not wedge the watch loop. Namespace GC is
+   * the backstop for everything else in the namespace.
+   *
+   * @param clusterTenant - The ClusterTenant CR being deleted.
+   */
+  private async deprovision(clusterTenant: ClusterTenantResource): Promise<void>
+  {
+    const name = clusterTenant.metadata?.name;
+    if (!name) return;
+
+    const boundNamespace = clusterTenant.status?.boundNamespace ?? _NamespaceForOrg(name);
+    this.log.info({ name, boundNamespace }, "deprovisioning cluster tenant domain");
+
+    try
+    {
+      await this.domainProvisioner.deprovisionOrgDomain(name, this.config.ingressDomain, boundNamespace);
+      this.log.info({ name }, "cluster tenant domain deprovisioned");
+    }
+    catch (err)
+    {
+      this.log.error({ err, name }, "cluster tenant domain deprovision failed (namespace GC remains the backstop)");
     }
   }
 }
