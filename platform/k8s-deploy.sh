@@ -11,7 +11,7 @@
 # and then call this script.
 #
 # Usage:
-#   ./platform/k8s-deploy.sh [--domain DOMAIN] [--namespace NS] [--release NAME]
+#   ./platform/k8s-deploy.sh [--base-domain DOMAIN] [--namespace NS] [--release NAME]
 #                            [--image-tag TAG] [--storage-class SC]
 #                            [--control-plane-tag TAG] [--operator-tag TAG]
 #                            [--tenant-tag TAG]
@@ -21,6 +21,7 @@
 #                            [--no-ingress-nginx]
 #                            [--cert-manager] [--acme-email EMAIL]
 #                            [--dns01-provider clouddns] [--dns01-credentials FILE]
+#                            [--dns01-project PROJECT_ID]
 #                            [--values FILE] [--set k=v ...]
 #
 # TLS / cert-manager (Step 2.5) has THREE modes:
@@ -40,6 +41,14 @@
 #
 # This step installs only the PLATFORM-WILDCARD issuer + cert. Per-org certs are a
 # runtime concern of the ClusterTenant reconciler, NOT an install concern.
+#
+# --base-domain is the platform org-wildcard BASE domain (e.g. dev.opencrane.ai). It is
+# a first-class, VALIDATED install input (lowercase FQDN, ≥2 labels) that drives a single
+# source of truth: the chart's ingress.domain, the derived controlPlaneHost
+# (platform.<base-domain>), the cert-manager wildcard SANs (*.<domain>, <domain>,
+# controlPlaneHost), and the operator's per-org domain provisioning. NEVER hardcode a
+# real domain in the repo. `--domain` remains a backwards-compatible alias; acme TLS
+# REQUIRES --base-domain (a wildcard for *.<empty> is meaningless).
 #
 # Bundled cluster singletons (default ON, auto-skip if already present):
 #   ingress-nginx — the ingress controller (skip with --no-ingress-nginx to BYO one).
@@ -75,7 +84,13 @@ IMAGE_TAG="latest"
 CONTROL_PLANE_TAG=""    # empty → falls back to IMAGE_TAG
 OPERATOR_TAG=""         # empty → falls back to IMAGE_TAG
 TENANT_TAG=""           # empty → falls back to IMAGE_TAG
-DOMAIN=""
+# --base-domain (canonical) is the platform org-wildcard BASE domain for this install
+# (e.g. dev.opencrane.ai). It drives the chart's ingress.domain + the derived
+# controlPlaneHost (platform.<base-domain>), the cert-manager wildcard SANs, and the
+# operator's per-org provisioning. NEVER hardcode a real domain in the repo — it is a
+# per-install input. `--domain` is kept as a backwards-compatible alias. Also accepts
+# OPENCRANE_BASE_DOMAIN so the wizard / CI can supply it off the command line.
+BASE_DOMAIN="${OPENCRANE_BASE_DOMAIN:-}"
 STORAGE_CLASS=""        # empty → cluster default StorageClass
 VALUES_FILE=""
 EXTRA_SET=()
@@ -103,6 +118,10 @@ esac
 ACME_EMAIL="${OPENCRANE_ACME_EMAIL:-${ACME_EMAIL:-}}"
 DNS01_PROVIDER="${OPENCRANE_DNS01_PROVIDER:-${DNS01_PROVIDER:-}}"
 DNS01_CREDENTIALS="${OPENCRANE_DNS01_CREDENTIALS:-${DNS01_CREDENTIALS:-}}"
+# GCP project that hosts the Cloud DNS zone for --base-domain. cert-manager's clouddns
+# solver requires a project (under BOTH Workload Identity and an external SA key), so it
+# is required in acme/clouddns mode. Defaults from the gcloud active project when unset.
+DNS01_PROJECT="${OPENCRANE_DNS01_PROJECT:-${DNS01_PROJECT:-}}"
 CERT_MANAGER_NAMESPACE="cert-manager"
 
 # ingress-nginx bundling (a cluster singleton like cert-manager). Installed by default
@@ -125,7 +144,8 @@ err()  { echo -e "\033[0;31m[k8s-deploy]\033[0m $1" >&2; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --domain)        DOMAIN="$2"; shift 2 ;;
+    --base-domain)   BASE_DOMAIN="$2"; shift 2 ;;
+    --domain)        BASE_DOMAIN="$2"; shift 2 ;;  # backwards-compatible alias
     --namespace)     NAMESPACE="$2"; shift 2 ;;
     --release)       RELEASE="$2"; shift 2 ;;
     --image-tag)        IMAGE_TAG="$2"; shift 2 ;;
@@ -142,6 +162,7 @@ while [[ $# -gt 0 ]]; do
     --acme-email)    ACME_EMAIL="$2"; shift 2 ;;
     --dns01-provider)    DNS01_PROVIDER="$2"; shift 2 ;;
     --dns01-credentials) DNS01_CREDENTIALS="$2"; shift 2 ;;
+    --dns01-project)     DNS01_PROJECT="$2"; shift 2 ;;
     --values)        VALUES_FILE="$2"; shift 2 ;;
     --set)           EXTRA_SET+=(--set "$2"); shift 2 ;;
     -h|--help)       grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
@@ -151,6 +172,21 @@ done
 
 for c in kubectl helm; do command -v "$c" >/dev/null 2>&1 || { err "Missing required command: $c"; exit 1; }; done
 kubectl cluster-info >/dev/null 2>&1 || { err "kubectl can't reach a cluster. Point your context at the target cluster first."; exit 1; }
+
+# --base-domain validation. When supplied it must be a syntactically valid, lowercase
+# FQDN (≥2 labels, no scheme/port/path, no trailing dot) so it can stand in for
+# *.<domain> wildcard SANs and <org>.<domain> hosts. ACME wildcard issuance has no
+# meaning without it, so acme mode REQUIRES a base domain (fail fast, not a stuck order).
+_validate_base_domain() {
+  local d="$1"
+  if [[ ! "$d" =~ ^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$ ]]; then
+    err "Invalid --base-domain '$d'. Expected a lowercase FQDN like 'dev.opencrane.ai' (≥2 labels, no scheme/port/path/trailing dot)."
+    exit 1
+  fi
+}
+if [[ -n "$BASE_DOMAIN" ]]; then
+  _validate_base_domain "$BASE_DOMAIN"
+fi
 
 _gen_secret() { openssl rand -hex 16 2>/dev/null || head -c 24 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9' | head -c 32; }
 DB_PASSWORD="${DB_PASSWORD:-$(_gen_secret)}"
@@ -253,7 +289,15 @@ CERT_MANAGER_HELM_FLAGS=()
 _resolve_cert_mode() {
   if [[ "$CERT_MANAGER" != "on" ]]; then echo "off"; return; fi
   if [[ -z "$ACME_EMAIL" && -z "$DNS01_PROVIDER" ]]; then echo "selfSigned"; return; fi
-  if [[ -n "$ACME_EMAIL" && -n "$DNS01_PROVIDER" ]]; then echo "acme"; return; fi
+  if [[ -n "$ACME_EMAIL" && -n "$DNS01_PROVIDER" ]]; then
+    # A wildcard cert (*.<domain>) is meaningless without the base domain, so require it
+    # up front rather than letting cert-manager issue against an empty/placeholder SAN.
+    if [[ -z "$BASE_DOMAIN" ]]; then
+      err "acme TLS issues a wildcard for *.<base-domain>, so --base-domain is required in acme mode."
+      exit 1
+    fi
+    echo "acme"; return
+  fi
   err "acme TLS needs BOTH --acme-email and --dns01-provider (got only one). For dev/self-signed TLS drop both and pass --cert-manager alone."
   exit 1
 }
@@ -281,6 +325,17 @@ _preflight_dns01() {
   #    front so the failure is a clear message, not a later cert-manager order error.
   if [[ "$DNS01_PROVIDER" != "clouddns" ]]; then
     err "Unsupported --dns01-provider '$DNS01_PROVIDER'. This installer wires 'clouddns' (Google Cloud DNS). For another provider, install cert-manager yourself and set certManager.acme.dns01.{provider,config} in a --values file."
+    exit 1
+  fi
+
+  # The clouddns solver requires the GCP project that hosts the zone for --base-domain.
+  # Default it from the gcloud active project; FAIL FAST if still empty (a solver with no
+  # project never issues, and we tie the issuer zone to the same install input as the chart).
+  if [[ -z "$DNS01_PROJECT" ]]; then
+    DNS01_PROJECT="$(gcloud config get-value project 2>/dev/null || true)"
+  fi
+  if [[ -z "$DNS01_PROJECT" || "$DNS01_PROJECT" == "(unset)" ]]; then
+    err "clouddns DNS-01 needs the GCP project that hosts the Cloud DNS zone for '$BASE_DOMAIN'. Pass --dns01-project PROJECT_ID (or set a gcloud active project)."
     exit 1
   fi
 
@@ -337,6 +392,9 @@ case "$CERT_MODE" in
     CERT_MANAGER_HELM_FLAGS+=(--set "certManager.enabled=true" --set "certManager.mode=acme")
     CERT_MANAGER_HELM_FLAGS+=(--set-string "certManager.acme.email=$ACME_EMAIL")
     CERT_MANAGER_HELM_FLAGS+=(--set "certManager.acme.dns01.provider=$DNS01_PROVIDER")
+    # The clouddns solver project (resolved/validated in _preflight_dns01) ties the cert
+    # issuer's DNS zone to the same install input that drives the chart + Terraform.
+    CERT_MANAGER_HELM_FLAGS+=(--set-string "certManager.acme.dns01.config.project=$DNS01_PROJECT")
     if [[ -n "$DNS01_CREDENTIALS" ]]; then
       CERT_MANAGER_HELM_FLAGS+=(--set "certManager.acme.dns01.config.serviceAccountSecretRef.name=clouddns-dns01-solver")
       CERT_MANAGER_HELM_FLAGS+=(--set-string "certManager.acme.dns01.config.serviceAccountSecretRef.key=key.json")
@@ -359,7 +417,11 @@ TN_TAG="${TENANT_TAG:-$IMAGE_TAG}"
 [[ -n "$CP_TAG" ]] && helm_args+=(--set "controlPlane.image.tag=$CP_TAG")
 [[ -n "$OP_TAG" ]] && helm_args+=(--set "operator.image.tag=$OP_TAG")
 [[ -n "$TN_TAG" ]] && helm_args+=(--set "tenant.image.tag=$TN_TAG")
-[[ -n "$DOMAIN" ]]    && helm_args+=(--set "ingress.domain=$DOMAIN")
+# --base-domain drives ingress.domain; controlPlaneHost defaults to platform.<domain>
+# in the chart, and the cert-manager wildcard SANs (*.<domain>, <domain>,
+# controlPlaneHost) are derived from it. Setting it explicitly here keeps a single
+# source of truth across the chart, the issuer, and the operator's per-org provisioning.
+[[ -n "$BASE_DOMAIN" ]] && helm_args+=(--set "ingress.domain=$BASE_DOMAIN")
 # OIDC human-login (control-plane only). Rendered iff an issuer URL is given; otherwise
 # the chart emits no OIDC env and the control-plane stays in token/development mode.
 [[ -n "$OIDC_ISSUER_URL" ]]   && helm_args+=(--set "controlPlane.oidc.issuerUrl=$OIDC_ISSUER_URL")
@@ -387,5 +449,5 @@ kubectl rollout status "deployment/${RELEASE}-operator" -n "$NAMESPACE" --timeou
 kubectl rollout status "deployment/${RELEASE}-control-plane" -n "$NAMESPACE" --timeout="${TIMEOUT}s"
 
 log "Done. OpenCrane is installed in namespace '$NAMESPACE'."
-[[ -n "$DOMAIN" ]] && log "Point your DNS at the ingress, then visit https://${DOMAIN}"
+[[ -n "$BASE_DOMAIN" ]] && log "Point your DNS at the ingress, then visit https://platform.${BASE_DOMAIN}"
 log "Ingress: kubectl get ingress -n $NAMESPACE"
