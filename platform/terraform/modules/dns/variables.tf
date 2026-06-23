@@ -19,8 +19,9 @@ variable "domain"
 
 variable "ingress_ip"
 {
-  description = "External IP of the ingress controller"
+  description = "External IP of the ingress controller. Optional: when empty the install-time platform A-records (`*.<domain>`, apex, control-plane host) are SKIPPED while the zone + the shared DNS-writer identity are still created — so the zone-write GSA is provisioned in a cluster-only flow (before the app/IP exists) and cert-manager DNS-01 can issue. Set it (or re-apply once the ingress IP is known) to also write the platform records."
   type        = string
+  default     = ""
 }
 
 variable "control_plane_host"

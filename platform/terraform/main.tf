@@ -125,12 +125,16 @@ module "app_deploy"
 module "dns"
 {
   source = "./modules/dns"
-  # The platform records point at the app's ingress IP, so this requires the app to
-  # be deployed by Terraform too.
-  count = (var.enable_cloud_dns && var.enable_app_deploy) ? 1 : 0
+  # Gated on enable_cloud_dns ALONE: the zone + the shared DNS-writer identity have no
+  # dependency on the running app, so they provision in a cluster-only flow (enabling
+  # cert-manager DNS-01 to issue off `--dns-writer-gsa $(terraform output …)`). The
+  # platform A-records DO need the ingress IP — they are gated inside the module on
+  # `ingress_ip`, which is null (→ skipped) until the app is deployed by Terraform.
+  count = var.enable_cloud_dns ? 1 : 0
 
   project_id = var.project_id
   domain     = var.domain
+  # null when the app is not deployed by Terraform → the module's "" default → records skipped.
   ingress_ip = one(module.app_deploy[*].ingress_ip)
 
   depends_on = [module.app_deploy]

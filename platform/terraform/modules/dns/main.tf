@@ -15,6 +15,14 @@
 # the install-time platform records, and the zone-WRITE identity the controllers share —
 # it must NOT write per-org/per-host records itself (the old imperative Cloud DNS client
 # is gone). See apps/operator/src/cluster-tenants/internal/dns-endpoint.client.ts.
+#
+# Identity vs records are DECOUPLED by dependency. The zone + the shared DNS-writer GSA
+# need nothing from the running app, so they are created whenever this module runs (i.e.
+# `enable_cloud_dns`) — that is what lets a cluster-only Terraform flow provision the
+# zone-write identity up front so cert-manager DNS-01 can issue, with `--dns-writer-gsa`
+# reading the `dns_writer_service_account_email` output. The install-time A-records DO
+# need the ingress IP, so they are gated on `ingress_ip` and skipped until it is known
+# (pass it, or re-apply once the app is up).
 # -----------------------------------------------------------------------------
 
 resource "google_dns_managed_zone" "opencrane"
@@ -26,8 +34,10 @@ resource "google_dns_managed_zone" "opencrane"
 }
 
 # Platform org-wildcard: resolves every org apex `<org>.<domain>` to the ingress IP.
+# Gated on a known ingress IP so the zone + identity can provision before the app exists.
 resource "google_dns_record_set" "wildcard"
 {
+  count        = var.ingress_ip != "" ? 1 : 0
   project      = var.project_id
   managed_zone = google_dns_managed_zone.opencrane.name
   name         = "*.${var.domain}."
@@ -39,6 +49,7 @@ resource "google_dns_record_set" "wildcard"
 # Apex record for the base domain.
 resource "google_dns_record_set" "apex"
 {
+  count        = var.ingress_ip != "" ? 1 : 0
   project      = var.project_id
   managed_zone = google_dns_managed_zone.opencrane.name
   name         = "${var.domain}."
@@ -51,6 +62,7 @@ resource "google_dns_record_set" "apex"
 # to `platform.<domain>`; matches ingress.controlPlaneHost in the chart.
 resource "google_dns_record_set" "control_plane"
 {
+  count        = var.ingress_ip != "" ? 1 : 0
   project      = var.project_id
   managed_zone = google_dns_managed_zone.opencrane.name
   name         = "${coalesce(var.control_plane_host, "platform.${var.domain}")}."
