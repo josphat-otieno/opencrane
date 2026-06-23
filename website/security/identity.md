@@ -269,3 +269,8 @@ Authentication establishes *who*; authorization is split across the two planes:
 - Never expose kubelet-projected SA tokens to browsers; the session cookie is the
   only browser-held credential, and it never reaches a pod directly — the proxy
   intermediates all pod connections.
+
+## See also
+
+- [Networking & isolation](/operators/networking) — the two-plane model, NetworkPolicy enforcement, the three-layer gateway seam, and known egress gaps
+- [Connection security](/security/connection-security) — CONN.9/CONN.10 threat model and transport hardening posture

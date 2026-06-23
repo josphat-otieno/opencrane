@@ -263,5 +263,6 @@ certificates, and dev uses `sslip.io`-style hosts that resolve without a provide
 
 - [Set up your domain](/guide/dns) — the step-by-step admin walkthrough
 - [Hosting & deployment](/operators/hosting) — ingress class, providers, the external-dns decision
+- [Networking & isolation](/operators/networking) — how DNS and TLS fit into the two-plane model; per-org A record lifecycle and the internal ClusterIP network
 - [Running multiple instances](/advanced/multi-instance) — namespaced issuers
 - [CLI reference](/reference/cli) · [API overview](/reference/api-overview)

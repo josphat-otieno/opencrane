@@ -16,6 +16,8 @@ All protocol claims are grounded in the published docs
 not confirm are flagged **[unconfirmed]**. The SaaS Operator-side implementation +
 roadmap is tracked in that repo's `plan.md` (slices S1–S6, blockers B1–B5).
 
+> See also: [Networking & isolation](/operators/networking) — the two-plane cluster model, NetworkPolicy enforcement layers, and known egress gaps. [Identity & connection auth](/security/identity) — credential types and the identity-routing proxy flow.
+
 ---
 
 ## Decision (2026-06) — Option B
