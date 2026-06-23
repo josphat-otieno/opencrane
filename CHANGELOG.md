@@ -13,6 +13,16 @@ follows [Keep a Changelog](https://keepachangelog.com/); the project uses
 
 ## [Unreleased]
 
+### Added
+
+- **Signing out via the API now ends the IdP session, not just the local cookie.** `POST /auth/logout` calls Zitadel's `end_session_endpoint` so the user's token is invalidated at the identity provider — a subsequent sign-in requires a fresh Zitadel authentication rather than silently reusing the existing IdP session.
+
+### Fixed
+
+- **The TenantOperator no longer re-reconciles tenants whose spec has not changed.** A generation guard prevents the operator from re-entering the reconcile path when a tenant is already `Running` at the current spec generation. This eliminates the status-write → watch-event hot-loop that was inflating `ResourceQuota` usage and causing `OOMKill` under high tenant counts.
+
+- **Re-reconciling an existing tenant no longer hits `ResourceQuota` admission on the PVC.** The operator now reads a PVC before attempting to create it, so a reconcile of a tenant that already has a volume skips the create entirely — the previous blind create was refused by `ResourceQuota` admission and wedged the reconcile loop.
+
 ## [0.5.2] — 2026-06-23
 
 Operator stability and the register→provision→ready→workspace pipeline made fully operational.
