@@ -47,9 +47,9 @@ describe("TenantResourceBuilder", () =>
     // injected identity (cross-tenant guard); _makeTenant("cfg") → cfg@example.com.
     expect(payload.gateway.auth.trustedProxy.allowUsers).toEqual(["cfg@example.com"]);
     expect(payload.gateway.trustedProxies).toEqual(defaultConfig.gatewayTrustedProxies);
-    // Fail-closed marker mirrors config.gatewayTrustNothing so an empty allowlist
-    // can never be read by the runtime as trust-all.
-    expect(payload.gateway.auth.trustedProxy.trustNothing).toBe(false);
+    // The rendered trustedProxy block must contain ONLY keys OpenClaw's strict
+    // schema accepts (userHeader, allowUsers); an unknown key crashes the gateway.
+    expect(Object.keys(payload.gateway.auth.trustedProxy).sort()).toEqual(["allowUsers", "userHeader"]);
     expect(payload.agents.defaults.model).toBe("gpt-4o");
     expect(runtimeContract.mode).toBe("managed");
     expect(runtimeContract.tenant.name).toBe("cfg");
@@ -73,9 +73,10 @@ describe("TenantResourceBuilder", () =>
 
   it("renders an unambiguous trust-nothing gateway config when no proxy is configured (OC-2 / CONN.4)", () =>
   {
-    // An operator with no GATEWAY_TRUSTED_PROXIES resolves to trust-nothing; the
-    // ConfigMap must emit both an empty allowlist AND the explicit trustNothing
-    // marker so the runtime never reads `trustedProxies: []` as trust-all.
+    // An operator with no GATEWAY_TRUSTED_PROXIES resolves to trust-nothing. We rely
+    // on OpenClaw's native fail-closed semantics — an empty `trustedProxies` trusts
+    // no source — so the ConfigMap emits an empty list and NO bespoke marker key
+    // (which OpenClaw's strict trustedProxy schema would reject at gateway startup).
     const trustNothingConfig = { ...defaultConfig, gatewayTrustedProxies: [], gatewayTrustNothing: true };
     const tenant = _makeTenant("trust-none");
 
@@ -84,7 +85,7 @@ describe("TenantResourceBuilder", () =>
 
     expect(payload.gateway.auth.mode).toBe("trusted-proxy");
     expect(payload.gateway.trustedProxies).toEqual([]);
-    expect(payload.gateway.auth.trustedProxy.trustNothing).toBe(true);
+    expect(payload.gateway.auth.trustedProxy).not.toHaveProperty("trustNothing");
   });
 
   it("populates litellm-proxy models[] when a non-empty model set is supplied", () =>

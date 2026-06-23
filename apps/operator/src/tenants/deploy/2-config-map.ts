@@ -68,12 +68,14 @@ export function _BuildConfigMap(config: OpenClawTenantOperatorConfig, tenant: Te
       // (mutually exclusive with trusted-proxy); a NetworkPolicy locks the port
       // to the ingress so the trusted range can't be abused by other pods.
       //
-      // Fail-closed: when the operator was given no proxy source
-      // (`gatewayTrustNothing`), render an empty allowlist AND an explicit
-      // `trustNothing: true` marker so the runtime can never read the empty
-      // `trustedProxies: []` as the ambiguous "trust every source". With no
-      // trusted source the user header is never honoured and no connection
-      // authenticates — an unconfigured operator denies, it does not trust-all.
+      // Fail-closed by construction: OpenClaw treats an empty `trustedProxies`
+      // as "trust no source" (gateway `isTrustedProxyAddress` returns false for
+      // every IP when the list is empty), so when the operator was given no proxy
+      // source the user header is never honoured and no connection authenticates —
+      // an unconfigured operator denies, it does not trust-all. The internal
+      // `config.gatewayTrustNothing` flag records this posture for the operator;
+      // it is deliberately NOT rendered, because OpenClaw needs no extra marker
+      // and its `trustedProxy` schema is strict (unknown keys crash the gateway).
       trustedProxies: config.gatewayTrustedProxies,
       // CONN.10 — pin the pod to its OWNER. trusted-proxy trusts whatever identity
       // the proxy injects, so without `allowUsers` ANY authenticated platform user
@@ -86,9 +88,6 @@ export function _BuildConfigMap(config: OpenClawTenantOperatorConfig, tenant: Te
         mode: "trusted-proxy",
         trustedProxy: {
           userHeader: config.gatewayTrustedProxyUserHeader,
-          // Fail-closed proxy-trust marker (CONN.9): empty allowlist => trust nothing,
-          // never read `trustedProxies: []` as "trust every source".
-          trustNothing: config.gatewayTrustNothing,
           allowUsers: [ownerEmail],
         },
       },
