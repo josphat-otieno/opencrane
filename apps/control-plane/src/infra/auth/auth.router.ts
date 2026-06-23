@@ -319,13 +319,19 @@ export function ___AuthRouter(authService: OidcAuthService, prisma: PrismaClient
     }
   });
 
-  /** Destroy the local session without requiring a provider-specific logout endpoint. */
+  /**
+   * Destroy the local session and, when the IdP supports it, return its
+   * RP-Initiated Logout URL so the browser can finish the upstream sign-out
+   * (`single sign-out`). The local session is always destroyed; `endSessionUrl`
+   * is null when OIDC is off, the IdP has no `end_session_endpoint`, or the
+   * session captured no id_token. Non-browser callers (the CLI) ignore the URL.
+   */
   router.post("/logout", async function _logout(req, res, next)
   {
     try
     {
-      await authService.logout(req);
-      res.status(204).send();
+      const endSessionUrl = await authService.logout(req);
+      res.status(200).json({ endSessionUrl });
     }
     catch (err)
     {

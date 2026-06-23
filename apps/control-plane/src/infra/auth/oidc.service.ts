@@ -321,15 +321,78 @@ export class OidcAuthService
     // 3. Regenerate the session to prevent fixation, then persist the authenticated user.
     await _regenerateSession(req);
     req.session.authUser = authUser;
+    // Capture the ID token so RP-initiated logout can send it as `id_token_hint`.
+    // It is never used for authorization — only as a logout hint to the IdP.
+    if (typeof tokens.id_token === "string" && tokens.id_token !== "")
+    {
+      req.session.idToken = tokens.id_token;
+    }
     await _saveSession(req);
 
     return returnTo;
   }
 
-  /** Destroy the current local session during logout. */
-  async logout(req: Request): Promise<void>
+  /**
+   * Destroy the current local session and, when configured, return the IdP's
+   * RP-Initiated Logout URL so the caller can redirect the user-agent to it
+   * (single-sign-out). Returns null when OIDC is disabled, the session had no
+   * captured id_token, or the IdP does not advertise an `end_session_endpoint`.
+   *
+   * The end-session URL is built BEFORE the local session is destroyed, since
+   * destroy clears the captured id_token.
+   *
+   * @param req - The Express request whose session is being torn down.
+   */
+  async logout(req: Request): Promise<string | null>
   {
+    const endSessionUrl = await this._buildEndSessionUrl(req);
     await _destroySession(req);
+    return endSessionUrl;
+  }
+
+  /**
+   * Build the IdP's `end_session_endpoint` URL with `id_token_hint` and (when
+   * configured) `post_logout_redirect_uri`. Returns null in the cases above —
+   * a missing end-session endpoint is normal for some IdPs and is not an error.
+   */
+  private async _buildEndSessionUrl(req: Request): Promise<string | null>
+  {
+    if (!this.config.enabled)
+    {
+      return null;
+    }
+
+    const idToken = req.session?.idToken;
+    if (typeof idToken !== "string" || idToken === "")
+    {
+      return null;
+    }
+
+    try
+    {
+      const discoveredConfig = await this._getDiscoveredConfig();
+      const metadata = discoveredConfig.serverMetadata();
+      if (!metadata.end_session_endpoint)
+      {
+        return null;
+      }
+
+      const params: Record<string, string> = { id_token_hint: idToken };
+      if (this.config.postLogoutRedirectUri)
+      {
+        params.post_logout_redirect_uri = _buildPostLogoutRedirectUri(req, this.config.postLogoutRedirectUri);
+      }
+
+      return client.buildEndSessionUrl(discoveredConfig, params).href;
+    }
+    catch (err)
+    {
+      // Failing to build the end-session URL must NOT block local logout — the
+      // local session is destroyed regardless. Log and degrade to a local-only
+      // sign-out (the browser stays on whatever page initiated the logout).
+      this.log.warn({ err }, "failed to build OIDC end-session URL; logging out locally only");
+      return null;
+    }
   }
 
   /** Discover and memoize the provider metadata and client configuration. */
@@ -549,6 +612,24 @@ function _buildRedirectUri(req: Request, configuredRedirect: string): string
   if (!host) return configuredRedirect;
   const callbackPath = new URL(configuredRedirect).pathname;
   return `${protocol}://${host}${callbackPath}`;
+}
+
+/**
+ * Build the `post_logout_redirect_uri` for THIS request's host. Same multi-host
+ * rule as `_buildRedirectUri`: take the PATH from the configured URI but derive
+ * the ORIGIN from the request, so each org host (`<org>.<base>`) returns to its
+ * own host after IdP logout. Falls back to the configured URI when no host is
+ * present.
+ */
+function _buildPostLogoutRedirectUri(req: Request, configuredRedirect: string): string
+{
+  const forwardedProto = req.headers["x-forwarded-proto"];
+  const forwardedHost = req.headers["x-forwarded-host"];
+  const protocol = typeof forwardedProto === "string" ? forwardedProto.split(",")[0].trim() : req.protocol;
+  const host = typeof forwardedHost === "string" ? forwardedHost.split(",")[0].trim() : req.get("host");
+  if (!host) return configuredRedirect;
+  const parsed = new URL(configuredRedirect);
+  return `${protocol}://${host}${parsed.pathname}${parsed.search}`;
 }
 
 /** Convert the current Express request into an absolute callback URL. */

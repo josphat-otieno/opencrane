@@ -19,6 +19,9 @@ declare module "express-session"
       picture?: string;
       authenticatedAt: string;
     };
+    // ID token captured at login; used as `id_token_hint` when building the
+    // IdP's end_session URL for RP-initiated logout. Never read for authorization.
+    idToken?: string;
     oidcFlow?: {
       codeVerifier: string;
       state: string;

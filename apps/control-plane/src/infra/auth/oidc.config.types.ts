@@ -16,6 +16,18 @@ export interface OidcAuthConfig
   /** Callback URI registered with the identity provider. */
   redirectUri: string;
 
+  /**
+   * Optional post-logout redirect URI for OIDC RP-Initiated Logout. Sent as
+   * `post_logout_redirect_uri` to the IdP's `end_session_endpoint` so the IdP
+   * returns the user-agent here after destroying the upstream session. Empty
+   * when unset, in which case `/auth/logout` still tears down the local session
+   * but returns no end-session URL (the browser stays put). The origin is
+   * re-derived per request from the host header so multi-host (`<org>.<base>`)
+   * deployments end up back on the same host they logged in from; only the
+   * PATH from this value is used. The IdP must allow the resulting URL.
+   */
+  postLogoutRedirectUri: string;
+
   /** OIDC scopes requested during login. */
   scopes: string;
 
