@@ -3,7 +3,7 @@ import type { Request } from "express";
 import * as k8s from "@kubernetes/client-node";
 import { ClusterTenantPhase, ClusterTenantTierUnavailableCode } from "@opencrane/contracts";
 import type { ClusterTenantProvisionerRegistry } from "@opencrane/contracts";
-import type { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 
 import type { ClusterTenantCreateRequest, ClusterTenantUpdateRequest } from "./cluster-tenants.models.js";
 import { _IsIsolationTier, _ToContract, _ToPrismaCompute, _ToPrismaTier, _ValidateCompute, _ValidateResources } from "./cluster-tenants.service.js";
@@ -145,30 +145,44 @@ export function clusterTenantsRouter(prisma: PrismaClient, registry: ClusterTena
     //    NOTE (provisioning hand-off): the ClusterTenant operator/CR watcher reconciles
     //    `pending` → `ready` and drives the domain provisioner. This handler only
     //    persists the desired state; it performs no cluster-side side effects.
-    const created = await prisma.$transaction(async function _createOrgWithOwner(tx)
+    // eslint-disable-next-line prefer-const
+    let created: Prisma.ClusterTenantGetPayload<object>;
+    try
     {
-      const org = await tx.clusterTenant.create({
-        data: {
-          name: body.name.trim(),
-          displayName: body.displayName.trim(),
-          vanityDomain: body.vanityDomain?.trim() || null,
-          isolationTier: _ToPrismaTier(body.isolationTier),
-          computeMode: _ToPrismaCompute(body.compute.mode),
-          nodePool: body.compute.nodePool?.trim() || null,
-          quota: (body.resources.quota as Prisma.InputJsonValue),
-          phase: ClusterTenantPhase.Pending,
-        },
-      });
+      created = await prisma.$transaction(async function _createOrgWithOwner(tx)
+      {
+        const org = await tx.clusterTenant.create({
+          data: {
+            name: body.name.trim(),
+            displayName: body.displayName.trim(),
+            vanityDomain: body.vanityDomain?.trim() || null,
+            isolationTier: _ToPrismaTier(body.isolationTier),
+            computeMode: _ToPrismaCompute(body.compute.mode),
+            nodePool: body.compute.nodePool?.trim() || null,
+            quota: (body.resources.quota as Prisma.InputJsonValue),
+            phase: ClusterTenantPhase.Pending,
+          },
+        });
 
-      // The creator is the org's single `owner` (one-owner-per-org is enforced by the
-      // partial unique index). Written in the same tx so an org can never exist
-      // without its owner, and vice versa.
-      await tx.orgMembership.create({
-        data: { clusterTenant: org.name, subject: ownerSubject, role: "Owner" },
-      });
+        // The creator is the org's single `owner` (one-owner-per-org is enforced by the
+        // partial unique index). Written in the same tx so an org can never exist
+        // without its owner, and vice versa.
+        await tx.orgMembership.create({
+          data: { clusterTenant: org.name, subject: ownerSubject, role: "Owner" },
+        });
 
-      return org;
-    });
+        return org;
+      });
+    }
+    catch (err)
+    {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002")
+      {
+        res.status(409).json({ error: "A workspace with this name already exists.", code: "CONFLICT" });
+        return;
+      }
+      throw err;
+    }
 
     // 5. DB → K8s bridge. Project the persisted desired state into the cluster-scoped
     //    `clustertenants` CR the ClusterTenant reconciler watches. This is the seam
