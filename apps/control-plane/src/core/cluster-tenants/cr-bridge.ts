@@ -19,19 +19,15 @@ import { CLUSTER_TENANT_CRD_PLURAL, OPENCRANE_API_GROUP, OPENCRANE_API_VERSION }
  * the phase/boundNamespace the operator stamps. It is idempotent: create-or-patch
  * (merge-patch the spec), so re-applying the same desired state converges.
  *
- * On create it also stamps the org owner's identity as metadata annotations
- * ({@link _OWNER_EMAIL_ANNOTATION}/{@link _OWNER_SUBJECT_ANNOTATION}). The operator
- * has no database access, so this is the only channel by which the ClusterTenant
+ * On create it also projects the org owner's identity into `spec.owner` — first-class,
+ * schema-validated desired state, NOT a free-floating annotation. The operator has no
+ * database access, so the CR spec is the only channel by which the ClusterTenant
  * reconciler can learn who to attribute the org's default Tenant to once it is ready.
+ * Presence is enforced upstream by this control plane (org create 401s with no resolvable
+ * subject), so an owner-less org can never be persisted in the first place.
  */
 
-/** Annotation carrying the org owner's IdP-verified email, so the operator can attribute the org's default Tenant. */
-const _OWNER_EMAIL_ANNOTATION = "opencrane.io/owner-email";
-
-/** Annotation carrying the org owner's OIDC subject, recorded alongside the email for traceability. */
-const _OWNER_SUBJECT_ANNOTATION = "opencrane.io/owner-subject";
-
-/** Org owner identity stamped onto the ClusterTenant CR so the operator can seed a default Tenant. */
+/** Org owner identity projected into the ClusterTenant CR `spec.owner` so the operator can seed a default Tenant. */
 export interface ClusterTenantOwner
 {
   /** The owner's IdP-verified email; becomes the default Tenant's contact email. */
@@ -47,8 +43,8 @@ interface ClusterTenantCr
   apiVersion: string;
   /** CRD kind discriminator — always `ClusterTenant`. */
   kind: "ClusterTenant";
-  /** Object metadata; the org name is the cluster-scoped CR name, plus optional owner annotations. */
-  metadata: { name: string; annotations?: Record<string, string> };
+  /** Object metadata; the org name is the cluster-scoped CR name. */
+  metadata: { name: string };
   /** Desired-state spec projected from the persisted org row (never status). */
   spec: {
     /** Human-readable org display name. */
@@ -61,47 +57,44 @@ interface ClusterTenantCr
     compute: { mode: string; nodePool?: string };
     /** Resource governance for the org's bound namespace (quota map). */
     resources: { quota: Record<string, unknown> };
+    /** Org owner identity, so the operator can attribute the org's default Tenant. */
+    owner?: { subject: string; email?: string };
   };
 }
 
 /**
- * Build the owner-identity annotation map for a CR, or undefined when no owner
- * field is set (so an org create without a resolvable owner carries no annotations
- * rather than empty ones).
+ * Build the `spec.owner` block for a CR, or undefined when no owner subject is
+ * resolvable (the dev/test path with no session) — so the projected spec carries a
+ * well-formed owner or none at all, never a subject-less stub the CRD would reject.
  *
  * @param owner - The org owner's email/subject, if known.
  */
-function _BuildOwnerAnnotations(owner?: ClusterTenantOwner): Record<string, string> | undefined
+function _BuildOwnerSpec(owner?: ClusterTenantOwner): { subject: string; email?: string } | undefined
 {
-  const annotations: Record<string, string> = {};
-  if (owner?.email?.trim())
-  {
-    annotations[_OWNER_EMAIL_ANNOTATION] = owner.email.trim();
-  }
-  if (owner?.subject?.trim())
-  {
-    annotations[_OWNER_SUBJECT_ANNOTATION] = owner.subject.trim();
-  }
-  return Object.keys(annotations).length > 0 ? annotations : undefined;
+  const subject = owner?.subject?.trim();
+  if (!subject) return undefined;
+  const email = owner?.email?.trim();
+  return { subject, ...(email ? { email } : {}) };
 }
 
 /**
  * Project a {@link ClusterTenant} contract object into the cluster-scoped CR spec.
  * Only desired-state fields are carried; status is the operator's to write. The
- * owner's identity, when supplied, is stamped as metadata annotations so the
- * operator can seed the org's default Tenant once it is ready.
+ * owner's identity, when supplied, is projected into `spec.owner` (first-class,
+ * schema-validated desired state) so the operator can seed the org's default Tenant
+ * once it is ready.
  *
  * @param org   - The org contract object (as returned by `_ToContract`).
- * @param owner - The org owner's identity, stamped as annotations when present.
+ * @param owner - The org owner's identity, projected into `spec.owner` when present.
  * @returns The ClusterTenant CR body ready for server-side apply.
  */
 function _BuildClusterTenantCr(org: ClusterTenant, owner?: ClusterTenantOwner): ClusterTenantCr
 {
-  const annotations = _BuildOwnerAnnotations(owner);
+  const ownerSpec = _BuildOwnerSpec(owner);
   return {
     apiVersion: `${OPENCRANE_API_GROUP}/${OPENCRANE_API_VERSION}`,
     kind: "ClusterTenant",
-    metadata: { name: org.name, ...(annotations ? { annotations } : {}) },
+    metadata: { name: org.name },
     spec: {
       displayName: org.displayName,
       ...(org.vanityDomain ? { vanityDomain: org.vanityDomain } : {}),
@@ -113,6 +106,7 @@ function _BuildClusterTenantCr(org: ClusterTenant, owner?: ClusterTenantOwner): 
           : {}),
       },
       resources: { quota: (org.resources.quota as Record<string, unknown>) ?? {} },
+      ...(ownerSpec ? { owner: ownerSpec } : {}),
     },
   };
 }
@@ -128,7 +122,7 @@ function _BuildClusterTenantCr(org: ClusterTenant, owner?: ClusterTenantOwner): 
  *
  * @param customApi - Kubernetes custom-objects client, or null when no cluster is wired.
  * @param org - The org contract object to project into the CR.
- * @param owner - The org owner's identity, stamped as annotations on create (and merged on update).
+ * @param owner - The org owner's identity, projected into `spec.owner` on create (and merged on update).
  */
 export async function _ApplyClusterTenantCr(customApi: k8s.CustomObjectsApi | null, org: ClusterTenant, owner?: ClusterTenantOwner): Promise<void>
 {
@@ -149,17 +143,16 @@ export async function _ApplyClusterTenantCr(customApi: k8s.CustomObjectsApi | nu
   {
     if (_IsAlreadyExists(err))
     {
-      // Merge-patch the spec (and owner annotations when present) so the operator's
-      // status subresource is untouched; merge-patch on annotations adds/updates the
-      // owner keys without dropping any other annotation the operator may have set.
+      // Merge-patch the spec (owner included when present) so the operator's status
+      // subresource is untouched. Merge-patch never drops keys the patch omits, so an
+      // update with no resolvable owner (e.g. the PUT path) preserves the existing
+      // spec.owner the create stamped.
       await customApi.patchClusterCustomObject({
         group: OPENCRANE_API_GROUP,
         version: OPENCRANE_API_VERSION,
         plural: CLUSTER_TENANT_CRD_PLURAL,
         name: org.name,
-        body: body.metadata.annotations
-          ? { metadata: { annotations: body.metadata.annotations }, spec: body.spec }
-          : { spec: body.spec },
+        body: { spec: body.spec },
       });
       return;
     }
