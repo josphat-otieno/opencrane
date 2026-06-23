@@ -61,8 +61,13 @@ spec:
             - {{ $.Values.ingress.domain | quote }}
         dns01:
           {{- if $cm.acme.dns01.config }}
+          {{- if eq $cm.acme.dns01.provider "clouddns" }}
+          cloudDNS:
+            {{- toYaml $cm.acme.dns01.config | nindent 12 }}
+          {{- else }}
           {{ $cm.acme.dns01.provider }}:
             {{- toYaml $cm.acme.dns01.config | nindent 12 }}
+          {{- end }}
           {{- end }}
       # HTTP-01 (catch-all) for per-org vanity hosts. The customer CNAMEs their host at the
       # ingress, so cert-manager answers the challenge over HTTP through the ingress — no
@@ -132,8 +137,13 @@ spec:
             - {{ $.Values.ingress.domain | quote }}
         dns01:
           {{- if $cm.acme.dns01.config }}
+          {{- if eq $cm.acme.dns01.provider "clouddns" }}
+          cloudDNS:
+            {{- toYaml $cm.acme.dns01.config | nindent 12 }}
+          {{- else }}
           {{ $cm.acme.dns01.provider }}:
             {{- toYaml $cm.acme.dns01.config | nindent 12 }}
+          {{- end }}
           {{- end }}
       # HTTP-01 (catch-all) for per-org vanity hosts. The customer CNAMEs their host at the
       # ingress, so cert-manager answers the challenge over HTTP through the ingress — no
