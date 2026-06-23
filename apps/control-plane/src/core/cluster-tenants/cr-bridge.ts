@@ -4,6 +4,7 @@ import type { ClusterTenant } from "@opencrane/contracts";
 
 import { CLUSTER_TENANT_CRD_PLURAL, OPENCRANE_API_GROUP, OPENCRANE_API_VERSION } from "../../shared/crd-constants.js";
 import { _IsK8sConflict, _IsK8sNotFound } from "../../shared/k8s-errors.js";
+import type { ClusterTenantCrSpecPatch, ClusterTenantOwner, ClusterTenantSpec } from "./cr-bridge.types.js";
 
 /**
  * DB → Kubernetes bridge for the cluster-scoped ClusterTenant CRD.
@@ -22,52 +23,26 @@ import { _IsK8sConflict, _IsK8sNotFound } from "../../shared/k8s-errors.js";
  * to patch; update (no owner) → patch only, tolerate 404.
  */
 
+export type { ClusterTenantOwner } from "./cr-bridge.types.js";
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-/** Org owner identity projected into the ClusterTenant CR `spec.owner` so the operator can seed a default Tenant. */
-export interface ClusterTenantOwner
-{
-  /** The owner's IdP-verified email; becomes the default Tenant's contact email. */
-  email?: string;
-  /** The owner's OIDC subject (`sub`). */
-  subject?: string;
-}
-
-/**
- * Desired-state spec projected from the persisted org row (never status), EXCLUDING the
- * owner. This is the shape sent on a merge-patch (update path): omitting `owner` means a
- * JSON merge-patch leaves the existing `spec.owner` untouched.
- */
-interface ClusterTenantCrSpecPatch
-{
-  displayName: string;
-  vanityDomain?: string;
-  isolationTier: string;
-  compute: { mode: string; nodePool?: string };
-  resources: { quota: Record<string, unknown> };
-}
-
-/**
- * Full cluster-scoped ClusterTenant custom resource emitted on create.
- * `spec.owner` is MANDATORY — every org has a single owner.
- */
+/** Full cluster-scoped ClusterTenant custom resource emitted on create. */
 interface ClusterTenantCr
 {
   apiVersion: string;
   kind: "ClusterTenant";
   metadata: { name: string };
-  spec: ClusterTenantCrSpecPatch & {
-    owner: { subject: string; email?: string };
-  };
+  spec: ClusterTenantSpec;
 }
 
 // ---------------------------------------------------------------------------
 // Step 1 — Build
 // ---------------------------------------------------------------------------
 
-function _BuildOwnerSpec(owner?: ClusterTenantOwner): { subject: string; email?: string } | undefined
+function _BuildOwnerSpec(owner?: Partial<ClusterTenantOwner>): ClusterTenantOwner | undefined
 {
   const subject = owner?.subject?.trim();
   if (!subject) return undefined;
@@ -156,7 +131,7 @@ async function _CreateCr(customApi: k8s.CustomObjectsApi, body: ClusterTenantCr)
  * With owner (create path): build full CR → {@link _CreateCr} → on 409 fall back
  * to {@link _PatchSpec}. Without owner (update path): {@link _PatchSpec} only.
  */
-export async function _ApplyClusterTenantCr(customApi: k8s.CustomObjectsApi | null, org: ClusterTenant, owner?: ClusterTenantOwner): Promise<void>
+export async function _ApplyClusterTenantCr(customApi: k8s.CustomObjectsApi | null, org: ClusterTenant, owner?: Partial<ClusterTenantOwner>): Promise<void>
 {
   if (!customApi) return;
 
