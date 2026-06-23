@@ -1513,8 +1513,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Destroy the current session
-         * @description Invalidates the server-side session. Does not perform IdP-side logout (RP-initiated logout is out of scope for Phase 5).
+         * Destroy the current session and return the IdP RP-initiated logout URL
+         * @description Invalidates the server-side session. When OIDC is enabled and the identity provider advertises an `end_session_endpoint`, returns the URL the browser should navigate to so the upstream IdP session is also terminated (OIDC RP-Initiated Logout). The local session is always destroyed; `endSessionUrl` is null when no upstream logout is possible (OIDC disabled, IdP exposes no end-session endpoint, or the session captured no id_token). Non-browser callers may ignore the URL.
          */
         post: operations["logout"];
         delete?: never;
@@ -6850,12 +6850,17 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Session destroyed. */
-            204: {
+            /** @description Session destroyed; optional IdP logout URL returned. */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @description Absolute URL the browser should navigate to in order to terminate the upstream IdP session. Null when no upstream logout is configured or possible. */
+                        endSessionUrl: string | null;
+                    };
+                };
             };
         };
     };
