@@ -415,6 +415,15 @@ metadata:
 spec:
   instances: 1
   imageName: ghcr.io/cloudnative-pg/postgresql:16
+  # CNPG manages instance pods as bare Pods (not a Deployment/StatefulSet), so the
+  # GKE cluster-autoscaler treats them as "not backed by a controller" and refuses to
+  # drain the node — blocking scale-down of underutilised nodes (wasted spend on dev).
+  # safe-to-evict lets the autoscaler evict the pod; CNPG reschedules it and the
+  # operator-managed PodDisruptionBudget still prevents evicting too many instances at
+  # once. inheritedMetadata propagates the annotation onto the managed pods.
+  inheritedMetadata:
+    annotations:
+      cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
   storage:
     size: 10Gi$( [[ -n "$STORAGE_CLASS" ]] && printf '\n    storageClass: %s' "$STORAGE_CLASS" )
   bootstrap:
