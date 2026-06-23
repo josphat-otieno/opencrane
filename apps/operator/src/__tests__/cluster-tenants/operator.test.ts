@@ -186,6 +186,91 @@ describe("ClusterTenantOperator.reconcile", () =>
     expect(patches.at(-1)!.phase).toBe("failed");
     expect(patches.at(-1)!.message).toMatch(/apiserver down/);
   });
+
+  it("stamps observedGeneration = metadata.generation when reaching ready", async () =>
+  {
+    const { api: customApi, patches } = _makeStubCustomApi();
+    const { api: coreApi } = _makeStubCoreApi();
+    const { provisioner } = _makeDomainProvisioner({ skipped: true, ready: false });
+    const operator = _buildOperator(customApi, coreApi, provisioner);
+
+    const ct = _makeClusterTenant("acme"); // pending
+    ct.metadata!.generation = 1;
+    await operator.reconcile(ct);
+
+    expect(patches.at(-1)!.phase).toBe("ready");
+    expect(patches.at(-1)!.observedGeneration).toBe(1);
+  });
+
+  it("skips the expensive path when an already-ready CR's generation is unchanged (storm guard)", async () =>
+  {
+    const { api: customApi, patches } = _makeStubCustomApi();
+    const { api: coreApi, createdNamespaces } = _makeStubCoreApi();
+    const { provisioner, calls } = _makeDomainProvisioner({ skipped: true });
+    const operator = _buildOperator(customApi, coreApi, provisioner);
+
+    // Converged CR: ready, with observedGeneration matching the current generation —
+    // exactly what a watch reconnect replays as ADDED. Must be a complete no-op.
+    const converged = _makeClusterTenant("acme", "opencrane-acme");
+    converged.metadata!.generation = 7;
+    converged.status!.observedGeneration = 7;
+    await operator.reconcile(converged);
+
+    expect(patches).toHaveLength(0);          // no status churn
+    expect(createdNamespaces).toHaveLength(0); // no namespace re-apply (the 429-storm source)
+    expect(calls).toHaveLength(0);             // no domain re-provisioning
+  });
+
+  it("re-runs and re-stamps when a spec change bumps generation past observedGeneration", async () =>
+  {
+    const { api: customApi, patches } = _makeStubCustomApi();
+    const { api: coreApi, createdNamespaces } = _makeStubCoreApi();
+    const { provisioner } = _makeDomainProvisioner({ skipped: true });
+    const operator = _buildOperator(customApi, coreApi, provisioner);
+
+    // Spec edited after the last reconcile: generation advanced, observedGeneration stale.
+    const edited = _makeClusterTenant("acme", "opencrane-acme");
+    edited.metadata!.generation = 8;
+    edited.status!.observedGeneration = 7;
+    await operator.reconcile(edited);
+
+    expect(createdNamespaces).toContain("opencrane-acme"); // boundary re-applied
+    expect(patches.at(-1)!.phase).toBe("ready");
+    expect(patches.at(-1)!.observedGeneration).toBe(8);    // re-armed for the new generation
+  });
+
+  it("coalesces concurrent events for one org: collapses queued reconciles to a single re-run", async () =>
+  {
+    const { api: customApi } = _makeStubCustomApi();
+    const { api: coreApi } = _makeStubCoreApi();
+
+    // Gate the first reconcile inside the domain step so the next events arrive while it runs.
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let firstCall = true;
+    const calls: string[] = [];
+    const provisioner: OrgDomainProvisioner = {
+      async provisionOrgDomain(req: OrgDomainProvisionRequest): Promise<OrgDomainProvisionResult>
+      {
+        calls.push(req.orgName);
+        if (firstCall) { firstCall = false; await gate; }
+        return { orgDomain: `${req.orgName}.test`, ready: false, skipped: true };
+      },
+      async deprovisionOrgDomain(): Promise<void> {},
+    };
+    const operator = _buildOperator(customApi, coreApi, provisioner);
+
+    const ct = _makeClusterTenant("acme"); // no generation → always reconciles past the guard
+    const first = _emit(operator, "ADDED", ct);     // starts, blocks on the gate
+    await _emit(operator, "MODIFIED", ct);          // queued (running) — returns immediately
+    await _emit(operator, "MODIFIED", ct);          // collapsed into the same single pending slot
+    release();
+    await first;
+
+    // 3 events while one was in flight → exactly 2 reconciles (the in-flight one + one
+    // coalesced drain), never 3. This is what bounds in-flight work and prevents the OOM.
+    expect(calls).toEqual(["acme", "acme"]);
+  });
 });
 
 describe("ClusterTenantOperator delete handling (DOMAIN.T2)", () =>

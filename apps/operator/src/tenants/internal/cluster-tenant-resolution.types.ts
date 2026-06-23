@@ -66,6 +66,14 @@ export interface ClusterTenantResource extends KubernetesObject
     boundNamespace?: string;
     /** Identifier of the provisioner that owns this customer's boundary. */
     provisioner?: string;
+    /**
+     * `metadata.generation` the reconciler last drove to `ready`. The API server bumps
+     * `generation` only on a spec change (status writes do not), so a watch replay of an
+     * unchanged, already-ready CR has `observedGeneration === metadata.generation` and is
+     * skipped — the canonical controller guard that prevents re-provisioning every watch
+     * cycle (the namespace-create storm that 429s the API server and OOMs the operator).
+     */
+    observedGeneration?: number;
   };
 }
 
