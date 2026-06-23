@@ -105,7 +105,10 @@ spec:
   dnsNames:
     - {{ printf "*.%s" .Values.ingress.domain | quote }}
     - {{ .Values.ingress.domain | quote }}
-    - {{ .Values.ingress.controlPlaneHost | default (printf "platform.%s" .Values.ingress.domain) | quote }}
+    {{- $cpHost := .Values.ingress.controlPlaneHost | default (printf "platform.%s" .Values.ingress.domain) -}}
+    {{- if and (ne $cpHost .Values.ingress.domain) (not (hasSuffix (printf ".%s" .Values.ingress.domain) $cpHost)) }}
+    - {{ $cpHost | quote }}
+    {{- end }}
 {{- else }}
 {{- /* Namespaced mode: a per-instance-namespace Issuer + wildcard Certificate. */ -}}
 {{- $namespaces := include "opencrane.instanceNamespaces" . | fromJsonArray }}
@@ -178,7 +181,10 @@ spec:
   dnsNames:
     - {{ printf "*.%s" $.Values.ingress.domain | quote }}
     - {{ $.Values.ingress.domain | quote }}
-    - {{ $.Values.ingress.controlPlaneHost | default (printf "platform.%s" $.Values.ingress.domain) | quote }}
+    {{- $cpHost := $.Values.ingress.controlPlaneHost | default (printf "platform.%s" $.Values.ingress.domain) -}}
+    {{- if and (ne $cpHost $.Values.ingress.domain) (not (hasSuffix (printf ".%s" $.Values.ingress.domain) $cpHost)) }}
+    - {{ $cpHost | quote }}
+    {{- end }}
 {{- end }}
 {{- end }}
 {{- end }}

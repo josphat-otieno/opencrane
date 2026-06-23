@@ -542,6 +542,11 @@ certManager:
       provider: ""
       # -- Provider-specific solver config, rendered verbatim under solvers[].dns01.
       config: {}
+      # -- Raw service-account key (JSON string) for the DNS-01 solver Secret.
+      # When non-empty the chart renders a Secret in certManager.namespace so the
+      # solver can authenticate against the DNS provider (e.g. GCP CloudDNS SA key).
+      # Stopgap — prefer GCP-SM + ESO + CMEK for production credential delivery.
+      secretData: ""
 
 # -- Obot MCP gateway plane settings.
 # Uses the upstream obot-platform/obot image. Requires a per-instance, release-prefixed
