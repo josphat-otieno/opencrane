@@ -187,7 +187,11 @@ export function clusterTenantsRouter(prisma: PrismaClient, registry: ClusterTena
     //    runtime-gated there and never executed inline here; this handler only persists/
     //    declares desired state and does not mutate DNS or cert-manager.
     const orgContract = _ToContract(created);
-    await _ApplyClusterTenantCr(customApi, orgContract);
+    // Stamp the owner's identity (email + subject) onto the CR so the ClusterTenant
+    // reconciler — which has no DB access — can attribute the org's default Tenant to
+    // its owner once the org is ready. The email is the owner's IdP-verified session
+    // claim (absent in the dev-auth path, where only the synthetic subject is carried).
+    await _ApplyClusterTenantCr(customApi, orgContract, { email: req.session?.authUser?.email, subject: ownerSubject });
 
     res.status(201).json(orgContract);
   });

@@ -21,6 +21,8 @@ export interface ClusterTenantStatusPatch
   domainReady?: boolean;
   /** True when the per-org domain step was skipped (no cert-manager/DNS backend). */
   domainSkipped?: boolean;
+  /** `metadata.generation` last driven to `ready`; the reconcile-skip guard reads this back. */
+  observedGeneration?: number;
 }
 
 /**

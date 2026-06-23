@@ -104,10 +104,13 @@ operator:
   resources:
     requests:
       cpu: 100m
-      memory: 128Mi
+      memory: 256Mi
     limits:
       cpu: 500m
-      memory: 256Mi
+      # 512Mi gives the Node heap headroom over a watch reconnect that replays every
+      # CR at once; the per-org reconcile coalescing keeps steady-state usage well under
+      # this, so the limit is a safety margin, not the fix for the historical OOMKills.
+      memory: 512Mi
   # -- Namespace to watch for Tenant CRs (empty = all namespaces)
   watchNamespace: ""
   # -- Minutes of inactivity before auto-suspending a tenant (0 = disabled)
@@ -174,7 +177,7 @@ controlPlane:
       repository: cognee/cognee
       # -- Pinned to an audited stable tag for supply-chain integrity + reproducible
       #    deploys. Bump deliberately after re-auditing; never use a rolling `latest`.
-      tag: "0.1.43"
+      tag: "1.2.1"
       pullPolicy: IfNotPresent
     service:
       port: 8000
@@ -196,7 +199,7 @@ controlPlane:
     # -- Registered OAuth client id (OIDC_CLIENT_ID).
     clientId: ""
     # -- Callback URL on the control-plane (OIDC_REDIRECT_URI), e.g.
-    #    https://<control-plane-host>/api/auth/callback.
+    #    https://<control-plane-host>/api/v1/auth/callback.
     redirectUri: ""
     # -- Existing K8s Secret carrying the OIDC client secret + session secret. Strongly
     #    preferred over inline values in production. Keys are configurable below.
@@ -243,7 +246,13 @@ litellm:
   # -- Default spend path template for control-plane to query tenant spend from LiteLLM (tenant_id placeholder: {tenant})
   spendPathTemplate: "/spend/tenant/{tenant}"
   image:
-    repository: ghcr.io/berriai/litellm
+    # -- non_root variant: ships PRE-GENERATED Prisma engine binaries (baked at
+    #    build) and runs as a non-root user. The default `litellm` image generates
+    #    Prisma at runtime, which fails on its Chainguard/wolfi base in restricted/
+    #    non-root k8s with `NotConnectedError: Not connected to the query engine`
+    #    (wolfi ships OpenSSL 3 only; the runtime-fetched debian-openssl-1.1.x query
+    #    engine can't load libssl.so.1.1). Confirmed fix per BerriAI/litellm#11864.
+    repository: ghcr.io/berriai/litellm-non_root
     # -- Pinned to the audited stable tag (matches the k3d overlays) for
     #    supply-chain integrity + reproducible deploys. Do NOT use a rolling
     #    `main-latest` tag in production — bump deliberately after re-auditing.
@@ -274,6 +283,7 @@ litellm:
     enabled: false
     host: ""
     port: 6379
+  podAnnotations: {}
   podSecurityContext:
     runAsNonRoot: true
     runAsUser: 10001
@@ -594,10 +604,12 @@ mcpGateway:
     # Secret holding the encryption key (operator-provisioned; not templated here).
     secretName: opencrane-obot-enc
     secretKey: encryption-key
+  podAnnotations: {}
   podSecurityContext:
     runAsNonRoot: false
     seccompProfile:
       type: RuntimeDefault
+
   securityContext:
     allowPrivilegeEscalation: false
     capabilities:

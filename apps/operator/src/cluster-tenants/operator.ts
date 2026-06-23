@@ -4,7 +4,7 @@ import type { Logger } from "pino";
 import type { OpenClawTenantOperatorConfig } from "../config.js";
 import { __K8sApplyResource } from "../infra/k8s.js";
 import { _RunWatchLoop, K8sWatchEventType } from "../shared/watch-runner.js";
-import { CLUSTER_TENANT_CRD_PLURAL, OPENCRANE_API_GROUP, OPENCRANE_API_VERSION } from "../shared/crd-constants.js";
+import { CLUSTER_TENANT_CRD_PLURAL, OPENCRANE_API_GROUP, OPENCRANE_API_VERSION, TENANT_CRD_PLURAL } from "../shared/crd-constants.js";
 import { _BuildClusterTenantNamespace } from "../tenants/deploy/index.js";
 import type { ClusterTenantResource } from "../tenants/internal/cluster-tenant-resolution.types.js";
 
@@ -13,6 +13,26 @@ import { _NamespaceForOrg, _ProvisionBoundary } from "./internal/shared-cluster.
 import { ClusterTenantReconcilePhase } from "./internal/shared-cluster.provisioner.types.js";
 import type { OrgDomainProvisioner } from "./internal/org-domain-provisioner.types.js";
 import { _BuildOrgDomainProvisioner } from "./internal/org-domain.provisioner.factory.js";
+
+/**
+ * Annotation the control plane stamps with the org owner's IdP-verified email.
+ * Mirrors `_OWNER_EMAIL_ANNOTATION` in the control plane's `cr-bridge.ts` — the
+ * operator has no DB access, so the CR annotation is the only channel for the
+ * owner identity the default Tenant is attributed to.
+ */
+const _OWNER_EMAIL_ANNOTATION = "opencrane.io/owner-email";
+
+/** Suffix appended to an org's name to form its auto-seeded first workspace Tenant. */
+const _DEFAULT_TENANT_SUFFIX = "-default";
+
+/** Whether a Kubernetes API error is a 409 AlreadyExists across the common error shapes. */
+function _IsAlreadyExistsError(err: unknown): boolean
+{
+  if (typeof err !== "object" || err === null) return false;
+  const e = err as { statusCode?: unknown; code?: unknown; body?: { code?: unknown } };
+  if (e.statusCode === 409 || e.code === 409) return true;
+  return typeof e.body === "object" && e.body !== null && (e.body as { code?: unknown }).code === 409;
+}
 
 /**
  * Watches the cluster-scoped ClusterTenant custom resource and drives each org
@@ -61,6 +81,24 @@ export class ClusterTenantOperator
 
   /** Scoped logger. */
   private log: Logger;
+
+  /**
+   * Per-org reconcile coalescing. The watch runner dispatches event handlers
+   * fire-and-forget, so on every watch reconnect K8s replays ALL CRs as `ADDED`
+   * concurrently. Without a guard those reconciles pile up faster than they drain
+   * when the API server is throttling (APF 429s) — the unbounded growth that ends
+   * in `OOMKilled`, and overlapping namespace-creates for one org race each other.
+   *
+   * `running` holds the org names with a drain loop in progress; `pending` holds the
+   * latest CR awaiting reconcile per name. An event for a name already running only
+   * updates `pending` (coalesced — reconcile is idempotent, so collapsing several
+   * queued events into the newest one is correct), bounding in-flight work to one
+   * reconcile per org instead of one per event.
+   */
+  private readonly running = new Set<string>();
+
+  /** Latest CR awaiting reconcile per org name (see {@link running}). */
+  private readonly pending = new Map<string, ClusterTenantResource>();
 
   /**
    * Create a ClusterTenantOperator with pre-wired dependencies.
@@ -118,16 +156,54 @@ export class ClusterTenantOperator
     {
       case K8sWatchEventType.Added:
       case K8sWatchEventType.Modified:
-        await this.reconcile(clusterTenant);
+        await this.dispatchReconcile(clusterTenant);
         break;
       // Delete: namespace GC reclaims the namespaced Certificate/DNSEndpoint CRs, but
       // external-dns only reaps the records it owns once the DNSEndpoint is actually
       // gone — so we explicitly deprovision the per-org domain rather than relying on
       // GC ordering. The bound namespace and attached openclaws are torn down by their
-      // own lifecycles.
+      // own lifecycles. Drop any queued reconcile first so a coalesced event cannot
+      // re-create what we are tearing down.
       case K8sWatchEventType.Deleted:
+        this.pending.delete(name);
         await this.deprovision(clusterTenant);
         break;
+    }
+  }
+
+  /**
+   * Dispatch a reconcile through the per-org coalescing guard (see {@link running}).
+   *
+   * Records the CR as the org's latest desired state, then — unless a drain loop is
+   * already running for that name — drains `pending` to convergence one reconcile at a
+   * time. This serialises reconciles per org (no overlapping namespace-creates) and
+   * bounds concurrent work to one-per-org, so a watch-reconnect storm or a throttled
+   * API server can never let fire-and-forget handlers accumulate into an OOM.
+   *
+   * @param clusterTenant - The CR from the watch event to reconcile.
+   */
+  private async dispatchReconcile(clusterTenant: ClusterTenantResource): Promise<void>
+  {
+    const name = clusterTenant.metadata?.name;
+    if (!name) return;
+
+    // Always record the newest desired state; a running loop will pick it up.
+    this.pending.set(name, clusterTenant);
+    if (this.running.has(name)) return;
+
+    this.running.add(name);
+    try
+    {
+      while (this.pending.has(name))
+      {
+        const next = this.pending.get(name)!;
+        this.pending.delete(name);
+        await this.reconcile(next);
+      }
+    }
+    finally
+    {
+      this.running.delete(name);
     }
   }
 
@@ -142,6 +218,23 @@ export class ClusterTenantOperator
   async reconcile(clusterTenant: ClusterTenantResource): Promise<void>
   {
     const name = clusterTenant.metadata!.name!;
+
+    // 0. Skip the expensive path when an already-ready org's spec is unchanged.
+    //    `metadata.generation` bumps only on a spec change (status writes do not), so a
+    //    watch replay of a converged CR has `observedGeneration === generation`. Without
+    //    this guard every watch reconnect re-applies the namespace + re-runs domain
+    //    provisioning + re-seeds the tenant for every org at once — the API-server 429
+    //    storm + memory growth that crash-loops the operator. A reconcile with no
+    //    generation (older CRs) still runs, then stamps observedGeneration below.
+    const generation = clusterTenant.metadata?.generation;
+    if (clusterTenant.status?.phase === ClusterTenantReconcilePhase.Ready
+        && typeof generation === "number"
+        && clusterTenant.status?.observedGeneration === generation)
+    {
+      this.log.debug({ name, generation }, "cluster tenant already reconciled at this generation; skipping");
+      return;
+    }
+
     this.log.info({ name }, "reconciling cluster tenant");
 
     try
@@ -196,9 +289,19 @@ export class ClusterTenantOperator
         orgDomain: domain.orgDomain,
         domainReady: domain.ready,
         domainSkipped: domain.skipped,
+        // Record the generation we just converged so the guard at the top of reconcile()
+        // skips the next watch replay of this unchanged CR. A later spec edit bumps
+        // generation and re-arms a full reconcile.
+        observedGeneration: clusterTenant.metadata?.generation,
       });
 
       this.log.info({ name, boundNamespace: boundary.boundNamespace }, "cluster tenant ready");
+
+      // 6. Seed the org's first workspace Tenant now that the org is ready and its
+      //    namespace exists. Idempotent + fail-soft: a re-reconcile re-applies the same
+      //    `<org>-default` Tenant (AlreadyExists is a no-op), and a seed failure is logged
+      //    but never fails the reconcile, so the org cannot be wedged out of `ready`.
+      await this.ensureDefaultTenant(clusterTenant);
     }
     catch (err)
     {
@@ -208,6 +311,72 @@ export class ClusterTenantOperator
         message: err instanceof Error ? err.message : String(err),
       });
       throw err;
+    }
+  }
+
+  /**
+   * Seed the org's first workspace Tenant once it is ready, attributed to the org owner.
+   *
+   * Closes the "ready org with no workspace" gap: provisioning creates the org (+owner
+   * membership) but no pod, so a freshly-provisioned customer would land in an empty
+   * console. On the org's reconcile to `ready` — when its bound namespace exists — this
+   * applies a `<org>-default` Tenant whose `clusterTenantRef` points back at the org.
+   *
+   * Idempotent: a re-reconcile re-applies the same Tenant and treats AlreadyExists (409)
+   * as a converged no-op (it is created in the operator's watch namespace, like every
+   * other Tenant CR). Fail-soft: any other error is logged but never thrown, so a seed
+   * hiccup cannot wedge the org out of `ready`; the next reconcile retries.
+   *
+   * The owner's email arrives only via the CR's {@link _OWNER_EMAIL_ANNOTATION} (the
+   * operator has no DB access). When it is absent — an org created before the annotation
+   * existed, or via the dev-auth path with no email — the seed is skipped with a warning.
+   *
+   * @param clusterTenant - The ready ClusterTenant whose default Tenant is ensured.
+   */
+  private async ensureDefaultTenant(clusterTenant: ClusterTenantResource): Promise<void>
+  {
+    const orgName = clusterTenant.metadata!.name!;
+    const ownerEmail = clusterTenant.metadata?.annotations?.[_OWNER_EMAIL_ANNOTATION]?.trim();
+    if (!ownerEmail)
+    {
+      this.log.warn({ name: orgName }, "no owner-email annotation on cluster tenant; skipping default tenant seed");
+      return;
+    }
+
+    // Tenant CRs live in the operator's watch namespace (the TenantOperator watches there),
+    // falling back to the operator's own namespace when watching all namespaces.
+    const namespace = this.config.watchNamespace || this.config.operatorNamespace;
+    const tenantName = `${orgName}${_DEFAULT_TENANT_SUFFIX}`;
+    const tenantCr = {
+      apiVersion: `${OPENCRANE_API_GROUP}/${OPENCRANE_API_VERSION}`,
+      kind: "Tenant",
+      metadata: { name: tenantName, namespace },
+      spec: {
+        displayName: `${clusterTenant.spec.displayName ?? orgName} workspace`,
+        email: ownerEmail,
+        clusterTenantRef: orgName,
+      },
+    };
+
+    try
+    {
+      await this.customApi.createNamespacedCustomObject({
+        group: OPENCRANE_API_GROUP,
+        version: OPENCRANE_API_VERSION,
+        namespace,
+        plural: TENANT_CRD_PLURAL,
+        body: tenantCr,
+      });
+      this.log.info({ name: orgName, tenantName, namespace }, "seeded default tenant for org");
+    }
+    catch (err)
+    {
+      if (_IsAlreadyExistsError(err))
+      {
+        this.log.debug({ name: orgName, tenantName }, "default tenant already exists; nothing to seed");
+        return;
+      }
+      this.log.warn({ err, name: orgName, tenantName }, "failed to seed default tenant (org stays ready; will retry on next reconcile)");
     }
   }
 
