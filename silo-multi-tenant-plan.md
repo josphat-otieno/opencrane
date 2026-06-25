@@ -329,13 +329,17 @@ loop of §2. Depends on Phase 1 substrate.
 **2a — Zitadel as the PDP system-of-record, control-plane is master (human/principal plane).**
 Make the control-plane *control* Zitadel (object model + tiers + transaction rules in §2).
 Independent of the network substrate, so it can land in parallel with Phase 1.
-- **`zitadel-client` service** — `core/zitadel/zitadel-client.ts` + `_BuildZitadelManagementClient()`
-  no-op-when-unconfigured factory; SA-JWT auth; **idempotent** ops; key via GCP-SM+ESO.
-- **Per-CT Org/app provisioning + master onboarding** — on CT create, in one transaction: create
-  the org's Zitadel **Organization + OIDC app + project/roles**, persist `client_id/org_id/redirectUri`
-  on the CT record, **grant the master `admin` (cross-org user grant)**, and **issue the master's
-  openclaw Tenant** (extend `_EnsureOwnerDefaultTenant` to set `Tenant.subject` = master sub, gated
-  on the grant landing). On delete: tear the Org/app down. (Masters tier = control-plane's own Org/app.)
+- ✅ **DONE (S3 keystone, PR)** **`zitadel-client` seam + schema + transactional wiring** —
+  `core/zitadel/zitadel-client.{ts,types.ts}` (`ZitadelManagementClient` + `_NoopZitadelManagementClient`
+  + `_BuildZitadelManagementClient` no-op-when-unconfigured factory + `_DeriveOrgRedirectUri`);
+  migration 0025 (`Tenant.subject` + CT `zitadel{OrgId,AppId,RedirectUri}`); CT create calls
+  `provisionOrg` as the LAST fallible step inside `prisma.$transaction` (rollback-safe) + persists
+  the ids, CT delete calls `teardownOrg`; owner default tenant bound to `Tenant.subject`; gated Helm
+  `controlPlane.zitadel` + `PLATFORM_BASE_DOMAIN`. 9 tests.
+- 🔜 **NEXT (S3 slice)** **live HTTP Management client** — jwt-bearer SA auth (validated against
+  `weownai-oidc-8dwlat.eu1.zitadel.cloud`, supports `urn:ietf:params:oauth:grant-type:jwt-bearer`)
+  + the org/app/role/`admin`-grant calls + teardown; **idempotent**; SA key via GCP-SM+ESO. Drops
+  into the seam above. Then **issue the master's openclaw Tenant** is already wired (subject set).
 - **Host→CT→client resolution in `oidc.service`** — replace the single-client `_buildRedirectUri`
   host-reuse with a per-org client registry keyed by host; add the Zitadel org scope so only that
   org's pool can authenticate. Masters app serves `platform.<base>`.
