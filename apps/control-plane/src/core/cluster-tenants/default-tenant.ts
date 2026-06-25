@@ -46,9 +46,10 @@ export async function _EnsureOwnerDefaultTenant(opts: {
   orgName: string;
   orgDisplayName: string;
   ownerEmail?: string | undefined;
+  ownerSubject?: string | undefined;
 }): Promise<EnsureDefaultTenantResult>
 {
-  const { customApi, prisma, namespace, orgName, orgDisplayName, ownerEmail } = opts;
+  const { customApi, prisma, namespace, orgName, orgDisplayName, ownerEmail, ownerSubject } = opts;
   const tenantName = `${orgName}${_DEFAULT_TENANT_SUFFIX}`;
 
   // 1. Already projected → nothing to do (idempotent steady state). The unique key is the
@@ -99,7 +100,7 @@ export async function _EnsureOwnerDefaultTenant(opts: {
           apiVersion: `${OPENCRANE_API_GROUP}/${OPENCRANE_API_VERSION}`,
           kind: "Tenant",
           metadata: { name: tenantName, namespace },
-          spec: { displayName, email, clusterTenantRef: orgName },
+          spec: { displayName, email, clusterTenantRef: orgName, ...(ownerSubject?.trim() ? { subject: ownerSubject.trim() } : {}) },
         },
       });
     }
@@ -112,7 +113,7 @@ export async function _EnsureOwnerDefaultTenant(opts: {
   try
   {
     await prisma.tenant.create({
-      data: { name: tenantName, displayName, email, clusterTenantRef: orgName },
+      data: { name: tenantName, displayName, email, clusterTenantRef: orgName, subject: ownerSubject?.trim() || null },
     });
   }
   catch (err)

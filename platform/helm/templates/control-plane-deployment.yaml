@@ -59,6 +59,10 @@ spec:
             {{- include "opencrane.observabilityEnv" (dict "ctx" $ "component" "control-plane") | nindent 12 }}
             - name: INGRESS_DOMAIN
               value: {{ .Values.ingress.domain | quote }}
+            # -- Platform base domain the control-plane derives each org's Zitadel redirect
+            #    URI from (`<org>.<base>/api/v1/auth/callback`, S3 / Phase 2a).
+            - name: PLATFORM_BASE_DOMAIN
+              value: {{ .Values.ingress.domain | quote }}
             {{- if .Values.certManager.enabled }}
             # cert-manager namespace the `oc platform dns set` endpoint writes the
             # DNS-01 credentials Secret into (must match the namespaced RBAC Role).
@@ -164,6 +168,24 @@ spec:
             #    rendered as no env var, so the seed grants operator to NOBODY (fail-closed).
             - name: OPENCRANE_PLATFORM_OPERATOR_SEED_EMAIL
               value: {{ .platformOperatorSeedEmail | quote }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
+            {{- with .Values.controlPlane.zitadel }}
+            {{- if .mgmtApiUrl }}
+            # -- Zitadel Management API (S3 / Phase 2a): the control-plane provisions a
+            #    per-org Zitadel Organization + OIDC app. Rendered iff mgmtApiUrl is set;
+            #    the SA key (jwt-bearer auth) is pulled from a Secret, never inlined.
+            - name: ZITADEL_MGMT_API_URL
+              value: {{ .mgmtApiUrl | quote }}
+            - name: ZITADEL_PROJECT_ID
+              value: {{ .projectId | quote }}
+            {{- if .existingSecret }}
+            - name: ZITADEL_MGMT_SA_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .existingSecret }}
+                  key: {{ .serviceAccountKeyKey | default "service-account-key" }}
             {{- end }}
             {{- end }}
             {{- end }}

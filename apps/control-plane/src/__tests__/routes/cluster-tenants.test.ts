@@ -8,6 +8,7 @@ import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
 
 import { clusterTenantsRouter } from "../../routes/cluster-tenants.js";
+import type { ZitadelManagementClient } from "../../core/zitadel/zitadel-client.types.js";
 
 /** In-memory cluster_tenants store backing the mock Prisma client. */
 type Row = Record<string, unknown>;
@@ -111,7 +112,8 @@ function _mockRegistry(dedicatedClusterAvailable: boolean): ClusterTenantProvisi
 
 /** Build a minimal app mounting only the cluster-tenants router. */
 function _buildApp(prisma: PrismaClient, registry: ClusterTenantProvisionerRegistry,
-                   customApi: k8s.CustomObjectsApi | null = null, session?: { sub: string; email?: string }): Express
+                   customApi: k8s.CustomObjectsApi | null = null, session?: { sub: string; email?: string },
+                   zitadelClient?: ZitadelManagementClient): Express
 {
   const app = express();
   app.use(express.json());
@@ -127,7 +129,9 @@ function _buildApp(prisma: PrismaClient, registry: ClusterTenantProvisionerRegis
       next();
     });
   }
-  app.use("/api/v1/cluster-tenants", clusterTenantsRouter(prisma, registry, customApi));
+  app.use("/api/v1/cluster-tenants", zitadelClient
+    ? clusterTenantsRouter(prisma, registry, customApi, zitadelClient)
+    : clusterTenantsRouter(prisma, registry, customApi));
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   app.use(function _err(err: Error, _req: Request, res: Response, _next: NextFunction)
   {
@@ -341,5 +345,73 @@ describe("clusterTenantsRouter — owner default tenant (create-time seed + refr
 
     expect(res.status).toBe(404);
     expect(res.body.code).toBe("CLUSTER_TENANT_NOT_FOUND");
+  });
+});
+
+describe("clusterTenantsRouter — Zitadel org provisioning (S3 / Phase 2a)", function _zitadelSuite()
+{
+  /** A live-ish fake that records the provision call and returns deterministic ids. */
+  function _fakeProvisioner(): { client: ZitadelManagementClient; calls: unknown[] }
+  {
+    const calls: unknown[] = [];
+    const client: ZitadelManagementClient = {
+      isLive: true,
+      async provisionOrg(input)
+      {
+        calls.push(input);
+        return { orgId: "zorg-123", appId: "zapp-456", redirectUri: input.redirectUri };
+      },
+      async teardownOrg() { /* no-op */ },
+    };
+    return { client, calls };
+  }
+
+  it("persists the Zitadel org/app ids on the ClusterTenant when provisioning succeeds", async function _persists()
+  {
+    const store = new Map<string, Record<string, unknown>>();
+    const { client, calls } = _fakeProvisioner();
+    const app = _buildApp(_mockPrisma(store), _mockRegistry(false), null, { sub: "owner-1", email: "owner@acme.test" }, client);
+
+    const res = await request(app).post("/api/v1/cluster-tenants").send(_sharedBody());
+
+    expect(res.status).toBe(201);
+    expect(calls).toHaveLength(1);
+    // The master subject + derived redirect URI are passed to the provisioner.
+    expect(calls[0]).toMatchObject({ orgName: "acme", masterSubject: "owner-1" });
+    // The returned ids are persisted on the org row (same transaction).
+    const row = store.get("acme");
+    expect(row?.zitadelOrgId).toBe("zorg-123");
+    expect(row?.zitadelAppId).toBe("zapp-456");
+  });
+
+  it("fails the create (no 201) when Zitadel provisioning throws — the tx is the rollback boundary", async function _rollsBack()
+  {
+    const store = new Map<string, Record<string, unknown>>();
+    const throwing: ZitadelManagementClient = {
+      isLive: true,
+      async provisionOrg() { throw new Error("zitadel rejected: org name taken"); },
+      async teardownOrg() { /* no-op */ },
+    };
+    const app = _buildApp(_mockPrisma(store), _mockRegistry(false), null, { sub: "owner-1", email: "owner@acme.test" }, throwing);
+
+    const res = await request(app).post("/api/v1/cluster-tenants").send(_sharedBody());
+
+    // The provisioning call is the last fallible step inside prisma.$transaction, so a
+    // throw propagates out as a failed create (real Prisma rolls the org+membership back;
+    // the inline test stub has no rollback, so we assert the handler surfaces the failure
+    // rather than committing and returning 201).
+    expect(res.status).not.toBe(201);
+  });
+
+  it("leaves the Zitadel columns unset under the default no-op client (unconfigured)", async function _noop()
+  {
+    const store = new Map<string, Record<string, unknown>>();
+    const app = _buildApp(_mockPrisma(store), _mockRegistry(false), null, { sub: "owner-1", email: "owner@acme.test" });
+
+    const res = await request(app).post("/api/v1/cluster-tenants").send(_sharedBody());
+
+    expect(res.status).toBe(201);
+    const row = store.get("acme");
+    expect(row?.zitadelOrgId).toBeUndefined();
   });
 });

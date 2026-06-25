@@ -229,6 +229,21 @@ controlPlane:
     #    a real owner email into values.
     platformOperatorSeedEmail: ""
 
+  # -- Zitadel Management API (S3 / Phase 2a). When mgmtApiUrl is set, the control-plane
+  #    provisions a per-org Zitadel Organization + OIDC app on ClusterTenant create.
+  #    Empty (default) → org provisioning is a no-op (orgs created without a Zitadel org).
+  #    NOTE: the live management client ships in a follow-up S3 slice; setting these today
+  #    is wired through but still no-ops (logged), so it is safe to leave configured.
+  zitadel:
+    # -- Zitadel instance base URL (e.g. https://weownai-oidc-8dwlat.eu1.zitadel.cloud).
+    mgmtApiUrl: ""
+    # -- Zitadel project id that owns the per-org OIDC apps + role definitions.
+    projectId: ""
+    # -- Existing K8s Secret carrying the service-account key JSON (jwt-bearer auth).
+    #    Strongly preferred over any inline value; key name configurable below.
+    existingSecret: ""
+    serviceAccountKeyKey: service-account-key
+
 # -- LiteLLM integration settings
 litellm:
   # -- Cost routing is enabled by default as part of platform setup.

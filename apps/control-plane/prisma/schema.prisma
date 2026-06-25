@@ -15,6 +15,11 @@ model Tenant {
   phase              String                    @default("Pending")
   ingressHost        String?                   @map("ingress_host")
   clusterTenantRef   String?                   @map("cluster_tenant_ref")
+  /// IdP-verified subject (OIDC `sub`) of the user this workspace belongs to. The
+  /// openclaw Tenant is 1:1 with a ClusterTenant user; binding the subject (not just
+  /// the contact `email`) is what lets the contract compiler inherit that user's
+  /// rights (S4). Nullable for legacy/imported tenants created before the binding.
+  subject            String?
   configOverrides    Json?                     @map("config_overrides")
   awarenessWave      String?                   @map("awareness_wave")
   createdAt          DateTime                  @default(now()) @map("created_at")
@@ -155,6 +160,14 @@ model ClusterTenant {
   boundNamespace String?                    @map("bound_namespace")
   /// Identifier of the provisioner that owns this customer's boundary.
   provisioner    String?
+  /// Zitadel Organization id provisioned for this org's isolated user pool (S3 /
+  /// Phase 2a). Null until the control-plane has provisioned the Org (or when the
+  /// Zitadel management client is unconfigured). The org's end-users live ONLY here.
+  zitadelOrgId       String?                @map("zitadel_org_id")
+  /// Zitadel OIDC application id for this org's login surface at `<org>.<base>`.
+  zitadelAppId       String?                @map("zitadel_app_id")
+  /// The redirect URI registered on this org's Zitadel app (`<org>.<base>/api/v1/auth/callback`).
+  zitadelRedirectUri String?                @map("zitadel_redirect_uri")
   /// Creation timestamp.
   createdAt      DateTime                   @default(now()) @map("created_at")
   /// Last update timestamp.

@@ -12,6 +12,8 @@ import { _RequireBillingAccountForOrgCreate, _RequireOrgManager } from "../infra
 import { _ApplyClusterTenantCr, _DeleteClusterTenantCr } from "../core/cluster-tenants/cr-bridge.js";
 import { _ReadClusterTenantObservedStatus } from "../core/cluster-tenants/cr-status-reader.js";
 import { _EnsureOwnerDefaultTenant } from "../core/cluster-tenants/default-tenant.js";
+import { _DeriveOrgRedirectUri, _NoopZitadelManagementClient } from "../core/zitadel/zitadel-client.js";
+import type { ZitadelManagementClient } from "../core/zitadel/zitadel-client.types.js";
 
 /** RFC-1123-ish DNS domain: lowercase labels, ≥1 dot, alpha TLD, ≤253 chars. */
 const _VANITY_DOMAIN_PATTERN = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/;
@@ -68,7 +70,8 @@ async function _ReadObservedStatus(prisma: PrismaClient, customApi: k8s.CustomOb
  * @returns Configured Express router.
  */
 export function clusterTenantsRouter(prisma: PrismaClient, registry: ClusterTenantProvisionerRegistry,
-                                     customApi: k8s.CustomObjectsApi | null = null): Router
+                                     customApi: k8s.CustomObjectsApi | null = null,
+                                     zitadelClient: ZitadelManagementClient = new _NoopZitadelManagementClient()): Router
 {
   const router = Router();
 
@@ -257,6 +260,25 @@ export function clusterTenantsRouter(prisma: PrismaClient, registry: ClusterTena
           data: { clusterTenant: org.name, subject: ownerSubject, role: "Owner" },
         });
 
+        // Provision the org's Zitadel Organization + OIDC app + master `admin` grant as
+        // the LAST fallible step before commit (S3 / Phase 2a): if Zitadel rejects, this
+        // throws and the whole transaction rolls back (no orphan org/membership). The
+        // no-op client (unconfigured) returns null, leaving the Zitadel columns unset.
+        // The reconcile/backfill loop (later slice) closes the commit-after-OK window.
+        const zitadel = await zitadelClient.provisionOrg({
+          orgName: org.name,
+          displayName: org.displayName,
+          redirectUri: _DeriveOrgRedirectUri(org.name, process.env.PLATFORM_BASE_DOMAIN?.trim() ?? ""),
+          masterSubject: ownerSubject,
+        });
+        if (zitadel)
+        {
+          return tx.clusterTenant.update({
+            where: { name: org.name },
+            data: { zitadelOrgId: zitadel.orgId, zitadelAppId: zitadel.appId, zitadelRedirectUri: zitadel.redirectUri },
+          });
+        }
+
         return org;
       });
     }
@@ -306,6 +328,7 @@ export function clusterTenantsRouter(prisma: PrismaClient, registry: ClusterTena
         customApi, prisma, namespace,
         orgName: created.name, orgDisplayName: created.displayName,
         ownerEmail: req.session?.authUser?.email,
+        ownerSubject,
       });
       if (seed.skippedReason)
       {
@@ -420,6 +443,22 @@ export function clusterTenantsRouter(prisma: PrismaClient, registry: ClusterTena
       return;
     }
     await prisma.clusterTenant.delete({ where: { name: req.params.name } });
+    // Tear down the org's Zitadel Organization (S3 / Phase 2a). Best-effort + AFTER the
+    // local delete: the DB is the source of truth for "this org is gone"; a Zitadel
+    // teardown hiccup must not resurrect the row. The reconcile/backfill loop (later
+    // slice) sweeps any orphaned Zitadel org left by a failure here. No-op when the org
+    // was never provisioned (null orgId) or the client is unconfigured.
+    if (existing.zitadelOrgId)
+    {
+      try
+      {
+        await zitadelClient.teardownOrg(existing.zitadelOrgId);
+      }
+      catch (err)
+      {
+        console.error(`[cluster-tenants] Zitadel org teardown failed for ${req.params.name} (org row already deleted; reconcile will sweep):`, err);
+      }
+    }
     // Tear down the cluster-scoped CR so the reconciler stops watching it; tolerant
     // of a missing CR (404) for the dev/no-cluster path where none was ever written.
     await _DeleteClusterTenantCr(customApi, req.params.name);
