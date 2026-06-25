@@ -13,8 +13,11 @@ const _RECIPIENT_TYPES = ["user", "group"] as const;
 /** Visibility scopes a share may carry (mirrors GrantScope; defaults to personal). */
 const _SCOPES = ["org", "department", "project", "personal"] as const;
 
+/** A valid API payload-type string (one of {@link _PAYLOAD_TYPES}). */
 type _PayloadTypeStr = typeof _PAYLOAD_TYPES[number];
+/** A valid API recipient-kind string (one of {@link _RECIPIENT_TYPES}). */
 type _RecipientTypeStr = typeof _RECIPIENT_TYPES[number];
+/** A valid API scope string (one of {@link _SCOPES}). */
 type _ScopeStr = typeof _SCOPES[number];
 
 /** Request body for creating a share. */
