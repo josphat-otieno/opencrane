@@ -42,6 +42,24 @@ describe("_ResolvePerOrgClient — host→CT→per-org client (S3b)", function _
     expect(findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { name: "acme" } }));
   });
 
+  it("resolves a customer-vanity host to its org's client via the unique vanityDomain (S3b)", async function _resolvesVanity()
+  {
+    // The first-label lookup ("ai") misses; the full host matches a unique vanityDomain.
+    const row = { name: "acme", zitadelClientId: "client-acme", zitadelOrgId: "org-acme", zitadelRedirectUri: "https://acme.dev.opencrane.ai/api/v1/auth/callback" };
+    const findUnique = vi.fn().mockImplementation(function _find(args: { where: { name?: string; vanityDomain?: string } })
+    {
+      return Promise.resolve(args.where.vanityDomain === "ai.client-company.com" ? row : null);
+    });
+    const prisma = { clusterTenant: { findUnique } } as unknown as PrismaClient;
+
+    const resolved = await _ResolvePerOrgClient(prisma, "ai.client-company.com");
+
+    expect(resolved).toMatchObject({ clusterTenant: "acme", clientId: "client-acme", orgId: "org-acme" });
+    // The first-label miss is followed by an exact vanity-domain lookup on the full host.
+    expect(findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { name: "ai" } }));
+    expect(findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { vanityDomain: "ai.client-company.com" } }));
+  });
+
   it("returns null for the platform host (bare host, no derivable silo) — masters fallback", async function _platformHost()
   {
     const { prisma, findUnique } = _prismaReturning(null);

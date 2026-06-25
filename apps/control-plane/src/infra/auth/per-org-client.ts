@@ -19,17 +19,23 @@ export function _OrgScope(orgId: string): string
   return `urn:zitadel:iam:org:id:${orgId}`;
 }
 
+/** Prisma `select` for the persisted per-org login identifiers (shared by both lookups). */
+const _PER_ORG_SELECT = { name: true, zitadelClientId: true, zitadelOrgId: true, zitadelRedirectUri: true } as const;
+
 /**
- * Resolve the per-org OIDC client for a request host (S3b). For a host `<org>.<base>` the
- * first DNS label names the silo; we confirm it against a ClusterTenant row and return its
- * `{clientId, orgId, redirectUri}` so login can authorize against that org's isolated user
- * pool. Fail-closed: returns null for
- *  - a host with no derivable silo label (bare host / platform host),
- *  - a label with no matching ClusterTenant, or
+ * Resolve the per-org OIDC client for a request host (S3b). A host resolves to a
+ * ClusterTenant two ways, both DB-authoritative:
+ *  - **canonical** `<org>.<base>` — the first DNS label names the silo, or
+ *  - **customer-vanity** — the full host matches a unique `vanityDomain` (CNAMEd onto the
+ *    org apex), so login works at the customer's own domain too.
+ * Either way we return the org's `{clientId, orgId, redirectUri}` so login authorizes
+ * against that org's isolated user pool. Fail-closed: returns null for
+ *  - a bare host (no label and no vanity match — e.g. the platform host / localhost),
+ *  - a host matching no ClusterTenant by either label or vanity, or
  *  - a ClusterTenant whose org is not fully provisioned (no `zitadelClientId`/`zitadelOrgId`).
  * In every null case the caller falls through to the masters client config — never a
- * partial per-org login. The DB read is the single source of truth, so a spoofed host
- * label that names no real, fully-provisioned org cannot pick up an org client.
+ * partial per-org login. The DB read is the single source of truth, so a spoofed host that
+ * names no real, fully-provisioned org cannot pick up an org client.
  *
  * @param prisma - Prisma client used to confirm the silo and read its persisted client ids.
  * @param host   - The request host (typically from `_RequestHost`).
@@ -37,28 +43,30 @@ export function _OrgScope(orgId: string): string
  */
 export async function _ResolvePerOrgClient(prisma: PrismaClient, host: string | undefined): Promise<ResolvedPerOrgClient | null>
 {
-  // 1. Derive the candidate silo from the host's first DNS label. A bare host (no
-  //    subdomain — e.g. the platform host or localhost) yields undefined, so the
-  //    platform host keeps using the masters client without a DB hit.
-  const candidate = _ClusterTenantFromHost(host);
-  if (!candidate)
+  if (!host)
   {
     return null;
   }
-
-  // 2. Confirm the label is a real ClusterTenant and read its persisted Zitadel ids. The
-  //    DB row is authoritative: a host label that names no row resolves to null, so a
-  //    fabricated host can never select an org client it does not own.
-  const row = await prisma.clusterTenant.findUnique({
-    where: { name: candidate },
-    select: { name: true, zitadelClientId: true, zitadelOrgId: true, zitadelRedirectUri: true },
-  });
+  // 1. Resolve the ClusterTenant for this host. Try the canonical first DNS label first
+  //    (the common case, one indexed lookup), then fall back to an exact vanity-domain
+  //    match on the full host (port-stripped, lower-cased). Both are DB-authoritative, so a
+  //    fabricated host that matches neither a real silo label nor a real vanity domain
+  //    cannot select an org client it does not own.
+  const candidate = _ClusterTenantFromHost(host);
+  const normHost = host.split(":")[0].trim().toLowerCase();
+  let row = candidate
+    ? await prisma.clusterTenant.findUnique({ where: { name: candidate }, select: _PER_ORG_SELECT })
+    : null;
   if (!row)
   {
-    // A silo-shaped host label that names no ClusterTenant is usually probe/scanner noise
+    row = await prisma.clusterTenant.findUnique({ where: { vanityDomain: normHost }, select: _PER_ORG_SELECT });
+  }
+  if (!row)
+  {
+    // A host that matches no silo label and no vanity domain is usually probe/scanner noise
     // hitting the wildcard, not an operational fault — log at debug so it is traceable
     // without flooding the error log.
-    _log.debug({ host, candidate }, "per-org client resolution: host label matches no ClusterTenant; falling through to masters client");
+    _log.debug({ host, candidate }, "per-org client resolution: host matches no ClusterTenant (label or vanity); falling through to masters client");
     return null;
   }
 

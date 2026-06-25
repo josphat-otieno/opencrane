@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import { beforeEach, afterEach, describe, expect, it } from "vitest";
 
-import { _BuildZitadelManagementClient, _DeriveOrgRedirectUri, _HttpZitadelManagementClient, _ReadZitadelClientConfig } from "../../infra/zitadel/zitadel-client.js";
+import { _BuildZitadelManagementClient, _DeriveOrgRedirectUri, _DeriveVanityRedirectUri, _HttpZitadelManagementClient, _ReadZitadelClientConfig } from "../../infra/zitadel/zitadel-client.js";
 
 /** A real RSA SA key so the client's RS256 jwt-bearer signing actually succeeds. */
 function _saKeyJson(): string
@@ -13,12 +13,15 @@ function _saKeyJson(): string
 }
 
 /** Build an injectable fetch fake that records calls and replies per path. */
-function _fakeFetch(overrides: Record<string, { status?: number; body?: unknown }> = {}): { fetchImpl: typeof fetch; calls: Array<{ method: string; path: string; orgId?: string }> }
+function _fakeFetch(overrides: Record<string, { status?: number; body?: unknown }> = {}): { fetchImpl: typeof fetch; calls: Array<{ method: string; path: string; orgId?: string; body?: Record<string, unknown> }> }
 {
-  const calls: Array<{ method: string; path: string; orgId?: string }> = [];
-  const fetchImpl = (async function _f(url: string, init: { method?: string; headers?: Record<string, string> }) {
+  const calls: Array<{ method: string; path: string; orgId?: string; body?: Record<string, unknown> }> = [];
+  const fetchImpl = (async function _f(url: string, init: { method?: string; headers?: Record<string, string>; body?: unknown }) {
     const path = url.replace(/^https:\/\/[^/]+/, "");
-    calls.push({ method: init?.method ?? "GET", path, orgId: init?.headers?.["x-zitadel-orgid"] });
+    // The JSON management calls send a stringified object body; the token call sends
+    // URLSearchParams — only parse the former so assertions can read redirectUris etc.
+    const parsedBody = typeof init?.body === "string" && init.body.startsWith("{") ? JSON.parse(init.body) as Record<string, unknown> : undefined;
+    calls.push({ method: init?.method ?? "GET", path, orgId: init?.headers?.["x-zitadel-orgid"], body: parsedBody });
     const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) });
     const o = overrides[path];
     if (o) return { ok: (o.status ?? 200) < 400, status: o.status ?? 200, json: async () => o.body ?? {}, text: async () => JSON.stringify(o.body ?? {}) };
@@ -43,7 +46,7 @@ describe("_HttpZitadelManagementClient — live provisioning lifecycle (injected
 
     const result = await client.provisionOrg({ orgName: "acme", displayName: "Acme", redirectUri: "https://acme.dev.opencrane.ai/api/v1/auth/callback", masterSubject: "u-master" });
 
-    expect(result).toEqual({ orgId: "org-9", appId: "app-9", clientId: "client-9", redirectUri: "https://acme.dev.opencrane.ai/api/v1/auth/callback" });
+    expect(result).toEqual({ orgId: "org-9", projectId: "proj-9", appId: "app-9", clientId: "client-9", redirectUri: "https://acme.dev.opencrane.ai/api/v1/auth/callback" });
     const paths = calls.map(c => c.path);
     expect(paths).toEqual([
       "/oauth/v2/token",
@@ -55,6 +58,47 @@ describe("_HttpZitadelManagementClient — live provisioning lifecycle (injected
     ]);
     // Every in-org call carries the new org's context header.
     expect(calls.filter(c => c.path.startsWith("/management")).every(c => c.orgId === "org-9")).toBe(true);
+    // With no vanity domain, only the canonical callback is registered on the app.
+    const appCreate = calls.find(c => c.path.endsWith("/apps/oidc"));
+    expect(appCreate?.body?.redirectUris).toEqual(["https://acme.dev.opencrane.ai/api/v1/auth/callback"]);
+  });
+
+  it("registers the vanity callback alongside the canonical one when a vanity domain is given (S3b)", async function _provisionsVanity()
+  {
+    const { fetchImpl, calls } = _fakeFetch();
+    const client = new _HttpZitadelManagementClient({ apiUrl: "https://z.example.com", serviceAccountKey: _saKeyJson(), baseDomain: "dev.opencrane.ai" }, fetchImpl);
+
+    await client.provisionOrg({
+      orgName: "acme", displayName: "Acme",
+      redirectUri: "https://acme.dev.opencrane.ai/api/v1/auth/callback",
+      vanityRedirectUri: "https://ai.acme.com/api/v1/auth/callback",
+      masterSubject: "u-master",
+    });
+
+    const appCreate = calls.find(c => c.path.endsWith("/apps/oidc"));
+    expect(appCreate?.body?.redirectUris).toEqual([
+      "https://acme.dev.opencrane.ai/api/v1/auth/callback",
+      "https://ai.acme.com/api/v1/auth/callback",
+    ]);
+  });
+
+  it("setAppRedirectUris PUTs the full URI set to the org-scoped oidc_config endpoint (S3b)", async function _setRedirects()
+  {
+    const { fetchImpl, calls } = _fakeFetch();
+    const client = new _HttpZitadelManagementClient({ apiUrl: "https://z.example.com", serviceAccountKey: _saKeyJson(), baseDomain: "dev.opencrane.ai" }, fetchImpl);
+
+    await client.setAppRedirectUris({
+      orgId: "org-9", projectId: "proj-9", appId: "app-9",
+      redirectUris: ["https://acme.dev.opencrane.ai/api/v1/auth/callback", "https://ai.acme.com/api/v1/auth/callback"],
+    });
+
+    const put = calls.find(c => c.method === "PUT");
+    expect(put?.path).toBe("/management/v1/projects/proj-9/apps/app-9/oidc_config");
+    expect(put?.orgId).toBe("org-9");
+    expect(put?.body?.redirectUris).toEqual([
+      "https://acme.dev.opencrane.ai/api/v1/auth/callback",
+      "https://ai.acme.com/api/v1/auth/callback",
+    ]);
   });
 
   it("compensates (deletes the half-created org) and rethrows when a later step fails", async function _compensates()
@@ -96,6 +140,14 @@ describe("_DeriveOrgRedirectUri", function _deriveSuite()
   it("derives the per-org callback URI from the org name + base domain", function _derives()
   {
     expect(_DeriveOrgRedirectUri("elewa-be", "dev.opencrane.ai")).toBe("https://elewa-be.dev.opencrane.ai/api/v1/auth/callback");
+  });
+});
+
+describe("_DeriveVanityRedirectUri", function _deriveVanitySuite()
+{
+  it("derives the vanity callback URI from the full vanity host (no base appended)", function _derivesVanity()
+  {
+    expect(_DeriveVanityRedirectUri("ai.client-company.com")).toBe("https://ai.client-company.com/api/v1/auth/callback");
   });
 });
 

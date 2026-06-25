@@ -142,8 +142,8 @@ model ClusterTenant {
   name           String                     @id
   /// Human-readable customer name.
   displayName    String                     @map("display_name")
-  /// Optional customer-vanity domain CNAMEd onto the org's canonical apex (<name>.<platformBaseDomain>); an overlay, not the org identity. Null → only the derived apex serves the org.
-  vanityDomain   String?                    @map("vanity_domain")
+  /// Optional customer-vanity domain CNAMEd onto the org's canonical apex (<name>.<platformBaseDomain>); an overlay, not the org identity. Null → only the derived apex serves the org. Unique (NULLs distinct) so a vanity host resolves to exactly one org for per-org login.
+  vanityDomain   String?                    @unique @map("vanity_domain")
   /// Isolation strength chosen for this customer.
   isolationTier  ClusterTenantIsolationTier @default(Shared) @map("isolation_tier")
   /// Whether the customer shares nodes or gets a dedicated pool.
@@ -173,6 +173,10 @@ model ClusterTenant {
   zitadelClientId    String?                @map("zitadel_client_id")
   /// The redirect URI registered on this org's Zitadel app (`<org>.<base>/api/v1/auth/callback`).
   zitadelRedirectUri String?                @map("zitadel_redirect_uri")
+  /// Zitadel project id of this org's `opencrane` project (S3b). Needed to update the
+  /// OIDC app's redirect URIs when the org's vanity domain changes (the Zitadel update
+  /// endpoint is project-scoped). Null until provisioned (or when Zitadel is unconfigured).
+  zitadelProjectId   String?                @map("zitadel_project_id")
   /// Creation timestamp.
   createdAt      DateTime                   @default(now()) @map("created_at")
   /// Last update timestamp.

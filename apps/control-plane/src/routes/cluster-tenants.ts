@@ -12,7 +12,7 @@ import { _RequireBillingAccountForOrgCreate, _RequireOrgManager } from "../infra
 import { _ApplyClusterTenantCr, _DeleteClusterTenantCr } from "../core/cluster-tenants/cr-bridge.js";
 import { _ReadClusterTenantObservedStatus } from "../core/cluster-tenants/cr-status-reader.js";
 import { _EnsureOwnerDefaultTenant } from "../core/cluster-tenants/default-tenant.js";
-import { _DeriveOrgRedirectUri } from "../infra/zitadel/zitadel-client.js";
+import { _DeriveOrgRedirectUri, _DeriveVanityRedirectUri } from "../infra/zitadel/zitadel-client.js";
 import type { ZitadelManagementClient } from "../infra/zitadel/zitadel-client.types.js";
 import { _log } from "../log.js";
 
@@ -269,11 +269,14 @@ export function clusterTenantsRouter(prisma: PrismaClient, registry: ClusterTena
           orgName: org.name,
           displayName: org.displayName,
           redirectUri: _DeriveOrgRedirectUri(org.name, process.env.PLATFORM_BASE_DOMAIN?.trim() ?? ""),
+          // Register the vanity callback too when the org is created with a vanity domain,
+          // so login works at the vanity host from the start (not only after a later PUT).
+          ...(org.vanityDomain ? { vanityRedirectUri: _DeriveVanityRedirectUri(org.vanityDomain) } : {}),
           masterSubject: ownerSubject,
         });
         return tx.clusterTenant.update({
           where: { name: org.name },
-          data: { zitadelOrgId: zitadel.orgId, zitadelAppId: zitadel.appId, zitadelClientId: zitadel.clientId, zitadelRedirectUri: zitadel.redirectUri },
+          data: { zitadelOrgId: zitadel.orgId, zitadelProjectId: zitadel.projectId, zitadelAppId: zitadel.appId, zitadelClientId: zitadel.clientId, zitadelRedirectUri: zitadel.redirectUri },
         });
       });
     }
@@ -422,7 +425,43 @@ export function clusterTenantsRouter(prisma: PrismaClient, registry: ClusterTena
     // never clobber the observed status the reconciler stamps — those columns are
     // the operator's to own. Re-project the new spec onto the CR so the reconciler
     // re-converges to the changed desired state (idempotent; status untouched).
-    const updated = await prisma.clusterTenant.update({ where: { name: req.params.name }, data });
+    //
+    // When the vanity domain ACTUALLY changes and the org is fully provisioned in Zitadel,
+    // the OIDC app's redirect-URI allowlist must track it — else login at the new vanity
+    // host fails (URI not allowlisted) or a cleared vanity keeps a stale URI. Persist the
+    // row + sync the allowlist in ONE transaction (IdP call LAST) so the two never drift:
+    // a Zitadel rejection rolls the row update back. TLS for the vanity host is handled
+    // separately by the operator's domain provisioner off the re-projected CR.
+    const vanityChanged = body.vanityDomain !== undefined && ((data.vanityDomain as string | null | undefined) ?? null) !== (existing.vanityDomain ?? null);
+    const orgId = existing.zitadelOrgId;
+    const projectId = existing.zitadelProjectId;
+    const appId = existing.zitadelAppId;
+    let updated: ClusterTenantRow;
+    if (vanityChanged && orgId && projectId && appId)
+    {
+      const baseDomain = process.env.PLATFORM_BASE_DOMAIN?.trim() ?? "";
+      const canonical = existing.zitadelRedirectUri ?? _DeriveOrgRedirectUri(req.params.name, baseDomain);
+      const newVanity = (data.vanityDomain as string | null | undefined) ?? null;
+      const redirectUris = [canonical, ...(newVanity ? [_DeriveVanityRedirectUri(newVanity)] : [])];
+      updated = await prisma.$transaction(async function _updateWithRedirectSync(tx)
+      {
+        const row = await tx.clusterTenant.update({ where: { name: req.params.name }, data });
+        await zitadelClient.setAppRedirectUris({ orgId, projectId, appId, redirectUris });
+        return row;
+      });
+    }
+    else
+    {
+      // No vanity change (or an unprovisioned org with no app to sync) → a plain DB update.
+      // A vanity change on an unprovisioned org (single-cluster / no Zitadel app, or a row
+      // predating provisioning) persists but has no per-org app to register against — trace
+      // it so the "vanity set but not in the IdP allowlist" state is visible, not silent.
+      if (vanityChanged && !(orgId && projectId && appId))
+      {
+        _log.debug({ orgName: req.params.name }, "vanity domain changed on an unprovisioned org; persisted without a Zitadel redirect-URI sync (no per-org app)");
+      }
+      updated = await prisma.clusterTenant.update({ where: { name: req.params.name }, data });
+    }
     const orgContract = _ToContract(updated);
     await _ApplyClusterTenantCr(customApi, orgContract);
     res.json(orgContract);
