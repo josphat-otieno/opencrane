@@ -83,7 +83,10 @@ export function ___AuthRouter(authService: OidcAuthService, prisma: PrismaClient
 
       const email = typeof authUser.email === "string" ? authUser.email : "";
       const sub = typeof authUser.sub === "string" ? authUser.sub : "";
-      const outcome = await _ResolveGatewayTarget(prisma, namespace, email, sub);
+      // Scope to the silo the WebSocket is connecting through so a multi-silo owner routes
+      // to the pod for this host (mirrors /pod-token); foreign silo fails closed.
+      const silo = _ClusterTenantFromHost(_RequestHost(req));
+      const outcome = await _ResolveGatewayTarget(prisma, namespace, email, sub, silo);
 
       if (!outcome.ok)
       {

@@ -93,4 +93,19 @@ describe("_ResolveGatewayTarget (DOMAIN.T4 routing authority)", function _suite(
 			take: 2,
 		});
 	});
+
+	it("scopes the lookup to the given silo so a multi-silo owner routes to one pod", async function ()
+	{
+		// Globally ambiguous, but scoping to the connecting silo resolves to exactly its pod.
+		const { prisma, findMany } = _buildPrisma([{ name: "elewa-be-default", clusterTenantRef: "elewa-be" }]);
+
+		const outcome = await _ResolveGatewayTarget(prisma, "default", "jente@elewa.ke", "sub-1", "elewa-be");
+
+		expect(outcome.ok).toBe(true);
+		expect(findMany).toHaveBeenCalledWith({
+			where: { email: { equals: "jente@elewa.ke", mode: "insensitive" }, clusterTenantRef: "elewa-be" },
+			select: { name: true, clusterTenantRef: true },
+			take: 2,
+		});
+	});
 });

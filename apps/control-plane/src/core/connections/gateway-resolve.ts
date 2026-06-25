@@ -34,14 +34,21 @@ export type GatewayResolveOutcome =
  * resolves to a forbidden outcome, never an arbitrary pick. This is the routing-level
  * half of cross-tenant safety; the pod-level half is per-pod owner pinning (CONN.10).
  *
+ * `scopeClusterTenant` narrows the lookup to the silo the connection is coming in on
+ * (derived from the request host by the caller). A human who owns a workspace in more
+ * than one silo would otherwise be ambiguous (>1) and fail closed everywhere; scoping
+ * routes them to the pod for the host they are connecting through. Self-validating: a
+ * foreign/unknown silo yields zero rows → NO_TENANT, never a foreign pod.
+ *
  * The pod's namespace is re-derived from the tenant's owning org
  * (`opencrane-<clusterTenantRef>`); a tenant with no org ref (legacy single-namespace
  * install) falls back to the control plane's own namespace.
  *
- * @param prisma           - Prisma client for the email→tenant lookup.
- * @param defaultNamespace - Namespace for tenants with no org ref (the CP's own ns).
- * @param email            - The session's verified email claim.
- * @param sub              - The session subject (logged identity); falls back to email.
+ * @param prisma             - Prisma client for the email→tenant lookup.
+ * @param defaultNamespace   - Namespace for tenants with no org ref (the CP's own ns).
+ * @param email              - The session's verified email claim.
+ * @param sub                - The session subject (logged identity); falls back to email.
+ * @param scopeClusterTenant - Optional silo to scope the lookup to; omit for a global match.
  * @returns A forward target, or a fail-closed reason.
  */
 export async function _ResolveGatewayTarget(
@@ -49,6 +56,7 @@ export async function _ResolveGatewayTarget(
   defaultNamespace: string,
   email: string | undefined,
   sub: string,
+  scopeClusterTenant?: string | undefined,
 ): Promise<GatewayResolveOutcome>
 {
   const normalized = typeof email === "string" ? email.toLowerCase().trim() : "";
@@ -60,8 +68,9 @@ export async function _ResolveGatewayTarget(
   // Fail closed: at most one tenant may match. `take: 2` is enough to detect ambiguity
   // without scanning the whole table — an ambiguous email must never silently route the
   // caller to one of several pods (which could be another user's).
+  const scope = typeof scopeClusterTenant === "string" ? scopeClusterTenant.trim() : "";
   const matches = await prisma.tenant.findMany({
-    where: { email: { equals: normalized, mode: "insensitive" } },
+    where: { email: { equals: normalized, mode: "insensitive" }, ...(scope ? { clusterTenantRef: scope } : {}) },
     select: { name: true, clusterTenantRef: true },
     take: 2,
   });
