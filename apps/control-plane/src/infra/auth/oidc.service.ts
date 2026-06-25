@@ -439,7 +439,19 @@ export class OidcAuthService
       discovered = client.discovery(new URL(this.config.issuerUrl), clientId);
       this.perOrgDiscovered.set(clientId, discovered);
     }
-    return await discovered;
+    try
+    {
+      return await discovered;
+    }
+    catch (err)
+    {
+      // A per-org discovery failure breaks login at that org's host. Evict the memoized
+      // rejected promise so the next attempt re-discovers (else the failure is cached for
+      // the process lifetime), and warn — clientId is a public OIDC identifier, not a secret.
+      this.perOrgDiscovered.delete(clientId);
+      this.log.warn({ err, clientId }, "per-org OIDC discovery failed; per-org login is unavailable for this client");
+      throw err;
+    }
   }
 
   /** Merge ID token claims with UserInfo claims when an access token is available. */

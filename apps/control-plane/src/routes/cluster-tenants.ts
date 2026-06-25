@@ -14,6 +14,7 @@ import { _ReadClusterTenantObservedStatus } from "../core/cluster-tenants/cr-sta
 import { _EnsureOwnerDefaultTenant } from "../core/cluster-tenants/default-tenant.js";
 import { _DeriveOrgRedirectUri } from "../infra/zitadel/zitadel-client.js";
 import type { ZitadelManagementClient } from "../infra/zitadel/zitadel-client.types.js";
+import { _log } from "../log.js";
 
 /** RFC-1123-ish DNS domain: lowercase labels, ≥1 dot, alpha TLD, ≤253 chars. */
 const _VANITY_DOMAIN_PATTERN = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/;
@@ -326,12 +327,12 @@ export function clusterTenantsRouter(prisma: PrismaClient, registry: ClusterTena
       });
       if (seed.skippedReason)
       {
-        console.warn(`[cluster-tenants] default tenant not seeded for ${created.name}: ${seed.skippedReason}`);
+        _log.warn({ orgName: created.name, skippedReason: seed.skippedReason }, "default tenant not seeded for new org; owner has no workspace until refresh");
       }
     }
     catch (err)
     {
-      console.error(`[cluster-tenants] default tenant seed failed for ${created.name}; org stays created (use refresh to retry):`, err);
+      _log.warn({ err, orgName: created.name }, "default tenant seed failed; org stays created (use refresh to retry)");
     }
 
     res.status(201).json(orgContract);
@@ -452,8 +453,19 @@ export function clusterTenantsRouter(prisma: PrismaClient, registry: ClusterTena
     });
     // Tear down the cluster-scoped CR so the reconciler stops watching it; tolerant of a
     // missing CR (404). This is a Kubernetes side-effect (operator-reconciled), so it sits
-    // OUTSIDE the DB transaction — a Prisma tx cannot roll back a k8s mutation.
-    await _DeleteClusterTenantCr(customApi, req.params.name);
+    // OUTSIDE the DB transaction — a Prisma tx cannot roll back a k8s mutation. The DB row
+    // (source of truth) is already committed, so a CR-delete failure must NOT 500 the call:
+    // a retry would 404 (row gone) and never re-attempt cleanup, leaving a permanent orphan.
+    // Instead log.error so the orphaned CR surfaces for operator cleanup, and still report
+    // the delete as done (the org no longer exists from the API's perspective).
+    try
+    {
+      await _DeleteClusterTenantCr(customApi, req.params.name);
+    }
+    catch (err)
+    {
+      _log.error({ err, orgName: req.params.name }, "ClusterTenant CR teardown failed after DB row + Zitadel org were deleted; CR is orphaned and needs manual cleanup");
+    }
     res.json({ name: req.params.name, status: "deleted" });
   });
 
