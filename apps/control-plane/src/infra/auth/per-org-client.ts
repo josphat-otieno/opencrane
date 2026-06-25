@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 
+import { _log } from "../../log.js";
 import { _ClusterTenantFromHost } from "./request-silo.js";
 import type { ResolvedPerOrgClient } from "./per-org-client.types.js";
 
@@ -54,6 +55,10 @@ export async function _ResolvePerOrgClient(prisma: PrismaClient, host: string | 
   });
   if (!row)
   {
+    // A silo-shaped host label that names no ClusterTenant is usually probe/scanner noise
+    // hitting the wildcard, not an operational fault — log at debug so it is traceable
+    // without flooding the error log.
+    _log.debug({ host, candidate }, "per-org client resolution: host label matches no ClusterTenant; falling through to masters client");
     return null;
   }
 
@@ -63,6 +68,14 @@ export async function _ResolvePerOrgClient(prisma: PrismaClient, host: string | 
   //    against the wrong / an unrestricted pool.
   if (!row.zitadelClientId || !row.zitadelOrgId)
   {
+    // This is a real operational anomaly: a ClusterTenant exists for this host but its
+    // Zitadel org is not fully provisioned, so login at its own subdomain silently
+    // degrades to the masters client. Warn so the failed/pending provisioning surfaces
+    // in the error log instead of presenting as a confusing wrong-pool login.
+    _log.warn(
+      { host, clusterTenant: row.name, hasClientId: Boolean(row.zitadelClientId), hasOrgId: Boolean(row.zitadelOrgId) },
+      "per-org client resolution: ClusterTenant host is not fully provisioned in Zitadel; login falls through to masters client",
+    );
     return null;
   }
 
