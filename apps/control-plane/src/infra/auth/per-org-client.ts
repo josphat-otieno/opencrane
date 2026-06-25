@@ -45,6 +45,9 @@ export async function _ResolvePerOrgClient(prisma: PrismaClient, host: string | 
 {
   if (!host)
   {
+    // No host on the request (e.g. a non-proxied internal call) — there is nothing to
+    // resolve a silo from, so login uses the masters client. Benign and expected, so debug.
+    _log.debug("per-org client resolution: request carries no host; falling through to masters client");
     return null;
   }
   // 1. Resolve the ClusterTenant for this host. Try the canonical first DNS label first
