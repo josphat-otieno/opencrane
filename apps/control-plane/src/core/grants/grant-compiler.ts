@@ -1,6 +1,5 @@
 import { type PrismaClient } from "@prisma/client";
-import { trace } from "@opentelemetry/api";
-import { ___DoWithTrace } from "@opencrane/observability";
+import { ___DoWithTrace, ___GetActiveSpan } from "@opencrane/observability";
 import { ___SomeArray, ___SomeRecord, ___SortBy } from "../utils/collections.js";
 import { GrantCompilerAccess, GrantCompilerPayloadType, GrantCompilerScope, GrantCompilerSubjectType, type CompiledGrantDecision } from "./grant-compiler.types.js";
 
@@ -183,7 +182,7 @@ export async function compile(
 
     // 6. Record the decision count on the active span before returning so the trace
     //    carries the outcome volume without requiring a separate log line.
-    trace.getActiveSpan()?.setAttribute("grants.decisionCount", decisions.length);
+    ___GetActiveSpan()?.setAttribute("grants.decisionCount", decisions.length);
 
     return decisions;
   });

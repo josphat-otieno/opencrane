@@ -1,6 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
-import { trace } from "@opentelemetry/api";
-import { ___DoWithTrace } from "@opencrane/observability";
+import { ___DoWithTrace, ___GetActiveSpan } from "@opencrane/observability";
 import { _log } from "../../log.js";
 import { compile } from "./grant-compiler.js";
 import { GrantCompilerAccess, GrantCompilerPayloadType } from "./grant-compiler.types.js";
@@ -46,7 +45,7 @@ export async function _SyncTenantAwarenessGrants(prisma: PrismaClient,
 
     // 2. Record the total grant count on the active span so traces carry outcome
     //    volume without a separate log field; the span is still open at this point.
-    trace.getActiveSpan()?.setAttribute("grants.syncedCount", grants.length);
+    ___GetActiveSpan()?.setAttribute("grants.syncedCount", grants.length);
 
     // 3. Push to Cognee, capturing (not throwing) failure so a downstream Cognee
     //    blip never blocks the upstream policy/grant write (DB stays source of truth).
