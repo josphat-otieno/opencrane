@@ -7,6 +7,8 @@ import type { Logger } from "pino";
 import type { PrismaClient } from "@prisma/client";
 
 import { ___LoadOidcAuthConfig } from "./oidc.config.js";
+import { _ResolveCallerClusterTenant } from "./resolve-caller-cluster-tenant.js";
+import { _ClusterTenantFromHost, _RequestHost } from "./request-silo.js";
 import { _ResolveOrgMembershipFacts } from "./org-membership.js";
 import type { OwnedOrg } from "./org-membership.js";
 
@@ -186,7 +188,7 @@ export class OidcAuthService
       //    OR-s the login-time flag (groups/operator) with membership-derived authority,
       //    so a user who just created an org is an org admin without re-logging-in.
       const [clusterTenant, membership] = await Promise.all([
-        this._resolveClusterTenant(authUser.email),
+        this._resolveClusterTenant(authUser.email, _RequestHost(req)),
         _ResolveOrgMembershipFacts(this.prisma, authUser.sub),
       ]);
       return {
@@ -218,42 +220,22 @@ export class OidcAuthService
   }
 
   /**
-   * Resolve the caller's ClusterTenant from their IdP-verified email, reusing the
-   * pod-token broker's fail-closed rule: resolve the tenant by email, then read its
-   * `clusterTenantRef`. Returns null when the email is missing, matches no tenant,
-   * matches more than one (ambiguous), the tenant has no parent, or the lookup
-   * fails — never an arbitrary pick, and never taken from request input.
+   * Resolve the caller's ClusterTenant for `/auth/me`, delegating to the shared fail-closed
+   * resolver so the rule cannot drift from the mutation guard and read-time scope filters.
+   *
+   * The lookup is SCOPED to the silo the caller is currently viewing — derived from the request
+   * host (each org is served at `<clusterTenant>.<base>`). Without that scope a human who owns
+   * workspaces in more than one ClusterTenant is ambiguous (>1 email match) and fail-closes to
+   * null, which is exactly the "No tenant yet" state for a multi-silo owner. With it, they resolve
+   * to the silo whose host they are on. When no silo can be derived (no host) the resolver falls
+   * back to a global email match, preserving the single-tenant behaviour.
    *
    * @param email - The session's verified email claim, if any.
+   * @param host  - The request host, used to scope the lookup to one silo.
    */
-  private async _resolveClusterTenant(email: string | undefined): Promise<string | null>
+  private async _resolveClusterTenant(email: string | undefined, host: string | undefined): Promise<string | null>
   {
-    const normalized = typeof email === "string" ? email.toLowerCase().trim() : "";
-    if (!normalized)
-    {
-      return null;
-    }
-
-    try
-    {
-      // Fail closed on an ambiguous email→tenant mapping: take at most two rows so a
-      // duplicate is detected without silently adopting one tenant's parent.
-      const matches = await this.prisma.tenant.findMany({
-        where: { email: { equals: normalized, mode: "insensitive" } },
-        select: { clusterTenantRef: true },
-        take: 2,
-      });
-      if (matches.length !== 1)
-      {
-        return null;
-      }
-      return matches[0].clusterTenantRef ?? null;
-    }
-    catch (err)
-    {
-      this.log.warn({ err }, "failed to resolve clusterTenant for /auth/me; returning null");
-      return null;
-    }
+    return _ResolveCallerClusterTenant(this.prisma, email, _ClusterTenantFromHost(host));
   }
 
   /** Build the provider redirect URL and persist PKCE state in the local session. */
@@ -606,9 +588,8 @@ export function ___CreateOidcAuthService(log: Logger, prisma: PrismaClient): Oid
 function _buildRedirectUri(req: Request, configuredRedirect: string): string
 {
   const forwardedProto = req.headers["x-forwarded-proto"];
-  const forwardedHost = req.headers["x-forwarded-host"];
   const protocol = typeof forwardedProto === "string" ? forwardedProto.split(",")[0].trim() : req.protocol;
-  const host = typeof forwardedHost === "string" ? forwardedHost.split(",")[0].trim() : req.get("host");
+  const host = _RequestHost(req);
   if (!host) return configuredRedirect;
   const callbackPath = new URL(configuredRedirect).pathname;
   return `${protocol}://${host}${callbackPath}`;
@@ -624,9 +605,8 @@ function _buildRedirectUri(req: Request, configuredRedirect: string): string
 function _buildPostLogoutRedirectUri(req: Request, configuredRedirect: string): string
 {
   const forwardedProto = req.headers["x-forwarded-proto"];
-  const forwardedHost = req.headers["x-forwarded-host"];
   const protocol = typeof forwardedProto === "string" ? forwardedProto.split(",")[0].trim() : req.protocol;
-  const host = typeof forwardedHost === "string" ? forwardedHost.split(",")[0].trim() : req.get("host");
+  const host = _RequestHost(req);
   if (!host) return configuredRedirect;
   const parsed = new URL(configuredRedirect);
   return `${protocol}://${host}${parsed.pathname}${parsed.search}`;
@@ -636,9 +616,8 @@ function _buildPostLogoutRedirectUri(req: Request, configuredRedirect: string): 
 function _buildCurrentUrl(req: Request): URL
 {
   const forwardedProto = req.headers["x-forwarded-proto"];
-  const forwardedHost = req.headers["x-forwarded-host"];
   const protocol = typeof forwardedProto === "string" ? forwardedProto.split(",")[0].trim() : req.protocol;
-  const host = typeof forwardedHost === "string" ? forwardedHost.split(",")[0].trim() : req.get("host");
+  const host = _RequestHost(req);
 
   return new URL(`${protocol}://${host}${req.originalUrl}`);
 }

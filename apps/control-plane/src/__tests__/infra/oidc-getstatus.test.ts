@@ -23,10 +23,11 @@ function _disableOidc(): void
   delete process.env.OIDC_SESSION_SECRET;
 }
 
-/** Build a Request-like object carrying a logged-in session user. */
-function _reqWithUser(email: string | undefined): Request
+/** Build a Request-like object carrying a logged-in session user (and an optional org host). */
+function _reqWithUser(email: string | undefined, host?: string): Request
 {
   return {
+    headers: host ? { "x-forwarded-host": host } : {},
     session: {
       authUser: {
         sub: "user-1",
@@ -80,6 +81,23 @@ describe("OidcAuthService.getStatus — /auth/me identity surface (WOI.1)", func
     const status = await service.getStatus(_reqWithUser("dup@acme.io"));
 
     expect(status.user?.clusterTenant).toBeNull();
+  });
+
+  it("scopes the lookup to the silo in the request host so a multi-silo owner resolves (WOI.1)", async function _hostScoped()
+  {
+    // The owner has a workspace in three silos; the host says which one they are viewing.
+    // The where clause must carry clusterTenantRef so the email match is no longer ambiguous.
+    const findMany = vi.fn().mockResolvedValue([{ clusterTenantRef: "elewa-be" }]);
+    const prisma = { tenant: { findMany } } as unknown as PrismaClient;
+    const service = ___CreateOidcAuthService(pino({ enabled: false }), prisma);
+
+    const status = await service.getStatus(_reqWithUser("jente@elewa.ke", "elewa-be.dev.opencrane.ai"));
+
+    expect(status.user?.clusterTenant).toBe("elewa-be");
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { email: { equals: "jente@elewa.ke", mode: "insensitive" }, clusterTenantRef: "elewa-be" },
+      take: 2,
+    }));
   });
 
   it("returns clusterTenant null when the tenant has no parent ref", async function _noParent()

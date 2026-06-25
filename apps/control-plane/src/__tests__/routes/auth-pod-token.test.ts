@@ -110,6 +110,22 @@ describe("POST /auth/pod-token (OpenClaw connection broker)", function _suite()
 		expect(res.body.code).toBe("AMBIGUOUS_TENANT");
 	});
 
+	it("scopes the tenant lookup to the silo in the request host so a multi-silo owner resolves", async function _hostScoped()
+	{
+		// A multi-silo owner: an unscoped lookup would be ambiguous (409). The request host
+		// (`<clusterTenant>.<base>`) scopes the query to the silo being connected through.
+		const prisma = _buildPrisma([{ name: "elewa-be-default", ingressHost: "elewa-be.dev.opencrane.ai", configOverrides: null }]);
+		const app = _buildApp({ authUser: { sub: "u1", email: "jente@elewa.ke" } }, prisma);
+
+		const res = await request(app).post("/auth/pod-token").set("x-forwarded-host", "elewa-be.dev.opencrane.ai");
+
+		expect(res.status).toBe(200);
+		expect(res.body.tenant).toBe("elewa-be-default");
+		expect((prisma.tenant.findMany as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith(expect.objectContaining({
+			where: { email: { equals: "jente@elewa.ke", mode: "insensitive" }, clusterTenantRef: "elewa-be" },
+		}));
+	});
+
 	it("returns 409 when the pod is neither paired nor has an ingress host", async function _notReady()
 	{
 		const prisma = _buildPrisma([{ name: "alex.oc", ingressHost: null, configOverrides: null }]);

@@ -11,13 +11,13 @@ import { _IsDevAuthMode } from "../auth/auth-mode.js";
  *
  * The rule (AIR.0b), in priority order:
  *   1. A platform operator (session `isPlatformOperator`) may mutate any resource at any scope.
- *   2. A non-operator may mutate only a `clusterTenant`-scoped resource whose owning
- *      ClusterTenant equals the caller's own resolved ClusterTenant. Global-scoped mutations
- *      are operator-only.
+ *   2. A non-operator may mutate only a `clusterTenant`-scoped resource in a silo they own a
+ *      workspace in. Global-scoped mutations are operator-only.
  *
- * `clusterTenant` is resolved fresh from the caller's IdP-verified email (email → tenant →
- * `clusterTenantRef`), mirroring `OidcAuthService._resolveClusterTenant` — never taken from a
- * self-asserted claim or request input.
+ * Ownership is resolved fresh from the caller's IdP-verified email via the shared
+ * `_ResolveCallerClusterTenant`, scoped to the resource's own silo so a human who owns workspaces
+ * in more than one ClusterTenant is authorised for each — never taken from a self-asserted claim
+ * or request input. `/auth/me` uses the same resolver (scoped by request host instead).
  *
  * The guard is applied per-router and reads the *resource* scope/clusterTenant from the request
  * via the supplied `resolveResource` callback, which is run after the request body / params are
@@ -94,9 +94,11 @@ async function _enforce(
     return "deny";
   }
 
-  // 5. ClusterTenant-scoped: allow only when the caller's own resolved ClusterTenant
-  //    matches the resource owner. Resolve fresh from the verified email (fail-closed).
-  const callerClusterTenant = await _ResolveCallerClusterTenant(prisma, authUser.email);
+  // 5. ClusterTenant-scoped: allow only when the caller owns a workspace in the resource's
+  //    silo. Scope the fail-closed lookup to that silo so a human who owns workspaces in more
+  //    than one ClusterTenant is authorised for each (an unscoped email match would be ambiguous
+  //    and deny them everywhere). A non-owner yields zero rows → null → deny.
+  const callerClusterTenant = await _ResolveCallerClusterTenant(prisma, authUser.email, resource.clusterTenant);
   if (callerClusterTenant && callerClusterTenant === resource.clusterTenant)
   {
     return "allow";

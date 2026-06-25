@@ -7,6 +7,7 @@ import { _log } from "../../log.js";
 import type { OidcAuthService } from "./oidc.service.js";
 import { _AuthorizeDeviceGrant, _CreateDeviceGrant, _FindGrantByUserCode, _PollDeviceGrant } from "./device-grant.js";
 import { _ResolveOpenClawPairing } from "./openclaw-pairing.js";
+import { _ClusterTenantFromHost, _RequestHost } from "./request-silo.js";
 import { _RecordBrokeredDevice } from "./brokered-device.js";
 import { _CutTenant } from "../../core/connections/cut-tenant.js";
 import type { OpenClawGatewayAdmin } from "../../core/connections/gateway-admin.types.js";
@@ -82,7 +83,10 @@ export function ___AuthRouter(authService: OidcAuthService, prisma: PrismaClient
 
       const email = typeof authUser.email === "string" ? authUser.email : "";
       const sub = typeof authUser.sub === "string" ? authUser.sub : "";
-      const outcome = await _ResolveGatewayTarget(prisma, namespace, email, sub);
+      // Scope to the silo the WebSocket is connecting through so a multi-silo owner routes
+      // to the pod for this host (mirrors /pod-token); foreign silo fails closed.
+      const silo = _ClusterTenantFromHost(_RequestHost(req));
+      const outcome = await _ResolveGatewayTarget(prisma, namespace, email, sub, silo);
 
       if (!outcome.ok)
       {
@@ -140,7 +144,11 @@ export function ___AuthRouter(authService: OidcAuthService, prisma: PrismaClient
         return;
       }
 
-      // 2. Resolve the caller's tenant by their verified email (one pod per user).
+      // 2. Resolve the caller's tenant by their verified email (one pod per user PER silo).
+      //    Scope the lookup to the silo the caller is on — each org is served at
+      //    `<clusterTenant>.<base>`, so a user who owns a workspace in more than one silo
+      //    resolves to the pod for the host they are connecting through. Without a derivable
+      //    silo the lookup stays global (and still fail-closes on ambiguity below).
       const email = typeof authUser.email === "string" ? authUser.email.toLowerCase() : "";
       if (!email)
       {
@@ -148,8 +156,9 @@ export function ___AuthRouter(authService: OidcAuthService, prisma: PrismaClient
         return;
       }
 
+      const silo = _ClusterTenantFromHost(_RequestHost(req));
       const matches = await prisma.tenant.findMany({
-        where: { email: { equals: email, mode: "insensitive" } },
+        where: { email: { equals: email, mode: "insensitive" }, ...(silo ? { clusterTenantRef: silo } : {}) },
         select: { name: true, ingressHost: true, configOverrides: true },
       });
 
@@ -227,9 +236,9 @@ export function ___AuthRouter(authService: OidcAuthService, prisma: PrismaClient
         return;
       }
 
-      // 2. Resolve the caller's tenant by their verified email (one pod per user),
-      //    failing closed on a missing or ambiguous mapping — never cut another
-      //    user's connections.
+      // 2. Resolve the caller's tenant by their verified email (one pod per user per silo),
+      //    scoped to the silo the caller is on, failing closed on a missing or ambiguous
+      //    mapping — never cut another user's connections. Mirrors `/pod-token`.
       const email = typeof authUser.email === "string" ? authUser.email.toLowerCase() : "";
       if (!email)
       {
@@ -237,8 +246,9 @@ export function ___AuthRouter(authService: OidcAuthService, prisma: PrismaClient
         return;
       }
 
+      const silo = _ClusterTenantFromHost(_RequestHost(req));
       const matches = await prisma.tenant.findMany({
-        where: { email: { equals: email, mode: "insensitive" } },
+        where: { email: { equals: email, mode: "insensitive" }, ...(silo ? { clusterTenantRef: silo } : {}) },
         select: { name: true },
       });
 
