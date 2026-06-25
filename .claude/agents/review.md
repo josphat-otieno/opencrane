@@ -52,7 +52,23 @@ scope, review those.
    - Backward-incompatible behaviour changes.
 2. **Reliability and operations**
    - Failure handling, retry/timeout behaviour, resource cleanup.
-   - Observability: are failures logged with enough structured context?
+   - **Observability — silent failures are a defect.** Every error, caught
+     exception, fail-closed branch, and silent fall-through MUST emit a
+     structured log line via `_log` (control-plane) / the `@opencrane/observability`
+     logger, at the right level, before returning/swallowing:
+     - `error` — an operation failed and the caller can't recover.
+     - `warn` — an operational anomaly the system papered over: a fail-closed
+       `return null`/`return`/`continue` that degrades behaviour, a compensating
+       rollback, a config that's present-but-incomplete, a best-effort cleanup that
+       failed. **A bare `return null` / `catch {}` on an anomalous path with no log
+       is a finding** — it hides exactly the misconfiguration an operator needs to see.
+     - `debug` — expected/benign skips and high-frequency noise (probe traffic,
+       normal "nothing to do" early returns).
+     Include structured context (ids, host, names, the boolean that tripped the
+     branch) — never log a bare message, and never log secrets/keys/tokens.
+     Distinguish a *normal* early return (no log) from an *anomalous* fall-through
+     (warn): the test is "would an operator debugging a silent misbehaviour want to
+     know this happened?"
 3. **Security and policy (IAM-first)**
    - Verify federated identity / OIDC / Workload Identity is preferred over static
      bearer tokens. Flag any new bearer-token control path that IAM could solve.
