@@ -17,8 +17,13 @@ const _DATASET_KEY_BY_GROUP_SCOPE: Record<string, keyof TenantDatasetMembership 
   Personal: "personal",
 };
 
-/** The non-org dataset tiers that are enumerated from group membership (deduped + sorted). */
-const _ENUMERATED_KEYS = ["team", "department", "project", "personal"] as const;
+/**
+ * The non-org dataset tiers enumerated from group membership. Listed in retrieval relevance
+ * order (most → least relevant; see DATASET_SCOPE_RETRIEVAL_PRECEDENCE) for readability, but
+ * the order here is cosmetic — it only drives the per-tier normalisation loop below. Org is
+ * excluded (it is the `["default"]` singleton, never enumerated from members).
+ */
+const _ENUMERATED_KEYS = ["personal", "project", "team", "department"] as const;
 
 /**
  * Derive a tenant's Cognee dataset memberships from the IAM groups its principal set belongs to
@@ -68,8 +73,11 @@ export async function _DeriveTenantDatasetMembership(prisma: PrismaClient, tenan
     membership[key].push(...members);
   }
 
-  // 4. Normalise each enumerated tier (dedupe + stable order) so the result diffs cleanly against
-  //    the persisted membership and against Cognee.
+  // 4. Canonicalise the SUBJECTS within each tier — dedupe + alphabetical sort — purely so the
+  //    derived membership diffs cleanly (byte-identical arrays) against the persisted projection
+  //    and Cognee, keeping the diff-gate stable. This sorts subjects inside a tier; it is NOT a
+  //    relevance ordering of the scope tiers (that is DATASET_SCOPE_RETRIEVAL_PRECEDENCE, consumed
+  //    by the retrieval chain, not here).
   for (const key of _ENUMERATED_KEYS)
   {
     membership[key] = Array.from(new Set(membership[key])).sort();

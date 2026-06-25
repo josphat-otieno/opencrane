@@ -57,7 +57,7 @@ describe("resourceSharesRouter — direct file/chat sharing → resource group (
     expect(res.status).toBe(201);
     // Personal-scoped group named for the resource, members = sharer + recipient.
     expect(_lastWrite).toMatchObject({ name: "resource:file:f1", scope: "Personal" });
-    expect(_lastWrite?.members).toEqual(["alice", "bob"]);
+    expect((_lastWrite as Record<string, unknown> | null)?.members).toEqual(["alice", "bob"]);
     expect(res.body.members).toEqual(["alice", "bob"]);
   });
 
@@ -67,7 +67,7 @@ describe("resourceSharesRouter — direct file/chat sharing → resource group (
     const prisma = _prisma({ byName: { "resource:file:f1": { id: "g1", name: "resource:file:f1", members: ["alice"] } } });
     const res = await request(_app(prisma, "alice")).post("/api/v1/resource-shares").send({ resourceType: "file", resourceId: "f1", recipientSubject: "bob" });
     expect(res.status).toBe(200);
-    expect(_lastWrite?.members).toEqual(["alice", "bob"]);
+    expect((_lastWrite as Record<string, unknown> | null)?.members).toEqual(["alice", "bob"]);
   });
 
   it("403s when a non-member tries to share an existing resource (least-privilege)", async function _gate()
@@ -99,6 +99,6 @@ describe("resourceSharesRouter — direct file/chat sharing → resource group (
     _lastWrite = null;
     const mine = await request(_app(prisma, "alice")).delete("/api/v1/resource-shares/g1/recipients/bob");
     expect(mine.status).toBe(200);
-    expect(_lastWrite?.members).toEqual(["alice"]);
+    expect((_lastWrite as Record<string, unknown> | null)?.members).toEqual(["alice"]);
   });
 });
