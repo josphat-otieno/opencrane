@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 
 import { _log } from "../../log.js";
-import type { ProvisionOrgInput, ProvisionOrgResult, ZitadelClientConfig, ZitadelManagementClient } from "./zitadel-client.types.js";
+import type { ZitadelProvisionOrgInput, ZitadelProvisionOrgResult, ZitadelClientConfig, ZitadelManagementClient } from "./zitadel-client.types.js";
 
 export type { ZitadelClientConfig };
 
@@ -69,7 +69,7 @@ export class _HttpZitadelManagementClient implements ZitadelManagementClient
     this.saKey = { keyId: parsed.keyId, key: parsed.key, userId: parsed.userId };
   }
 
-  public async provisionOrg(input: ProvisionOrgInput): Promise<ProvisionOrgResult>
+  public async provisionOrg(input: ZitadelProvisionOrgInput): Promise<ZitadelProvisionOrgResult>
   {
     // 1. Create the dedicated Organization (instance-level). Everything else happens
     //    inside its context via the x-zitadel-orgid header.

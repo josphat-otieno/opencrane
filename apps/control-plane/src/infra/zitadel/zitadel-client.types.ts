@@ -20,7 +20,7 @@ export interface ZitadelClientConfig
 }
 
 /** Inputs needed to provision a ClusterTenant's Zitadel org + login surface. */
-export interface ProvisionOrgInput
+export interface ZitadelProvisionOrgInput
 {
   /** ClusterTenant name (the org key) — first DNS label of the org host. */
   orgName: string;
@@ -33,7 +33,7 @@ export interface ProvisionOrgInput
 }
 
 /** The Zitadel identifiers persisted onto the ClusterTenant row after provisioning. */
-export interface ProvisionOrgResult
+export interface ZitadelProvisionOrgResult
 {
   /** Provisioned Zitadel Organization id. */
   orgId: string;
@@ -57,7 +57,7 @@ export interface ZitadelManagementClient
    * Provision a dedicated Organization + project + roles + OIDC app for a ClusterTenant
    * and grant the master `admin`. Returns the identifiers to persist. Throws on failure.
    */
-  provisionOrg(input: ProvisionOrgInput): Promise<ProvisionOrgResult>;
+  provisionOrg(input: ZitadelProvisionOrgInput): Promise<ZitadelProvisionOrgResult>;
 
   /** Tear down a previously-provisioned org (tolerates an already-absent org). */
   teardownOrg(orgId: string): Promise<void>;

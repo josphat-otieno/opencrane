@@ -436,25 +436,23 @@ export function clusterTenantsRouter(prisma: PrismaClient, registry: ClusterTena
       res.status(404).json({ error: "Cluster tenant not found", code: "CLUSTER_TENANT_NOT_FOUND" });
       return;
     }
-    await prisma.clusterTenant.delete({ where: { name: req.params.name } });
-    // Tear down the org's Zitadel Organization (S3 / Phase 2a). Best-effort + AFTER the
-    // local delete: the DB is the source of truth for "this org is gone"; a Zitadel
-    // teardown hiccup must not resurrect the row. The reconcile/backfill loop (later
-    // slice) sweeps any orphaned Zitadel org left by a failure here. No-op when the org
-    // was never provisioned (null orgId) or the client is unconfigured.
-    if (existing.zitadelOrgId)
+    // Delete the row and tear down its Zitadel Organization in ONE transaction so the DB
+    // never drifts from the IdP: the Zitadel teardown is the LAST fallible step, so if it
+    // fails the row delete rolls back and the org stays (the caller retries) — there is
+    // never a deleted ClusterTenant row left pointing at a live Zitadel org. teardownOrg is
+    // 404-tolerant, so an already-absent org still commits the delete. No Zitadel call when
+    // the org was never provisioned (null orgId).
+    await prisma.$transaction(async function _deleteWithOrgTeardown(tx)
     {
-      try
+      await tx.clusterTenant.delete({ where: { name: req.params.name } });
+      if (existing.zitadelOrgId)
       {
         await zitadelClient.teardownOrg(existing.zitadelOrgId);
       }
-      catch (err)
-      {
-        console.error(`[cluster-tenants] Zitadel org teardown failed for ${req.params.name} (org row already deleted; reconcile will sweep):`, err);
-      }
-    }
-    // Tear down the cluster-scoped CR so the reconciler stops watching it; tolerant
-    // of a missing CR (404) for the dev/no-cluster path where none was ever written.
+    });
+    // Tear down the cluster-scoped CR so the reconciler stops watching it; tolerant of a
+    // missing CR (404). This is a Kubernetes side-effect (operator-reconciled), so it sits
+    // OUTSIDE the DB transaction — a Prisma tx cannot roll back a k8s mutation.
     await _DeleteClusterTenantCr(customApi, req.params.name);
     res.json({ name: req.params.name, status: "deleted" });
   });

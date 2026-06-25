@@ -413,4 +413,25 @@ describe("clusterTenantsRouter — Zitadel org provisioning (S3 / Phase 2a)", fu
     expect(res.status).not.toBe(201);
   });
 
+  it("fails the delete (no 200) when Zitadel teardown throws — teardown is inside the delete tx", async function _deleteRollback()
+  {
+    const store = new Map<string, Record<string, unknown>>([["acme", { name: "acme", displayName: "Acme", zitadelOrgId: "zorg-1" }]]);
+    let teardownCalled = false;
+    const throwingTeardown: ZitadelManagementClient = {
+      async provisionOrg(input) { return { orgId: "z", appId: "a", clientId: "c", redirectUri: input.redirectUri }; },
+      async teardownOrg() { teardownCalled = true; throw new Error("zitadel unreachable"); },
+    };
+    // No session → dev-auth bypass for the org-manager gate (matches the CRUD test), so the
+    // delete handler runs and we exercise the transactional teardown directly.
+    const app = _buildApp(_mockPrisma(store), _mockRegistry(false), null, undefined, throwingTeardown);
+
+    const res = await request(app).delete("/api/v1/cluster-tenants/acme");
+
+    // Teardown ran inside prisma.$transaction as the last fallible step, so its throw
+    // surfaces (no 200) — real Prisma rolls the row delete back, keeping the DB in sync
+    // with the still-live Zitadel org (the caller retries).
+    expect(teardownCalled).toBe(true);
+    expect(res.status).not.toBe(200);
+  });
+
 });
