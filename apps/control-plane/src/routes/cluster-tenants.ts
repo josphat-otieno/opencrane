@@ -12,8 +12,9 @@ import { _RequireBillingAccountForOrgCreate, _RequireOrgManager } from "../infra
 import { _ApplyClusterTenantCr, _DeleteClusterTenantCr } from "../core/cluster-tenants/cr-bridge.js";
 import { _ReadClusterTenantObservedStatus } from "../core/cluster-tenants/cr-status-reader.js";
 import { _EnsureOwnerDefaultTenant } from "../core/cluster-tenants/default-tenant.js";
-import { _DeriveOrgRedirectUri } from "../infra/zitadel/zitadel-client.js";
+import { _DeriveOrgRedirectUri, _DeriveVanityRedirectUri } from "../infra/zitadel/zitadel-client.js";
 import type { ZitadelManagementClient } from "../infra/zitadel/zitadel-client.types.js";
+import { _log } from "../log.js";
 
 /** RFC-1123-ish DNS domain: lowercase labels, ≥1 dot, alpha TLD, ≤253 chars. */
 const _VANITY_DOMAIN_PATTERN = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/;
@@ -268,11 +269,14 @@ export function clusterTenantsRouter(prisma: PrismaClient, registry: ClusterTena
           orgName: org.name,
           displayName: org.displayName,
           redirectUri: _DeriveOrgRedirectUri(org.name, process.env.PLATFORM_BASE_DOMAIN?.trim() ?? ""),
+          // Register the vanity callback too when the org is created with a vanity domain,
+          // so login works at the vanity host from the start (not only after a later PUT).
+          ...(org.vanityDomain ? { vanityRedirectUri: _DeriveVanityRedirectUri(org.vanityDomain) } : {}),
           masterSubject: ownerSubject,
         });
         return tx.clusterTenant.update({
           where: { name: org.name },
-          data: { zitadelOrgId: zitadel.orgId, zitadelAppId: zitadel.appId, zitadelRedirectUri: zitadel.redirectUri },
+          data: { zitadelOrgId: zitadel.orgId, zitadelProjectId: zitadel.projectId, zitadelAppId: zitadel.appId, zitadelClientId: zitadel.clientId, zitadelRedirectUri: zitadel.redirectUri },
         });
       });
     }
@@ -326,12 +330,12 @@ export function clusterTenantsRouter(prisma: PrismaClient, registry: ClusterTena
       });
       if (seed.skippedReason)
       {
-        console.warn(`[cluster-tenants] default tenant not seeded for ${created.name}: ${seed.skippedReason}`);
+        _log.warn({ orgName: created.name, skippedReason: seed.skippedReason }, "default tenant not seeded for new org; owner has no workspace until refresh");
       }
     }
     catch (err)
     {
-      console.error(`[cluster-tenants] default tenant seed failed for ${created.name}; org stays created (use refresh to retry):`, err);
+      _log.warn({ err, orgName: created.name }, "default tenant seed failed; org stays created (use refresh to retry)");
     }
 
     res.status(201).json(orgContract);
@@ -421,7 +425,43 @@ export function clusterTenantsRouter(prisma: PrismaClient, registry: ClusterTena
     // never clobber the observed status the reconciler stamps — those columns are
     // the operator's to own. Re-project the new spec onto the CR so the reconciler
     // re-converges to the changed desired state (idempotent; status untouched).
-    const updated = await prisma.clusterTenant.update({ where: { name: req.params.name }, data });
+    //
+    // When the vanity domain ACTUALLY changes and the org is fully provisioned in Zitadel,
+    // the OIDC app's redirect-URI allowlist must track it — else login at the new vanity
+    // host fails (URI not allowlisted) or a cleared vanity keeps a stale URI. Persist the
+    // row + sync the allowlist in ONE transaction (IdP call LAST) so the two never drift:
+    // a Zitadel rejection rolls the row update back. TLS for the vanity host is handled
+    // separately by the operator's domain provisioner off the re-projected CR.
+    const vanityChanged = body.vanityDomain !== undefined && ((data.vanityDomain as string | null | undefined) ?? null) !== (existing.vanityDomain ?? null);
+    const orgId = existing.zitadelOrgId;
+    const projectId = existing.zitadelProjectId;
+    const appId = existing.zitadelAppId;
+    let updated: ClusterTenantRow;
+    if (vanityChanged && orgId && projectId && appId)
+    {
+      const baseDomain = process.env.PLATFORM_BASE_DOMAIN?.trim() ?? "";
+      const canonical = existing.zitadelRedirectUri ?? _DeriveOrgRedirectUri(req.params.name, baseDomain);
+      const newVanity = (data.vanityDomain as string | null | undefined) ?? null;
+      const redirectUris = [canonical, ...(newVanity ? [_DeriveVanityRedirectUri(newVanity)] : [])];
+      updated = await prisma.$transaction(async function _updateWithRedirectSync(tx)
+      {
+        const row = await tx.clusterTenant.update({ where: { name: req.params.name }, data });
+        await zitadelClient.setAppRedirectUris({ orgId, projectId, appId, redirectUris });
+        return row;
+      });
+    }
+    else
+    {
+      // No vanity change (or an unprovisioned org with no app to sync) → a plain DB update.
+      // A vanity change on an unprovisioned org (single-cluster / no Zitadel app, or a row
+      // predating provisioning) persists but has no per-org app to register against — trace
+      // it so the "vanity set but not in the IdP allowlist" state is visible, not silent.
+      if (vanityChanged && !(orgId && projectId && appId))
+      {
+        _log.debug({ orgName: req.params.name }, "vanity domain changed on an unprovisioned org; persisted without a Zitadel redirect-URI sync (no per-org app)");
+      }
+      updated = await prisma.clusterTenant.update({ where: { name: req.params.name }, data });
+    }
     const orgContract = _ToContract(updated);
     await _ApplyClusterTenantCr(customApi, orgContract);
     res.json(orgContract);
@@ -436,26 +476,35 @@ export function clusterTenantsRouter(prisma: PrismaClient, registry: ClusterTena
       res.status(404).json({ error: "Cluster tenant not found", code: "CLUSTER_TENANT_NOT_FOUND" });
       return;
     }
-    await prisma.clusterTenant.delete({ where: { name: req.params.name } });
-    // Tear down the org's Zitadel Organization (S3 / Phase 2a). Best-effort + AFTER the
-    // local delete: the DB is the source of truth for "this org is gone"; a Zitadel
-    // teardown hiccup must not resurrect the row. The reconcile/backfill loop (later
-    // slice) sweeps any orphaned Zitadel org left by a failure here. No-op when the org
-    // was never provisioned (null orgId) or the client is unconfigured.
-    if (existing.zitadelOrgId)
+    // Delete the row and tear down its Zitadel Organization in ONE transaction so the DB
+    // never drifts from the IdP: the Zitadel teardown is the LAST fallible step, so if it
+    // fails the row delete rolls back and the org stays (the caller retries) — there is
+    // never a deleted ClusterTenant row left pointing at a live Zitadel org. teardownOrg is
+    // 404-tolerant, so an already-absent org still commits the delete. No Zitadel call when
+    // the org was never provisioned (null orgId).
+    await prisma.$transaction(async function _deleteWithOrgTeardown(tx)
     {
-      try
+      await tx.clusterTenant.delete({ where: { name: req.params.name } });
+      if (existing.zitadelOrgId)
       {
         await zitadelClient.teardownOrg(existing.zitadelOrgId);
       }
-      catch (err)
-      {
-        console.error(`[cluster-tenants] Zitadel org teardown failed for ${req.params.name} (org row already deleted; reconcile will sweep):`, err);
-      }
+    });
+    // Tear down the cluster-scoped CR so the reconciler stops watching it; tolerant of a
+    // missing CR (404). This is a Kubernetes side-effect (operator-reconciled), so it sits
+    // OUTSIDE the DB transaction — a Prisma tx cannot roll back a k8s mutation. The DB row
+    // (source of truth) is already committed, so a CR-delete failure must NOT 500 the call:
+    // a retry would 404 (row gone) and never re-attempt cleanup, leaving a permanent orphan.
+    // Instead log.error so the orphaned CR surfaces for operator cleanup, and still report
+    // the delete as done (the org no longer exists from the API's perspective).
+    try
+    {
+      await _DeleteClusterTenantCr(customApi, req.params.name);
     }
-    // Tear down the cluster-scoped CR so the reconciler stops watching it; tolerant
-    // of a missing CR (404) for the dev/no-cluster path where none was ever written.
-    await _DeleteClusterTenantCr(customApi, req.params.name);
+    catch (err)
+    {
+      _log.error({ err, orgName: req.params.name }, "ClusterTenant CR teardown failed after DB row + Zitadel org were deleted; CR is orphaned and needs manual cleanup");
+    }
     res.json({ name: req.params.name, status: "deleted" });
   });
 

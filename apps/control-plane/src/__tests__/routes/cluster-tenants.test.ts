@@ -14,7 +14,8 @@ import type { ZitadelManagementClient } from "../../infra/zitadel/zitadel-client
 function _fakeZitadel(): ZitadelManagementClient
 {
   return {
-    async provisionOrg(input) { return { orgId: "zorg-test", appId: "zapp-test", redirectUri: input.redirectUri }; },
+    async provisionOrg(input) { return { orgId: "zorg-test", projectId: "zproj-test", appId: "zapp-test", clientId: "zclient-test", redirectUri: input.redirectUri }; },
+    async setAppRedirectUris() { /* no-op */ },
     async teardownOrg() { /* no-op */ },
   };
 }
@@ -360,19 +361,21 @@ describe("clusterTenantsRouter — owner default tenant (create-time seed + refr
 
 describe("clusterTenantsRouter — Zitadel org provisioning (S3 / Phase 2a)", function _zitadelSuite()
 {
-  /** A live-ish fake that records the provision call and returns deterministic ids. */
-  function _fakeProvisioner(): { client: ZitadelManagementClient; calls: unknown[] }
+  /** A live-ish fake that records the provision + redirect-URI calls and returns deterministic ids. */
+  function _fakeProvisioner(): { client: ZitadelManagementClient; calls: unknown[]; redirectCalls: unknown[] }
   {
     const calls: unknown[] = [];
+    const redirectCalls: unknown[] = [];
     const client: ZitadelManagementClient = {
       async provisionOrg(input)
       {
         calls.push(input);
-        return { orgId: "zorg-123", appId: "zapp-456", redirectUri: input.redirectUri };
+        return { orgId: "zorg-123", projectId: "zproj-123", appId: "zapp-456", clientId: "zclient-789", redirectUri: input.redirectUri };
       },
+      async setAppRedirectUris(input) { redirectCalls.push(input); },
       async teardownOrg() { /* no-op */ },
     };
-    return { client, calls };
+    return { client, calls, redirectCalls };
   }
 
   it("persists the Zitadel org/app ids on the ClusterTenant when provisioning succeeds", async function _persists()
@@ -391,6 +394,8 @@ describe("clusterTenantsRouter — Zitadel org provisioning (S3 / Phase 2a)", fu
     const row = store.get("acme");
     expect(row?.zitadelOrgId).toBe("zorg-123");
     expect(row?.zitadelAppId).toBe("zapp-456");
+    // S3b: the OIDC client_id is persisted so login can resolve the per-org client by host.
+    expect(row?.zitadelClientId).toBe("zclient-789");
   });
 
   it("fails the create (no 201) when Zitadel provisioning throws — the tx is the rollback boundary", async function _rollsBack()
@@ -398,6 +403,7 @@ describe("clusterTenantsRouter — Zitadel org provisioning (S3 / Phase 2a)", fu
     const store = new Map<string, Record<string, unknown>>();
     const throwing: ZitadelManagementClient = {
       async provisionOrg() { throw new Error("zitadel rejected: org name taken"); },
+      async setAppRedirectUris() { /* no-op */ },
       async teardownOrg() { /* no-op */ },
     };
     const app = _buildApp(_mockPrisma(store), _mockRegistry(false), null, { sub: "owner-1", email: "owner@acme.test" }, throwing);
@@ -409,6 +415,94 @@ describe("clusterTenantsRouter — Zitadel org provisioning (S3 / Phase 2a)", fu
     // the inline test stub has no rollback, so we assert the handler surfaces the failure
     // rather than committing and returning 201).
     expect(res.status).not.toBe(201);
+  });
+
+  it("fails the delete (no 200) when Zitadel teardown throws — teardown is inside the delete tx", async function _deleteRollback()
+  {
+    const store = new Map<string, Record<string, unknown>>([["acme", { name: "acme", displayName: "Acme", zitadelOrgId: "zorg-1" }]]);
+    let teardownCalled = false;
+    const throwingTeardown: ZitadelManagementClient = {
+      async provisionOrg(input) { return { orgId: "z", projectId: "p", appId: "a", clientId: "c", redirectUri: input.redirectUri }; },
+      async setAppRedirectUris() { /* no-op */ },
+      async teardownOrg() { teardownCalled = true; throw new Error("zitadel unreachable"); },
+    };
+    // No session → dev-auth bypass for the org-manager gate (matches the CRUD test), so the
+    // delete handler runs and we exercise the transactional teardown directly.
+    const app = _buildApp(_mockPrisma(store), _mockRegistry(false), null, undefined, throwingTeardown);
+
+    const res = await request(app).delete("/api/v1/cluster-tenants/acme");
+
+    // Teardown ran inside prisma.$transaction as the last fallible step, so its throw
+    // surfaces (no 200) — real Prisma rolls the row delete back, keeping the DB in sync
+    // with the still-live Zitadel org (the caller retries).
+    expect(teardownCalled).toBe(true);
+    expect(res.status).not.toBe(200);
+  });
+
+  it("syncs the Zitadel app redirect URIs when a vanity domain is added via PUT (S3b)", async function _vanityPutSync()
+  {
+    // A fully-provisioned org with no vanity yet; canonical callback already registered.
+    const store = new Map<string, Row>([["acme", {
+      name: "acme", displayName: "Acme", vanityDomain: null,
+      isolationTier: "Shared", computeMode: "Shared", quota: {}, phase: "pending",
+      zitadelOrgId: "zorg-1", zitadelProjectId: "zproj-1", zitadelAppId: "zapp-1", zitadelClientId: "zc-1",
+      zitadelRedirectUri: "https://acme.dev.opencrane.ai/api/v1/auth/callback",
+    }]]);
+    const { client, redirectCalls } = _fakeProvisioner();
+    const app = _buildApp(_mockPrisma(store), _mockRegistry(false), null, undefined, client);
+
+    const res = await request(app).put("/api/v1/cluster-tenants/acme").send({ vanityDomain: "ai.acme.com" });
+
+    expect(res.status).toBe(200);
+    // The redirect-URI sync ran with the org's persisted ids and the canonical + vanity set.
+    expect(redirectCalls).toHaveLength(1);
+    expect(redirectCalls[0]).toEqual({
+      orgId: "zorg-1", projectId: "zproj-1", appId: "zapp-1",
+      redirectUris: ["https://acme.dev.opencrane.ai/api/v1/auth/callback", "https://ai.acme.com/api/v1/auth/callback"],
+    });
+  });
+
+  it("fails the vanity PUT (no 200) when the Zitadel redirect-URI sync throws — sync is inside the update tx (S3b)", async function _vanityPutRollback()
+  {
+    const store = new Map<string, Row>([["acme", {
+      name: "acme", displayName: "Acme", vanityDomain: null,
+      isolationTier: "Shared", computeMode: "Shared", quota: {}, phase: "pending",
+      zitadelOrgId: "zorg-1", zitadelProjectId: "zproj-1", zitadelAppId: "zapp-1", zitadelClientId: "zc-1",
+      zitadelRedirectUri: "https://acme.dev.opencrane.ai/api/v1/auth/callback",
+    }]]);
+    let syncCalled = false;
+    const throwingSync: ZitadelManagementClient = {
+      async provisionOrg(input) { return { orgId: "z", projectId: "p", appId: "a", clientId: "c", redirectUri: input.redirectUri }; },
+      async setAppRedirectUris() { syncCalled = true; throw new Error("zitadel unreachable"); },
+      async teardownOrg() { /* no-op */ },
+    };
+    const app = _buildApp(_mockPrisma(store), _mockRegistry(false), null, undefined, throwingSync);
+
+    const res = await request(app).put("/api/v1/cluster-tenants/acme").send({ vanityDomain: "ai.acme.com" });
+
+    // The sync is the last fallible step inside prisma.$transaction, so its throw surfaces
+    // (no 200) — real Prisma rolls the row update back, keeping the persisted vanity in sync
+    // with the Zitadel app's allowlist (the caller retries).
+    expect(syncCalled).toBe(true);
+    expect(res.status).not.toBe(200);
+  });
+
+  it("does NOT call Zitadel on a PUT that leaves the vanity domain unchanged (S3b)", async function _noVanityChangeNoSync()
+  {
+    const store = new Map<string, Row>([["acme", {
+      name: "acme", displayName: "Acme", vanityDomain: null,
+      isolationTier: "Shared", computeMode: "Shared", quota: {}, phase: "pending",
+      zitadelOrgId: "zorg-1", zitadelProjectId: "zproj-1", zitadelAppId: "zapp-1", zitadelClientId: "zc-1",
+      zitadelRedirectUri: "https://acme.dev.opencrane.ai/api/v1/auth/callback",
+    }]]);
+    const { client, redirectCalls } = _fakeProvisioner();
+    const app = _buildApp(_mockPrisma(store), _mockRegistry(false), null, undefined, client);
+
+    // A display-name-only update touches no host, so the app's allowlist must not be synced.
+    const res = await request(app).put("/api/v1/cluster-tenants/acme").send({ displayName: "Acme Inc" });
+
+    expect(res.status).toBe(200);
+    expect(redirectCalls).toHaveLength(0);
   });
 
 });

@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 
 import { _log } from "../../log.js";
-import type { ProvisionOrgInput, ProvisionOrgResult, ZitadelClientConfig, ZitadelManagementClient } from "./zitadel-client.types.js";
+import type { ZitadelProvisionOrgInput, ZitadelProvisionOrgResult, ZitadelSetRedirectUrisInput, ZitadelClientConfig, ZitadelManagementClient } from "./zitadel-client.types.js";
 
 export type { ZitadelClientConfig };
 
@@ -69,7 +69,7 @@ export class _HttpZitadelManagementClient implements ZitadelManagementClient
     this.saKey = { keyId: parsed.keyId, key: parsed.key, userId: parsed.userId };
   }
 
-  public async provisionOrg(input: ProvisionOrgInput): Promise<ProvisionOrgResult>
+  public async provisionOrg(input: ZitadelProvisionOrgInput): Promise<ZitadelProvisionOrgResult>
   {
     // 1. Create the dedicated Organization (instance-level). Everything else happens
     //    inside its context via the x-zitadel-orgid header.
@@ -99,18 +99,29 @@ export class _HttpZitadelManagementClient implements ZitadelManagementClient
         ],
       }, orgId);
 
+      // Register the canonical `<org>.<base>` callback plus the customer-vanity callback
+      // when the org has a vanity domain, so login works at either host. Zitadel rejects a
+      // code exchange whose redirect_uri is not on this list, so both must be present.
+      const redirectUris = [input.redirectUri, ...(input.vanityRedirectUri ? [input.vanityRedirectUri] : [])];
       const app = await this._call("POST", `/management/v1/projects/${projectId}/apps/oidc`, {
         name: "login",
-        redirectUris: [input.redirectUri],
+        redirectUris,
         responseTypes: ["OIDC_RESPONSE_TYPE_CODE"],
         grantTypes: ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE"],
         appType: "OIDC_APP_TYPE_WEB",
         authMethodType: "OIDC_AUTH_METHOD_TYPE_NONE",
         devMode: false,
-      }, orgId) as { appId?: string };
+      }, orgId) as { appId?: string; clientId?: string };
       if (!app.appId)
       {
         throw new Error("Zitadel OIDC app create returned no appId");
+      }
+      // The live app-create response carries the generated OIDC client_id alongside the
+      // appId. Capture it so login can resolve this org's per-org client by host (S3b);
+      // without it the org has a login surface but no credential to authorize against it.
+      if (!app.clientId)
+      {
+        throw new Error("Zitadel OIDC app create returned no clientId");
       }
 
       // Grant the master `admin` on this org's project (cross-org user grant; the master
@@ -120,8 +131,8 @@ export class _HttpZitadelManagementClient implements ZitadelManagementClient
         roleKeys: ["admin"],
       }, orgId);
 
-      _log.info({ orgId, appId: app.appId, orgName: input.orgName }, "provisioned Zitadel org for ClusterTenant");
-      return { orgId, appId: app.appId, redirectUri: input.redirectUri };
+      _log.info({ orgId, projectId, appId: app.appId, orgName: input.orgName, redirectUriCount: redirectUris.length }, "provisioned Zitadel org for ClusterTenant");
+      return { orgId, projectId, appId: app.appId, clientId: app.clientId, redirectUri: input.redirectUri };
     }
     catch (err)
     {
@@ -129,6 +140,28 @@ export class _HttpZitadelManagementClient implements ZitadelManagementClient
       await this.teardownOrg(orgId).catch(function _ignore() { /* compensation is best-effort */ });
       throw err;
     }
+  }
+
+  public async setAppRedirectUris(input: ZitadelSetRedirectUrisInput): Promise<void>
+  {
+    // Replace the OIDC app's config. Zitadel's update is a FULL PUT of the oidc_config —
+    // any settable field omitted here resets to its default. This is safe ONLY because
+    // `provisionOrg` is the sole creator of these apps and sets exactly this field set
+    // (all other config left at Zitadel defaults), so re-sending the same fields verbatim
+    // is a no-op for everything except `redirectUris`. If `provisionOrg`'s app-create body
+    // ever gains a non-default field (custom TTLs, PKCE/secret settings, post-logout URIs),
+    // it MUST be mirrored here too — keep the two field sets in lock-step. Org-scoped via
+    // the x-zitadel-orgid header; fail-loud so a wrapping DB transaction rolls back when the
+    // IdP rejects the change.
+    await this._call("PUT", `/management/v1/projects/${input.projectId}/apps/${input.appId}/oidc_config`, {
+      redirectUris: input.redirectUris,
+      responseTypes: ["OIDC_RESPONSE_TYPE_CODE"],
+      grantTypes: ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE"],
+      appType: "OIDC_APP_TYPE_WEB",
+      authMethodType: "OIDC_AUTH_METHOD_TYPE_NONE",
+      devMode: false,
+    }, input.orgId);
+    _log.info({ orgId: input.orgId, projectId: input.projectId, appId: input.appId, redirectUriCount: input.redirectUris.length }, "updated Zitadel OIDC app redirect URIs");
   }
 
   public async teardownOrg(orgId: string): Promise<void>
@@ -237,6 +270,17 @@ export function _BuildZitadelManagementClient(): ZitadelManagementClient
 export function _DeriveOrgRedirectUri(orgName: string, baseDomain: string): string
 {
   return `https://${orgName}.${baseDomain}/api/v1/auth/callback`;
+}
+
+/**
+ * Derive the OIDC redirect URI for an org's customer-vanity host:
+ * `https://<vanityDomain>/api/v1/auth/callback`. The vanity domain is a full host (CNAMEd
+ * onto the org apex), so it is the authority directly — no base domain is appended. Used
+ * to register/sync the vanity callback on the org's Zitadel app.
+ */
+export function _DeriveVanityRedirectUri(vanityDomain: string): string
+{
+  return `https://${vanityDomain}/api/v1/auth/callback`;
 }
 
 /** URL-safe base64 of a string or buffer (JWT segments / signatures). */

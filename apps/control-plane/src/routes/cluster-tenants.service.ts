@@ -3,6 +3,7 @@ import type { ClusterTenant, ClusterTenantObservedStatus, ClusterTenantResourceQ
 import type { Prisma, PrismaClient } from "@prisma/client";
 
 import type { ClusterTenantComputeInput, ClusterTenantResourcesInput } from "./cluster-tenants.models.js";
+import { _log } from "../log.js";
 
 /** A cluster_tenants row as read back from Prisma (subset consumed here). */
 type ClusterTenantRow = Prisma.ClusterTenantGetPayload<Record<string, never>>;
@@ -106,10 +107,12 @@ export async function _SyncObservedStatusToDb(prisma: PrismaClient, row: Cluster
   {
     await prisma.clusterTenant.update({ where: { name: row.name }, data: { phase, message, boundNamespace, provisioner } });
   }
-  catch
+  catch (err)
   {
     // Best-effort mirror: the authoritative read already used the observed status, so a
-    // transient DB write failure must not fail the status endpoint.
+    // transient DB write failure must not fail the status endpoint. Log at debug so a
+    // persistent divergence is traceable without flooding the log on every poll.
+    _log.debug({ err, orgName: row.name, phase }, "best-effort ClusterTenant status mirror to DB failed; serving observed status from the CR");
   }
 }
 
