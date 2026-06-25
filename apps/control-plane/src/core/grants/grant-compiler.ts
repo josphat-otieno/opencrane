@@ -1,15 +1,7 @@
-import {
-  type PrismaClient,
-} from "@prisma/client";
+import { type PrismaClient } from "@prisma/client";
+import { ___DoWithTrace, ___GetActiveSpan } from "@opencrane/observability";
 import { ___SomeArray, ___SomeRecord, ___SortBy } from "../utils/collections.js";
-
-import {
-  GrantCompilerAccess,
-  GrantCompilerPayloadType,
-  GrantCompilerScope,
-  GrantCompilerSubjectType,
-  type CompiledGrantDecision,
-} from "./grant-compiler.types.js";
+import { GrantCompilerAccess, GrantCompilerPayloadType, GrantCompilerScope, GrantCompilerSubjectType, type CompiledGrantDecision } from "./grant-compiler.types.js";
 
 /** Narrow group rows to the membership fields used during compilation. */
 const _GROUP_ROW_SELECT = {
@@ -118,6 +110,9 @@ type _GrantRow = {
  * highest priority wins first, deny wins over allow at the same priority, and the
  * newest `createdAt` wins the final tie-break.
  *
+ * Execution is wrapped in a `grants.compile` OTEL span so every call is visible
+ * in Cloud Trace with its inputs and the number of decisions resolved.
+ *
  * @param principalId - Tenant or user identifier being evaluated.
  * @param payloadType - Payload family to compile.
  * @param prisma - Prisma client used to load groups and grants.
@@ -129,59 +124,68 @@ export async function compile(
   prisma: PrismaClient,
 ): Promise<CompiledGrantDecision[]>
 {
-  // 1. Load the minimum group shape needed so membership matching stays typed and isolated.
-  const groupRows: _GroupRow[] = await prisma.group.findMany(_GROUP_ROW_SELECT);
-
-  // 2. Resolve every group that contains the principal because group grants are compiled alongside direct grants.
-  const matchingGroupIds = groupRows.filter(function _matchGroup(group: _GroupRow)
+  return ___DoWithTrace("grants.compile", { "grants.principalId": principalId, "grants.payloadType": payloadType }, async function _runCompile()
   {
-    return _GroupHasPrincipal(group.members, principalId);
-  }).map(function _mapGroup(group: _GroupRow)
-  {
-    return group.id;
-  });
+    // 1. Load the minimum group shape needed so membership matching stays typed and isolated.
+    const groupRows: _GroupRow[] = await prisma.group.findMany(_GROUP_ROW_SELECT);
 
-  // 3. Fetch only grants that can apply to the principal so the later precedence pass stays deterministic and small.
-  const grantRows: _GrantRow[] = await prisma.grant.findMany({
-    ..._GRANT_ROW_SELECT,
-    where: {
-      payloadType: _ToPrismaPayloadType(payloadType),
-      OR: [
-        {
-          subjectType: {
-            in: _DIRECT_SUBJECT_TYPES,
-          },
-          subjectId: principalId,
-        },
-        ...(matchingGroupIds.length > 0
-          ? [
-              {
-                subjectType: _PRISMA_GRANT_SUBJECT_TYPE.Group,
-                subjectId: {
-                  in: matchingGroupIds,
-                },
-              },
-            ]
-          : []),
-      ],
-    },
-  });
-  const winnerByPayloadId = new Map<string, CompiledGrantDecision>();
-
-  // 4. Walk the candidates once so deny/priority/createdAt precedence stays centralized in a single comparator.
-  for (const grant of grantRows)
-  {
-    const nextDecision = _ToCompiledGrantDecision(grant);
-    const currentWinner = winnerByPayloadId.get(grant.payloadId);
-
-    if (!currentWinner || _ShouldReplaceWinner(currentWinner, nextDecision))
+    // 2. Resolve every group that contains the principal because group grants are compiled alongside direct grants.
+    const matchingGroupIds = groupRows.filter(function _matchGroup(group: _GroupRow)
     {
-      winnerByPayloadId.set(grant.payloadId, nextDecision);
-    }
-  }
+      return _GroupHasPrincipal(group.members, principalId);
+    }).map(function _mapGroup(group: _GroupRow)
+    {
+      return group.id;
+    });
 
-  // 5. Emit a stable payload ordering so callers can cache and diff compiled contracts deterministically.
-  return ___SortBy(Array.from(winnerByPayloadId.values()), "payloadId");
+    // 3. Fetch only grants that can apply to the principal so the later precedence pass stays deterministic and small.
+    const grantRows: _GrantRow[] = await prisma.grant.findMany({
+      ..._GRANT_ROW_SELECT,
+      where: {
+        payloadType: _ToPrismaPayloadType(payloadType),
+        OR: [
+          {
+            subjectType: {
+              in: _DIRECT_SUBJECT_TYPES,
+            },
+            subjectId: principalId,
+          },
+          ...(matchingGroupIds.length > 0
+            ? [
+                {
+                  subjectType: _PRISMA_GRANT_SUBJECT_TYPE.Group,
+                  subjectId: {
+                    in: matchingGroupIds,
+                  },
+                },
+              ]
+            : []),
+        ],
+      },
+    });
+    const winnerByPayloadId = new Map<string, CompiledGrantDecision>();
+
+    // 4. Walk the candidates once so deny/priority/createdAt precedence stays centralized in a single comparator.
+    for (const grant of grantRows)
+    {
+      const nextDecision = _ToCompiledGrantDecision(grant);
+      const currentWinner = winnerByPayloadId.get(grant.payloadId);
+
+      if (!currentWinner || _ShouldReplaceWinner(currentWinner, nextDecision))
+      {
+        winnerByPayloadId.set(grant.payloadId, nextDecision);
+      }
+    }
+
+    // 5. Emit a stable payload ordering so callers can cache and diff compiled contracts deterministically.
+    const decisions = ___SortBy(Array.from(winnerByPayloadId.values()), "payloadId");
+
+    // 6. Record the decision count on the active span before returning so the trace
+    //    carries the outcome volume without requiring a separate log line.
+    ___GetActiveSpan()?.setAttribute("grants.decisionCount", decisions.length);
+
+    return decisions;
+  });
 }
 
 /**
