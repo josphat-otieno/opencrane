@@ -94,6 +94,15 @@ All resources here are namespaced, so the same rule list is valid in a Role.
 - apiGroups: ["cilium.io"]
   resources: ["ciliumnetworkpolicies"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+{{- if .Values.operator.linkerdMeshEnabled }}
+# Linkerd identity-layer policy CRs the silo reconcile applies per silo namespace (S5):
+# a deny-by-default Server + MeshTLSAuthentication allow-list + the AuthorizationPolicy
+# binding them. Granted only when the Linkerd mesh gate is on; without it the operator
+# never builds or applies these objects, and an absent Linkerd CRD makes the apply skip.
+- apiGroups: ["policy.linkerd.io"]
+  resources: ["servers", "meshtlsauthentications", "authorizationpolicies"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+{{- end }}
 {{- if .Values.certManager.enabled }}
 # Per-org wildcard TLS Certificates the ClusterTenant reconciler applies into each
 # org's bound namespace (fixed-wildcard topology). Granted only when cert-manager is

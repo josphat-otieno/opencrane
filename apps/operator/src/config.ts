@@ -162,6 +162,17 @@ export interface OpenClawTenantOperatorConfig
 
   /** Projected ServiceAccount token TTL in seconds for ingress-plane audiences. */
   projectedTokenTtlSeconds: number;
+
+  /**
+   * Linkerd identity substrate gate (S5 / ADR 0001), default OFF. When true the silo
+   * reconcile additionally annotates the silo namespace for Linkerd mesh injection and
+   * emits a per-silo deny-by-default `Server` + `MeshTLSAuthentication` +
+   * `AuthorizationPolicy` (the meshed mTLS-identity analogue of the S2 baseline
+   * NetworkPolicy). Fail-closed default: a cluster without Linkerd installed is wholly
+   * unaffected because the objects are applied ONLY when the operator is told the mesh
+   * exists, and the apply itself fails closed (skips) if the Linkerd CRDs are absent.
+   */
+  linkerdMeshEnabled: boolean;
 }
 
 /**
@@ -238,6 +249,7 @@ export function _LoadOperatorConfig(): OpenClawTenantOperatorConfig
     obotDeploymentName: _readEnvValue<string>("OBOT_DEPLOYMENT_NAME", "string", false, "opencrane-mcp-gateway"),
     skillRegistryDeploymentName: _readEnvValue<string>("SKILL_REGISTRY_DEPLOYMENT_NAME", "string", false, "opencrane-skill-registry"),
     projectedTokenTtlSeconds: _readEnvValue<number>("PROJECTED_TOKEN_TTL_SECONDS", "number", false, 600),
+    linkerdMeshEnabled: _readEnvValue<boolean>("LINKERD_MESH_ENABLED", "boolean", false, false),
   };
 
   // 4. Fail closed in multi-instance mode: refuse to watch the whole cluster when

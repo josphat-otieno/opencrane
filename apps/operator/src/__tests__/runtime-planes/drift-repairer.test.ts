@@ -47,6 +47,7 @@ function _buildConfig(overrides: Partial<OpenClawTenantOperatorConfig> = {}): Op
     obotDeploymentName: "opencrane-mcp-gateway",
     skillRegistryDeploymentName: "opencrane-skill-registry",
     projectedTokenTtlSeconds: 600,
+    linkerdMeshEnabled: false,
     ...overrides,
   };
 }

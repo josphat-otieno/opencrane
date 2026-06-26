@@ -1,5 +1,7 @@
 import type * as k8s from "@kubernetes/client-node";
 
+import { LINKERD_INJECT_ANNOTATION, LINKERD_INJECT_ENABLED } from "./silo-linkerd-identity.js";
+
 /**
  * Build the per-ClusterTenant Namespace, labelled for Pod Security Admission
  * (PSA) `restricted` enforcement.
@@ -16,16 +18,25 @@ import type * as k8s from "@kubernetes/client-node";
  *
  * @param namespace - The bound namespace name resolved from the ClusterTenant.
  * @param clusterTenantName - Parent ClusterTenant name, recorded as a label for traceability.
+ * @param linkerdInject - When true, annotate the namespace for Linkerd mesh injection so
+ *   workloads get the sidecar/identity (S5; default off — gated by `linkerdMeshEnabled`).
  * @returns A Namespace object carrying the standard PSA enforce/warn/audit labels.
  * @see https://kubernetes.io/docs/concepts/security/pod-security-admission/ - PSA reference
  */
-export function _BuildClusterTenantNamespace(namespace: string, clusterTenantName: string): k8s.V1Namespace
+export function _BuildClusterTenantNamespace(
+  namespace: string,
+  clusterTenantName: string,
+  linkerdInject: boolean = false,
+): k8s.V1Namespace
 {
   return {
     apiVersion: "v1",
     kind: "Namespace",
     metadata: {
       name: namespace,
+      // Linkerd mesh injection (S5) — only stamped when the gate is on, so a cluster
+      // without Linkerd is unaffected (an unrecognised annotation is otherwise inert).
+      ...(linkerdInject ? { annotations: { [LINKERD_INJECT_ANNOTATION]: LINKERD_INJECT_ENABLED } } : {}),
       labels: {
         "app.kubernetes.io/part-of": "opencrane",
         "app.kubernetes.io/managed-by": "opencrane-operator",

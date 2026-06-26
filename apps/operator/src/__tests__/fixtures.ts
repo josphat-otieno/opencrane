@@ -49,6 +49,7 @@ export const defaultConfig: OpenClawTenantOperatorConfig = {
   obotDeploymentName: "opencrane-mcp-gateway",
   skillRegistryDeploymentName: "opencrane-skill-registry",
   projectedTokenTtlSeconds: 600,
+  linkerdMeshEnabled: false,
 };
 
 /**

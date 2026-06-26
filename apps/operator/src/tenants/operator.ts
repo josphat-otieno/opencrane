@@ -10,8 +10,9 @@ import { TenantPolicyResolutionState, TenantStatusPhase } from "./models/tenant-
 import { __K8sApplyResource } from "../infra/k8s.js";
 import { _RunWatchLoop, K8sWatchEventType } from "../shared/watch-runner.js";
 import { OPENCRANE_API_GROUP, OPENCRANE_API_VERSION, TENANT_CRD_PLURAL } from "../shared/crd-constants.js";
-import { _BuildClusterTenantLimitRange, _BuildClusterTenantNamespace, _BuildClusterTenantResourceQuota, _BuildConfigMap, _BuildDeployment, _BuildGatewayNetworkPolicy, _BuildService, _BuildServiceAccount, _BuildSiloBaselineNetworkPolicy, _BuildStatePvc } from "./deploy/index.js";
+import { _BuildClusterTenantLimitRange, _BuildClusterTenantNamespace, _BuildClusterTenantResourceQuota, _BuildConfigMap, _BuildDeployment, _BuildGatewayNetworkPolicy, _BuildService, _BuildServiceAccount, _BuildSiloBaselineNetworkPolicy, _BuildSiloLinkerdIdentityPolicy, _BuildStatePvc } from "./deploy/index.js";
 import { TenantCleanup } from "./destroy/tenant-cleanup.js";
+import { LinkerdIdentityClient } from "./internal/linkerd-identity.client.js";
 
 import { TenantEncryptionKeys } from "./internal/tenant-encryption-keys.js";
 import { TenantLiteLlmKeys } from "./internal/tenant-litellm-keys.js";
@@ -409,14 +410,33 @@ export class TenantOperator
     const clusterTenantName = clusterTenant.metadata?.name ?? namespace;
 
     // 1. Namespace — ensure the fenced namespace exists and carries the PSA
-    //    restricted enforce/warn/audit labels before any workload lands in it.
-    await __K8sApplyResource(this.coreApi, _BuildClusterTenantNamespace(namespace, clusterTenantName), this.log);
+    //    restricted enforce/warn/audit labels before any workload lands in it. When the
+    //    Linkerd gate is on (S5) it is also annotated for mesh injection so workloads
+    //    pick up the sidecar/identity; the annotation is inert on a Linkerd-less cluster.
+    await __K8sApplyResource(this.coreApi, _BuildClusterTenantNamespace(namespace, clusterTenantName, this.config.linkerdMeshEnabled), this.log);
 
     // 1b. Silo baseline NetworkPolicy — flip the namespace to default-deny (S2 /
     //     Phase 1) right after it exists and before any workload lands, so the silo
     //     edge is closed from the start: only intra-silo + the control-plane plane,
     //     DNS, and external HTTPS are allowed; no silo→silo path is ever created.
     await __K8sApplyResource(this.networkingApi, _BuildSiloBaselineNetworkPolicy(namespace, clusterTenantName, this.config), this.log);
+
+    // 1c. Linkerd identity layer (S5 / ADR 0001) — gated OFF by default. When on, lay
+    //     the meshed mTLS-identity analogue of the S2 baseline ON TOP of the L3/4 floor:
+    //     a deny-by-default Server + a MeshTLSAuthentication allow-list (intra-silo + the
+    //     operator plane only) + the AuthorizationPolicy binding them. Applied as untyped
+    //     CRs; the client fails closed (logs + skips) if Linkerd's CRDs are absent, so
+    //     enabling the gate on a Linkerd-less cluster is a safe no-op, not a wedged reconcile.
+    if (this.config.linkerdMeshEnabled)
+    {
+      const linkerdClient = new LinkerdIdentityClient(this.customApi, this.log);
+      const bundle = _BuildSiloLinkerdIdentityPolicy(namespace, clusterTenantName, this.config);
+      const { applied } = await linkerdClient.applySiloIdentityPolicy(namespace, bundle);
+      if (!applied)
+      {
+        this.log.warn({ namespace, clusterTenant: clusterTenantName }, "Linkerd identity policy skipped (CRDs absent); silo isolated at L3/4 only");
+      }
+    }
 
     // 2. ResourceQuota — cap the customer's aggregate CPU/memory/pods/storage/GPU
     //    so a single customer cannot starve the cluster. Only stamped when the

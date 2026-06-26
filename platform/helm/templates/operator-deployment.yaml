@@ -121,6 +121,13 @@ spec:
               value: {{ .Values.operator.idleTimeoutMinutes | quote }}
             - name: IDLE_CHECK_INTERVAL_SECONDS
               value: {{ .Values.operator.idleCheckIntervalSeconds | quote }}
+            # -- Linkerd identity substrate gate (S5 / ADR 0001), default off. When true the
+            #    silo reconcile annotates the silo namespace for mesh injection and emits the
+            #    per-silo deny-by-default Server + MeshTLSAuthentication + AuthorizationPolicy
+            #    (the meshed analogue of the S2 baseline NetworkPolicy). Fails closed if the
+            #    Linkerd policy CRDs are absent, so it is a safe no-op without Linkerd.
+            - name: LINKERD_MESH_ENABLED
+              value: {{ .Values.operator.linkerdMeshEnabled | quote }}
             # -- Runtime-plane endpoints injected into tenant Deployments. Resolved via
             #    sharedPlatform scope (B5): instance mode → release-prefixed in-cluster
             #    Service; shared mode → the externally-provided endpoint.
