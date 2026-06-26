@@ -438,6 +438,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/cluster-tenants/{name}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List an organisation's members (operator OR owner/admin of that org)
+         * @description Lists the org's membership rows (subject + role) — the LOCAL membership registry the org-admin gate reads (OrgMembership rows, NOT Zitadel grants).
+         */
+        get: operations["listClusterTenantMembers"];
+        put?: never;
+        /**
+         * Add or update an organisation member (operator OR owner/admin of that org)
+         * @description Upserts a membership on the unique [org, subject]: adds a new member or changes an existing member's role. Last-Owner guardrail: demoting the org's sole Owner to a lesser role is rejected (409 LAST_OWNER).
+         */
+        post: operations["addClusterTenantMember"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cluster-tenants/{name}/members/{subject}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove an organisation member (operator OR owner/admin of that org)
+         * @description Removes a membership row. Last-Owner guardrail: removing the org's sole Owner is rejected (409 LAST_OWNER).
+         */
+        delete: operations["removeClusterTenantMember"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/billing-accounts": {
         parameters: {
             query?: never;
@@ -1923,6 +1967,26 @@ export interface components {
             storage?: string;
             /** @description Total GPUs the customer may request. */
             gpu?: number;
+        };
+        /** @description A single organisation membership row — the LOCAL membership registry the org-admin gate reads (an OrgMembership, NOT a Zitadel grant). */
+        OrgMember: {
+            /** @description IdP-verified subject (OIDC `sub`) holding the membership. */
+            subject: string;
+            /**
+             * @description Role held within the organisation.
+             * @enum {string}
+             */
+            role: "Owner" | "Admin" | "Member";
+        };
+        /** @description Add or update an organisation member (upsert on the unique [org, subject]). */
+        OrgMemberWrite: {
+            /** @description IdP-verified subject (OIDC `sub`) of the member to add/update. */
+            subject: string;
+            /**
+             * @description Role to grant within the organisation.
+             * @enum {string}
+             */
+            role: "Owner" | "Admin" | "Member";
         };
         BillingAccount: {
             /** @description Surrogate identifier. */
@@ -3919,6 +3983,188 @@ export interface operations {
             };
             /** @description Cluster tenant not found. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listClusterTenantMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Organisation membership list. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgMember"][];
+                };
+            };
+            /** @description No authenticated session (real-auth deployments). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Caller is neither a platform operator nor an owner/admin of this org. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Cluster tenant not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    addClusterTenantMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrgMemberWrite"];
+            };
+        };
+        responses: {
+            /** @description Member added or updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgMember"];
+                };
+            };
+            /** @description Request body failed validation (subject required; role must be Owner|Admin|Member). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description No authenticated session (real-auth deployments). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Caller is neither a platform operator nor an owner/admin of this org. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Cluster tenant not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The change would demote the organisation's last Owner (code LAST_OWNER). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    removeClusterTenantMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+                subject: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Member removed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        subject?: string;
+                        status?: string;
+                    };
+                };
+            };
+            /** @description No authenticated session (real-auth deployments). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Caller is neither a platform operator nor an owner/admin of this org. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Cluster tenant or membership not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Removing this member would remove the organisation's last Owner (code LAST_OWNER). */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
