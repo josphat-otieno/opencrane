@@ -17,6 +17,9 @@ function _fakeZitadel(): ZitadelManagementClient
     async provisionOrg(input) { return { orgId: "zorg-test", projectId: "zproj-test", appId: "zapp-test", clientId: "zclient-test", redirectUri: input.redirectUri }; },
     async setAppRedirectUris() { /* no-op */ },
     async teardownOrg() { /* no-op */ },
+    async validateCandidateKey() { return { tokenExchangeOk: true, instanceScopeOk: true, keyId: "k", detail: "ok" }; },
+    currentKeyId() { return "k"; },
+    reloadKey() { /* no-op */ },
   };
 }
 
@@ -374,6 +377,9 @@ describe("clusterTenantsRouter — Zitadel org provisioning (S3 / Phase 2a)", fu
       },
       async setAppRedirectUris(input) { redirectCalls.push(input); },
       async teardownOrg() { /* no-op */ },
+    async validateCandidateKey() { return { tokenExchangeOk: true, instanceScopeOk: true, keyId: "k", detail: "ok" }; },
+    currentKeyId() { return "k"; },
+    reloadKey() { /* no-op */ },
     };
     return { client, calls, redirectCalls };
   }
@@ -405,6 +411,9 @@ describe("clusterTenantsRouter — Zitadel org provisioning (S3 / Phase 2a)", fu
       async provisionOrg() { throw new Error("zitadel rejected: org name taken"); },
       async setAppRedirectUris() { /* no-op */ },
       async teardownOrg() { /* no-op */ },
+    async validateCandidateKey() { return { tokenExchangeOk: true, instanceScopeOk: true, keyId: "k", detail: "ok" }; },
+    currentKeyId() { return "k"; },
+    reloadKey() { /* no-op */ },
     };
     const app = _buildApp(_mockPrisma(store), _mockRegistry(false), null, { sub: "owner-1", email: "owner@acme.test" }, throwing);
 
@@ -425,6 +434,9 @@ describe("clusterTenantsRouter — Zitadel org provisioning (S3 / Phase 2a)", fu
       async provisionOrg(input) { return { orgId: "z", projectId: "p", appId: "a", clientId: "c", redirectUri: input.redirectUri }; },
       async setAppRedirectUris() { /* no-op */ },
       async teardownOrg() { teardownCalled = true; throw new Error("zitadel unreachable"); },
+      async validateCandidateKey() { return { tokenExchangeOk: true, instanceScopeOk: true, keyId: "k", detail: "ok" }; },
+      currentKeyId() { return "k"; },
+      reloadKey() { /* no-op */ },
     };
     // No session → dev-auth bypass for the org-manager gate (matches the CRUD test), so the
     // delete handler runs and we exercise the transactional teardown directly.
@@ -475,6 +487,9 @@ describe("clusterTenantsRouter — Zitadel org provisioning (S3 / Phase 2a)", fu
       async provisionOrg(input) { return { orgId: "z", projectId: "p", appId: "a", clientId: "c", redirectUri: input.redirectUri }; },
       async setAppRedirectUris() { syncCalled = true; throw new Error("zitadel unreachable"); },
       async teardownOrg() { /* no-op */ },
+    async validateCandidateKey() { return { tokenExchangeOk: true, instanceScopeOk: true, keyId: "k", detail: "ok" }; },
+    currentKeyId() { return "k"; },
+    reloadKey() { /* no-op */ },
     };
     const app = _buildApp(_mockPrisma(store), _mockRegistry(false), null, undefined, throwingSync);
 

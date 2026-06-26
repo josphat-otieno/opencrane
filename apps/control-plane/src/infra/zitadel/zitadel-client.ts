@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 
 import { _log } from "../../log.js";
-import type { ZitadelProvisionOrgInput, ZitadelProvisionOrgResult, ZitadelSetRedirectUrisInput, ZitadelClientConfig, ZitadelManagementClient } from "./zitadel-client.types.js";
+import type { ZitadelCandidateKeyValidation, ZitadelProvisionOrgInput, ZitadelProvisionOrgResult, ZitadelSetRedirectUrisInput, ZitadelClientConfig, ZitadelManagementClient } from "./zitadel-client.types.js";
 
 export type { ZitadelClientConfig };
 
@@ -11,6 +11,47 @@ interface _ServiceAccountKey
   keyId: string;
   key: string;
   userId: string;
+}
+
+/**
+ * Parse + validate a Zitadel SA key JSON into the fields the jwt-bearer signer needs.
+ * Throws on a malformed key (missing keyId/key/userId) — the single guard shared by the
+ * constructor and `reloadKey` so the malformed-key rule cannot drift between them.
+ *
+ * @param serviceAccountKeyJson - The raw SA key JSON string.
+ */
+function _ParseServiceAccountKey(serviceAccountKeyJson: string): _ServiceAccountKey
+{
+  const parsed = JSON.parse(serviceAccountKeyJson) as Partial<_ServiceAccountKey>;
+  if (!parsed.keyId || !parsed.key || !parsed.userId)
+  {
+    throw new Error("Zitadel service-account key is invalid (missing keyId/key/userId)");
+  }
+  return { keyId: parsed.keyId, key: parsed.key, userId: parsed.userId };
+}
+
+/** URL-safe base64 of a string or buffer (JWT segments / signatures). */
+function _b64urlSegment(input: string | Buffer): string
+{
+  return Buffer.from(input).toString("base64url");
+}
+
+/**
+ * Build + RS256-sign a service-account jwt-bearer assertion for the given key + audience.
+ * Pure (no `this`) so it serves both the live client and the throwaway candidate signer in
+ * `validateCandidateKey` — the candidate path must NEVER touch the live key/token cache.
+ *
+ * @param saKey  - The parsed SA key to sign with.
+ * @param apiUrl - The Zitadel instance base URL (the assertion audience).
+ */
+function _SignServiceAccountAssertion(saKey: _ServiceAccountKey, apiUrl: string): string
+{
+  const nowSec = Math.floor(Date.now() / 1000);
+  const header = _b64urlSegment(JSON.stringify({ alg: "RS256", kid: saKey.keyId }));
+  const claims = _b64urlSegment(JSON.stringify({ iss: saKey.userId, sub: saKey.userId, aud: apiUrl, iat: nowSec, exp: nowSec + 300 }));
+  const signingInput = `${header}.${claims}`;
+  const signature = _b64urlSegment(crypto.sign("RSA-SHA256", Buffer.from(signingInput), saKey.key));
+  return `${signingInput}.${signature}`;
 }
 
 /** Scope that requests an access token audience-bound to the Zitadel management API. */
@@ -46,8 +87,11 @@ export class _HttpZitadelManagementClient implements ZitadelManagementClient
 {
   /** Trailing-slash-trimmed Zitadel instance base URL. */
   private readonly apiUrl: string;
-  /** Parsed service-account key used to sign the jwt-bearer assertion. */
-  private readonly saKey: _ServiceAccountKey;
+  /**
+   * Parsed service-account key used to sign the jwt-bearer assertion. Mutable: an atomic
+   * in-memory swap via {@link reloadKey} replaces it on key rotation (the only writer).
+   */
+  private saKey: _ServiceAccountKey;
   /** Injectable HTTP transport (global `fetch` in prod; a fake in tests). */
   private readonly fetchImpl: typeof fetch;
   /** Cached management access token + its refresh deadline (epoch ms). */
@@ -61,12 +105,96 @@ export class _HttpZitadelManagementClient implements ZitadelManagementClient
   {
     this.apiUrl = config.apiUrl.replace(/\/+$/, "");
     this.fetchImpl = fetchImpl;
-    const parsed = JSON.parse(config.serviceAccountKey) as Partial<_ServiceAccountKey>;
-    if (!parsed.keyId || !parsed.key || !parsed.userId)
+    this.saKey = _ParseServiceAccountKey(config.serviceAccountKey);
+  }
+
+  public async validateCandidateKey(serviceAccountKeyJson: string): Promise<ZitadelCandidateKeyValidation>
+  {
+    // 1. Parse the candidate into a THROWAWAY signer. A malformed key is an expected
+    //    validation failure (not a transport error), so report it as a flagged result —
+    //    never mutate the live key/token cache and never throw here.
+    let candidate: _ServiceAccountKey;
+    try
     {
-      throw new Error("ZITADEL_MGMT_SA_KEY is not a valid Zitadel service-account key (missing keyId/key/userId)");
+      candidate = _ParseServiceAccountKey(serviceAccountKeyJson);
     }
-    this.saKey = { keyId: parsed.keyId, key: parsed.key, userId: parsed.userId };
+    catch (err)
+    {
+      _log.warn({ err }, "zitadel key rotation: candidate key is malformed (rejected, no change)");
+      return { tokenExchangeOk: false, instanceScopeOk: false, keyId: null, detail: "candidate key is malformed (missing keyId/key/userId)" };
+    }
+
+    // 2. Exchange the candidate for an access token via the jwt-bearer profile, using a
+    //    fresh assertion signed with the CANDIDATE key. A non-OK exchange means the key is
+    //    not trusted by the instance — a flagged failure, not an exception.
+    let candidateToken: string;
+    try
+    {
+      const assertion = _SignServiceAccountAssertion(candidate, this.apiUrl);
+      const res = await this.fetchImpl(`${this.apiUrl}/oauth/v2/token`, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion, scope: _MGMT_SCOPE }),
+      });
+      if (!res.ok)
+      {
+        _log.warn({ keyId: candidate.keyId, status: res.status }, "zitadel key rotation: candidate token exchange failed (rejected, no change)");
+        return { tokenExchangeOk: false, instanceScopeOk: false, keyId: candidate.keyId, detail: `token exchange failed (${res.status})` };
+      }
+      const json = await res.json() as { access_token?: string };
+      if (!json.access_token)
+      {
+        _log.warn({ keyId: candidate.keyId }, "zitadel key rotation: candidate token exchange returned no access_token (rejected, no change)");
+        return { tokenExchangeOk: false, instanceScopeOk: false, keyId: candidate.keyId, detail: "token exchange returned no access_token" };
+      }
+      candidateToken = json.access_token;
+    }
+    catch (err)
+    {
+      // Unexpected transport error (network/DNS) — surface it; the route maps this to a 5xx.
+      _log.error({ keyId: candidate.keyId, err }, "zitadel key rotation: transport error during candidate token exchange");
+      throw err;
+    }
+
+    // 3. Non-destructive instance-`IAM_OWNER` probe: GET /admin/v1/instances/me. The Admin
+    //    API is instance-scoped and an org-level manager cannot call it, so a 200 here proves
+    //    the candidate holds the instance IAM_OWNER the platform's provisioning path depends
+    //    on; a 401/403 proves it authenticated but lacks the scope (flagged, not thrown).
+    try
+    {
+      const probe = await this.fetchImpl(`${this.apiUrl}/admin/v1/instances/me`, {
+        method: "GET",
+        headers: { authorization: `Bearer ${candidateToken}` },
+      });
+      if (!probe.ok)
+      {
+        _log.warn({ keyId: candidate.keyId, status: probe.status }, "zitadel key rotation: candidate lacks instance IAM_OWNER scope (rejected, no change)");
+        return { tokenExchangeOk: true, instanceScopeOk: false, keyId: candidate.keyId, detail: `instance IAM_OWNER probe failed (${probe.status})` };
+      }
+      _log.info({ keyId: candidate.keyId }, "zitadel key rotation: candidate validated (token exchange + instance IAM_OWNER probe OK)");
+      return { tokenExchangeOk: true, instanceScopeOk: true, keyId: candidate.keyId, detail: "candidate key validated: token exchange + instance IAM_OWNER probe succeeded" };
+    }
+    catch (err)
+    {
+      _log.error({ keyId: candidate.keyId, err }, "zitadel key rotation: transport error during instance IAM_OWNER probe");
+      throw err;
+    }
+  }
+
+  public currentKeyId(): string
+  {
+    return this.saKey.keyId;
+  }
+
+  public reloadKey(serviceAccountKeyJson: string): void
+  {
+    // Atomic in-memory swap: re-parse (malformed → throw, no partial state) then drop the
+    // cached token so the next call re-authenticates with the new key. Single assignment, so
+    // an in-flight call either sees the old key+token fully or the new key with a fresh token.
+    const next = _ParseServiceAccountKey(serviceAccountKeyJson);
+    this.saKey = next;
+    this._cachedToken = null;
+    _log.info({ keyId: next.keyId }, "zitadel key rotation: live service-account key swapped + token cache cleared");
   }
 
   public async provisionOrg(input: ZitadelProvisionOrgInput): Promise<ZitadelProvisionOrgResult>
@@ -233,12 +361,7 @@ export class _HttpZitadelManagementClient implements ZitadelManagementClient
   /** Build + RS256-sign the service-account assertion JWT (iss/sub = SA userId, aud = instance). */
   private _signServiceAccountJwt(): string
   {
-    const nowSec = Math.floor(Date.now() / 1000);
-    const header = _b64url(JSON.stringify({ alg: "RS256", kid: this.saKey.keyId }));
-    const claims = _b64url(JSON.stringify({ iss: this.saKey.userId, sub: this.saKey.userId, aud: this.apiUrl, iat: nowSec, exp: nowSec + 300 }));
-    const signingInput = `${header}.${claims}`;
-    const signature = _b64url(crypto.sign("RSA-SHA256", Buffer.from(signingInput), this.saKey.key));
-    return `${signingInput}.${signature}`;
+    return _SignServiceAccountAssertion(this.saKey, this.apiUrl);
   }
 }
 
@@ -281,10 +404,4 @@ export function _DeriveOrgRedirectUri(orgName: string, baseDomain: string): stri
 export function _DeriveVanityRedirectUri(vanityDomain: string): string
 {
   return `https://${vanityDomain}/api/v1/auth/callback`;
-}
-
-/** URL-safe base64 of a string or buffer (JWT segments / signatures). */
-function _b64url(input: string | Buffer): string
-{
-  return Buffer.from(input).toString("base64url");
 }

@@ -866,6 +866,36 @@ export const spec = {
       ThirdPartySource: ThirdPartySourceSchema,
       TokenUsage: TokenUsageSchema,
       DeviceGrant: DeviceGrantSchema,
+      ZitadelCandidateKeyValidation: {
+        type: "object",
+        required: ["tokenExchangeOk", "instanceScopeOk", "keyId", "detail"],
+        properties: {
+          tokenExchangeOk: { type: "boolean", description: "Whether the candidate key's jwt-bearer token exchange succeeded." },
+          instanceScopeOk: { type: "boolean", description: "Whether the candidate key passed the non-destructive instance IAM_OWNER probe." },
+          keyId: { type: "string", nullable: true, description: "The candidate key's keyId, or null when the key was malformed." },
+          detail: { type: "string", description: "Human-readable validation detail (never contains key material)." },
+        },
+      },
+      ZitadelKeyRotateRequest: {
+        type: "object",
+        required: ["serviceAccountKey"],
+        properties: {
+          serviceAccountKey: {
+            description: "The candidate Zitadel service-account key — a JSON string (the downloaded key file) or the equivalent JSON object.",
+            oneOf: [{ type: "string" }, { type: "object" }],
+          },
+        },
+      },
+      ZitadelKeyRotateResult: {
+        type: "object",
+        required: ["rotated", "validation"],
+        properties: {
+          rotated: { type: "boolean", description: "True only when the live key was replaced (both validation flags passed and the Secret persisted)." },
+          keyId: { type: "string", description: "The newly-active key's keyId (present only when rotated)." },
+          previousKeyId: { type: "string", description: "The keyId that was active before the swap (present only when rotated)." },
+          validation: { $ref: "#/components/schemas/ZitadelCandidateKeyValidation" },
+        },
+      },
     },
     securitySchemes: {
       bearerAuth: {
@@ -877,6 +907,30 @@ export const spec = {
   },
   security: [{ bearerAuth: [] }],
   paths: {
+
+    // ------------------------------------------------------------------
+    // Admin — Zitadel SA key rotation (superadmin / platform-operator only)
+    // ------------------------------------------------------------------
+
+    "/admin/zitadel/sa-key:rotate": {
+      post: {
+        operationId: "rotateZitadelSaKey",
+        summary: "Rotate the platform Zitadel service-account key (validate-then-swap; superadmin only)",
+        description: "Validates the candidate key against the live instance (jwt-bearer exchange + a non-destructive instance IAM_OWNER probe) and swaps the live key ONLY when both pass; on any validation failure the old key stays active (422). Platform-operator gated.",
+        tags: ["Admin"],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/ZitadelKeyRotateRequest" } } },
+        },
+        responses: {
+          200: ok("The candidate was validated, persisted, and made live.", { $ref: "#/components/schemas/ZitadelKeyRotateResult" }),
+          400: badRequest("The request body did not include a usable `serviceAccountKey`."),
+          403: forbidden("Caller is not a platform operator."),
+          409: conflict("Key-Secret persistence is not configured (ZITADEL_MGMT_SECRET_NAME unset); rotation refused."),
+          422: unprocessable("The candidate key failed validation (token exchange or instance IAM_OWNER scope); no change was made."),
+        },
+      },
+    },
 
     // ------------------------------------------------------------------
     // Platform DNS / TLS issuance (CONN.8a)

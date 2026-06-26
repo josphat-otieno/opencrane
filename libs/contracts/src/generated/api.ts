@@ -4,6 +4,26 @@
  */
 
 export interface paths {
+    "/admin/zitadel/sa-key:rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate the platform Zitadel service-account key (validate-then-swap; superadmin only)
+         * @description Validates the candidate key against the live instance (jwt-bearer exchange + a non-destructive instance IAM_OWNER probe) and swaps the live key ONLY when both pass; on any validation failure the old key stays active (422). Platform-operator gated.
+         */
+        post: operations["rotateZitadelSaKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/platform/dns": {
         parameters: {
             query?: never;
@@ -2497,6 +2517,29 @@ export interface components {
             /** @description Minimum polling interval in seconds (5). */
             interval: number;
         };
+        ZitadelCandidateKeyValidation: {
+            /** @description Whether the candidate key's jwt-bearer token exchange succeeded. */
+            tokenExchangeOk: boolean;
+            /** @description Whether the candidate key passed the non-destructive instance IAM_OWNER probe. */
+            instanceScopeOk: boolean;
+            /** @description The candidate key's keyId, or null when the key was malformed. */
+            keyId: string | null;
+            /** @description Human-readable validation detail (never contains key material). */
+            detail: string;
+        };
+        ZitadelKeyRotateRequest: {
+            /** @description The candidate Zitadel service-account key — a JSON string (the downloaded key file) or the equivalent JSON object. */
+            serviceAccountKey: string | Record<string, never>;
+        };
+        ZitadelKeyRotateResult: {
+            /** @description True only when the live key was replaced (both validation flags passed and the Secret persisted). */
+            rotated: boolean;
+            /** @description The newly-active key's keyId (present only when rotated). */
+            keyId?: string;
+            /** @description The keyId that was active before the swap (present only when rotated). */
+            previousKeyId?: string;
+            validation: components["schemas"]["ZitadelCandidateKeyValidation"];
+        };
     };
     responses: never;
     parameters: never;
@@ -2506,6 +2549,66 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    rotateZitadelSaKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ZitadelKeyRotateRequest"];
+            };
+        };
+        responses: {
+            /** @description The candidate was validated, persisted, and made live. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ZitadelKeyRotateResult"];
+                };
+            };
+            /** @description The request body did not include a usable `serviceAccountKey`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Caller is not a platform operator. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Key-Secret persistence is not configured (ZITADEL_MGMT_SECRET_NAME unset); rotation refused. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The candidate key failed validation (token exchange or instance IAM_OWNER scope); no change was made. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     getPlatformDns: {
         parameters: {
             query?: {

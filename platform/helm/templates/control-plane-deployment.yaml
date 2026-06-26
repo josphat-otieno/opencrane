@@ -184,6 +184,14 @@ spec:
                 secretKeyRef:
                   name: {{ .existingSecret }}
                   key: {{ .serviceAccountKeyKey | default "service-account-key" }}
+            # -- Key-rotation support: the superadmin rotate endpoint needs to know
+            #    which Secret to patch and which data key carries the SA-key JSON, so
+            #    it can write the newly issued key back in-place without config drift.
+            #    Paired with the Role/RoleBinding in control-plane-zitadel-rotation-rbac.yaml.
+            - name: ZITADEL_MGMT_SECRET_NAME
+              value: {{ .existingSecret | quote }}
+            - name: ZITADEL_MGMT_SECRET_KEY
+              value: {{ .serviceAccountKeyKey | default "service-account-key" | quote }}
             {{- end }}
             {{- end }}
             {{- end }}

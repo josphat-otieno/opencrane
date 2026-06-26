@@ -51,6 +51,28 @@ export interface ZitadelSetRedirectUrisInput
   redirectUris: string[];
 }
 
+/**
+ * Granular result of validating a CANDIDATE service-account key — the security gate
+ * the key-rotation feature requires before swapping the platform's master IdP credential.
+ *
+ * Both flags must be true for the candidate to be accepted: `tokenExchangeOk` proves the
+ * key can authenticate (jwt-bearer exchange succeeds), and `instanceScopeOk` proves the key
+ * holds the instance-level `IAM_OWNER` scope the platform depends on (org create/delete) —
+ * a key that authenticates but only holds an org-level role would silently break
+ * provisioning, so the scope probe is non-negotiable.
+ */
+export interface ZitadelCandidateKeyValidation
+{
+  /** Whether the jwt-bearer token exchange succeeded with the candidate key. */
+  tokenExchangeOk: boolean;
+  /** Whether the candidate key passed the non-destructive instance-`IAM_OWNER` probe. */
+  instanceScopeOk: boolean;
+  /** The candidate key's `keyId` when the key parsed, else null (malformed/unparseable). */
+  keyId: string | null;
+  /** Human-readable detail for logging/response (never contains key material). */
+  detail: string;
+}
+
 /** The Zitadel identifiers persisted onto the ClusterTenant row after provisioning. */
 export interface ZitadelProvisionOrgResult
 {
@@ -89,4 +111,31 @@ export interface ZitadelManagementClient
 
   /** Tear down a previously-provisioned org (tolerates an already-absent org). */
   teardownOrg(orgId: string): Promise<void>;
+
+  /**
+   * Validate a CANDIDATE service-account key WITHOUT touching the live client's key or
+   * token cache. Builds a throwaway signer from the candidate, performs a jwt-bearer token
+   * exchange, then a NON-DESTRUCTIVE instance-`IAM_OWNER` probe (`GET /admin/v1/instances/me`,
+   * which an org-level manager cannot call). Returns granular flags; it NEVER throws for an
+   * expected validation failure (bad key, wrong scope) — only for unexpected transport errors.
+   *
+   * The driver of key rotation: the live key is swapped (via {@link reloadKey}) ONLY after
+   * this returns `tokenExchangeOk && instanceScopeOk`.
+   *
+   * @param serviceAccountKeyJson - The candidate SA key JSON to validate.
+   */
+  validateCandidateKey(serviceAccountKeyJson: string): Promise<ZitadelCandidateKeyValidation>;
+
+  /** The `keyId` of the live service-account key — captured for the rotation audit trail. */
+  currentKeyId(): string;
+
+  /**
+   * Atomically swap the live client's service-account key to the given candidate and clear
+   * the cached access token, so every subsequent call authenticates with the new key. Called
+   * ONLY after the candidate has been validated AND persisted to the backing Secret, so a
+   * process restart keeps the new key. Throws only on a malformed key (missing keyId/key/userId).
+   *
+   * @param serviceAccountKeyJson - The validated candidate SA key JSON to make live.
+   */
+  reloadKey(serviceAccountKeyJson: string): void;
 }

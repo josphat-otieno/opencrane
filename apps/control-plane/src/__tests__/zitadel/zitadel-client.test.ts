@@ -135,6 +135,105 @@ describe("_HttpZitadelManagementClient — live provisioning lifecycle (injected
   });
 });
 
+describe("_HttpZitadelManagementClient.validateCandidateKey — safe-rotation gate (injected fetch)", function _validateSuite()
+{
+  /** A candidate-validation fetch fake: token exchange + the instance IAM_OWNER probe. */
+  function _validatorFetch(opts: { tokenStatus?: number; tokenBody?: unknown; probeStatus?: number } = {}): { fetchImpl: typeof fetch; calls: string[] }
+  {
+    const calls: string[] = [];
+    const fetchImpl = (async function _f(url: string, init: { method?: string }) {
+      const path = url.replace(/^https:\/\/[^/]+/, "");
+      calls.push(`${init?.method ?? "GET"} ${path}`);
+      if (path === "/oauth/v2/token")
+      {
+        const status = opts.tokenStatus ?? 200;
+        const body = opts.tokenBody ?? { access_token: "cand-tok", expires_in: 3600 };
+        return { ok: status < 400, status, json: async () => body, text: async () => JSON.stringify(body) };
+      }
+      if (path === "/admin/v1/instances/me")
+      {
+        const status = opts.probeStatus ?? 200;
+        return { ok: status < 400, status, json: async () => ({}), text: async () => "{}" };
+      }
+      return { ok: true, status: 200, json: async () => ({}), text: async () => "{}" };
+    }) as unknown as typeof fetch;
+    return { fetchImpl, calls };
+  }
+
+  it("returns both flags true when the token exchange AND the instance IAM_OWNER probe succeed", async function _bothOk()
+  {
+    const { fetchImpl, calls } = _validatorFetch({});
+    const client = new _HttpZitadelManagementClient({ apiUrl: "https://z.example.com", serviceAccountKey: _saKeyJson(), baseDomain: "d" }, fetchImpl);
+
+    const result = await client.validateCandidateKey(_saKeyJson());
+
+    expect(result.tokenExchangeOk).toBe(true);
+    expect(result.instanceScopeOk).toBe(true);
+    expect(result.keyId).toBe("k1");
+    // The probe is the read-only Admin API instance read (org-managers can't call it).
+    expect(calls).toContain("GET /admin/v1/instances/me");
+  });
+
+  it("returns tokenExchangeOk=false (and skips the probe) when the token exchange fails", async function _tokenFail()
+  {
+    const { fetchImpl, calls } = _validatorFetch({ tokenStatus: 401 });
+    const client = new _HttpZitadelManagementClient({ apiUrl: "https://z.example.com", serviceAccountKey: _saKeyJson(), baseDomain: "d" }, fetchImpl);
+
+    const result = await client.validateCandidateKey(_saKeyJson());
+
+    expect(result.tokenExchangeOk).toBe(false);
+    expect(result.instanceScopeOk).toBe(false);
+    // A failed token exchange must short-circuit — the IAM_OWNER probe is never attempted.
+    expect(calls).not.toContain("GET /admin/v1/instances/me");
+  });
+
+  it("returns instanceScopeOk=false when the key authenticates but lacks instance IAM_OWNER (403)", async function _scopeFail()
+  {
+    const { fetchImpl } = _validatorFetch({ probeStatus: 403 });
+    const client = new _HttpZitadelManagementClient({ apiUrl: "https://z.example.com", serviceAccountKey: _saKeyJson(), baseDomain: "d" }, fetchImpl);
+
+    const result = await client.validateCandidateKey(_saKeyJson());
+
+    expect(result.tokenExchangeOk).toBe(true);
+    expect(result.instanceScopeOk).toBe(false);
+  });
+
+  it("flags a malformed candidate key (no throw) and never touches the network", async function _malformed()
+  {
+    const { fetchImpl, calls } = _validatorFetch({});
+    const client = new _HttpZitadelManagementClient({ apiUrl: "https://z.example.com", serviceAccountKey: _saKeyJson(), baseDomain: "d" }, fetchImpl);
+
+    const result = await client.validateCandidateKey("{}");
+
+    expect(result).toEqual({ tokenExchangeOk: false, instanceScopeOk: false, keyId: null, detail: expect.stringContaining("malformed") });
+    expect(calls).toHaveLength(0);
+  });
+
+  it("does NOT mutate the live key/token cache while validating a candidate", async function _noMutation()
+  {
+    const { fetchImpl } = _validatorFetch({});
+    const liveKey = _saKeyJson();
+    const client = new _HttpZitadelManagementClient({ apiUrl: "https://z.example.com", serviceAccountKey: liveKey, baseDomain: "d" }, fetchImpl);
+
+    const before = client.currentKeyId();
+    await client.validateCandidateKey(_saKeyJson()); // a DIFFERENT key (fresh keypair, same keyId "k1")
+    expect(client.currentKeyId()).toBe(before);
+  });
+
+  it("reloadKey swaps the live key id and rejects a malformed key", async function _reload()
+  {
+    const { fetchImpl } = _validatorFetch({});
+    const client = new _HttpZitadelManagementClient({ apiUrl: "https://z.example.com", serviceAccountKey: _saKeyJson(), baseDomain: "d" }, fetchImpl);
+
+    const { privateKey } = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
+    const pem = privateKey.export({ type: "pkcs1", format: "pem" }).toString();
+    client.reloadKey(JSON.stringify({ type: "serviceaccount", keyId: "k2", key: pem, userId: "u2" }));
+    expect(client.currentKeyId()).toBe("k2");
+
+    expect(() => client.reloadKey("{}")).toThrow(/service-account key/);
+  });
+});
+
 describe("_DeriveOrgRedirectUri", function _deriveSuite()
 {
   it("derives the per-org callback URI from the org name + base domain", function _derives()

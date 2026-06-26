@@ -240,8 +240,16 @@ controlPlane:
   # -- Zitadel Management API (S3 / Phase 2a). When mgmtApiUrl is set, the control-plane
   #    provisions a per-org Zitadel Organization + OIDC app on ClusterTenant create.
   #    Empty (default) → org provisioning is a no-op (orgs created without a Zitadel org).
-  #    NOTE: the live management client ships in a follow-up S3 slice; setting these today
-  #    is wired through but still no-ops (logged), so it is safe to leave configured.
+  #    The live management client is active and provisions per-org Zitadel orgs when a
+  #    ClusterTenant is created (shipped in S3; no longer a no-op).
+  #
+  #    Key rotation: when existingSecret is set AND clusterTenantManager.enabled is true,
+  #    the chart renders a namespaced Role + RoleBinding
+  #    (control-plane-zitadel-rotation-rbac.yaml) granting the control-plane ServiceAccount
+  #    `get` and `patch` on that single named Secret. This lets the superadmin key-rotation
+  #    API overwrite the SA-key JSON in-place after issuing a new key via Zitadel, without
+  #    requiring broad secrets access. The Secret name and data key are also surfaced to
+  #    the pod as ZITADEL_MGMT_SECRET_NAME / ZITADEL_MGMT_SECRET_KEY.
   zitadel:
     # -- Zitadel instance base URL (e.g. https://weownai-oidc-8dwlat.eu1.zitadel.cloud).
     #    REQUIRED when clusterTenantManager.enabled (the control-plane hard-commits to
@@ -250,6 +258,7 @@ controlPlane:
     # -- Existing K8s Secret carrying the service-account key JSON (jwt-bearer auth). The
     #    service account MUST hold instance-level IAM_OWNER (per-org create/delete is an
     #    instance privilege). Key name configurable below.
+    #    When set, also enables the key-rotation Role/RoleBinding (see note above).
     existingSecret: ""
     serviceAccountKeyKey: service-account-key
 
