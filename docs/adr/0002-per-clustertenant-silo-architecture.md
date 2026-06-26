@@ -21,11 +21,13 @@ that serve every tenant:
 | Planes (Obot/MCP, skill-registry, LiteLLM, Cognee, tenant DB) | shared singletons | data/credentials co-resident; isolation rests entirely on app-level ACLs |
 | Control-plane API + DB | one shared API + DB | the **resolution-ambiguity class**: the shared plane must constantly infer *which tenant* a request/row/resource belongs to — the root of a recurring family of bugs (default-tenant projection, cross-tenant lookups, the resolver patches), shimmed today by PR #68 |
 
-This ADR decides **how much of the stack moves into the silo, and how that scales with
-`ClusterTenant.spec.isolationTier`** — because moving *everything* per-tenant for *every*
-tenant explodes footprint/cost (a `shared`-tier customer cannot justify a private LiteLLM +
-Cognee + DB + operator). The decision must be tier-aware, reuse the machinery the chart
-already has, and preserve per-org ingress.
+This ADR decides **what runs per-ClusterTenant and where it is scheduled by
+`ClusterTenant.spec.isolationTier`**. The plane *topology* is uniform — every tenant gets its
+own dedicated plane instances (decision 1) — so the tier is not about *whether* planes are
+dedicated but about the *underlying compute* they land on (shared nodes → dedicated nodes →
+separate cluster). The decision must reuse the machinery the chart already has and preserve
+per-org ingress, and it pushes the cost question to **bin-packing density** (S7), not to
+multiplexing tenants inside one plane.
 
 Two pieces of existing machinery are load-bearing here:
 
@@ -39,18 +41,39 @@ S6 is largely **applying these per-ClusterTenant**, not inventing a new mechanis
 
 ## Decision
 
-### 1. Plane placement scales with `isolationTier` (do not give every tenant a private stack)
+### 1. Every ClusterTenant gets DEDICATED per-CT plane instances at every tier; tiers differ only by the underlying infra
 
-| Tier | Operator | Planes (Obot/skills/LiteLLM/Cognee) | Tenant DB | Control-plane API |
-|---|---|---|---|---|
-| `shared` | **shared** (the platform operator) | **shared** (`sharedPlatform.*.mode=shared`) + strict per-CT ACL/partitioning + S2/S5 isolation | shared DB, **logically** partitioned per-CT | shared (super-admin) |
-| `dedicatedNodes` | **per-CT** (namespace-scoped, on the tenant's node pool) | **per-CT instance** (`mode=instance`) | **per-CT DB instance** | shared super-admin + **per-silo tenant API** |
-| `dedicatedCluster` | per-CT, in a vcluster/Kamaji control plane | per-CT, in the vcluster | per-CT, in the vcluster | per-silo, in the vcluster |
+The plane topology is **uniform across tiers**: each ClusterTenant runs its **own dedicated
+instances** of every data/runtime plane — **Obot/MCP, skill-registry, Cognee, LiteLLM**, its
+own **operator**, its own **per-CT networking** (the S2 NetworkPolicy silo + S5 Linkerd
+identity), and its own **tenant DB**. Planes are **never shared singletons multiplexing
+tenants behind an ACL** — even on the `shared` tier. What varies by `isolationTier` is **only
+the underlying infrastructure those per-CT instances are scheduled onto**:
 
-Rationale: physical per-CT planes are an isolation *upgrade a customer buys*, not a default.
-The `shared` tier gets its isolation from S2/S5 + app-level scoping (cheap, dense); dedicated
-tiers get progressively more physical separation. This is the cost-sane reading of the silo
-model and it tracks ADR 0001's substrate-by-tier table exactly.
+| `isolationTier` | Plane instances (Obot/skills/Cognee/LiteLLM/operator/DB/networking) | Underlying infra |
+|---|---|---|
+| `shared` | **dedicated per-CT instances** (one stack per tenant) | **shared node pool** (per-CT stacks bin-packed onto common nodes) |
+| `dedicatedNodes` | dedicated per-CT instances | tenant's **dedicated node pool** |
+| `dedicatedCluster` | dedicated per-CT instances | **vcluster/Kamaji** — a separate control plane per silo |
+
+So "shared" means *shared underlying compute*, not shared planes. This is realised with the
+machinery the chart already has: **every ClusterTenant is a `multiInstance` instance** whose
+planes run in `sharedPlatform.<plane>.mode=instance` (release-local, per-CT); the `mode=shared`
+path becomes vestigial (a special-case escape hatch, not the `shared`-tier default). The
+**only** truly shared elements at the `shared` tier are the super-admin control-plane
+(decision 2) and the underlying nodes.
+
+Rationale (corrects the first draft, which proposed shared-singleton planes + ACL for the
+`shared` tier): dedicated per-CT plane instances give true per-tenant isolation of
+data/credentials/runtime **without** depending on every plane's app-level ACL being perfect,
+and they **kill the resolution-ambiguity class uniformly** (decision 3) — there is no shared
+plane left to disambiguate. The cost trade-off moves to *bin-packing density* on shared nodes,
+not to multiplexing tenants inside one plane.
+
+> **Confirm:** the correction explicitly named Obot, skill-registry, Cognee, operator, and
+> networking. This ADR extends the same rule to **LiteLLM** (a runtime plane) and the **tenant
+> DB** (per-CT database — a dedicated database on a shared Postgres at the `shared` tier, a
+> dedicated Postgres at dedicated tiers). Flag if LiteLLM or the DB should instead stay shared.
 
 ### 2. The super-admin control-plane stays the *only* shared cross-silo plane
 
@@ -60,25 +83,25 @@ ClusterTenants — provisioning org X, listing the fleet — which is **unambigu
 construction** (no resolution needed; the CT name is the input). What moves out is the
 *tenant-facing* data + API surface, so the shared plane never has to guess a caller's tenant.
 
-### 3. Per-CT API + DB retires the resolution-ambiguity class
+### 3. Per-CT API + DB retires the resolution-ambiguity class — uniformly
 
-- **Dedicated tiers:** the tenant-facing control-plane API + DB run **inside the silo**, scoped
-  to one tenant. There is nothing to resolve — the silo *is* the scope.
-- **`shared` tier:** the data is **logically** partitioned per-CT (the per-CT scoping already
-  built across S3/S4), with the shared API enforcing the scope. Resolution-ambiguity is killed
-  not by physical separation but by making every tenant-facing query explicitly silo-scoped and
-  the shared plane do **only** named-CT admin.
-- Either way, **PR #68's resolution shim is retired**: the shared plane stops inferring tenancy
-  from request shape.
+Because every tier has a **dedicated per-CT tenant-facing API + DB instance** (decision 1),
+the resolution-ambiguity class is killed **the same way at every tier**: the silo *is* the
+scope, so the tenant-facing plane never infers a caller's tenant from request shape. The only
+cross-silo plane left (the super-admin control-plane, decision 2) acts on **named** CTs, which
+is unambiguous by construction. **PR #68's resolution shim is retired outright** — there is no
+shared tenant-facing plane anywhere that needs to disambiguate. (This is strictly stronger than
+the first draft's "logical partition + ACL at the `shared` tier".)
 
-### 4. Per-CT operator owns its silo's north-south edge
+### 4. Per-CT operator owns its silo's north-south edge — at every tier
 
-When a dedicated silo gets its own operator (via the existing `multiInstance` +
-`requireWatchNamespace` machinery, reparented under `ClusterTenantProvisioner`), **that**
-operator owns its silo's `{org}.{base}` Ingress + `DNSEndpoint` + cert binding, scoped to its
-namespace — never a shared operator writing every org's ingress. This must be **fail-closed**:
-a silo with no ingress is *unreachable*, never cross-wired to another org's host. The `shared`
-tier keeps the single shared operator emitting per-org ingress (today's Track-DOMAIN behavior).
+Each ClusterTenant runs its **own** operator (the existing `multiInstance` +
+`requireWatchNamespace` machinery, reparented under `ClusterTenantProvisioner`) — at the
+`shared` tier too, just scheduled on shared nodes. **That** operator owns its silo's
+`{org}.{base}` Ingress + `DNSEndpoint` + cert binding, scoped to its namespace — never a shared
+operator writing every org's ingress. **Fail-closed:** a silo with no ingress is *unreachable*,
+never cross-wired to another org's host. (The single shared operator emitting every org's
+ingress is the pattern being retired, not preserved.)
 
 ### 5. `dedicatedCluster` is an arm's-length provisioner (the AGPL/WeOwnAI seam)
 
@@ -88,41 +111,51 @@ enterprise seam rather than baked into the default substrate (consistent with AD
 
 ## Implementation shape (post-acceptance; split into tasks)
 
-1. **Provisioner reparent** — model a dedicated silo as a `multiInstance` instance the
+1. **Provisioner reparent** — model **every** ClusterTenant as a `multiInstance` instance the
    `ClusterTenantProvisioner` stamps out (namespace + scoped operator + `mode=instance` planes
-   + per-CT DB), gated by `isolationTier`.
-2. **Per-CT operator** — promote the namespace-scoped operator to be provisioned per dedicated
-   CT; move per-org ingress/DNS ownership into it (fail-closed).
+   + per-CT DB). `isolationTier` selects the **scheduling** (shared pool / dedicated pool /
+   vcluster), not whether the planes are dedicated.
+2. **Per-CT operator** — provision the namespace-scoped operator per CT (all tiers); move
+   per-org ingress/DNS ownership into it (fail-closed).
 3. **Tenant API/DB split** — separate the super-admin (cross-silo, named-CT) surface from the
-   tenant-facing (silo-scoped) surface; per-CT DB for dedicated tiers, logical partition for
-   `shared`; delete the #68 resolution shim.
-4. **Tier wiring** — `isolationTier` drives shared-vs-instance plane mode + operator topology
-   (feeds S7's cost/footprint model).
+   per-CT tenant-facing (silo-scoped) API + DB instance; delete the #68 resolution shim.
+4. **Tier wiring** — `isolationTier` drives node placement / vcluster (NOT plane mode — plane
+   mode is always `instance`); feeds S7's cost/footprint model.
 
 ## Alternatives considered
 
-- **Per-CT everything, all tiers** — full private stack (operator + planes + DB) for every
-  tenant regardless of tier. **Rejected:** footprint/cost is untenable for dense `shared`-tier
-  customers; isolation for `shared` is already met by S2/S5 + ACL.
-- **Keep everything shared, isolate only at the network/identity layer (S2/S5 only)** —
-  **rejected** as the end state: it leaves the resolution-ambiguity class and co-resident
-  data/credentials, and gives dedicated-tier customers nothing physical to buy. Acceptable
-  *only* as the `shared` tier's posture, not the platform's.
+- **Shared-singleton planes + per-CT ACL at the `shared` tier** (this ADR's *first draft*) —
+  one Obot/Cognee/etc. multiplexing all `shared`-tier tenants behind app-level ACL.
+  **Rejected** on the correction in decision 1: it makes isolation depend on every plane's ACL
+  being perfect, leaves data/credentials co-resident, and only *logically* partitions the
+  resolution-ambiguity. Dedicated per-CT instances on shared infra cost more pods but isolate
+  truly and kill the ambiguity outright.
+- **Full physical separation (dedicated nodes/cluster) for every tenant** — **rejected** as the
+  default: dedicated *compute* is the upgrade a customer buys (`dedicatedNodes`/
+  `dedicatedCluster`); the `shared` tier bin-packs dedicated per-CT *instances* onto shared
+  nodes.
 - **A brand-new per-CT deployment mechanism** — **rejected** in favor of reusing the existing
-  `multiInstance` + `sharedPlatform.mode` machinery; a parallel mechanism would duplicate the
-  isolation surface and diverge.
+  `multiInstance` + `sharedPlatform.mode=instance` machinery; a parallel mechanism would
+  duplicate the isolation surface and diverge.
 
 ## Consequences
 
 - **Unblocks S8/S9/S10.** Obot OBO brokering (S8), Zot skill storage (S9), and the
-  provider-secret cutover (S10) all need to know *where the planes live*; this ADR answers that
-  per tier, so they can target the right placement.
-- **Footprint scales with paid isolation, not tenant count.** Dense `shared` tier stays cheap;
-  dedicated tiers cost more by design — quantified by S7 (tiers & cost).
-- **New per-silo failure domains + ops surface** at dedicated tiers (N operators, N plane
-  stacks, N DBs). Monitoring and upgrade orchestration must become fleet-aware.
-- **A migration, not a flag-day.** Existing tenants stay `shared` (no change); a tenant moves to
-  a dedicated tier by being re-provisioned into its own instance. The per-CT operator/API/DB and
-  the #68-shim retirement land incrementally behind the tier gate.
-- **`shared`-tier isolation is explicitly app-level + S2/S5**, not physical — documented so an
-  operator selling the `shared` tier states the boundary honestly.
+  provider-secret cutover (S10) all target a **per-CT plane** now (uniform across tiers), so
+  they no longer need a placement caveat — the plane is always the tenant's own.
+- **Footprint is per-CT instance stacks bin-packed by tier, not multiplexed.** Every tenant —
+  even `shared` — runs its own Obot + skills + Cognee + LiteLLM + operator + DB pods; the
+  `shared` tier's lever is **scheduling density on common nodes**, not fewer pods. This is more
+  per-tenant pods than singleton-multiplexing would be — the deliberate cost of true isolation,
+  quantified + capacity-planned by S7. Right-sizing per-CT plane requests/limits is essential to
+  keep `shared`-tier density viable.
+- **New per-silo failure domains + ops surface at every tier** (N operators, N plane stacks, N
+  DBs — N = tenant count). Monitoring, upgrades, and resource governance must become
+  fleet-aware from the `shared` tier up.
+- **A bigger migration than a tier-gated one.** Because per-CT planes apply at the `shared`
+  tier too, existing shared-singleton tenants must each be re-provisioned into their own
+  instance — not left as-is. Sequence carefully (per-CT DB data migration; ingress cutover
+  fail-closed) and stage behind the provisioner.
+- **`shared`-tier isolation = dedicated per-CT instances on shared compute + S2/S5**, not
+  app-level multiplexing. The honest boundary an operator states: *separate instances, shared
+  nodes* — stronger than "one plane, many tenants, trust the ACL".
