@@ -3,10 +3,13 @@ import type { Command } from "commander";
 import type { CliConfig } from "../config.js";
 import { _MakeClient } from "../config.js";
 import { _Print, _PrintApiError, _PrintSuccess, type OutputFormat } from "../format.js";
-import type { ClusterTenantCreateOptions, ClusterTenantQuotaBody, ClusterTenantQuotaOptions, ClusterTenantUpdateOptions } from "./cluster-tenants.types.js";
+import type { ClusterTenantCreateOptions, ClusterTenantMemberAddOptions, ClusterTenantQuotaBody, ClusterTenantQuotaOptions, ClusterTenantUpdateOptions } from "./cluster-tenants.types.js";
 
 /** Columns shown for `oc cluster-tenant list` in table mode. */
 const _LIST_COLUMNS = ["name", "displayName", "isolationTier", "compute", "resources", "status"];
+
+/** Columns shown for `oc cluster-tenant members list` in table mode. */
+const _MEMBER_LIST_COLUMNS = ["subject", "role"];
 
 /**
  * Build the resource-quota body block from the raw quota flags.
@@ -183,5 +186,53 @@ export function _RegisterClusterTenants(parent: Command, getConfig: () => CliCon
       const { error } = await client.DELETE("/cluster-tenants/{name}", { params: { path: { name } } });
       if (error) _PrintApiError("cluster-tenant delete", error);
       _PrintSuccess(`Cluster tenant "${name}" deleted`);
+    });
+
+  // --- members sub-group: the org's LOCAL membership registry (the rows the
+  //     org-admin gate reads — OrgMembership, NOT Zitadel grants). ----------
+  const members = clusterTenant
+    .command("members")
+    .description("Manage an organisation's members (list, add/update, remove) — the local membership registry");
+
+  members
+    .command("list <name>")
+    .description("List an organisation's members (subject + role)")
+    .option("-o, --output <format>", "Output format: table|json", "table")
+    .action(async function _membersList(name: string, opts: { output: OutputFormat })
+    {
+      const client = _MakeClient(getConfig());
+      const { data, error } = await client.GET("/cluster-tenants/{name}/members", { params: { path: { name } } });
+      if (error) _PrintApiError("cluster-tenant members list", error);
+      _Print(data, opts.output, _MEMBER_LIST_COLUMNS);
+    });
+
+  members
+    .command("add <name>")
+    .description("Add or update an organisation member (upsert on subject)")
+    .requiredOption("--subject <subject>", "IdP-verified subject (OIDC sub) of the member")
+    .requiredOption("--role <role>", "Role to grant: Owner|Admin|Member")
+    .option("-o, --output <format>", "Output format: table|json", "table")
+    .action(async function _membersAdd(name: string, opts: ClusterTenantMemberAddOptions)
+    {
+      // The role string is passed straight through so the API stays the single
+      // validator (it rejects anything outside Owner|Admin|Member with a 400).
+      const client = _MakeClient(getConfig());
+      const { data, error } = await client.POST("/cluster-tenants/{name}/members", {
+        params: { path: { name } },
+        body: { subject: opts.subject, role: opts.role as "Owner" | "Admin" | "Member" },
+      });
+      if (error) _PrintApiError("cluster-tenant members add", error);
+      _Print(data, opts.output);
+    });
+
+  members
+    .command("remove <name> <subject>")
+    .description("Remove an organisation member (rejected for the last Owner)")
+    .action(async function _membersRemove(name: string, subject: string)
+    {
+      const client = _MakeClient(getConfig());
+      const { error } = await client.DELETE("/cluster-tenants/{name}/members/{subject}", { params: { path: { name, subject } } });
+      if (error) _PrintApiError("cluster-tenant members remove", error);
+      _PrintSuccess(`Member "${subject}" removed from "${name}"`);
     });
 }

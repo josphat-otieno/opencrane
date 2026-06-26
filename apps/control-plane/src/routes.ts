@@ -42,6 +42,7 @@ import { awarenessParticipationRouter } from "./routes/awareness-participation.j
 import { sessionsRouter } from "./routes/sessions.js";
 import { platformDnsRouter } from "./routes/platform-dns.js";
 import { clusterTenantsRouter } from "./routes/cluster-tenants.js";
+import { clusterTenantMembersRouter } from "./routes/cluster-tenant-members.js";
 import { _BuildClusterTenantProvisionerRegistry } from "./core/cluster-tenants/registry.js";
 import { _BuildZitadelManagementClient } from "./infra/zitadel/zitadel-client.js";
 import { _CheckDbHealth } from "./infra/db/healtcheck-db.js";
@@ -155,6 +156,9 @@ export function _RegisterRoutes(app: Express, prisma: PrismaClient, customApi: k
     // so a single-cluster install (manager off) never requires it; fail-loud if unset.
     const zitadelClient = _BuildZitadelManagementClient();
     app.use("/api/v1/cluster-tenants", clusterTenantsRouter(prisma, clusterTenantRegistry, customApi, zitadelClient));
+    // Org membership registry (the LOCAL rows the org-admin gate reads), mounted under
+    // the parent org's `:name`. `mergeParams` carries `:name` into the child router.
+    app.use("/api/v1/cluster-tenants/:name/members", clusterTenantMembersRouter(prisma));
   }
   app.use("/api/v1/awareness/rollout", awarenessRolloutRouter(prisma));
   app.use("/api/v1/awareness/participation", awarenessParticipationRouter(prisma));

@@ -366,6 +366,26 @@ const ClusterTenantUpdateSchema = {
   },
 };
 
+const OrgMemberSchema = {
+  type: "object" as const,
+  required: ["subject", "role"],
+  description: "A single organisation membership row — the LOCAL membership registry the org-admin gate reads (an OrgMembership, NOT a Zitadel grant).",
+  properties: {
+    subject: { type: "string", description: "IdP-verified subject (OIDC `sub`) holding the membership." },
+    role: { type: "string", enum: ["Owner", "Admin", "Member"], description: "Role held within the organisation." },
+  },
+};
+
+const OrgMemberWriteSchema = {
+  type: "object" as const,
+  required: ["subject", "role"],
+  description: "Add or update an organisation member (upsert on the unique [org, subject]).",
+  properties: {
+    subject: { type: "string", description: "IdP-verified subject (OIDC `sub`) of the member to add/update." },
+    role: { type: "string", enum: ["Owner", "Admin", "Member"], description: "Role to grant within the organisation." },
+  },
+};
+
 const GroupSchema = {
   type: "object" as const,
   properties: {
@@ -782,6 +802,8 @@ export const spec = {
       ClusterTenantWrite: ClusterTenantWriteSchema,
       ClusterTenantUpdate: ClusterTenantUpdateSchema,
       ClusterTenantResourceQuota: ClusterTenantResourceQuotaSchema,
+      OrgMember: OrgMemberSchema,
+      OrgMemberWrite: OrgMemberWriteSchema,
       BillingAccount: BillingAccountSchema,
       BillingAccountWrite: BillingAccountWriteSchema,
       Group: GroupSchema,
@@ -1532,6 +1554,61 @@ export const spec = {
           401: unauthorized("No authenticated session (real-auth deployments)."),
           403: forbidden("Caller is neither a platform operator nor an owner/admin of this org."),
           404: notFound("Cluster tenant not found."),
+        },
+      },
+    },
+
+    "/cluster-tenants/{name}/members": {
+      get: {
+        operationId: "listClusterTenantMembers",
+        summary: "List an organisation's members (operator OR owner/admin of that org)",
+        description: "Lists the org's membership rows (subject + role) — the LOCAL membership registry the org-admin gate reads (OrgMembership rows, NOT Zitadel grants).",
+        tags: ["Cluster Tenants"],
+        parameters: [{ name: "name", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          200: ok("Organisation membership list.", { type: "array", items: { $ref: "#/components/schemas/OrgMember" } }),
+          401: unauthorized("No authenticated session (real-auth deployments)."),
+          403: forbidden("Caller is neither a platform operator nor an owner/admin of this org."),
+          404: notFound("Cluster tenant not found."),
+        },
+      },
+      post: {
+        operationId: "addClusterTenantMember",
+        summary: "Add or update an organisation member (operator OR owner/admin of that org)",
+        description: "Upserts a membership on the unique [org, subject]: adds a new member or changes an existing member's role. Last-Owner guardrail: demoting the org's sole Owner to a lesser role is rejected (409 LAST_OWNER).",
+        tags: ["Cluster Tenants"],
+        parameters: [{ name: "name", in: "path", required: true, schema: { type: "string" } }],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { $ref: "#/components/schemas/OrgMemberWrite" } } },
+        },
+        responses: {
+          200: ok("Member added or updated.", { $ref: "#/components/schemas/OrgMember" }),
+          400: badRequest("Request body failed validation (subject required; role must be Owner|Admin|Member)."),
+          401: unauthorized("No authenticated session (real-auth deployments)."),
+          403: forbidden("Caller is neither a platform operator nor an owner/admin of this org."),
+          404: notFound("Cluster tenant not found."),
+          409: conflict("The change would demote the organisation's last Owner (code LAST_OWNER)."),
+        },
+      },
+    },
+
+    "/cluster-tenants/{name}/members/{subject}": {
+      delete: {
+        operationId: "removeClusterTenantMember",
+        summary: "Remove an organisation member (operator OR owner/admin of that org)",
+        description: "Removes a membership row. Last-Owner guardrail: removing the org's sole Owner is rejected (409 LAST_OWNER).",
+        tags: ["Cluster Tenants"],
+        parameters: [
+          { name: "name", in: "path", required: true, schema: { type: "string" } },
+          { name: "subject", in: "path", required: true, schema: { type: "string" } },
+        ],
+        responses: {
+          200: ok("Member removed.", { type: "object", properties: { subject: { type: "string" }, status: { type: "string" } } }),
+          401: unauthorized("No authenticated session (real-auth deployments)."),
+          403: forbidden("Caller is neither a platform operator nor an owner/admin of this org."),
+          404: notFound("Cluster tenant or membership not found."),
+          409: conflict("Removing this member would remove the organisation's last Owner (code LAST_OWNER)."),
         },
       },
     },
