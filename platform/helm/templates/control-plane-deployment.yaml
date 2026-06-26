@@ -56,8 +56,12 @@ spec:
               value: {{ include "opencrane.deploymentRole" . | quote }}
             - name: INGRESS_DOMAIN
               value: {{ .Values.ingress.domain | quote }}
-            # -- Platform base domain the control-plane derives each org's Zitadel redirect
-            #    URI from (`<org>.<base>/api/v1/auth/callback`, S3 / Phase 2a).
+            # -- Platform base domain used to derive each org's Zitadel redirect URI
+            #    (`<org>.<base>/api/v1/auth/callback`, S3 / Phase 2a). Mounted for BOTH roles
+            #    on purpose: it is needed by Zitadel *provisioning* (central-only) AND by
+            #    Zitadel *consumption* — a silo builds the same redirect URI when its tenants
+            #    log in via their pre-provisioned per-org OIDC client. Only the provisioning
+            #    side (mgmtApiUrl + SA key, below) is gated central-only.
             - name: PLATFORM_BASE_DOMAIN
               value: {{ .Values.ingress.domain | quote }}
             {{- if .Values.certManager.enabled }}
