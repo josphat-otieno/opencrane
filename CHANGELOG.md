@@ -119,6 +119,42 @@ and landed on the `strong-siloes` branch.
   fully L3/4-isolated; no error, no partial state. This is the first slice of S5; SPIFFE
   workload-identity issuance and the super-admin identity loop are follow-on slices.
 
+- **Each ClusterTenant runs as a fully self-contained silo — its own operator, planes, and
+  database — on shared nodes, with the central control-plane as the only component that crosses
+  silo boundaries.** Rather than multiplexing all tenants through shared singleton instances of
+  Obot, LiteLLM, Cognee, and the skill-registry (where isolation depends entirely on each
+  plane's app-level ACL being correct), each ClusterTenant now gets dedicated instances of every
+  runtime plane plus its own operator and its own CNPG Postgres database. The central
+  super-admin control-plane in `opencrane-system` (and Zitadel) remain the sole shared
+  components and act only on named ClusterTenants — never on caller-inferred tenant identity.
+  A silo control-plane therefore never has to guess which tenant a request belongs to: the silo
+  is the scope. This retires the resolution-ambiguity class (the recurring family of
+  default-tenant-projection and cross-tenant-lookup bugs) by construction, without a code shim.
+  All dedicated stacks run on shared cluster nodes; dedicated-node and dedicated-cluster
+  scheduling tiers are a future upgrade layered on this topology.
+
+- **Operators deploy the central super-admin control-plane and each per-ClusterTenant silo
+  independently, from source, with two purpose-built scripts.** `./platform/deploy-multi-tenant.sh`
+  installs the cluster-wide infrastructure (ingress-nginx, CloudNativePG operator, cert-manager,
+  external-dns) and the central control-plane (`deploymentRole=central`) that manages the fleet,
+  provisions ClusterTenants, and runs Zitadel — but serves no tenant-facing API. Once the central
+  release is up, `./platform/deploy-silo.sh --base-domain <domain> --cluster-tenant <name>`
+  installs one silo into `opencrane-<name>`: its own operator, runtime planes, and a per-CT CNPG
+  database in that namespace, with `deploymentRole=silo`. The silo script reuses the
+  cluster-wide infra already present (`--no-ingress-nginx`, `--no-external-dns`,
+  `--no-db-operator` are set automatically) and fails fast with a clear message if the central
+  release has not been installed first. Additional silos are added by running the silo script
+  again with a different `--cluster-tenant` value.
+
+- **The control-plane image mounts only the API routes that belong to its deployed role.**
+  Setting `OPENCRANE_CONTROL_PLANE_ROLE=central` (the default; also set via Helm
+  `deploymentRole`) mounts fleet, ClusterTenant-lifecycle, Zitadel, and platform-DNS routes and
+  suppresses every tenant-facing route. Setting `deploymentRole=silo` mounts tenant-facing
+  routes (tenants, policies, groups, skills, model routing, shares, awareness, sessions) and
+  suppresses every fleet/cross-silo route. An unrecognised value crashes at boot with the
+  offending value named, so a misconfigured topology fails loud rather than silently presenting
+  a partial API surface.
+
 ### Security
 
 - **The platform gateway block in every tenant config is now pinned against `configOverrides`
