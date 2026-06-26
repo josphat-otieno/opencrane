@@ -1,6 +1,6 @@
 # ADR 0002 — Per-ClusterTenant silo architecture (dedicated operator, planes, API/DB per tenant)
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-06-26
 - **Task:** `task_5164276f` (Phase 3 / S6 of the strict-multi-tenancy program)
 - **Supersedes / superseded by:** none — **refines** [ADR 0001](0001-cluster-tenant-virtual-network-isolation.md), which chose the isolation *substrate* (Linkerd + the NetworkPolicy floor) and explicitly deferred the *placement* decisions (which planes move into the silo, the per-CT operator design, per-CT API/DB) to Phase 3 / this ADR.
