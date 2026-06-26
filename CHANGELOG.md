@@ -86,6 +86,39 @@ and landed on the `strong-siloes` branch.
   (an unresolvable pod IP stays trust-nothing) and the CONN.9 default remains an empty allowlist
   (trust nothing) — `[auto]` is opt-in only.
 
+- **Platform operators can rotate the master Zitadel service-account key with a safety
+  guarantee — the live key only changes after the candidate is proven working.** Calling
+  `oc admin zitadel rotate-key` (or `POST /api/v1/admin/zitadel/sa-key:rotate`) validates
+  the candidate key in full before touching anything live: it exchanges the candidate for a
+  short-lived token and then probes for `IAM_OWNER` on the Zitadel instance. Only when both
+  checks pass does the rotation proceed — the new key is written to the Kubernetes Secret
+  first (so a pod restart keeps it), then swapped in-memory with the token cache cleared.
+  If validation fails the endpoint returns `422` with per-check flags (`tokenExchangeOk` /
+  `instanceScopeOk`) and the old key remains active. Key material is accepted on stdin, via
+  `--key-file`, or inline; it is never echoed or logged. The route is platform-operator
+  gated and the Helm RBAC is tightly scoped to patch-only on the single named Secret.
+
+- **Org administrators can manage who belongs to their organisation — and the last owner
+  can never be accidentally removed.** The `oc cluster-tenant members` sub-commands
+  (`list`, `add`, `remove`) and the underlying
+  `GET / POST / DELETE /api/v1/cluster-tenants/:name/members` endpoints let an org manager
+  list current members, upsert a member at a given role (Owner / Admin / Member), and
+  remove a member. A last-Owner guardrail enforces that demoting or removing the sole Owner
+  returns `409 LAST_OWNER`, so an organisation can never be left without an owner. Access
+  is gated on the org-manager role; no Zitadel call is made in this slice — membership is
+  held in the platform database and read by the org-admin gate on every request.
+
+- **Each silo can optionally enforce cryptographic workload identity between its services —
+  layered on top of the existing L3/4 network baseline.** When `linkerd.meshEnabled` is set
+  to `true` in Helm (default off), the operator annotates the silo namespace for Linkerd
+  injection and emits a per-silo deny-by-default `Server` + `MeshTLSAuthentication` +
+  `AuthorizationPolicy` that allows intra-silo and operator-namespace mTLS traffic while
+  denying cross-silo communication at the identity layer. The policy is the mesh-layer
+  analogue of the S2 `NetworkPolicy` baseline — both must be satisfied. Fail-closed: on a
+  cluster without Linkerd CRDs installed the step is logged as skipped and the silo remains
+  fully L3/4-isolated; no error, no partial state. This is the first slice of S5; SPIFFE
+  workload-identity issuance and the super-admin identity loop are follow-on slices.
+
 ### Security
 
 - **The platform gateway block in every tenant config is now pinned against `configOverrides`
