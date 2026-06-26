@@ -274,3 +274,5 @@ Authentication establishes *who*; authorization is split across the two planes:
 
 - [Networking & isolation](/operators/networking) — the two-plane model, NetworkPolicy enforcement, the three-layer gateway seam, and known egress gaps
 - [Connection security](/security/connection-security) — CONN.9/CONN.10 threat model and transport hardening posture
+- [Zitadel key rotation](/security/zitadel-key-rotation) — how to rotate the platform SA key that the control plane uses to manage ClusterTenant Zitadel Orgs
+- [Silo IAM: inheritance & sharing](/integrators/silo-iam) — how the Zitadel-bound subject flows into grant compilation and dataset derivation
