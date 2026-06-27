@@ -105,6 +105,7 @@ export default defineConfig({
         collapsed: true,
         items: [
           { text: 'Hosting & deployment', link: '/operators/hosting' },
+          { text: 'Fleet and silo operating model', link: '/operators/fleet-silo-model' },
           { text: 'Silo deployment model', link: '/operators/silo-deployment' },
           { text: 'DNS configuration', link: '/operators/dns-config' },
           { text: 'Networking & isolation', link: '/operators/networking' },

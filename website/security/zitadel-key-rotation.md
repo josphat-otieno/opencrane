@@ -1,10 +1,11 @@
 # Zitadel service-account key rotation
 
 How to rotate the platform's Zitadel service-account key — the master IdP credential
-that the control plane uses to provision and manage ClusterTenant organisations — using
+that the **fleet-manager** uses to provision and manage ClusterTenant organisations — using
 the safe validate-then-swap procedure.
 
 > See also: [Authentication](/security/identity) (how the Zitadel SA key fits into the OIDC model),
+> [Fleet and silo operating model](/operators/fleet-silo-model) (how the fleet-manager owns the Zitadel SA key),
 > [Runbook](/operators/runbook) (general operational procedures),
 > [Networking & isolation](/operators/networking) (the platform network model).
 
@@ -12,7 +13,7 @@ the safe validate-then-swap procedure.
 
 ## What this key is and why it matters
 
-The control plane authenticates to the Zitadel Management API as a **service account**
+The **fleet-manager** authenticates to the Zitadel Management API as a **service account**
 using a key-pair JSON file (the Zitadel "SA key"). This credential is used to:
 
 - Create and tear down per-organisation Zitadel Orgs on ClusterTenant provisioning.
@@ -23,10 +24,12 @@ The SA key must hold the Zitadel **instance-level `IAM_OWNER` role** — an
 instance-scoped privilege that allows org create and delete operations. Losing or
 leaking this credential is a platform-level incident.
 
-::: warning Multi-tenant path only
-The SA key and its rotation apply only when the control plane is running the
-cluster-tenant manager (i.e. `ZITADEL_MGMT_API_URL`, `ZITADEL_MGMT_SA_KEY`, and
-`PLATFORM_BASE_DOMAIN` are all set). Single-cluster installs are unaffected.
+::: info Fleet-manager only
+The SA key and its rotation apply only to the **fleet-manager** deployment in
+`opencrane-system`. The per-silo **clustertenant-manager** never holds this key and
+makes no Zitadel Management API calls. The rotation requires `ZITADEL_MGMT_API_URL`,
+`ZITADEL_MGMT_SA_KEY`, and `PLATFORM_BASE_DOMAIN` all set on the fleet-manager pod —
+configured via `fleetManager.zitadel.*` in Helm values.
 :::
 
 ---
@@ -71,7 +74,7 @@ validation even starts.
 ```
 
 Source:
-[`routes/admin/zitadel-key.ts`](https://github.com/italanta/opencrane/blob/main/apps/clustertenant-manager/src/routes/admin/zitadel-key.ts).
+[`apps/fleet-manager/src/routes/admin/zitadel-key.ts`](https://github.com/italanta/opencrane/blob/main/apps/fleet-manager/src/routes/admin/zitadel-key.ts).
 
 ---
 
@@ -130,7 +133,7 @@ ClusterTenant organisations by creating a test ClusterTenant (or re-provisioning
 existing one with a forced reconcile). Check the control-plane logs:
 
 ```bash
-kubectl logs -n opencrane deployment/control-plane --tail 50 | grep zitadel
+kubectl logs -n opencrane-system deployment/opencrane-fleet-manager --tail 50 | grep zitadel
 ```
 
 A healthy log line looks like:
@@ -155,9 +158,9 @@ The rotation endpoint is gated behind the **platform-operator** role check
 email) can invoke it. An authenticated but non-operator caller receives `403`.
 
 The Kubernetes RBAC for the rotation path is `patch`-only on the single named Secret
-(`ZITADEL_MGMT_SECRET_NAME`). The control-plane service account does not hold `get`
+(`ZITADEL_MGMT_SECRET_NAME`). The fleet-manager's ServiceAccount does not hold `get`
 on the Secret — it reads the initial key at boot from `ZITADEL_MGMT_SA_KEY` env (set
-from the Secret via the Helm template) and patches the Secret only during rotation.
+from the Secret via the Helm template at `fleetManager.zitadel.existingSecret`) and patches the Secret only during rotation.
 
 ---
 
@@ -165,14 +168,18 @@ from the Secret via the Helm template) and patches the Secret only during rotati
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
-| `ZITADEL_MGMT_API_URL` | Yes | Zitadel instance base URL (e.g. `https://your-instance.zitadel.cloud`) |
-| `ZITADEL_MGMT_SA_KEY` | Yes | Service-account key JSON (set from the Secret at pod start) |
-| `ZITADEL_MGMT_SECRET_NAME` | Yes (rotation) | Name of the Kubernetes Secret to patch during rotation |
-| `PLATFORM_BASE_DOMAIN` | Yes | Base domain used to derive per-org redirect URIs |
+These environment variables apply to the **fleet-manager** pod in `opencrane-system`. Set them via `fleetManager.zitadel.*` in Helm values — not directly.
+
+| Variable | Required | Helm value | Purpose |
+|----------|----------|------------|---------|
+| `ZITADEL_MGMT_API_URL` | Yes | `fleetManager.zitadel.mgmtApiUrl` | Zitadel instance base URL (e.g. `https://your-instance.zitadel.cloud`) |
+| `ZITADEL_MGMT_SA_KEY` | Yes | from `fleetManager.zitadel.existingSecret` | Service-account key JSON (set from the Secret at pod start) |
+| `ZITADEL_MGMT_SECRET_NAME` | Yes (rotation) | derived from `fleetManager.zitadel.existingSecret` | Name of the Kubernetes Secret to patch during rotation |
+| `PLATFORM_BASE_DOMAIN` | Yes | `--base-domain` at install | Base domain used to derive per-org redirect URIs |
 
 `ZITADEL_MGMT_SECRET_NAME` must be set for the rotation endpoint to accept requests.
 If it is unset the endpoint returns `409` immediately — an in-memory-only swap would
-revert to the old key on the next pod restart, so the control plane refuses it.
+revert to the old key on the next pod restart, so the fleet-manager refuses to proceed.
 
 ---
 
@@ -190,8 +197,9 @@ key is untouched. Check:
 
 ### Rotation returns 409 (persistence not configured)
 
-`ZITADEL_MGMT_SECRET_NAME` is not set on the control-plane deployment. Set the env var
-(via the Helm value `controlPlane.zitadel.secretName`) and redeploy before retrying.
+`ZITADEL_MGMT_SECRET_NAME` is not set on the fleet-manager deployment. Set the Helm value
+`fleetManager.zitadel.existingSecret` (pointing at the Secret holding the SA key JSON)
+and re-run the fleet deploy (`deploy-multi-tenant.sh`) before retrying.
 
 ### Key was revoked before rotation completed
 
@@ -199,8 +207,10 @@ If the old key was revoked and the rotation failed (or was not started), the con
 plane loses the ability to manage Zitadel. Restore access by:
 
 1. Creating a new SA key in Zitadel for the service account.
-2. Updating the `ZITADEL_MGMT_SA_KEY` env (the Kubernetes Secret) directly with the
-   new key JSON.
-3. Restarting the control-plane pod so it reads the new key from env on boot.
+2. Updating the `ZITADEL_MGMT_SA_KEY` env (the Kubernetes Secret pointed at by `fleetManager.zitadel.existingSecret`) directly with the new key JSON.
+3. Restarting the fleet-manager pod so it reads the new key from env on boot:
+   ```bash
+   kubectl rollout restart deployment/opencrane-fleet-manager -n opencrane-system
+   ```
 4. Then running `oc admin zitadel rotate-key` normally to register the key in
    persistence, ready for the next rotation.

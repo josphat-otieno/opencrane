@@ -82,23 +82,39 @@ browser**. It is how the pod calls *outward* — e.g. OpenClaw → Obot MCP Gate
 (`aud=control-plane`). The browser never holds an `obot-gateway` token and never talks
 to Obot directly.
 
+## Two OIDC registrations: fleet and silo
+
+OpenCrane's Stage 4 architecture uses **two separate OIDC registrations** — one for the fleet-manager and one per silo's clustertenant-manager. Both use the same backend-for-frontend session model but target different Zitadel projects and audiences.
+
+| Registration | Component | Helm key | Audience |
+|---|---|---|---|
+| **Fleet OIDC** | `fleet-manager` (in `opencrane-system`) | `fleetManager.oidc.*` | Fleet operators and billing admins — ClusterTenant lifecycle, billing, platform DNS, Zitadel admin |
+| **Silo OIDC** | `clustertenant-manager` (per-silo namespace) | `clustertenantManager.oidc.*` | Per-org end users — tenant management, policies, skills, sessions |
+
+Configure them independently. The fleet and silo can share the same Zitadel *instance* but must use different Zitadel *projects* (and therefore different client IDs and redirect URIs).
+
+::: info Zitadel management is fleet-only
+The fleet-manager is the **sole holder** of the Zitadel Management API service-account key (`fleetManager.zitadel.*`). The per-silo clustertenant-manager uses standard OIDC discovery at `clustertenantManager.oidc.issuerUrl` for user login only — it makes no Zitadel Management API calls. See [Fleet and silo operating model](/operators/fleet-silo-model).
+:::
+
 ## Control-plane session (OIDC)
 
-OpenCrane uses a backend-for-frontend session model for human access to the
-control plane.
+OpenCrane uses a backend-for-frontend session model for human access to both the fleet
+plane and each silo's tenant-facing plane.
 
 - The browser is redirected to an OpenID Connect provider.
-- The control-plane backend completes the Authorization Code flow with PKCE.
+- The backend completes the Authorization Code flow with PKCE.
 - The backend stores the authenticated user in a secure HTTP-only session cookie.
 - Clients read login state from `/api/auth/me` and never keep an OAuth bearer
   token in browser storage.
 
 This works with Google Identity and with self-hosted providers such as Keycloak,
-Dex, Authentik, or Zitadel.
+Dex, Authentik, or Zitadel. The variables below apply to **either** the fleet-manager
+or the clustertenant-manager; see the table above to know which Helm key maps to which.
 
 ### Required environment variables
 
-Set these on the control-plane deployment when enabling OIDC.
+Set these via Helm (`fleetManager.oidc.*` for the fleet plane, `clustertenantManager.oidc.*` for each silo) — not directly on the deployments.
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
@@ -274,5 +290,6 @@ Authentication establishes *who*; authorization is split across the two planes:
 
 - [Networking & isolation](/operators/networking) — the two-plane model, NetworkPolicy enforcement, the three-layer gateway seam, and known egress gaps
 - [Connection security](/security/connection-security) — CONN.9/CONN.10 threat model and transport hardening posture
-- [Zitadel key rotation](/security/zitadel-key-rotation) — how to rotate the platform SA key that the control plane uses to manage ClusterTenant Zitadel Orgs
+- [Zitadel key rotation](/security/zitadel-key-rotation) — how to rotate the fleet-manager's Zitadel SA key that provisions ClusterTenant Zitadel Orgs
+- [Fleet and silo operating model](/operators/fleet-silo-model) — how fleet OIDC and per-silo OIDC are configured separately
 - [Silo IAM: inheritance & sharing](/integrators/silo-iam) — how the Zitadel-bound subject flows into grant compilation and dataset derivation
