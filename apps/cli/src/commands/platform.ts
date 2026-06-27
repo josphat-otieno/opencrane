@@ -3,7 +3,7 @@ import { readFileSync } from "fs";
 import type { Command } from "commander";
 
 import type { CliConfig } from "../config.js";
-import { _MakeClient } from "../config.js";
+import { _MakeFleetClient } from "../config.js";
 import { _Print, _PrintApiError, _PrintSuccess, type OutputFormat } from "../format.js";
 
 /** Options accepted by `oc platform dns set`. */
@@ -43,7 +43,7 @@ export function _RegisterPlatform(parent: Command, getConfig: () => CliConfig): 
     .option("-o, --output <format>", "Output format: table|json", "table")
     .action(async function _show(opts: { issuerName?: string; output: OutputFormat })
     {
-      const client = _MakeClient(getConfig());
+      const client = _MakeFleetClient(getConfig());
       const { data, error } = await client.GET("/platform/dns", {
         params: { query: opts.issuerName ? { issuerName: opts.issuerName } : {} },
       });
@@ -69,7 +69,7 @@ export function _RegisterPlatform(parent: Command, getConfig: () => CliConfig): 
       const solverConfig = opts.solverConfigFile ? JSON.parse(readFileSync(opts.solverConfigFile, "utf8")) : undefined;
 
       // 2. Apply the config via the control-plane onboarding endpoint.
-      const client = _MakeClient(getConfig());
+      const client = _MakeFleetClient(getConfig());
       const { data, error } = await client.PUT("/platform/dns", {
         body: {
           provider: opts.provider,

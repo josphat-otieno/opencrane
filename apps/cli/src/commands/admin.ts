@@ -3,7 +3,7 @@ import { readFileSync } from "fs";
 import type { Command } from "commander";
 
 import type { CliConfig } from "../config.js";
-import { _MakeClient } from "../config.js";
+import { _MakeFleetClient } from "../config.js";
 import { _PrintApiError, _PrintSuccess } from "../format.js";
 
 /**
@@ -75,7 +75,7 @@ function _registerZitadel(parent: Command, getConfig: () => CliConfig): void
       }
 
       // 3. POST the candidate key to the control-plane rotate endpoint.
-      const client = _MakeClient(getConfig());
+      const client = _MakeFleetClient(getConfig());
       const { data, error, response } = await client.POST("/admin/zitadel/sa-key:rotate", {
         body: { serviceAccountKey },
       });

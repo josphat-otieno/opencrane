@@ -56,7 +56,8 @@ program
   .name("oc")
   .description("OpenCrane platform CLI — manage tenants, policies, budgets, MCP servers, and skills")
   .version("0.1.0")
-  .option("--url <url>", "Control-plane base URL (overrides OPENCRANE_URL)", undefined);
+  .option("--url <url>", "Silo control-plane base URL (overrides OPENCRANE_URL)", undefined)
+  .option("--fleet-url <url>", "Fleet-manager base URL for fleet/admin commands (overrides OPENCRANE_FLEET_URL; defaults to --url)", undefined);
 
 /** Lazily resolved config — deferred so --help works without credentials. */
 let _resolvedConfig: CliConfig | undefined;
