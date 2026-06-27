@@ -83,7 +83,7 @@ export function _BuildSiloLinkerdIdentityPolicy(
   //    isolation layers are discoverable under the same `silo-isolation` component.
   const labels = {
     "app.kubernetes.io/part-of": "opencrane",
-    "app.kubernetes.io/managed-by": "opencrane-operator",
+    "app.kubernetes.io/managed-by": "opencrane-fleet-manager",
     "app.kubernetes.io/component": "silo-isolation",
     "opencrane.io/cluster-tenant": clusterTenantName,
   };

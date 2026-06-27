@@ -283,8 +283,8 @@ EOF
 _wait_for_job "opencrane-db-migrate"
 
 # 8. Wait for the platform workloads that depend on the database.
-_wait_for_rollout "deployment/opencrane-operator"
-_wait_for_rollout "deployment/opencrane-control-plane"
+_wait_for_rollout "deployment/opencrane-fleet-manager"
+_wait_for_rollout "deployment/opencrane-clustertenant-manager"
 
 if kubectl get deployment/opencrane-litellm -n "$NAMESPACE" >/dev/null 2>&1; then
   _wait_for_rollout "deployment/opencrane-litellm"

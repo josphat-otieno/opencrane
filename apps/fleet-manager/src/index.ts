@@ -14,8 +14,8 @@ import { PolicyOperator } from "./policies/operator.js";
 import { _ReadTenantRolloutConfig, TenantUpdateWithCanaryStrategyController } from "./tenant-rollout/tenant-update-with-canary-strategy.controller.js";
 import { GatewayProxyServer } from "./gateway-proxy/server.js";
 
-/** Root logger for the opencrane-operator process — structured JSON, trace-correlated. */
-const log = ___CreateLogger("operator");
+/** Root logger for the opencrane-fleet-manager process — structured JSON, trace-correlated. */
+const log = ___CreateLogger("fleet-manager");
 
 // Route any stray console.* output through the structured logger.
 const _unbindConsole = ___BindConsole(log);

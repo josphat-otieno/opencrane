@@ -88,7 +88,7 @@ check_instance()
   else
     fail "found $clusterroles ClusterRoles (expected ≤1 TokenReview)"
   fi
-  if grep -q "name: $name-opencrane-operator" "$manifest" && grep -B2 "name: $name-opencrane-operator" "$manifest" | grep -q 'kind: Role'; then
+  if grep -q "name: $name-opencrane-fleet-manager" "$manifest" && grep -B2 "name: $name-opencrane-fleet-manager" "$manifest" | grep -q 'kind: Role'; then
     pass "operator RBAC is a namespaced Role"
   fi
 
@@ -122,7 +122,7 @@ echo "== LIVE acceptance criteria (NOT run here — require a real cluster) =="
 cat <<'LIVE'
   These are the brief §5.2–§5.5 checks; run them against a live cluster + CNI:
    - §5.2  create a Tenant in oc-acme; assert oc-globex's operator never reconciles it.
-   - §5.3  kubectl auth can-i --as=system:serviceaccount:oc-acme:oc-acme-opencrane-control-plane \
+   - §5.3  kubectl auth can-i --as=system:serviceaccount:oc-acme:oc-acme-opencrane-clustertenant-manager \
              get secrets -n oc-globex  →  must be "no" (RBAC denies it).
    - §5.4  exec a pod in oc-acme; curl a Service in oc-globex  →  must time out (NetworkPolicy).
    - §5.5  helm uninstall oc-globex + delete ns + its GCP resources; assert oc-acme is untouched.

@@ -4,7 +4,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { _FetchTenantModels } from "../../tenants/internal/tenant-models.js";
 
 const _log = pino({ level: "silent" });
-const _controlPlaneUrl = "http://opencrane-control-plane.default.svc:3000";
+const _controlPlaneUrl = "http://opencrane-clustertenant-manager.default.svc:3000";
 
 describe("_FetchTenantModels", () =>
 {

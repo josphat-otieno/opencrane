@@ -42,7 +42,7 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
-            {{- include "opencrane.observabilityEnv" (dict "ctx" $ "component" "operator") | nindent 12 }}
+            {{- include "opencrane.observabilityEnv" (dict "ctx" $ "component" "fleet-manager") | nindent 12 }}
             - name: WATCH_NAMESPACE
               value: {{ .Values.fleetManager.watchNamespace | quote }}
             # -- Multi-instance fail-closed guard (brief B2): when true the operator
@@ -94,7 +94,7 @@ spec:
             {{- if .Values.gatewayProxy.enabled }}
             # -- Identity-routing gateway proxy, folded in-process (DOMAIN.T4). The operator
             #    runs a WS proxy on GATEWAY_PROXY_PORT; the wildcard Ingress routes the gateway
-            #    WS upgrade here. CONTROL_PLANE_INTERNAL_URL (below) is its delegated-auth target.
+            #    WS upgrade here. CLUSTERTENANT_MANAGER_INTERNAL_URL (below) is its delegated-auth target.
             - name: GATEWAY_PROXY_ENABLED
               value: "true"
             - name: GATEWAY_PROXY_PORT
@@ -139,7 +139,7 @@ spec:
               value: {{ .Values.projectedIdentity.ttlSeconds | quote }}
             # -- In-cluster URL the operator injects into tenant Deployments so the
             #    contract re-pull loop (P4A.3) can reach the internal contract endpoint.
-            - name: CONTROL_PLANE_INTERNAL_URL
+            - name: CLUSTERTENANT_MANAGER_INTERNAL_URL
               value: {{ printf "http://%s-control-plane:%v" (include "opencrane.fullname" .) .Values.clustertenantManager.service.port | quote }}
             # -- Kubernetes Deployment names for the runtime-plane drift repairer (P4A.2).
             - name: OBOT_DEPLOYMENT_NAME

@@ -45,7 +45,7 @@ export const defaultConfig: OpenClawTenantOperatorConfig = {
   liteLlmDefaultRpmLimit: 0,
   mcpGatewayUrl: "http://opencrane-mcp-gateway.default.svc:8080",
   skillRegistryUrl: "http://opencrane-skill-registry.default.svc:5000",
-  controlPlaneInternalUrl: "http://opencrane-control-plane.default.svc:3000",
+  controlPlaneInternalUrl: "http://opencrane-clustertenant-manager.default.svc:3000",
   obotDeploymentName: "opencrane-mcp-gateway",
   skillRegistryDeploymentName: "opencrane-skill-registry",
   projectedTokenTtlSeconds: 600,

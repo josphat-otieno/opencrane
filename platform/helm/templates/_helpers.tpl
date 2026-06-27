@@ -340,7 +340,7 @@ This Secret is provisioned out-of-band (operator/installer), not by the chart.
 Observability env block for an app container.
 
 Call with a dict carrying the root context + the logical service name, e.g.:
-  {{- include "opencrane.observabilityEnv" (dict "ctx" $ "component" "control-plane") | nindent 12 }}
+  {{- include "opencrane.observabilityEnv" (dict "ctx" $ "component" "clustertenant-manager") | nindent 12 }}
 
 NODE_ENV + LOG_LEVEL are always emitted so logs are consistent JSON. The OTEL_*
 vars are emitted only when observability.otel.enabled, pointing apps at the

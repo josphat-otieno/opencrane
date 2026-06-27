@@ -58,7 +58,7 @@ export function _BuildClusterTenantResourceQuota(namespace: string, clusterTenan
       namespace,
       labels: {
         "app.kubernetes.io/part-of": "opencrane",
-        "app.kubernetes.io/managed-by": "opencrane-operator",
+        "app.kubernetes.io/managed-by": "opencrane-fleet-manager",
         "opencrane.io/cluster-tenant": clusterTenantName,
       },
     },
@@ -92,7 +92,7 @@ export function _BuildClusterTenantLimitRange(namespace: string, clusterTenantNa
       namespace,
       labels: {
         "app.kubernetes.io/part-of": "opencrane",
-        "app.kubernetes.io/managed-by": "opencrane-operator",
+        "app.kubernetes.io/managed-by": "opencrane-fleet-manager",
         "opencrane.io/cluster-tenant": clusterTenantName,
       },
     },

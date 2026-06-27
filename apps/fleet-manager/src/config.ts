@@ -185,7 +185,7 @@ export function _LoadOperatorConfig(): OpenClawTenantOperatorConfig
 
   // 2. Resolve this operator's own namespace for the runtime-plane URL fallbacks.
   //    The Helm chart always sets MCP_GATEWAY_URL / SKILL_REGISTRY_URL /
-  //    CONTROL_PLANE_INTERNAL_URL to release-prefixed values, so these defaults are a
+  //    CLUSTERTENANT_MANAGER_INTERNAL_URL to release-prefixed values, so these defaults are a
   //    safety net only. They derive from POD_NAMESPACE (downward API) so an unset env
   //    resolves to THIS instance's namespace — never a hard-coded shared namespace
   //    like `opencrane-system`, which would be a latent cross-instance footgun (B5).
@@ -245,7 +245,7 @@ export function _LoadOperatorConfig(): OpenClawTenantOperatorConfig
     defaultTenantPolicyRef: _readEnvValue<string>("DEFAULT_TENANT_POLICY_REF", "string", false, ""),
     mcpGatewayUrl: _readEnvValue<string>("MCP_GATEWAY_URL", "string", false, `http://opencrane-mcp-gateway.${ownNamespace}.svc:8080`),
     skillRegistryUrl: _readEnvValue<string>("SKILL_REGISTRY_URL", "string", false, `http://opencrane-skill-registry.${ownNamespace}.svc:5000`),
-    controlPlaneInternalUrl: _readEnvValue<string>("CONTROL_PLANE_INTERNAL_URL", "string", false, `http://opencrane-control-plane.${ownNamespace}.svc:3000`),
+    controlPlaneInternalUrl: _readEnvValue<string>("CLUSTERTENANT_MANAGER_INTERNAL_URL", "string", false, `http://opencrane-clustertenant-manager.${ownNamespace}.svc:3000`),
     obotDeploymentName: _readEnvValue<string>("OBOT_DEPLOYMENT_NAME", "string", false, "opencrane-mcp-gateway"),
     skillRegistryDeploymentName: _readEnvValue<string>("SKILL_REGISTRY_DEPLOYMENT_NAME", "string", false, "opencrane-skill-registry"),
     projectedTokenTtlSeconds: _readEnvValue<number>("PROJECTED_TOKEN_TTL_SECONDS", "number", false, 600),

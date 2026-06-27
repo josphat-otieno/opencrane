@@ -69,7 +69,7 @@ describe("_LoadOperatorConfig multi-instance fail-closed guard (MI.1 / brief B2)
 		const config = _LoadOperatorConfig();
 		expect(config.mcpGatewayUrl).toBe("http://opencrane-mcp-gateway.oc-acme.svc:8080");
 		expect(config.skillRegistryUrl).toBe("http://opencrane-skill-registry.oc-acme.svc:5000");
-		expect(config.controlPlaneInternalUrl).toBe("http://opencrane-control-plane.oc-acme.svc:3000");
+		expect(config.controlPlaneInternalUrl).toBe("http://opencrane-clustertenant-manager.oc-acme.svc:3000");
 	});
 
 	it("falls back to the `default` namespace when POD_NAMESPACE is unset", function _defaultNamespaceFallback()

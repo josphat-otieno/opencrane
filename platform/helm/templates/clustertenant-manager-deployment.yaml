@@ -47,7 +47,7 @@ spec:
                   fieldPath: metadata.namespace
             - name: PORT
               value: {{ .Values.clustertenantManager.service.port | quote }}
-            {{- include "opencrane.observabilityEnv" (dict "ctx" $ "component" "control-plane") | nindent 12 }}
+            {{- include "opencrane.observabilityEnv" (dict "ctx" $ "component" "clustertenant-manager") | nindent 12 }}
             - name: INGRESS_DOMAIN
               value: {{ .Values.ingress.domain | quote }}
             # -- Platform base domain used to derive each org's Zitadel redirect URI

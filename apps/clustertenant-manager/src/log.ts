@@ -14,4 +14,4 @@ import { ___CreateLogger } from "@opencrane/observability";
 import type { Logger } from "@opencrane/observability";
 
 /** Process-wide control-plane logger. */
-export const _log: Logger = ___CreateLogger("control-plane");
+export const _log: Logger = ___CreateLogger("clustertenant-manager");

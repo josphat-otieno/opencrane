@@ -39,7 +39,7 @@ export function _BuildClusterTenantNamespace(
       ...(linkerdInject ? { annotations: { [LINKERD_INJECT_ANNOTATION]: LINKERD_INJECT_ENABLED } } : {}),
       labels: {
         "app.kubernetes.io/part-of": "opencrane",
-        "app.kubernetes.io/managed-by": "opencrane-operator",
+        "app.kubernetes.io/managed-by": "opencrane-fleet-manager",
         "opencrane.io/cluster-tenant": clusterTenantName,
         // Pod Security Admission — enforce the `restricted` profile (reject),
         // and mirror it on warn/audit so violations are also logged/surfaced.

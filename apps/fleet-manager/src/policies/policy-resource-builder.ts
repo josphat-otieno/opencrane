@@ -45,7 +45,7 @@ export class PolicyResourceBuilder
         namespace,
         labels: {
           "app.kubernetes.io/part-of": "opencrane",
-          "app.kubernetes.io/managed-by": "opencrane-operator",
+          "app.kubernetes.io/managed-by": "opencrane-fleet-manager",
           "opencrane.io/policy": name,
         },
       },

@@ -203,7 +203,7 @@ helm upgrade --install "$RELEASE_NAME" "$ROOT_DIR/platform/helm" \
 
 # Wait for operator deployment (skip helm --wait because local-path PVCs don't bind
 # until a pod mounts them, creating a chicken-and-egg with Helm's readiness checks).
-kubectl rollout status deployment/opencrane-operator -n "$NAMESPACE" --timeout=120s
+kubectl rollout status deployment/opencrane-fleet-manager -n "$NAMESPACE" --timeout=120s
 
 # Wait for LiteLLM when cost routing is enabled by chart values.
 if kubectl get deployment/opencrane-litellm -n "$NAMESPACE" >/dev/null 2>&1; then

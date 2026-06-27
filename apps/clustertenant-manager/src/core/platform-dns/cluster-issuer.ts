@@ -54,7 +54,7 @@ export function _RenderDnsCredentialsSecret(config: DnsProviderConfig, namespace
     manifest: {
       apiVersion: "v1",
       kind: "Secret",
-      metadata: { name, namespace, labels: { "app.kubernetes.io/managed-by": "opencrane-control-plane" } },
+      metadata: { name, namespace, labels: { "app.kubernetes.io/managed-by": "opencrane-clustertenant-manager" } },
       type: "Opaque",
       // stringData so cert-manager receives the raw token; the API server encodes it.
       stringData: { [_TOKEN_KEY]: config.apiToken },
@@ -85,7 +85,7 @@ export function _RenderDns01Issuer(config: DnsProviderConfig, secretRef: string 
   const kind = config.issuerKind ?? "ClusterIssuer";
 
   // 2. A namespaced Issuer carries metadata.namespace; a ClusterIssuer does not.
-  const metadata: Record<string, unknown> = { name: config.issuerName, labels: { "app.kubernetes.io/managed-by": "opencrane-control-plane" } };
+  const metadata: Record<string, unknown> = { name: config.issuerName, labels: { "app.kubernetes.io/managed-by": "opencrane-clustertenant-manager" } };
   if (kind === "Issuer" && config.issuerNamespace)
   {
     metadata.namespace = config.issuerNamespace;
