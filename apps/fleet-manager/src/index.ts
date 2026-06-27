@@ -21,6 +21,7 @@ import { _log as log } from "./log.js";
 import { ___CreateFleetPrismaClient } from "./infra/db/db.js";
 import { ___CreateFleetOidcAuthService } from "./infra/auth/oidc.service.js";
 import { _SeedClusterTenant } from "./infra/cluster-tenant-seed.js";
+import { _ErrorHandler } from "./middleware/error-handler.js";
 import { _RegisterFleetRoutes } from "./routes.js";
 import type { PrismaClient } from "./generated/prisma/index.js";
 
@@ -75,6 +76,10 @@ async function main(): Promise<void>
   const fleetCustomApi = kc.makeApiClient(k8s.CustomObjectsApi);
   const fleetCoreApi = kc.makeApiClient(k8s.CoreV1Api);
   _RegisterFleetRoutes(app, prisma, fleetCustomApi, fleetCoreApi, authService);
+  // Global error handler — registered AFTER routes so route errors (incl. the authz gates'
+  // `.catch(next)`) are structured-logged + returned as the standard envelope, not Express's
+  // unlogged default 500.
+  app.use(_ErrorHandler(log));
   const apiPort = Number(process.env.PORT ?? "8080");
   _serverRef = app.listen(apiPort, function _onApiListen() { log.info({ port: apiPort }, "fleet-manager API listening"); });
 

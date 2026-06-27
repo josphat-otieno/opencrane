@@ -140,16 +140,24 @@ enum OrgRole {
 /// subject's email can change while its `sub` is stable.
 // NOTE: BillingAccount + ClusterTenant moved to the fleet-manager's registry DB (Stage 4) —
 // the silo no longer owns the fleet registry. OrgMembership stays here as the silo's local
-// read-model (read by /auth/me via @opencrane/infra-auth); its `clusterTenant` is now a soft
-// string ref (no cross-DB FK to the relocated ClusterTenant).
+// read-model; its `clusterTenant` is now a soft string ref (no cross-DB FK to the relocated
+// ClusterTenant).
+//
+// CURRENTLY UNPOPULATED (Stage 4): the fleet-manager owns the authoritative OrgMembership; the
+// silo no longer writes this table (org create/seed moved to the fleet). Org-admin ENFORCEMENT
+// on the silo is therefore group-based — `_RequireOrgAdmin` reads the OIDC-derived
+// `session.authUser.isOrgAdmin`, NOT this table — so an empty read-model never grants access.
+// The table is read only by `/auth/me` membership enrichment (returns empty ownedOrgs until a
+// fleet→silo OrgMembership projection is wired — deferred). Because it is never written here,
+// there are no orphaned rows to reconcile when the fleet deletes an org.
 
 /// Binds a subject to an organisation (ClusterTenant) with a role. Authority is
 /// DERIVED from these rows, never from a global flag: a subject who owns/administers
 /// ≥1 org is an org admin, scoped to exactly the orgs they hold owner/admin on.
 ///
 /// One membership per (clusterTenant, subject). At most ONE `owner` per org is
-/// enforced by a partial unique index (see the migration) — the creator becomes
-/// that single owner transactionally with `clusterTenant.create`.
+/// enforced by a partial unique index — written by the fleet-manager (the authoritative
+/// registry), not the silo.
 model OrgMembership {
   /// Surrogate key.
   id            String        @id @default(cuid())
