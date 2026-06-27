@@ -283,17 +283,15 @@ describe("ClusterTenantOperator.reconcile", () =>
   });
 });
 
-describe("ClusterTenantOperator default-tenant seed (owned by the control plane)", () =>
+describe("ClusterTenantOperator default-tenant seed (Option A — operator owns the CRD)", () =>
 {
   beforeEach(() => vi.clearAllMocks());
 
-  it("does NOT seed a default Tenant on reconcile — the control plane dual-writes it", async () =>
+  it("seeds the owner's <org>-default Tenant CRD on ready, attributed to spec.owner", async () =>
   {
-    // The org's first workspace Tenant is created by the control plane as a dual-write
-    // (CRD + DB row) at org-create time, with POST /cluster-tenants/:name/refresh as the
-    // explicit recovery. The operator must never create a Tenant CRD here: a CRD without
-    // the matching DB projection row is invisible to the management API (the "ready org,
-    // no workspace tenant" bug). This guards against re-introducing operator-side seeding.
+    // Option A: the fleet registry has no `Tenant` table, so the operator creates the workspace
+    // CRD once the org's namespace is bound (owner from the CR spec). The TenantOperator then
+    // reconciles it into a running openclaw and the silo projects the CRD into its own DB.
     const { api: customApi, seeds, patches } = _makeStubCustomApi();
     const { api: coreApi } = _makeStubCoreApi();
     const { provisioner } = _makeDomainProvisioner({ skipped: true, ready: false });
@@ -303,8 +301,26 @@ describe("ClusterTenantOperator default-tenant seed (owned by the control plane)
     ct.spec.owner = { subject: "auth0|abc", email: "owner@acme.example" };
     await operator.reconcile(ct);
 
-    expect(seeds).toHaveLength(0);                 // operator creates no Tenant CRD
-    expect(patches.at(-1)!.phase).toBe("ready");   // org still reconciles to ready
+    expect(patches.at(-1)!.phase).toBe("ready");
+    expect(seeds).toHaveLength(1);
+    expect(seeds[0]).toMatchObject({ name: "acme-default", namespace: "opencrane-acme", email: "owner@acme.example", clusterTenantRef: "acme" });
+  });
+
+  it("skips the seed (no CRD) when the owner has no email, but the org still reaches ready", async () =>
+  {
+    // Without a contact email the Tenant contract cannot compile (the dev-auth path carries
+    // only a subject), so the seed is skipped — the org is still ready.
+    const { api: customApi, seeds, patches } = _makeStubCustomApi();
+    const { api: coreApi } = _makeStubCoreApi();
+    const { provisioner } = _makeDomainProvisioner({ skipped: true, ready: false });
+    const operator = _buildOperator(customApi, coreApi, provisioner);
+
+    const ct = _makeClusterTenant("acme");
+    ct.spec.owner = { subject: "auth0|abc" };
+    await operator.reconcile(ct);
+
+    expect(patches.at(-1)!.phase).toBe("ready");
+    expect(seeds).toHaveLength(0);
   });
 });
 

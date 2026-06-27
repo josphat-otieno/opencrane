@@ -9,6 +9,7 @@ import { _BuildClusterTenantNamespace } from "../tenants/deploy/index.js";
 import type { ClusterTenantResource } from "../tenants/internal/cluster-tenant-resolution.types.js";
 
 import { ClusterTenantStatusWriter } from "./internal/cluster-tenant-status-writer.js";
+import { _EnsureOwnerDefaultTenantCr } from "./internal/default-tenant-cr.js";
 import { _NamespaceForOrg, _ProvisionBoundary } from "./internal/shared-cluster.provisioner.js";
 import { ClusterTenantReconcilePhase } from "./internal/shared-cluster.provisioner.types.js";
 import type { OrgDomainProvisioner } from "./internal/org-domain-provisioner.types.js";
@@ -277,12 +278,20 @@ export class ClusterTenantOperator
 
       this.log.info({ name, boundNamespace: boundary.boundNamespace }, "cluster tenant ready");
 
-      // The org's first workspace Tenant is seeded by the control plane as a dual-write
-      // (CRD + DB row) at org-create time, with its `POST /cluster-tenants/:name/refresh`
-      // endpoint as the explicit recovery. The operator deliberately does NOT seed it here:
-      // a CRD created without the matching DB projection is invisible to the management API
-      // (the "ready org, no workspace tenant" bug). The TenantOperator reconciles whatever
-      // default Tenant the control plane declared, once this org's namespace is bound.
+      // Seed the owner's first workspace Tenant CRD now the org's namespace is bound (Option A).
+      // The fleet registry has no `Tenant` table, so the operator creates only the CRD — the
+      // TenantOperator reconciles it into a running openclaw, and the silo projects the CRD into
+      // its own DB (Tenant projection-repair) so it appears in the silo's management API. The
+      // owner identity rides on the CR spec (the operator has no DB access). Best-effort: a seed
+      // hiccup never fails the org reconcile (the org is already ready).
+      await _EnsureOwnerDefaultTenantCr({
+        customApi: this.customApi,
+        log: this.log,
+        namespace: boundary.boundNamespace,
+        orgName: name,
+        orgDisplayName: clusterTenant.spec.displayName ?? name,
+        owner: clusterTenant.spec.owner,
+      });
     }
     catch (err)
     {
