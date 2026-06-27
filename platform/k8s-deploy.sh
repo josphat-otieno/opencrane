@@ -846,6 +846,7 @@ log "Installing the OpenCrane Helm release '$RELEASE'…"
 # (pre-baked engine binaries), set in the chart — see values.yaml litellm.image.
 helm_args=(upgrade --install "$RELEASE" "$CHART_DIR" --namespace "$NAMESPACE" --create-namespace
   --set "clustertenantManager.database.existingSecret=$DB_SECRET"
+  --set "fleetManager.database.existingSecret=$DB_SECRET"
   --set "litellm.existingDatabaseSecret=opencrane-litellm-db"
   --set "litellm.existingSecret=opencrane-litellm"
   --set "litellm.storeModelInDb=true")

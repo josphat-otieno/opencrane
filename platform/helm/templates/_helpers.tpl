@@ -205,6 +205,28 @@ real deploy always supplies one.
 {{- end }}
 
 {{/*
+DATABASE_URL env entry for the fleet-manager (the cluster-wide singleton's registry DB).
+
+The fleet-manager owns the global registry (ClusterTenant catalogue, billing, memberships) in its
+OWN Postgres — distinct from each silo's per-CT DB. The installer points it at that DB via
+`fleetManager.database.existingSecret` (or `.url`). With no explicit DB this renders no DATABASE_URL
+(the registry is unreachable → /healthz reports degraded); a real fleet install always supplies one.
+*/}}
+{{- define "opencrane.fleetManagerDatabaseEnv" -}}
+{{- $db := .Values.fleetManager.database | default dict -}}
+{{- if $db.existingSecret -}}
+- name: DATABASE_URL
+  valueFrom:
+    secretKeyRef:
+      name: {{ $db.existingSecret }}
+      key: {{ $db.secretKey }}
+{{- else if $db.url -}}
+- name: DATABASE_URL
+  value: {{ $db.url | quote }}
+{{- end -}}
+{{- end }}
+
+{{/*
 Resolve the namespace(s) a multi-instance install owns for namespaced RBAC.
 Defaults to the release namespace when `multiInstance.instanceNamespaces` is empty.
 */}}

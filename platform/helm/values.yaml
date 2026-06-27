@@ -109,6 +109,14 @@ fleetManager:
     repository: ghcr.io/italanta/opencrane-fleet-manager
     tag: latest
     pullPolicy: IfNotPresent
+  # -- Fleet registry database (the cluster-wide singleton's OWN Postgres holding the
+  #    ClusterTenant catalogue, billing accounts, and org memberships — distinct from each
+  #    silo's per-CT DB). The installer points the fleet-manager at it via existingSecret
+  #    (a libpq-style DATABASE_URL Secret) or an inline url. Empty → no DB wired.
+  database:
+    existingSecret: ""
+    url: ""
+    secretKey: DATABASE_URL
   replicas: 1
   resources:
     requests:

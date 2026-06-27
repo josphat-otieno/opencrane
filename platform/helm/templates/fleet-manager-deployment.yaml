@@ -43,6 +43,9 @@ spec:
                 fieldRef:
                   fieldPath: status.podIP
             {{- include "opencrane.observabilityEnv" (dict "ctx" $ "component" "fleet-manager") | nindent 12 }}
+            # -- Fleet registry DB (Stage 3): the fleet-manager's HTTP API + registry live here.
+            #    Resolved from fleetManager.database.* (installer-provisioned); empty → no DB wired.
+            {{- include "opencrane.fleetManagerDatabaseEnv" . | nindent 12 }}
             - name: WATCH_NAMESPACE
               value: {{ .Values.fleetManager.watchNamespace | quote }}
             # -- Multi-instance fail-closed guard (brief B2): when true the operator
