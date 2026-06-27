@@ -1,9 +1,12 @@
 // OpenTelemetry must initialise before any instrumented module is imported.
 import "./instrument.js";
 
-import * as k8s from "@kubernetes/client-node";
+import type { Server } from "node:http";
 
-import { ___BindConsole, ___CreateLogger, ___ShutdownTelemetry, ___DoWithTrace } from "@opencrane/observability";
+import * as k8s from "@kubernetes/client-node";
+import express from "express";
+
+import { ___BindConsole, ___ShutdownTelemetry, ___DoWithTrace } from "@opencrane/observability";
 
 import { _LoadOperatorConfig } from "./config.js";
 import { ObotHealthChecker } from "./mcp-gateway/obot-health-checker.js";
@@ -13,9 +16,10 @@ import { _CreateClusterTenantOperator } from "./cluster-tenants/index.js";
 import { PolicyOperator } from "./policies/operator.js";
 import { _ReadTenantRolloutConfig, TenantUpdateWithCanaryStrategyController } from "./tenant-rollout/tenant-update-with-canary-strategy.controller.js";
 import { GatewayProxyServer } from "./gateway-proxy/server.js";
-
-/** Root logger for the opencrane-fleet-manager process — structured JSON, trace-correlated. */
-const log = ___CreateLogger("fleet-manager");
+import { _log as log } from "./log.js";
+import { ___CreateFleetPrismaClient } from "./infra/db/db.js";
+import { _RegisterFleetRoutes } from "./routes.js";
+import type { PrismaClient } from "./generated/prisma/index.js";
 
 // Route any stray console.* output through the structured logger.
 const _unbindConsole = ___BindConsole(log);
@@ -29,6 +33,12 @@ let _driftRepairerRef: RuntimePlaneDriftRepairer | null = null;
 /** Reference to the in-process gateway proxy server, for graceful shutdown. */
 let _gatewayProxyRef: GatewayProxyServer | null = null;
 
+/** Reference to the fleet-manager HTTP API server, for graceful shutdown. */
+let _serverRef: Server | null = null;
+
+/** Reference to the fleet registry Prisma client, for graceful shutdown. */
+let _prismaRef: PrismaClient | null = null;
+
 /**
  * Bootstrap and start both the Tenant and Policy operator watch loops,
  * plus the idle-checker for auto-suspending inactive tenants.
@@ -39,6 +49,18 @@ async function main(): Promise<void>
 
   const config = _LoadOperatorConfig();
   log.info({ config }, "loaded operator config");
+
+  // Fleet registry DB + HTTP API (Stage 3 — ADR 0002 silo split). fleet-manager is the
+  // cluster-wide singleton hosting the cross-silo super-admin surface; Stage 3 brings up the
+  // registry DB connection + /healthz, with the fleet routes relocated from clustertenant-manager
+  // in Stage 4. Started before the watch loops so health checks come up promptly.
+  const prisma = ___CreateFleetPrismaClient(log);
+  _prismaRef = prisma;
+  const app = express();
+  app.use(express.json());
+  _RegisterFleetRoutes(app, prisma);
+  const apiPort = Number(process.env.PORT ?? "8080");
+  _serverRef = app.listen(apiPort, function _onApiListen() { log.info({ port: apiPort }, "fleet-manager API listening"); });
 
   const kc = new k8s.KubeConfig();
   kc.loadFromDefault();
@@ -162,6 +184,11 @@ async function _shutdown(signal: string): Promise<void>
   try
   {
     await _gatewayProxyRef?.stop();
+    if (_serverRef)
+    {
+      await new Promise<void>(function _close(resolve) { _serverRef?.close(function _done() { resolve(); }); });
+    }
+    await _prismaRef?.$disconnect();
     await ___ShutdownTelemetry();
   }
   finally
