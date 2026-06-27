@@ -1,4 +1,4 @@
-export { ___CreateControlPlaneClient, type ControlPlaneClient, type paths } from "./client.js";
+export { ___CreateControlPlaneClient, ___CreateFleetClient, type ControlPlaneClient, type FleetClient, type paths, type fleetPaths } from "./client.js";
 export {
   ClusterTenantComputeMode,
   ClusterTenantIsolationTier,

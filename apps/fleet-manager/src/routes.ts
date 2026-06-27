@@ -3,6 +3,7 @@ import * as k8s from "@kubernetes/client-node";
 
 import type { PrismaClient } from "./generated/prisma/index.js";
 import { _CheckFleetDbHealth } from "./infra/http/healthz.js";
+import { openapiRouter } from "./routes/openapi-route.js";
 import { ___FleetAuthRouter } from "./infra/auth/auth.router.js";
 import type { FleetOidcAuthService } from "./infra/auth/oidc.service.js";
 import { _BuildClusterTenantProvisionerRegistry } from "./core/cluster-tenants/registry.js";
@@ -86,6 +87,9 @@ export function _RegisterFleetRoutes(
   {
     app.use("/api/v1/billing-accounts", billingAccountsRouter(prisma));
   }
+
+  // Public OpenAPI contract document for the fleet plane (no auth — bypassed by the middleware).
+  app.use("/api/v1/openapi.json", openapiRouter());
 
   app.get("/healthz", _CheckFleetDbHealth(prisma));
   return app;

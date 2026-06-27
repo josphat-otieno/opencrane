@@ -5,7 +5,8 @@
   "license": "AGPL-3.0-or-later",
   "type": "module",
   "scripts": {
-    "build": "prisma generate && tsc && cp -r src/tenants/deploy/workspace dist/tenants/deploy/workspace",
+    "build": "prisma generate && tsc && cp -r src/tenants/deploy/workspace dist/tenants/deploy/workspace && tsx scripts/emit-openapi.mts",
+    "emit-openapi": "tsx scripts/emit-openapi.mts",
     "db:generate": "prisma generate",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",

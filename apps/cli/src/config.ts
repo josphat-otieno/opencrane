@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 
-import { ___CreateControlPlaneClient } from "@opencrane/contracts";
+import { ___CreateControlPlaneClient, ___CreateFleetClient } from "@opencrane/contracts";
 
 /**
  * Resolved CLI configuration built from credentials file, environment
@@ -153,5 +153,5 @@ export function _MakeFleetClient(config: CliConfig)
     console.error("error: not authenticated. Run `oc auth login` to sign in.");
     process.exit(1);
   }
-  return ___CreateControlPlaneClient(config.fleetBaseUrl, config.token);
+  return ___CreateFleetClient(config.fleetBaseUrl, config.token);
 }
