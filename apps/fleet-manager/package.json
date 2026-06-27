@@ -5,7 +5,8 @@
   "license": "AGPL-3.0-or-later",
   "type": "module",
   "scripts": {
-    "build": "tsc && cp -r src/tenants/deploy/workspace dist/tenants/deploy/workspace",
+    "build": "prisma generate && tsc && cp -r src/tenants/deploy/workspace dist/tenants/deploy/workspace",
+    "db:generate": "prisma generate",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
     "test": "vitest run",
@@ -15,6 +16,7 @@
     "@kubernetes/client-node": "^1.0.0",
     "@opencrane/contracts": "workspace:*",
     "@opencrane/observability": "workspace:*",
+    "@prisma/client": "^6.0.0",
     "http-proxy": "^1.18.1",
     "pino": "^9.6.0",
     "zod": "^3.25.0"
@@ -25,6 +27,7 @@
   "devDependencies": {
     "@types/http-proxy": "^1.17.14",
     "@types/node": "^22.0.0",
+    "prisma": "^6.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
     "vitest": "^3.1.0"
