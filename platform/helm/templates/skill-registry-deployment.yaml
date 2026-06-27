@@ -80,7 +80,7 @@ spec:
             {{- include "opencrane.observabilityEnv" (dict "ctx" $ "component" "skill-registry") | nindent 12 }}
             # In-cluster control-plane URL for internal entitlement + content calls.
             - name: CONTROL_PLANE_URL
-              value: "http://{{ include "opencrane.fullname" . }}-control-plane.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.controlPlane.service.port }}"
+              value: "http://{{ include "opencrane.fullname" . }}-clustertenant-manager.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.clustertenantManager.service.port }}"
           livenessProbe:
             httpGet:
               path: /healthz

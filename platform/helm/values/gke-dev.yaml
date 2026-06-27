@@ -11,11 +11,11 @@ global:
 ingress:
   domain: dev.weownai.eu
 
-controlPlane:
+clustertenantManager:
   image:
     tag: latest
 
-operator:
+fleetManager:
   image:
     tag: latest
   # Required when multiInstance.requireWatchNamespace is true — tells the

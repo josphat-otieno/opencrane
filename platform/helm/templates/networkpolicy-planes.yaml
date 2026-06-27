@@ -16,15 +16,15 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: {{ include "opencrane.fullname" . }}-control-plane-ingress
+  name: {{ include "opencrane.fullname" . }}-clustertenant-manager-ingress
   labels:
     {{- include "opencrane.labels" . | nindent 4 }}
-    app.kubernetes.io/component: control-plane
+    app.kubernetes.io/component: clustertenant-manager
 spec:
   podSelector:
     matchLabels:
       {{- include "opencrane.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: control-plane
+      app.kubernetes.io/component: clustertenant-manager
   policyTypes:
     - Ingress
   ingress:
@@ -35,7 +35,7 @@ spec:
               kubernetes.io/metadata.name: {{ .Values.networkPolicy.ingressNamespace | default "ingress-nginx" }}
       ports:
         - protocol: TCP
-          port: {{ .Values.controlPlane.service.port }}
+          port: {{ .Values.clustertenantManager.service.port }}
     # Allow Obot (mcp-gateway) to poll /api/internal/obot-registry.
     - from:
         - podSelector:
@@ -44,7 +44,7 @@ spec:
               app.kubernetes.io/component: mcp-gateway
       ports:
         - protocol: TCP
-          port: {{ .Values.controlPlane.service.port }}
+          port: {{ .Values.clustertenantManager.service.port }}
     # Allow the skill-registry to call /api/internal/bundles.
     - from:
         - podSelector:
@@ -53,17 +53,17 @@ spec:
               app.kubernetes.io/component: skill-registry
       ports:
         - protocol: TCP
-          port: {{ .Values.controlPlane.service.port }}
+          port: {{ .Values.clustertenantManager.service.port }}
     # Allow the operator to reach /api/v1/* for reconciliation and
     # /api/internal/tenant-models/:tenant for the per-tenant model allowlist.
     - from:
         - podSelector:
             matchLabels:
               {{- include "opencrane.selectorLabels" . | nindent 14 }}
-              app.kubernetes.io/component: operator
+              app.kubernetes.io/component: fleet-manager
       ports:
         - protocol: TCP
-          port: {{ .Values.controlPlane.service.port }}
+          port: {{ .Values.clustertenantManager.service.port }}
     # Allow tenant pods to poll /api/internal/contract/:name for runtime contract
     # re-pull (P4A.3).  Identity is enforced by TokenReview inside the handler;
     # this policy provides defence-in-depth at the network layer.
@@ -73,7 +73,7 @@ spec:
               app.kubernetes.io/component: tenant
       ports:
         - protocol: TCP
-          port: {{ .Values.controlPlane.service.port }}
+          port: {{ .Values.clustertenantManager.service.port }}
 ---
 {{- end }}
 {{- if and .Values.networkPolicy.enabled .Values.mcpGateway.enabled }}
@@ -99,11 +99,11 @@ spec:
         - podSelector:
             matchLabels:
               {{- include "opencrane.selectorLabels" . | nindent 14 }}
-              app.kubernetes.io/component: control-plane
+              app.kubernetes.io/component: clustertenant-manager
         - podSelector:
             matchLabels:
               {{- include "opencrane.selectorLabels" . | nindent 14 }}
-              app.kubernetes.io/component: operator
+              app.kubernetes.io/component: fleet-manager
       ports:
         - protocol: TCP
           port: {{ .Values.mcpGateway.service.port }}
@@ -132,11 +132,11 @@ spec:
         - podSelector:
             matchLabels:
               {{- include "opencrane.selectorLabels" . | nindent 14 }}
-              app.kubernetes.io/component: control-plane
+              app.kubernetes.io/component: clustertenant-manager
         - podSelector:
             matchLabels:
               {{- include "opencrane.selectorLabels" . | nindent 14 }}
-              app.kubernetes.io/component: operator
+              app.kubernetes.io/component: fleet-manager
       ports:
         - protocol: TCP
           port: {{ .Values.skillRegistry.service.port }}
@@ -163,7 +163,7 @@ spec:
         - podSelector:
             matchLabels:
               {{- include "opencrane.selectorLabels" . | nindent 14 }}
-              app.kubernetes.io/component: control-plane
+              app.kubernetes.io/component: clustertenant-manager
       ports:
         - protocol: TCP
           port: {{ .Values.skillRegistry.ociStore.service.port }}

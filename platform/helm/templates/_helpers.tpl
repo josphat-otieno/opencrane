@@ -50,7 +50,7 @@ Operator RBAC rules — shared by the cluster-scoped (legacy) and namespaced
 (multi-instance) bindings so both grant identical verbs over identical resources.
 All resources here are namespaced, so the same rule list is valid in a Role.
 */}}
-{{- define "opencrane.operatorRbacRules" -}}
+{{- define "opencrane.fleetManagerRbacRules" -}}
 # Tenant, ClusterTenant, and AccessPolicy CRDs
 - apiGroups: ["opencrane.io"]
   resources: ["tenants", "tenants/status", "accesspolicies"]
@@ -94,7 +94,7 @@ All resources here are namespaced, so the same rule list is valid in a Role.
 - apiGroups: ["cilium.io"]
   resources: ["ciliumnetworkpolicies"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-{{- if .Values.operator.linkerdMeshEnabled }}
+{{- if .Values.fleetManager.linkerdMeshEnabled }}
 # Linkerd identity-layer policy CRs the silo reconcile applies per silo namespace (S5):
 # a deny-by-default Server + MeshTLSAuthentication allow-list + the AuthorizationPolicy
 # binding them. Granted only when the Linkerd mesh gate is on; without it the operator
@@ -133,7 +133,7 @@ both grant identical verbs over identical resources. The cluster-scoped
 Role, so it stays in a minimal residual ClusterRole (see control-plane-rbac.yaml)
 and is folded into the per-namespace Role by MI.4's namespaced cert Issuer.
 */}}
-{{- define "opencrane.controlPlaneRbacRules" -}}
+{{- define "opencrane.clustertenantManagerRbacRules" -}}
 # Read and write Tenant and AccessPolicy CRDs — the control-plane API creates,
 # patches, and deletes these directly (dual-write alongside PostgreSQL).
 - apiGroups: ["opencrane.io"]
@@ -168,10 +168,10 @@ legacy unprefixed `cognee` singleton, and this helper points the control-plane a
 (BYO Cognee) the configured `controlPlane.cognee.endpoint` is used verbatim.
 */}}
 {{- define "opencrane.cogneeEndpoint" -}}
-{{- if .Values.controlPlane.cognee.install -}}
-{{- printf "http://%s-cognee:%v" (include "opencrane.fullname" .) .Values.controlPlane.cognee.service.port -}}
+{{- if .Values.clustertenantManager.cognee.install -}}
+{{- printf "http://%s-cognee:%v" (include "opencrane.fullname" .) .Values.clustertenantManager.cognee.service.port -}}
 {{- else -}}
-{{- .Values.controlPlane.cognee.endpoint -}}
+{{- .Values.clustertenantManager.cognee.endpoint -}}
 {{- end -}}
 {{- end }}
 
@@ -190,8 +190,8 @@ this helper just consumes whatever secret the installer points at, identically f
 With no explicit DB this renders no DATABASE_URL (the control-plane stays in its no-DB mode); a
 real deploy always supplies one.
 */}}
-{{- define "opencrane.controlPlaneDatabaseEnv" -}}
-{{- $db := .Values.controlPlane.database | default dict -}}
+{{- define "opencrane.clustertenantManagerDatabaseEnv" -}}
+{{- $db := .Values.clustertenantManager.database | default dict -}}
 {{- if $db.existingSecret -}}
 - name: DATABASE_URL
   valueFrom:

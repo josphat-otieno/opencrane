@@ -22,7 +22,7 @@ global:
 hosting:
   provider: onprem
 
-controlPlane:
+clustertenantManager:
   database:
     existingSecret: opencrane-db
     secretKey: DATABASE_URL

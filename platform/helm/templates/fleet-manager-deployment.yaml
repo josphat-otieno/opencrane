@@ -1,27 +1,27 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "opencrane.fullname" . }}-operator
+  name: {{ include "opencrane.fullname" . }}-fleet-manager
   labels:
     {{- include "opencrane.labels" . | nindent 4 }}
-    app.kubernetes.io/component: operator
+    app.kubernetes.io/component: fleet-manager
 spec:
-  replicas: {{ .Values.operator.replicas }}
+  replicas: {{ .Values.fleetManager.replicas }}
   selector:
     matchLabels:
       {{- include "opencrane.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: operator
+      app.kubernetes.io/component: fleet-manager
   template:
     metadata:
       labels:
         {{- include "opencrane.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: operator
+        app.kubernetes.io/component: fleet-manager
     spec:
-      serviceAccountName: {{ include "opencrane.fullname" . }}-operator
+      serviceAccountName: {{ include "opencrane.fullname" . }}-fleet-manager
       containers:
         - name: operator
-          image: "{{ .Values.operator.image.repository }}:{{ .Values.operator.image.tag }}"
-          imagePullPolicy: {{ .Values.operator.image.pullPolicy }}
+          image: "{{ .Values.fleetManager.image.repository }}:{{ .Values.fleetManager.image.tag }}"
+          imagePullPolicy: {{ .Values.fleetManager.image.pullPolicy }}
           {{- if .Values.gatewayProxy.enabled }}
           ports:
             - name: gateway-proxy
@@ -44,7 +44,7 @@ spec:
                   fieldPath: status.podIP
             {{- include "opencrane.observabilityEnv" (dict "ctx" $ "component" "operator") | nindent 12 }}
             - name: WATCH_NAMESPACE
-              value: {{ .Values.operator.watchNamespace | quote }}
+              value: {{ .Values.fleetManager.watchNamespace | quote }}
             # -- Multi-instance fail-closed guard (brief B2): when true the operator
             #    refuses to start with an empty WATCH_NAMESPACE, so it can never
             #    reconcile another instance's Tenants cluster-wide.
@@ -118,16 +118,16 @@ spec:
               value: {{ .Values.hosting.gcp.csiDriver | quote }}
             {{- end }}
             - name: IDLE_TIMEOUT_MINUTES
-              value: {{ .Values.operator.idleTimeoutMinutes | quote }}
+              value: {{ .Values.fleetManager.idleTimeoutMinutes | quote }}
             - name: IDLE_CHECK_INTERVAL_SECONDS
-              value: {{ .Values.operator.idleCheckIntervalSeconds | quote }}
+              value: {{ .Values.fleetManager.idleCheckIntervalSeconds | quote }}
             # -- Linkerd identity substrate gate (S5 / ADR 0001), default off. When true the
             #    silo reconcile annotates the silo namespace for mesh injection and emits the
             #    per-silo deny-by-default Server + MeshTLSAuthentication + AuthorizationPolicy
             #    (the meshed analogue of the S2 baseline NetworkPolicy). Fails closed if the
             #    Linkerd policy CRDs are absent, so it is a safe no-op without Linkerd.
             - name: LINKERD_MESH_ENABLED
-              value: {{ .Values.operator.linkerdMeshEnabled | quote }}
+              value: {{ .Values.fleetManager.linkerdMeshEnabled | quote }}
             # -- Runtime-plane endpoints injected into tenant Deployments. Resolved via
             #    sharedPlatform scope (B5): instance mode → release-prefixed in-cluster
             #    Service; shared mode → the externally-provided endpoint.
@@ -140,7 +140,7 @@ spec:
             # -- In-cluster URL the operator injects into tenant Deployments so the
             #    contract re-pull loop (P4A.3) can reach the internal contract endpoint.
             - name: CONTROL_PLANE_INTERNAL_URL
-              value: {{ printf "http://%s-control-plane:%v" (include "opencrane.fullname" .) .Values.controlPlane.service.port | quote }}
+              value: {{ printf "http://%s-control-plane:%v" (include "opencrane.fullname" .) .Values.clustertenantManager.service.port | quote }}
             # -- Kubernetes Deployment names for the runtime-plane drift repairer (P4A.2).
             - name: OBOT_DEPLOYMENT_NAME
               value: {{ printf "%s-mcp-gateway" (include "opencrane.fullname" .) | quote }}
@@ -167,4 +167,4 @@ spec:
                   key: {{ .Values.litellm.secretKey }}
             {{- end }}
           resources:
-            {{- toYaml .Values.operator.resources | nindent 12 }}
+            {{- toYaml .Values.fleetManager.resources | nindent 12 }}

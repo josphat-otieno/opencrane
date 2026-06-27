@@ -163,7 +163,7 @@ spec:
   podSelector:
     matchLabels:
       {{- include "opencrane.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: control-plane
+      app.kubernetes.io/component: clustertenant-manager
   policyTypes:
     - Ingress
   ingress:
@@ -176,7 +176,7 @@ spec:
               kubernetes.io/metadata.name: {{ .Values.networkPolicy.ingressNamespace | default "ingress-nginx" }}
       ports:
         - protocol: TCP
-          port: {{ .Values.controlPlane.service.port }}
+          port: {{ .Values.clustertenantManager.service.port }}
 ---
 # ──────────────────────────────────────────────────────────────────────────────
 # 6. TENANT PODS → PLATFORM SERVICES: tenant pods (in silo namespaces) need
@@ -220,7 +220,7 @@ spec:
               app.kubernetes.io/component: tenant
       ports:
         - protocol: TCP
-          port: {{ .Values.controlPlane.service.port }}
+          port: {{ .Values.clustertenantManager.service.port }}
         - protocol: TCP
           port: {{ .Values.mcpGateway.service.port }}
         - protocol: TCP
@@ -242,7 +242,7 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: {{ include "opencrane.fullname" . }}-control-plane-https-egress
+  name: {{ include "opencrane.fullname" . }}-clustertenant-manager-https-egress
   labels:
     {{- include "opencrane.labels" . | nindent 4 }}
     app.kubernetes.io/component: platform-network-baseline
@@ -250,7 +250,7 @@ spec:
   podSelector:
     matchLabels:
       {{- include "opencrane.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: control-plane
+      app.kubernetes.io/component: clustertenant-manager
   policyTypes:
     - Egress
   egress:
@@ -310,7 +310,7 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: {{ include "opencrane.fullname" . }}-operator-apiserver-egress
+  name: {{ include "opencrane.fullname" . }}-fleet-manager-apiserver-egress
   labels:
     {{- include "opencrane.labels" . | nindent 4 }}
     app.kubernetes.io/component: platform-network-baseline
@@ -318,7 +318,7 @@ spec:
   podSelector:
     matchLabels:
       {{- include "opencrane.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: operator
+      app.kubernetes.io/component: fleet-manager
   policyTypes:
     - Egress
   egress:
@@ -342,7 +342,7 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: {{ include "opencrane.fullname" . }}-operator-cross-namespace-egress
+  name: {{ include "opencrane.fullname" . }}-fleet-manager-cross-namespace-egress
   labels:
     {{- include "opencrane.labels" . | nindent 4 }}
     app.kubernetes.io/component: platform-network-baseline
@@ -350,7 +350,7 @@ spec:
   podSelector:
     matchLabels:
       {{- include "opencrane.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: operator
+      app.kubernetes.io/component: fleet-manager
   policyTypes:
     - Egress
   egress:

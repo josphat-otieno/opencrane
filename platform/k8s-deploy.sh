@@ -67,7 +67,7 @@
 #                   an external zone. external-dns is only bundled in acme/clouddns mode
 #                   (that is where the shared zone + WI binding are established).
 #   Cognee        — the required graph-RAG service, installed IN-CHART via
-#                   controlPlane.cognee.install=true (set false to BYO an external one).
+#                   clustertenantManager.cognee.install=true (set false to BYO an external one).
 # Each is gated by a `*.install` flag SEPARATE from the chart's `*.enabled`, so an
 # operator can bring their own while the chart still wires against it.
 #
@@ -119,7 +119,7 @@ OIDC_REDIRECT_URI="${OIDC_REDIRECT_URI:-}"
 # OIDC client secret (the confidential-client secret from the IdP). Accepted via flag or
 # env so it never has to sit in a values file. When OIDC is configured this installer
 # CREATES the K8s Secret the chart references (client secret + an auto-generated session
-# secret) and wires controlPlane.oidc.existingSecret — previously the secret was ASSUMED
+# secret) and wires clustertenantManager.oidc.existingSecret — previously the secret was ASSUMED
 # to already exist, so a fresh OIDC install rendered a control-plane that crash-looped on a
 # missing Secret. The session secret signs login cookies; we generate one when not supplied.
 OIDC_CLIENT_SECRET="${OPENCRANE_OIDC_CLIENT_SECRET:-${OIDC_CLIENT_SECRET:-}}"
@@ -292,7 +292,7 @@ _run_preflight() {
   # 3. First-party images pullable — catch a private/typo'd registry before the rollout
   #    sits in ImagePullBackOff. A best-effort manifest check (skopeo/crane/docker) that
   #    only WARNS if no inspector is available (we never block on a missing local tool).
-  local _img="ghcr.io/italanta/control-plane:${CONTROL_PLANE_TAG:-$IMAGE_TAG}"
+  local _img="ghcr.io/italanta/opencrane-clustertenant-manager:${CONTROL_PLANE_TAG:-$IMAGE_TAG}"
   if command -v skopeo >/dev/null 2>&1; then
     skopeo inspect "docker://$_img" >/dev/null 2>&1 || PF_FAILS+=("First-party image not pullable: $_img (skopeo inspect failed). Check the registry/tag and your pull credentials.")
   elif command -v crane >/dev/null 2>&1; then
@@ -542,7 +542,7 @@ kubectl create secret generic opencrane-langfuse -n "$NAMESPACE" \
   --from-literal=LANGFUSE_INIT_USER_PASSWORD="$LANGFUSE_ADMIN_PASSWORD" \
   --dry-run=client -o yaml | kubectl apply -f -
 
-# OIDC secret. The chart references controlPlane.oidc.existingSecret for the client + session
+# OIDC secret. The chart references clustertenantManager.oidc.existingSecret for the client + session
 # secrets; previously this installer set only the issuer/clientId/redirect and ASSUMED the
 # Secret already existed, so a fresh OIDC install crash-looped on a missing Secret. Create it
 # here when OIDC is configured: the client secret is required (a confidential client can't
@@ -845,7 +845,7 @@ log "Installing the OpenCrane Helm release '$RELEASE'…"
 # Prisma query-engine crash on the Chainguard/wolfi base is fixed by the non_root image variant
 # (pre-baked engine binaries), set in the chart — see values.yaml litellm.image.
 helm_args=(upgrade --install "$RELEASE" "$CHART_DIR" --namespace "$NAMESPACE" --create-namespace
-  --set "controlPlane.database.existingSecret=$DB_SECRET"
+  --set "clustertenantManager.database.existingSecret=$DB_SECRET"
   --set "litellm.existingDatabaseSecret=opencrane-litellm-db"
   --set "litellm.existingSecret=opencrane-litellm"
   --set "litellm.storeModelInDb=true")
@@ -855,8 +855,8 @@ helm_args=(upgrade --install "$RELEASE" "$CHART_DIR" --namespace "$NAMESPACE" --
 CP_TAG="${CONTROL_PLANE_TAG:-$IMAGE_TAG}"
 OP_TAG="${OPERATOR_TAG:-$IMAGE_TAG}"
 TN_TAG="${TENANT_TAG:-$IMAGE_TAG}"
-[[ -n "$CP_TAG" ]] && helm_args+=(--set "controlPlane.image.tag=$CP_TAG")
-[[ -n "$OP_TAG" ]] && helm_args+=(--set "operator.image.tag=$OP_TAG")
+[[ -n "$CP_TAG" ]] && helm_args+=(--set "clustertenantManager.image.tag=$CP_TAG")
+[[ -n "$OP_TAG" ]] && helm_args+=(--set "fleetManager.image.tag=$OP_TAG")
 [[ -n "$TN_TAG" ]] && helm_args+=(--set "tenant.image.tag=$TN_TAG")
 # --base-domain drives ingress.domain; controlPlaneHost defaults to platform.<domain>
 # in the chart, and the cert-manager wildcard SANs (*.<domain>, <domain>,
@@ -880,16 +880,16 @@ helm_args+=(--set "langfuse.inCluster.enabled=false")
 [[ -n "$BASE_DOMAIN" ]] && helm_args+=(--set-string "langfuse.langfuse.nextauth.url=https://langfuse.${BASE_DOMAIN}")
 # OIDC human-login (control-plane only). Rendered iff an issuer URL is given; otherwise
 # the chart emits no OIDC env and the control-plane stays in token/development mode.
-[[ -n "$OIDC_ISSUER_URL" ]]   && helm_args+=(--set "controlPlane.oidc.issuerUrl=$OIDC_ISSUER_URL")
-[[ -n "$OIDC_CLIENT_ID" ]]    && helm_args+=(--set "controlPlane.oidc.clientId=$OIDC_CLIENT_ID")
-[[ -n "$OIDC_REDIRECT_URI" ]] && helm_args+=(--set "controlPlane.oidc.redirectUri=$OIDC_REDIRECT_URI")
+[[ -n "$OIDC_ISSUER_URL" ]]   && helm_args+=(--set "clustertenantManager.oidc.issuerUrl=$OIDC_ISSUER_URL")
+[[ -n "$OIDC_CLIENT_ID" ]]    && helm_args+=(--set "clustertenantManager.oidc.clientId=$OIDC_CLIENT_ID")
+[[ -n "$OIDC_REDIRECT_URI" ]] && helm_args+=(--set "clustertenantManager.oidc.redirectUri=$OIDC_REDIRECT_URI")
 # Point the chart at the Secret created above (client + session secret) instead of leaving
 # its inline values empty — keeps secrets out of Helm values + the rendered manifest.
-[[ -n "$OIDC_ISSUER_URL" ]]   && helm_args+=(--set-string "controlPlane.oidc.existingSecret=$OIDC_SECRET_NAME")
+[[ -n "$OIDC_ISSUER_URL" ]]   && helm_args+=(--set-string "clustertenantManager.oidc.existingSecret=$OIDC_SECRET_NAME")
 # Per-cluster platform-operator SEED. Set ONLY when a non-empty value is supplied; an
 # empty seed is never passed, so the chart grants operator to nobody (fail-closed).
 if [[ -n "$PLATFORM_OPERATOR_SEED_EMAIL" ]]; then
-  helm_args+=(--set-string "controlPlane.oidc.platformOperatorSeedEmail=$PLATFORM_OPERATOR_SEED_EMAIL")
+  helm_args+=(--set-string "clustertenantManager.oidc.platformOperatorSeedEmail=$PLATFORM_OPERATOR_SEED_EMAIL")
   warn "Seeding platform operator for the cluster (verified OIDC email match). Remove the seed once a group mapping is in place."
 fi
 [[ -n "$VALUES_FILE" ]] && helm_args+=(--values "$VALUES_FILE")
@@ -920,8 +920,8 @@ helm "${helm_args[@]}"
 # so the db-migrate initContainer alone could leave the schema behind when the
 # database was recreated under a running pod). The initContainer remains a
 # belt-and-suspenders guard for pod (re)creation between deploys. Idempotent.
-kubectl rollout status "deployment/${RELEASE}-operator" -n "$NAMESPACE" --timeout="${TIMEOUT}s"
-kubectl rollout status "deployment/${RELEASE}-control-plane" -n "$NAMESPACE" --timeout="${TIMEOUT}s"
+kubectl rollout status "deployment/${RELEASE}-fleet-manager" -n "$NAMESPACE" --timeout="${TIMEOUT}s"
+kubectl rollout status "deployment/${RELEASE}-clustertenant-manager" -n "$NAMESPACE" --timeout="${TIMEOUT}s"
 
 # 5. Post-deploy verify (opt-in, --verify). Advisory only — surfaces the failure modes that
 # leave a "green" install unreachable (pods not Running, no DNSEndpoints, external-dns auth

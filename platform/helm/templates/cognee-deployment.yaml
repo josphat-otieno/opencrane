@@ -18,7 +18,7 @@
 
        CENTRAL role: Cognee is a per-CT plane, not a central component (ADR 0002 decision
        2), so the bundled workload is NOT rendered. */ -}}
-{{- if and .Values.controlPlane.cognee.install }}
+{{- if and .Values.clustertenantManager.cognee.install }}
 ---
 apiVersion: v1
 kind: Service
@@ -34,7 +34,7 @@ spec:
     app.kubernetes.io/component: cognee
   ports:
     - name: http
-      port: {{ .Values.controlPlane.cognee.service.port }}
+      port: {{ .Values.clustertenantManager.cognee.service.port }}
       targetPort: http
 ---
 apiVersion: apps/v1
@@ -58,18 +58,18 @@ spec:
     spec:
       containers:
         - name: cognee
-          image: "{{ .Values.controlPlane.cognee.image.repository }}:{{ .Values.controlPlane.cognee.image.tag }}"
-          imagePullPolicy: {{ .Values.controlPlane.cognee.image.pullPolicy }}
+          image: "{{ .Values.clustertenantManager.cognee.image.repository }}:{{ .Values.clustertenantManager.cognee.image.tag }}"
+          imagePullPolicy: {{ .Values.clustertenantManager.cognee.image.pullPolicy }}
           ports:
             - name: http
-              containerPort: {{ .Values.controlPlane.cognee.service.port }}
+              containerPort: {{ .Values.clustertenantManager.cognee.service.port }}
           env:
             - name: HOST
               value: "0.0.0.0"
             - name: PORT
-              value: {{ .Values.controlPlane.cognee.service.port | quote }}
+              value: {{ .Values.clustertenantManager.cognee.service.port | quote }}
           resources:
-            {{- toYaml .Values.controlPlane.cognee.resources | nindent 12 }}
+            {{- toYaml .Values.clustertenantManager.cognee.resources | nindent 12 }}
 {{- if .Values.networkPolicy.enabled }}
 ---
 # Defence-in-depth ingress policy for the bundled Cognee. Only the control-plane
@@ -94,12 +94,12 @@ spec:
         - podSelector:
             matchLabels:
               {{- include "opencrane.selectorLabels" . | nindent 14 }}
-              app.kubernetes.io/component: control-plane
+              app.kubernetes.io/component: clustertenant-manager
         - podSelector:
             matchLabels:
               app.kubernetes.io/component: tenant
       ports:
         - protocol: TCP
-          port: {{ .Values.controlPlane.cognee.service.port }}
+          port: {{ .Values.clustertenantManager.cognee.service.port }}
 {{- end }}
 {{- end }}

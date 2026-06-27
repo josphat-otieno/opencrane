@@ -1,4 +1,4 @@
-{{- if .Values.controlPlane.migrationJob.enabled }}
+{{- if .Values.clustertenantManager.migrationJob.enabled }}
 # Run Prisma migrations on EVERY install/upgrade, independent of the control-plane
 # pod template. The control-plane also carries a `db-migrate` initContainer, but an
 # initContainer only fires when the pod is (re)created — so a `helm upgrade` whose
@@ -11,29 +11,29 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "opencrane.fullname" . }}-control-plane-migrate
+  name: {{ include "opencrane.fullname" . }}-clustertenant-manager-migrate
   labels:
     {{- include "opencrane.labels" . | nindent 4 }}
-    app.kubernetes.io/component: control-plane-migrate
+    app.kubernetes.io/component: clustertenant-manager-migrate
   annotations:
     "helm.sh/hook": pre-install,pre-upgrade
     "helm.sh/hook-weight": "-5"
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
-  backoffLimit: {{ .Values.controlPlane.migrationJob.backoffLimit }}
+  backoffLimit: {{ .Values.clustertenantManager.migrationJob.backoffLimit }}
   template:
     metadata:
       labels:
         {{- include "opencrane.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: control-plane-migrate
+        app.kubernetes.io/component: clustertenant-manager-migrate
     spec:
-      serviceAccountName: {{ include "opencrane.fullname" . }}-control-plane
+      serviceAccountName: {{ include "opencrane.fullname" . }}-clustertenant-manager
       restartPolicy: Never
       containers:
         - name: db-migrate
-          image: "{{ .Values.controlPlane.image.repository }}:{{ .Values.controlPlane.image.tag }}"
-          imagePullPolicy: {{ .Values.controlPlane.image.pullPolicy }}
+          image: "{{ .Values.clustertenantManager.image.repository }}:{{ .Values.clustertenantManager.image.tag }}"
+          imagePullPolicy: {{ .Values.clustertenantManager.image.pullPolicy }}
           command: ["node", "apps/clustertenant-manager/dist/scripts/migrate.js"]
           env:
-            {{- include "opencrane.controlPlaneDatabaseEnv" . | nindent 12 }}
+            {{- include "opencrane.clustertenantManagerDatabaseEnv" . | nindent 12 }}
 {{- end }}

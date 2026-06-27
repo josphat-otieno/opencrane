@@ -40,9 +40,9 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: {{ include "opencrane.fullname" . }}-control-plane
+                name: {{ include "opencrane.fullname" . }}-clustertenant-manager
                 port:
-                  number: {{ .Values.controlPlane.service.port }}
+                  number: {{ .Values.clustertenantManager.service.port }}
           # Everything else (the gateway WebSocket upgrade) → the operator's proxy Service.
           - path: /
             pathType: Prefix

@@ -1,23 +1,23 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "opencrane.fullname" . }}-control-plane
+  name: {{ include "opencrane.fullname" . }}-clustertenant-manager
   labels:
     {{- include "opencrane.labels" . | nindent 4 }}
-    app.kubernetes.io/component: control-plane
+    app.kubernetes.io/component: clustertenant-manager
 spec:
-  replicas: {{ .Values.controlPlane.replicas }}
+  replicas: {{ .Values.clustertenantManager.replicas }}
   selector:
     matchLabels:
       {{- include "opencrane.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: control-plane
+      app.kubernetes.io/component: clustertenant-manager
   template:
     metadata:
       labels:
         {{- include "opencrane.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: control-plane
+        app.kubernetes.io/component: clustertenant-manager
     spec:
-      serviceAccountName: {{ include "opencrane.fullname" . }}-control-plane
+      serviceAccountName: {{ include "opencrane.fullname" . }}-clustertenant-manager
       initContainers:
         # Apply pending Prisma migrations before the server starts (prisma migrate
         # deploy). Runs the same image so the schema/migrations match the binary;
@@ -28,25 +28,25 @@ spec:
         # (control-plane-migration-job.yaml), which an unchanged `helm upgrade`
         # cannot skip the way it skips an unchanged pod template.
         - name: db-migrate
-          image: "{{ .Values.controlPlane.image.repository }}:{{ .Values.controlPlane.image.tag }}"
-          imagePullPolicy: {{ .Values.controlPlane.image.pullPolicy }}
+          image: "{{ .Values.clustertenantManager.image.repository }}:{{ .Values.clustertenantManager.image.tag }}"
+          imagePullPolicy: {{ .Values.clustertenantManager.image.pullPolicy }}
           command: ["node", "apps/clustertenant-manager/dist/scripts/migrate.js"]
           env:
-            {{- include "opencrane.controlPlaneDatabaseEnv" . | nindent 12 }}
+            {{- include "opencrane.clustertenantManagerDatabaseEnv" . | nindent 12 }}
       containers:
         - name: control-plane
-          image: "{{ .Values.controlPlane.image.repository }}:{{ .Values.controlPlane.image.tag }}"
-          imagePullPolicy: {{ .Values.controlPlane.image.pullPolicy }}
+          image: "{{ .Values.clustertenantManager.image.repository }}:{{ .Values.clustertenantManager.image.tag }}"
+          imagePullPolicy: {{ .Values.clustertenantManager.image.pullPolicy }}
           ports:
             - name: http
-              containerPort: {{ .Values.controlPlane.service.port }}
+              containerPort: {{ .Values.clustertenantManager.service.port }}
           env:
             - name: NAMESPACE
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
             - name: PORT
-              value: {{ .Values.controlPlane.service.port | quote }}
+              value: {{ .Values.clustertenantManager.service.port | quote }}
             {{- include "opencrane.observabilityEnv" (dict "ctx" $ "component" "control-plane") | nindent 12 }}
             - name: INGRESS_DOMAIN
               value: {{ .Values.ingress.domain | quote }}
@@ -87,9 +87,9 @@ spec:
             - name: COGNEE_ENDPOINT
               value: {{ include "opencrane.cogneeEndpoint" . | quote }}
             - name: COGNEE_PERMISSIONS_TIMEOUT_MS
-              value: {{ .Values.controlPlane.cognee.permissionsTimeoutMs | quote }}
+              value: {{ .Values.clustertenantManager.cognee.permissionsTimeoutMs | quote }}
             - name: COGNEE_ENABLE_BACKEND_ACCESS_CONTROL
-              value: {{ ternary "true" "false" .Values.controlPlane.cognee.backendAccessControl | quote }}
+              value: {{ ternary "true" "false" .Values.clustertenantManager.cognee.backendAccessControl | quote }}
             # -- Tenancy profile (Chunk 4). Multi-tenant (default): self-service billing +
             #    ClusterTenant management are exposed. Single-tenant: both false and ONE org
             #    is seeded directly (the OPENCRANE_SEED_CLUSTER_TENANT_* env below).
@@ -110,7 +110,7 @@ spec:
             - name: OPENCRANE_SEED_CLUSTER_TENANT_TIER
               value: {{ .Values.clusterTenant.seed.tier | quote }}
             {{- end }}
-            {{- with .Values.controlPlane.oidc }}
+            {{- with .Values.clustertenantManager.oidc }}
             {{- if .issuerUrl }}
             # -- OIDC human-login session (control-plane only). Rendered iff issuerUrl is
             #    set; otherwise the control-plane stays in token/development auth mode.
@@ -168,7 +168,7 @@ spec:
             {{- end }}
             {{- end }}
             {{- end }}
-            {{- with .Values.controlPlane.zitadel }}
+            {{- with .Values.clustertenantManager.zitadel }}
             {{- if .mgmtApiUrl }}
             # -- Zitadel Management API (S3 / Phase 2a): the control-plane provisions a
             #    per-org Zitadel Organization + OIDC app. Rendered iff mgmtApiUrl is set;
@@ -210,7 +210,7 @@ spec:
                   {{- end }}
                   key: {{ .Values.litellm.secretKey }}
             {{- end }}
-            {{- include "opencrane.controlPlaneDatabaseEnv" . | nindent 12 }}
+            {{- include "opencrane.clustertenantManagerDatabaseEnv" . | nindent 12 }}
             {{- if .Values.clusterTenant.provisionerWebhook.url }}
             - name: CLUSTER_TENANT_PROVISIONER_WEBHOOK_URL
               value: {{ .Values.clusterTenant.provisionerWebhook.url | quote }}
@@ -257,4 +257,4 @@ spec:
             initialDelaySeconds: 3
             periodSeconds: 5
           resources:
-            {{- toYaml .Values.controlPlane.resources | nindent 12 }}
+            {{- toYaml .Values.clustertenantManager.resources | nindent 12 }}

@@ -104,9 +104,9 @@ sharedPlatform:
       secretStoreName: ""
 
 # -- Operator settings
-operator:
+fleetManager:
   image:
-    repository: ghcr.io/italanta/opencrane-operator
+    repository: ghcr.io/italanta/opencrane-fleet-manager
     tag: latest
     pullPolicy: IfNotPresent
   replicas: 1
@@ -136,9 +136,9 @@ operator:
   linkerdMeshEnabled: false
 
 # -- Control plane settings
-controlPlane:
+clustertenantManager:
   image:
-    repository: ghcr.io/italanta/opencrane-control-plane
+    repository: ghcr.io/italanta/opencrane-clustertenant-manager
     tag: latest
     pullPolicy: IfNotPresent
   replicas: 1

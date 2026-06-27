@@ -17,12 +17,12 @@
 {{- /* CENTRAL-only (S6 / ADR 0002 decision 2): Zitadel is a central component — only the
        super-admin control-plane provisions/rotates per-org Zitadel orgs. A silo never holds
        the Zitadel SA key, so its rotation RBAC is never rendered there. */ -}}
-{{- if and .Values.clusterTenantManager.enabled .Values.controlPlane.zitadel.existingSecret }}
+{{- if and .Values.clusterTenantManager.enabled .Values.clustertenantManager.zitadel.existingSecret }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: {{ include "opencrane.fullname" . }}-control-plane-zitadel-rotation
+  name: {{ include "opencrane.fullname" . }}-clustertenant-manager-zitadel-rotation
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "opencrane.labels" . | nindent 4 }}
@@ -35,21 +35,21 @@ rules:
     resources: ["secrets"]
     verbs: ["patch"]
     resourceNames:
-      - {{ .Values.controlPlane.zitadel.existingSecret | quote }}
+      - {{ .Values.clustertenantManager.zitadel.existingSecret | quote }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: {{ include "opencrane.fullname" . }}-control-plane-zitadel-rotation
+  name: {{ include "opencrane.fullname" . }}-clustertenant-manager-zitadel-rotation
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "opencrane.labels" . | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: {{ include "opencrane.fullname" . }}-control-plane-zitadel-rotation
+  name: {{ include "opencrane.fullname" . }}-clustertenant-manager-zitadel-rotation
 subjects:
   - kind: ServiceAccount
-    name: {{ include "opencrane.fullname" . }}-control-plane
+    name: {{ include "opencrane.fullname" . }}-clustertenant-manager
     namespace: {{ .Release.Namespace }}
 {{- end }}

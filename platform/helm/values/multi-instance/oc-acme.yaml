@@ -22,7 +22,7 @@ multiInstance:
   certIssuer: namespaced
   secretStore: namespaced
 
-operator:
+fleetManager:
   # Scope the watch to this instance's namespace only.
   watchNamespace: oc-acme
 

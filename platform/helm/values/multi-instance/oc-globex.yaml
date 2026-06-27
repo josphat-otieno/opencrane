@@ -17,7 +17,7 @@ multiInstance:
   certIssuer: namespaced
   secretStore: namespaced
 
-operator:
+fleetManager:
   watchNamespace: oc-globex
 
 ingress:
