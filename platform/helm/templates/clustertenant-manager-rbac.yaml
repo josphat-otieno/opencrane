@@ -6,14 +6,9 @@ metadata:
     {{- include "opencrane.labels" . | nindent 4 }}
 {{- if eq (include "opencrane.namespacedRbac" .) "true" }}
 {{- /*
-  Multi-instance mode (brief B1): grant the control-plane only over the
-  namespace(s) this instance owns, via Role + RoleBinding. Instance A's
-  control-plane SA therefore cannot read/write instance B's Tenants,
-  AccessPolicies, or pods. The genuinely cluster-scoped clusterissuers grant
-  (CONN.8a platform-dns, cluster-issuer mode) cannot live in a namespaced Role,
-  so it stays in the minimal residual ClusterRole below — UNLESS namespaced
-  cert-issuer mode is on (MI.4), in which case the issuer is namespaced and no
-  cluster-wide grant is needed at all (see the per-namespace dns01 Role further down).
+  Multi-instance mode (brief B1): grant the control-plane only over the namespace(s)
+  this instance owns, via Role + RoleBinding. Instance A's control-plane SA therefore
+  cannot read/write instance B's Tenants, AccessPolicies, or pods.
 */}}
 {{- $namespaces := include "opencrane.instanceNamespaces" . | fromJsonArray }}
 {{- range $ns := $namespaces }}
@@ -44,51 +39,10 @@ subjects:
     name: {{ include "opencrane.fullname" $ }}-clustertenant-manager
     namespace: {{ $.Release.Namespace }}
 {{- end }}
-{{- /*
-  NOTE: ClusterTenant is cluster-scoped, but a cluster-wide clustertenants grant is a
-  cross-instance isolation breach in multi-instance mode (one instance could manage
-  another's orgs). So in this mode NO clustertenants ClusterRole is rendered — fleet-wide
-  ClusterTenant management belongs to a single, non-multi-instance control plane, not to
-  a per-instance one. The single-install branch below grants it (gated on need).
-*/}}
-{{- if and .Values.certManager.enabled (ne (include "opencrane.namespacedCertIssuer" .) "true") }}
----
-# CONN.8a (cluster-scoped residual): the `oc platform dns set` endpoint upserts a
-# cert-manager ACME DNS-01 ClusterIssuer. ClusterIssuer is cluster-scoped and
-# CANNOT live in a namespaced Role, so in multi-instance + cluster-issuer mode this
-# grant stays in a minimal residual ClusterRole — the only cluster-wide verb the
-# control-plane keeps. In namespaced cert-issuer mode (MI.4) this block is skipped
-# entirely; the issuer is namespaced and granted by the per-namespace dns01 Role below.
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: {{ include "opencrane.fullname" . }}-clustertenant-manager-clusterissuer
-  labels:
-    {{- include "opencrane.labels" . | nindent 4 }}
-rules:
-  - apiGroups: ["cert-manager.io"]
-    resources: ["clusterissuers"]
-    verbs: ["get", "create", "update", "patch"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: {{ include "opencrane.fullname" . }}-clustertenant-manager-clusterissuer
-  labels:
-    {{- include "opencrane.labels" . | nindent 4 }}
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: {{ include "opencrane.fullname" . }}-clustertenant-manager-clusterissuer
-subjects:
-  - kind: ServiceAccount
-    name: {{ include "opencrane.fullname" . }}-clustertenant-manager
-    namespace: {{ .Release.Namespace }}
-{{- end }}
 {{- else }}
 {{- /*
-  Legacy single-install mode: cluster-wide ClusterRole + ClusterRoleBinding.
-  Combines the namespaced rules with the cluster-scoped clusterissuers grant.
+  Legacy single-install mode: cluster-wide ClusterRole + ClusterRoleBinding over the
+  (namespaced) control-plane rules.
 */}}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -99,23 +53,6 @@ metadata:
     {{- include "opencrane.labels" . | nindent 4 }}
 rules:
 {{ include "opencrane.clustertenantManagerRbacRules" . | nindent 2 }}
-  # Onboarding TLS issuance (CONN.8a): the `oc platform dns set` endpoint upserts a
-  # cert-manager ACME DNS-01 ClusterIssuer (cluster-scoped, so it must be here). The
-  # DNS-provider credentials Secret it references is granted via a namespace-scoped
-  # Role in the cert-manager namespace (below) — NOT cluster-wide secrets write.
-  - apiGroups: ["cert-manager.io"]
-    resources: ["clusterissuers"]
-    verbs: ["get", "create", "update", "patch"]
-  {{- if or .Values.clusterTenantManager.enabled .Values.clusterTenant.seed.name }}
-  # ClusterTenant is CLUSTER-SCOPED, so the control-plane's DB→CR bridge (the
-  # billing-gated POST /cluster-tenants AND the single-tenant boot seed) needs a
-  # cluster-wide grant — it cannot live in the namespaced Role. Status is owned by
-  # the operator; the control-plane writes spec only. Granted only when the
-  # self-service manager is on OR a single-tenant org is seeded (least privilege).
-  - apiGroups: ["opencrane.io"]
-    resources: ["clustertenants"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-  {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -132,82 +69,37 @@ subjects:
     name: {{ include "opencrane.fullname" . }}-clustertenant-manager
     namespace: {{ .Release.Namespace }}
 {{- end }}
-{{- if .Values.certManager.enabled }}
-{{- if eq (include "opencrane.namespacedCertIssuer" .) "true" }}
+---
 {{- /*
-  MI.4 namespaced cert-issuer mode: `oc platform dns set` upserts a per-instance
-  *Issuer* and writes the DNS-01 credentials Secret INTO the instance namespace
-  (not a cluster-wide ClusterIssuer + shared cert-manager ns). Grant the
-  control-plane SA namespaced Issuer + Secret write in each owned instance namespace.
-*/ -}}
-{{- range $ns := include "opencrane.instanceNamespaces" . | fromJsonArray }}
----
+  Stage 4: the silo READS the cluster-scoped ClusterTenant CR to resolve a host's per-org
+  login client (per-org-client.ts: get by name, list by vanityDomain). ClusterTenant is
+  cluster-scoped, so a get/list/watch grant cannot live in the namespaced Role above — it
+  needs this minimal ClusterRole, rendered in BOTH modes. READ-ONLY: the fleet-manager owns
+  ClusterTenant writes + provisioning; the silo never mutates the CR. (Platform-DNS / Zitadel
+  cluster-scoped grants moved to fleet-manager-platform-dns-rbac.yaml + the fleet operator RBAC.)
+*/}}
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+kind: ClusterRole
 metadata:
-  name: {{ include "opencrane.fullname" $ }}-clustertenant-manager-dns01
-  namespace: {{ $ns | quote }}
-  labels:
-    {{- include "opencrane.labels" $ | nindent 4 }}
-rules:
-  # Per-instance Issuer the control-plane upserts for this namespace's wildcard cert.
-  - apiGroups: ["cert-manager.io"]
-    resources: ["issuers"]
-    verbs: ["get", "create", "update", "patch"]
-  # DNS-01 credentials Secret the namespaced Issuer's solver references (same ns).
-  - apiGroups: [""]
-    resources: ["secrets"]
-    verbs: ["get", "create", "update", "patch"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: {{ include "opencrane.fullname" $ }}-clustertenant-manager-dns01
-  namespace: {{ $ns | quote }}
-  labels:
-    {{- include "opencrane.labels" $ | nindent 4 }}
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: {{ include "opencrane.fullname" $ }}-clustertenant-manager-dns01
-subjects:
-  - kind: ServiceAccount
-    name: {{ include "opencrane.fullname" $ }}-clustertenant-manager
-    namespace: {{ $.Release.Namespace }}
-{{- end }}
-{{- else }}
----
-# CONN.8a least-privilege: the DNS-provider credentials Secret the control-plane
-# writes for `oc platform dns set` lives in the cert-manager controller namespace
-# (cert-manager reads ClusterIssuer solver Secrets only from its own namespace).
-# Grant secrets write THERE via a namespaced Role — not cluster-wide. This applies
-# in legacy + cluster-issuer modes (the DNS-01 solver Secret is cluster-platform state).
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: {{ include "opencrane.fullname" . }}-clustertenant-manager-dns01
-  namespace: {{ default "cert-manager" .Values.certManager.namespace }}
+  name: {{ include "opencrane.fullname" . }}-clustertenant-manager-ct-read
   labels:
     {{- include "opencrane.labels" . | nindent 4 }}
 rules:
-  - apiGroups: [""]
-    resources: ["secrets"]
-    verbs: ["get", "create", "update", "patch"]
+  - apiGroups: ["opencrane.io"]
+    resources: ["clustertenants"]
+    verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
+kind: ClusterRoleBinding
 metadata:
-  name: {{ include "opencrane.fullname" . }}-clustertenant-manager-dns01
-  namespace: {{ default "cert-manager" .Values.certManager.namespace }}
+  name: {{ include "opencrane.fullname" . }}-clustertenant-manager-ct-read
   labels:
     {{- include "opencrane.labels" . | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: {{ include "opencrane.fullname" . }}-clustertenant-manager-dns01
+  kind: ClusterRole
+  name: {{ include "opencrane.fullname" . }}-clustertenant-manager-ct-read
 subjects:
   - kind: ServiceAccount
     name: {{ include "opencrane.fullname" . }}-clustertenant-manager
     namespace: {{ .Release.Namespace }}
-{{- end }}
-{{- end }}

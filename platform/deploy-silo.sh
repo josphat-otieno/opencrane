@@ -84,7 +84,7 @@ PROFILE_SET=(
   --no-ingress-nginx
   --no-external-dns
   --no-db-operator
-  --set "clusterTenantManager.enabled=false"
+  --set "clusterTenantManagement.enabled=false"
   --set "billing.enabled=false"
   --set "multiInstance.enabled=false"
   --set "ingress.tls.enabled=true"

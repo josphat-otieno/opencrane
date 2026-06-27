@@ -90,26 +90,10 @@ spec:
               value: {{ .Values.clustertenantManager.cognee.permissionsTimeoutMs | quote }}
             - name: COGNEE_ENABLE_BACKEND_ACCESS_CONTROL
               value: {{ ternary "true" "false" .Values.clustertenantManager.cognee.backendAccessControl | quote }}
-            # -- Tenancy profile (Chunk 4). Multi-tenant (default): self-service billing +
-            #    ClusterTenant management are exposed. Single-tenant: both false and ONE org
-            #    is seeded directly (the OPENCRANE_SEED_CLUSTER_TENANT_* env below).
-            - name: OPENCRANE_BILLING_ENABLED
-              value: {{ ternary "true" "false" .Values.billing.enabled | quote }}
-            - name: OPENCRANE_CLUSTER_TENANT_MANAGER_ENABLED
-              value: {{ ternary "true" "false" .Values.clusterTenantManager.enabled | quote }}
-            {{- if .Values.clusterTenant.seed.name }}
-            # -- Single-tenant org seed. Read at boot by _SeedClusterTenant: creates the
-            #    ClusterTenant CR + its `owner` OrgMembership directly (idempotent,
-            #    fail-soft). Only rendered when a seed name is configured.
-            - name: OPENCRANE_SEED_CLUSTER_TENANT_NAME
-              value: {{ .Values.clusterTenant.seed.name | quote }}
-            - name: OPENCRANE_SEED_CLUSTER_TENANT_DISPLAY_NAME
-              value: {{ .Values.clusterTenant.seed.displayName | default .Values.clusterTenant.seed.name | quote }}
-            - name: OPENCRANE_SEED_CLUSTER_TENANT_OWNER_EMAIL
-              value: {{ .Values.clusterTenant.seed.ownerEmail | quote }}
-            - name: OPENCRANE_SEED_CLUSTER_TENANT_TIER
-              value: {{ .Values.clusterTenant.seed.tier | quote }}
-            {{- end }}
+            # -- Tenancy profile: the fleet self-service gates (OPENCRANE_BILLING_ENABLED /
+            #    OPENCRANE_CLUSTER_TENANT_MANAGER_ENABLED) and the single-tenant ClusterTenant
+            #    seed moved to the fleet-manager (Stage 4) — the fleet owns the ClusterTenant
+            #    registry + management surface. The silo keeps only its per-org LOGIN OIDC below.
             {{- with .Values.clustertenantManager.oidc }}
             {{- if .issuerUrl }}
             # -- OIDC human-login session (control-plane only). Rendered iff issuerUrl is
@@ -168,30 +152,9 @@ spec:
             {{- end }}
             {{- end }}
             {{- end }}
-            {{- with .Values.clustertenantManager.zitadel }}
-            {{- if .mgmtApiUrl }}
-            # -- Zitadel Management API (S3 / Phase 2a): the control-plane provisions a
-            #    per-org Zitadel Organization + OIDC app. Rendered iff mgmtApiUrl is set;
-            #    the SA key (jwt-bearer auth) is pulled from a Secret, never inlined.
-            - name: ZITADEL_MGMT_API_URL
-              value: {{ .mgmtApiUrl | quote }}
-            {{- if .existingSecret }}
-            - name: ZITADEL_MGMT_SA_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .existingSecret }}
-                  key: {{ .serviceAccountKeyKey | default "service-account-key" }}
-            # -- Key-rotation support: the superadmin rotate endpoint needs to know
-            #    which Secret to patch and which data key carries the SA-key JSON, so
-            #    it can write the newly issued key back in-place without config drift.
-            #    Paired with the Role/RoleBinding in control-plane-zitadel-rotation-rbac.yaml.
-            - name: ZITADEL_MGMT_SECRET_NAME
-              value: {{ .existingSecret | quote }}
-            - name: ZITADEL_MGMT_SECRET_KEY
-              value: {{ .serviceAccountKeyKey | default "service-account-key" | quote }}
-            {{- end }}
-            {{- end }}
-            {{- end }}
+            # NOTE: Zitadel MANAGEMENT env (ZITADEL_MGMT_*) moved to the fleet-manager (Stage 4):
+            # the fleet is the sole IAM_OWNER holder that provisions per-org orgs + rotates the SA
+            # key. The silo's per-org LOGIN above uses OIDC discovery only — no management client.
             # -- LiteLLM base endpoint, resolved via sharedPlatform scope (B5):
             #    instance mode → release-prefixed in-cluster Service; shared mode →
             #    sharedPlatform.litellm.shared.endpoint.

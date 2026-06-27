@@ -117,6 +117,51 @@ fleetManager:
     existingSecret: ""
     url: ""
     secretKey: DATABASE_URL
+  # -- OIDC human-login for the FLEET plane. This is the fleet's OWN Zitadel project with
+  #    fleet-level roles (billing identity + platform operator) — SEPARATE from each silo's
+  #    per-org OIDC (clustertenantManager.oidc). Rendered into fleet-manager only when
+  #    issuerUrl is set; otherwise the fleet API stays in token/development auth mode.
+  oidc:
+    issuerUrl: ""
+    clientId: ""
+    # -- Callback URL on the fleet-manager (OIDC_REDIRECT_URI), e.g.
+    #    https://<fleet-host>/api/v1/auth/callback.
+    redirectUri: ""
+    # -- Existing K8s Secret carrying the OIDC client secret + session secret (preferred).
+    existingSecret: ""
+    clientSecretKey: OIDC_CLIENT_SECRET
+    sessionSecretKey: OIDC_SESSION_SECRET
+    # -- Inline fallbacks used ONLY for dev when no existingSecret is set. Leave empty in prod.
+    clientSecret: ""
+    sessionSecret: ""
+    groupsClaim: "groups"
+    rolesClaim: "roles"
+    # -- Comma-separated, lowercased group names granting platform-operator
+    #    (OPENCRANE_PLATFORM_OPERATOR_GROUPS) and org-admin (OPENCRANE_ORG_ADMIN_GROUPS) on
+    #    the fleet plane. Empty → nobody is granted via groups (fail-closed).
+    platformOperatorGroups: ""
+    orgAdminGroups: ""
+    # -- Per-cluster platform-operator SEED email (OPENCRANE_PLATFORM_OPERATOR_SEED_EMAIL).
+    #    Bootstraps the FIRST fleet operator before any IdP group mapping exists. MUST stay
+    #    empty unless seeding an operator (empty → nobody, fail-closed).
+    platformOperatorSeedEmail: ""
+  # -- Zitadel Management API. The fleet-manager (cluster-wide singleton, sole IAM_OWNER
+  #    holder) provisions a per-org Zitadel Organization + OIDC app on ClusterTenant create
+  #    and rotates its own SA key in-place. Empty mgmtApiUrl → org provisioning is a no-op.
+  #
+  #    Key rotation: when existingSecret is set AND clusterTenantManagement.enabled is true,
+  #    the chart renders a namespaced Role + RoleBinding (fleet-manager-zitadel-rotation-rbac.yaml)
+  #    granting the fleet-manager ServiceAccount `patch` on that single named Secret. The Secret
+  #    name + data key are surfaced to the pod as ZITADEL_MGMT_SECRET_NAME / ZITADEL_MGMT_SECRET_KEY.
+  zitadel:
+    # -- Zitadel instance base URL (e.g. https://weownai-oidc-8dwlat.eu1.zitadel.cloud).
+    #    REQUIRED when clusterTenantManagement.enabled (the fleet hard-commits to Zitadel).
+    mgmtApiUrl: ""
+    # -- Existing K8s Secret carrying the service-account key JSON (jwt-bearer auth). The
+    #    service account MUST hold instance-level IAM_OWNER. When set, also enables the
+    #    key-rotation Role/RoleBinding.
+    existingSecret: ""
+    serviceAccountKeyKey: service-account-key
   replicas: 1
   resources:
     requests:
@@ -253,31 +298,10 @@ clustertenantManager:
     #    it per cluster at install (the wizard/installer can prompt for it); never commit
     #    a real owner email into values.
     platformOperatorSeedEmail: ""
-
-  # -- Zitadel Management API (S3 / Phase 2a). When mgmtApiUrl is set, the control-plane
-  #    provisions a per-org Zitadel Organization + OIDC app on ClusterTenant create.
-  #    Empty (default) → org provisioning is a no-op (orgs created without a Zitadel org).
-  #    The live management client is active and provisions per-org Zitadel orgs when a
-  #    ClusterTenant is created (shipped in S3; no longer a no-op).
-  #
-  #    Key rotation: when existingSecret is set AND clusterTenantManager.enabled is true,
-  #    the chart renders a namespaced Role + RoleBinding
-  #    (control-plane-zitadel-rotation-rbac.yaml) granting the control-plane ServiceAccount
-  #    `get` and `patch` on that single named Secret. This lets the superadmin key-rotation
-  #    API overwrite the SA-key JSON in-place after issuing a new key via Zitadel, without
-  #    requiring broad secrets access. The Secret name and data key are also surfaced to
-  #    the pod as ZITADEL_MGMT_SECRET_NAME / ZITADEL_MGMT_SECRET_KEY.
-  zitadel:
-    # -- Zitadel instance base URL (e.g. https://weownai-oidc-8dwlat.eu1.zitadel.cloud).
-    #    REQUIRED when clusterTenantManager.enabled (the control-plane hard-commits to
-    #    Zitadel for the multi-tenant path); single-cluster installs do not need it.
-    mgmtApiUrl: ""
-    # -- Existing K8s Secret carrying the service-account key JSON (jwt-bearer auth). The
-    #    service account MUST hold instance-level IAM_OWNER (per-org create/delete is an
-    #    instance privilege). Key name configurable below.
-    #    When set, also enables the key-rotation Role/RoleBinding (see note above).
-    existingSecret: ""
-    serviceAccountKeyKey: service-account-key
+  # NOTE: Zitadel MANAGEMENT (per-org provisioning + SA-key rotation) moved to
+  # `fleetManager.zitadel` (Stage 4) — the silo's OIDC above is for per-org LOGIN only and
+  # never holds the IAM_OWNER SA key. The silo uses standards-only OIDC discovery at
+  # `clustertenantManager.oidc.issuerUrl`; it makes no Zitadel management API calls.
 
 # -- LiteLLM integration settings
 litellm:
@@ -916,9 +940,15 @@ observability:
 #    single-tenant box. Wired to the control-plane as OPENCRANE_BILLING_ENABLED /
 #    OPENCRANE_CLUSTER_TENANT_MANAGER_ENABLED; when false the matching self-service router
 #    is not mounted. `multiInstance` is a separate, lower-level switch and stays OFF here.
-clusterTenantManager:
-  # -- Expose the self-service ClusterTenant management API (POST/PATCH/DELETE
-  #    /cluster-tenants). Single-tenant: false (the one org is seeded directly).
+# -- Fleet self-service surface gate (renamed from `clusterTenantManager` to disambiguate from
+#    the `clustertenantManager` COMPONENT key). Wired to the fleet-manager as
+#    OPENCRANE_CLUSTER_TENANT_MANAGER_ENABLED; when false the ClusterTenant management +
+#    Zitadel-admin + platform-DNS routers are not mounted and the fleet's cluster-scoped
+#    management/issuer RBAC is not rendered.
+clusterTenantManagement:
+  # -- Expose the ClusterTenant management API (POST/PATCH/DELETE /cluster-tenants) + Zitadel
+  #    admin + platform DNS on the fleet plane. Single-tenant: false (the one org is seeded
+  #    directly at boot).
   enabled: true
 billing:
   # -- Expose the self-service billing-accounts API (the gate for org creation).

@@ -55,7 +55,7 @@ All resources here are namespaced, so the same rule list is valid in a Role.
 - apiGroups: ["opencrane.io"]
   resources: ["tenants", "tenants/status", "accesspolicies"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-{{- if .Values.clusterTenantManager.enabled }}
+{{- if .Values.clusterTenantManagement.enabled }}
 - apiGroups: ["opencrane.io"]
   resources: ["clustertenants", "clustertenants/status"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
