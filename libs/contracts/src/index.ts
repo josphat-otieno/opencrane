@@ -49,6 +49,7 @@ export {
   type SavingsRecommendation,
 } from "./model-routing.types.js";
 export { SkillBundleStatus, SkillPromotionStatus, type SkillBundle, type SkillPromotion } from "./skill-bundle.types.js";
+export { type TenantModelSet } from "./tenant-models.types.js";
 export {
   ThirdPartySourceItemKind,
   ThirdPartySourceKind,

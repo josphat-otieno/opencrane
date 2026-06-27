@@ -6,7 +6,7 @@ import type * as k8s from "@kubernetes/client-node";
 import type { OpenClawTenantOperatorConfig } from "../../config.js";
 import type { AccessPolicy } from "../../policies/types.js";
 import type { Tenant } from "../models/tenant.interface.js";
-import type { TenantModelSet } from "../internal/tenant-models.types.js";
+import type { TenantModelSet } from "@opencrane/contracts";
 import { _BuildTenantLabels } from "./tenant-labels.js";
 
 /** Directory containing the workspace template files shipped with the operator. */

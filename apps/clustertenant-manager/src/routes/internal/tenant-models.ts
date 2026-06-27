@@ -1,7 +1,7 @@
 import { Router } from "express";
 import type { PrismaClient } from "@prisma/client";
 
-import type { TenantModelsResponse } from "./tenant-models.types.js";
+import type { TenantModelSet } from "@opencrane/contracts";
 
 /**
  * Resolve the effective default model for a tenant from the routing-default
@@ -131,7 +131,7 @@ export function _RegisterInternalTenantModels(prisma: PrismaClient): Router
         isDefaultModel,
       );
 
-      const response: TenantModelsResponse = { models, defaultModel };
+      const response: TenantModelSet = { models, defaultModel };
       res.json(response);
     }
     catch (err)

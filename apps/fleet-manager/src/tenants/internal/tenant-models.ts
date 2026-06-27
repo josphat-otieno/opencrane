@@ -1,6 +1,6 @@
 import type { Logger } from "pino";
 
-import type { TenantModelSet } from "./tenant-models.types.js";
+import type { TenantModelSet } from "@opencrane/contracts";
 
 /** Maximum time (ms) to wait on the control-plane before giving up and falling back. */
 const _FETCH_TIMEOUT_MS = 2000;
