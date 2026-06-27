@@ -16,7 +16,6 @@ import { ___BindConsole, ___GetContext, ___RequestContext, ___ShutdownTelemetry 
 
 import { ___AuthRouter } from "./infra/auth/auth.router.js";
 import { _BuildGatewayAdmin } from "./core/connections/gateway-admin.js";
-import { _SeedClusterTenant } from "./infra/cluster-tenant-seed.js";
 import { ___CreateOidcAuthService } from "./infra/auth/oidc.service.js";
 import { ___CreatePrismaClient } from "./infra/db/db.js";
 import { ___AuthMiddleware } from "@opencrane/infra-auth";
@@ -106,11 +105,9 @@ const server = app.listen(port, function _onListen()
   log.info({ port }, "control plane listening");
 });
 
-// Single-tenant profile: seed the configured ClusterTenant + its owner membership
-// directly (the seed pattern, NOT the billing-gated POST). A strict no-op when no seed
-// env is set (the multi-tenant profile), idempotent on re-run, and fail-soft so a seed
-// error never stops the server. Runs after listen so health checks come up promptly.
-void _SeedClusterTenant(prisma, customApi, log);
+// NOTE: the single-tenant ClusterTenant boot-seed moved to the fleet-manager (Stage 4) — the
+// fleet owns the ClusterTenant registry. The silo receives its ClusterTenant read-model via CR
+// projection, not a local boot-seed.
 
 /**
  * Gracefully drain the server, disconnect Prisma, flush telemetry, and restore

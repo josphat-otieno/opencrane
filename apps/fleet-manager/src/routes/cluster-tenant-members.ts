@@ -1,6 +1,6 @@
 import { Router } from "express";
 import type { Request } from "express";
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "../generated/prisma/index.js";
 
 import { _RequireOrgManager } from "@opencrane/infra-auth";
 import { _log } from "../log.js";

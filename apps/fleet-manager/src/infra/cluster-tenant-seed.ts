@@ -1,7 +1,7 @@
 import { ClusterTenantIsolationTier } from "@opencrane/contracts";
 import * as k8s from "@kubernetes/client-node";
 import type { Logger } from "pino";
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "../generated/prisma/index.js";
 
 import { _ApplyClusterTenantCr } from "../core/cluster-tenants/cr-bridge.js";
 import { _ToContract, _ToPrismaTier } from "../routes/cluster-tenants.service.js";

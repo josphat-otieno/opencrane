@@ -7,6 +7,7 @@ import * as k8s from "@kubernetes/client-node";
 import express from "express";
 
 import { ___BindConsole, ___ShutdownTelemetry, ___DoWithTrace } from "@opencrane/observability";
+import { ___AuthMiddleware } from "@opencrane/infra-auth";
 
 import { _LoadOperatorConfig } from "./config.js";
 import { ObotHealthChecker } from "./mcp-gateway/obot-health-checker.js";
@@ -18,6 +19,8 @@ import { _ReadTenantRolloutConfig, TenantUpdateWithCanaryStrategyController } fr
 import { GatewayProxyServer } from "./gateway-proxy/server.js";
 import { _log as log } from "./log.js";
 import { ___CreateFleetPrismaClient } from "./infra/db/db.js";
+import { ___CreateFleetOidcAuthService } from "./infra/auth/oidc.service.js";
+import { _SeedClusterTenant } from "./infra/cluster-tenant-seed.js";
 import { _RegisterFleetRoutes } from "./routes.js";
 import type { PrismaClient } from "./generated/prisma/index.js";
 
@@ -50,20 +53,35 @@ async function main(): Promise<void>
   const config = _LoadOperatorConfig();
   log.info({ config }, "loaded operator config");
 
-  // Fleet registry DB + HTTP API (Stage 3 — ADR 0002 silo split). fleet-manager is the
-  // cluster-wide singleton hosting the cross-silo super-admin surface; Stage 3 brings up the
-  // registry DB connection + /healthz, with the fleet routes relocated from clustertenant-manager
-  // in Stage 4. Started before the watch loops so health checks come up promptly.
+  const kc = new k8s.KubeConfig();
+  kc.loadFromDefault();
+
+  // Fleet registry DB + HTTP API (ADR 0002 silo split). fleet-manager is the cluster-wide
+  // singleton hosting the cross-silo super-admin surface: ClusterTenant lifecycle, billing,
+  // org membership, platform DNS, and Zitadel admin (Stage 4). Started before the watch loops
+  // so health checks come up promptly.
   const prisma = ___CreateFleetPrismaClient(log);
   _prismaRef = prisma;
+  const authService = ___CreateFleetOidcAuthService(log, prisma);
   const app = express();
+  // Trust the ingress proxy's X-Forwarded-* so cookie `secure` + host-derived redirect URIs
+  // resolve correctly behind the load balancer.
+  app.set("trust proxy", true);
+  app.use(authService.createSessionMiddleware());
   app.use(express.json());
-  _RegisterFleetRoutes(app, prisma);
+  // No DB access-token reader: the fleet registry has no AccessToken model, so auth is OIDC
+  // session or the env-var token only. The middleware lets /healthz + /api/v1/auth through.
+  app.use(___AuthMiddleware());
+  const fleetCustomApi = kc.makeApiClient(k8s.CustomObjectsApi);
+  const fleetCoreApi = kc.makeApiClient(k8s.CoreV1Api);
+  _RegisterFleetRoutes(app, prisma, fleetCustomApi, fleetCoreApi, authService);
   const apiPort = Number(process.env.PORT ?? "8080");
   _serverRef = app.listen(apiPort, function _onApiListen() { log.info({ port: apiPort }, "fleet-manager API listening"); });
 
-  const kc = new k8s.KubeConfig();
-  kc.loadFromDefault();
+  // Single-tenant profile: seed the configured ClusterTenant + its owner membership into the
+  // fleet registry directly (the seed pattern, NOT the billing-gated POST). A strict no-op when
+  // no seed env is set, idempotent on re-run, and fail-soft so a seed error never stops startup.
+  void _SeedClusterTenant(prisma, fleetCustomApi, log);
 
   const tenantOperator = _CreateTenantOperator(kc, config, log);
   const policyOperator = new PolicyOperator(kc, config, log);

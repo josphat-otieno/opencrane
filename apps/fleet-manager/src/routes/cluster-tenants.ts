@@ -3,7 +3,7 @@ import type { Request } from "express";
 import * as k8s from "@kubernetes/client-node";
 import { ClusterTenantPhase, ClusterTenantTierUnavailableCode } from "@opencrane/contracts";
 import type { ClusterTenantProvisionerRegistry } from "@opencrane/contracts";
-import { Prisma, type PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "../generated/prisma/index.js";
 
 import type { ClusterTenantCreateRequest, ClusterTenantUpdateRequest } from "./cluster-tenants.models.js";
 import { _IsIsolationTier, _ObservedStatusToContract, _SyncObservedStatusToDb, _ToContract, _ToPrismaCompute, _ToPrismaTier, _ValidateCompute, _ValidateResources } from "./cluster-tenants.service.js";
@@ -11,7 +11,6 @@ import { _IsDevAuthMode } from "@opencrane/infra-auth";
 import { _RequireBillingAccountForOrgCreate, _RequireOrgManager } from "@opencrane/infra-auth";
 import { _ApplyClusterTenantCr, _DeleteClusterTenantCr } from "../core/cluster-tenants/cr-bridge.js";
 import { _ReadClusterTenantObservedStatus } from "../core/cluster-tenants/cr-status-reader.js";
-import { _EnsureOwnerDefaultTenant } from "../core/cluster-tenants/default-tenant.js";
 import { _DeriveOrgRedirectUri, _DeriveVanityRedirectUri } from "../infra/zitadel/zitadel-client.js";
 import type { ZitadelManagementClient } from "../infra/zitadel/zitadel-client.types.js";
 import { _log } from "../log.js";
@@ -127,15 +126,12 @@ export function clusterTenantsRouter(prisma: PrismaClient, registry: ClusterTena
   });
 
   /**
-   * Refresh a cluster tenant's status and reconcile its workspace tenant (operator OR
-   * owner/admin of that org).
+   * Refresh a cluster tenant's observed status (operator OR owner/admin of that org).
    *
-   * Re-reads the operator's observed phase from the CR (mirroring it to the DB), then —
-   * when the org is fully `ready` but has no workspace Tenant projected — seeds the owner's
-   * `<org>-default` Tenant via the same dual-write the create path uses. This is the
-   * explicit, user-triggered recovery for an org that reached ready without a tenant row
-   * (e.g. an org provisioned before the create-time seed existed). Idempotent: a ready org
-   * that already has its tenant simply returns the current status.
+   * Re-reads the operator's observed phase from the CR (mirroring it to the DB row). The
+   * owner's `<org>-default` workspace Tenant is NOT seeded here: fleet-manager's registry DB
+   * holds no `Tenant` table — the workspace is projected SILO-side from the ClusterTenant CR
+   * (which carries the owner's email + subject, stamped at create) into the silo's own DB.
    */
   router.post("/:name/refresh", requireOrgManager, async function _refreshClusterTenant(req: Request<{ name: string }>, res)
   {
@@ -151,19 +147,7 @@ export function clusterTenantsRouter(prisma: PrismaClient, registry: ClusterTena
     const observed = await _ReadObservedStatus(prisma, customApi, row);
     const status = observed ?? _ToContract(row).status;
 
-    // Only seed once the org is fully provisioned — a tenant created before its namespace
-    // is bound would churn the TenantOperator with retries until ready. The owner email is
-    // recovered from the existing CRD when present (the org's CR carried it at create).
-    let defaultTenant: Awaited<ReturnType<typeof _EnsureOwnerDefaultTenant>> | null = null;
-    if (status?.phase === ClusterTenantPhase.Ready)
-    {
-      defaultTenant = await _EnsureOwnerDefaultTenant({
-        customApi, prisma, namespace,
-        orgName: row.name, orgDisplayName: row.displayName,
-      });
-    }
-
-    res.json({ status, defaultTenant });
+    res.json({ status });
   });
 
   /**
@@ -313,31 +297,10 @@ export function clusterTenantsRouter(prisma: PrismaClient, registry: ClusterTena
     // claim (absent in the dev-auth path, where only the synthetic subject is carried).
     await _ApplyClusterTenantCr(customApi, orgContract, { email: req.session?.authUser?.email, subject: ownerSubject });
 
-    // 6. Seed the org's first workspace Tenant for the owner as part of create — a
-    //    control-plane dual-write (CRD + DB row) so the owner has a workspace from the
-    //    moment the org exists. It sits `Pending` until the TenantOperator reconciles it
-    //    to `Running` once the org's namespace is bound. Best-effort: a seed hiccup must
-    //    not fail org creation (the org row + CR are already committed); the refresh
-    //    endpoint is the explicit recovery path. Skipped in the dev-auth path when no
-    //    owner email is carried.
-    try
-    {
-      const seed = await _EnsureOwnerDefaultTenant({
-        customApi, prisma, namespace,
-        orgName: created.name, orgDisplayName: created.displayName,
-        ownerEmail: req.session?.authUser?.email,
-        ownerSubject,
-      });
-      if (seed.skippedReason)
-      {
-        _log.warn({ orgName: created.name, skippedReason: seed.skippedReason }, "default tenant not seeded for new org; owner has no workspace until refresh");
-      }
-    }
-    catch (err)
-    {
-      _log.warn({ err, orgName: created.name }, "default tenant seed failed; org stays created (use refresh to retry)");
-    }
-
+    // 6. The owner's first workspace Tenant is seeded SILO-side, not here: fleet-manager's
+    //    registry DB holds no `Tenant` table. The ClusterTenant CR applied above carries the
+    //    owner's email + subject, from which the silo projects the owner's `<org>-default`
+    //    Tenant into its own DB once the org's namespace is bound (default-tenant projection).
     res.status(201).json(orgContract);
   });
 

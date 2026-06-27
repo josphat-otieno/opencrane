@@ -5,7 +5,6 @@ import type { PrismaClient } from "@prisma/client";
 import { accessTokensRouter } from "./routes/access-tokens.js";
 import { aiBudgetRouter } from "./routes/ai-budget.js";
 import { auditRouter } from "./routes/audit.js";
-import { billingAccountsRouter } from "./routes/billing-accounts.js";
 import { groupsRouter } from "./routes/groups.js";
 import { _RegisterInternalBundles } from "./routes/internal/skill-bundles.js";
 import { _RegisterInternalTenantContract } from "./routes/internal/tenant-contract.js";
@@ -41,14 +40,6 @@ import { companyDocsRouter } from "./routes/company-docs.js";
 import { awarenessRolloutRouter } from "./routes/awareness-rollout.js";
 import { awarenessParticipationRouter } from "./routes/awareness-participation.js";
 import { sessionsRouter } from "./routes/sessions.js";
-import { platformDnsRouter } from "./routes/platform-dns.js";
-import { clusterTenantsRouter } from "./routes/cluster-tenants.js";
-import { clusterTenantMembersRouter } from "./routes/cluster-tenant-members.js";
-import { _BuildClusterTenantProvisionerRegistry } from "./core/cluster-tenants/registry.js";
-import { _BuildZitadelManagementClient } from "./infra/zitadel/zitadel-client.js";
-import { _BuildZitadelKeySecretStore } from "./infra/zitadel/key-secret-store.js";
-import { zitadelKeyRouter } from "./routes/admin/zitadel-key.js";
-import { zitadelReconcileRouter } from "./routes/admin/zitadel-reconcile.js";
 import { _CheckDbHealth } from "./infra/db/healtcheck-db.js";
 
 /**
@@ -66,24 +57,6 @@ function _BuildOciBundleStore(): OciBundleStore | null
     return null;
   }
   return new OciBundleStore({ registryUrl, repository: process.env.SKILL_OCI_REPOSITORY?.trim() || "skills" });
-}
-
-/**
- * Read a boolean feature flag from the environment, defaulting ON.
- *
- * Single-tenant installs turn the multi-tenant self-service surfaces OFF
- * (`OPENCRANE_BILLING_ENABLED=false`, `OPENCRANE_CLUSTER_TENANT_MANAGER_ENABLED=false`).
- * The multi-tenant profile leaves them unset, so the default is ON — only an explicit
- * `false`/`0`/`off`/`no` disables the feature. Defaulting ON keeps existing
- * (multi-tenant) installs unchanged when the flag is absent.
- *
- * @param name - The environment variable name.
- * @returns True unless the variable is explicitly set to a falsey token.
- */
-function _featureEnabled(name: string): boolean
-{
-  const raw = process.env[name]?.trim().toLowerCase();
-  return !(raw === "false" || raw === "0" || raw === "off" || raw === "no");
 }
 
 /**
@@ -111,11 +84,6 @@ export function _RegisterRoutes(app: Express, prisma: PrismaClient, customApi: k
   // Gateway admin for the connection kill-switch (CONN.5); no-op until a
   // control-plane operator device is paired (CONN.4 — needs live infra).
   const gatewayAdmin = _BuildGatewayAdmin();
-
-  // Cluster-tenant provisioner registry (CT.6): the built-in shared provisioner
-  // plus the external webhook backend when configured. Used by the management
-  // API to gate which isolation tiers a customer may request.
-  const clusterTenantRegistry = _BuildClusterTenantProvisionerRegistry();
 
   app.use("/api/internal/bundles", _RegisterInternalBundles(prisma, ociBundleStore));
   // NetworkPolicy-only (no auth/TokenReview): the operator fetches a tenant's
@@ -146,36 +114,10 @@ export function _RegisterRoutes(app: Express, prisma: PrismaClient, customApi: k
   app.use("/api/v1/model-routing/metrics", modelRoutingMetricsRouter(prisma));
   app.use("/api/v1/third-party-sources", thirdPartySourcesRouter(prisma));
   app.use("/api/v1/org/workspace-docs", companyDocsRouter(prisma, _BuildDocMergeReconciler()));
-  // Multi-tenant self-service surfaces. The single-tenant profile turns these OFF
-  // (billing.enabled=false, clusterTenantManager.enabled=false in Helm): the org is
-  // seeded directly at boot (see _SeedClusterTenant), so there is no self-service
-  // billing or org management to expose. Default ON for the multi-tenant profile.
-  if (_featureEnabled("OPENCRANE_BILLING_ENABLED"))
-  {
-    app.use("/api/v1/billing-accounts", billingAccountsRouter(prisma));
-  }
-  if (_featureEnabled("OPENCRANE_CLUSTER_TENANT_MANAGER_ENABLED"))
-  {
-    // Platform DNS is a FLEET / platform-admin surface (it provisions the cert-manager DNS-01
-    // issuer + creds Secret for the wildcard tenant cert) — gated with the manager so a
-    // per-tenant install (manager off) never exposes platform-level DNS configuration.
-    app.use("/api/v1/platform/dns", platformDnsRouter(customApi, coreApi));
-    // Zitadel is a hard dependency of the multi-tenant path — built here (and only here)
-    // so a single-cluster install (manager off) never requires it; fail-loud if unset.
-    const zitadelClient = _BuildZitadelManagementClient();
-    app.use("/api/v1/cluster-tenants", clusterTenantsRouter(prisma, clusterTenantRegistry, customApi, zitadelClient));
-    // Org membership registry (the LOCAL rows the org-admin gate reads), mounted under
-    // the parent org's `:name`. `mergeParams` carries `:name` into the child router.
-    app.use("/api/v1/cluster-tenants/:name/members", clusterTenantMembersRouter(prisma));
-    // Superadmin-gated rotation of the platform's Zitadel SA key (the master IdP credential).
-    // Mounted here, on the manager-enabled path, because that is the ONLY place the live
-    // Zitadel client exists; the key Secret is patched via the same CoreV1Api the app uses.
-    app.use("/api/v1/admin/zitadel", zitadelKeyRouter(zitadelClient, _BuildZitadelKeySecretStore(coreApi)));
-    // Idempotent reconcile/backfill (S3d): re-provision ClusterTenants whose Zitadel org is
-    // missing/partial (created before Zitadel was configured, or a half-failed provision) and
-    // heal the drift. Superadmin-gated; sibling of the SA-key router on the same live client.
-    app.use("/api/v1/admin/zitadel", zitadelReconcileRouter(prisma, zitadelClient));
-  }
+  // NOTE: the fleet / super-admin surfaces — ClusterTenant lifecycle, billing accounts, org
+  // membership, platform DNS, and Zitadel administration — have moved to the cluster-wide
+  // fleet-manager (Stage 4). The silo keeps ClusterTenant + OrgMembership as local READ-MODELS
+  // (for per-org login + the org-admin gate) but no longer SERVES their management API.
   app.use("/api/v1/awareness/rollout", awarenessRolloutRouter(prisma));
   app.use("/api/v1/awareness/participation", awarenessParticipationRouter(prisma));
   app.use("/api/v1/sessions", sessionsRouter(prisma));

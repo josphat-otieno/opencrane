@@ -1,6 +1,6 @@
 import { ClusterTenantComputeMode, ClusterTenantIsolationTier, ClusterTenantPhase } from "@opencrane/contracts";
 import type { ClusterTenant, ClusterTenantObservedStatus, ClusterTenantResourceQuota, ClusterTenantStatus } from "@opencrane/contracts";
-import type { Prisma, PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "../generated/prisma/index.js";
 
 import type { ClusterTenantComputeInput, ClusterTenantResourcesInput } from "./cluster-tenants.models.js";
 import { _log } from "../log.js";

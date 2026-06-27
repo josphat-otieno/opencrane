@@ -3,7 +3,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import * as k8s from "@kubernetes/client-node";
 import { ClusterTenantIsolationTier } from "@opencrane/contracts";
 import type { ClusterTenantProvisionerRegistry } from "@opencrane/contracts";
-import { Prisma, type PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "../../generated/prisma/index.js";
 import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
 
@@ -278,29 +278,28 @@ describe("clusterTenantsRouter (CT.2 management API)", function _suite()
   });
 });
 
-describe("clusterTenantsRouter — owner default tenant (create-time seed + refresh)", function _seedSuite()
+describe("clusterTenantsRouter — owner default tenant is projected silo-side, not seeded here", function _seedSuite()
 {
-  it("seeds the owner's <org>-default tenant (CRD + DB row) as part of create", async function _seedOnCreate()
+  // Stage 4: the fleet registry holds no `Tenant` table. The owner's `<org>-default` workspace
+  // is projected SILO-side from the ClusterTenant CR (which carries the owner email + subject),
+  // so neither create nor refresh writes a Tenant row from the fleet plane.
+
+  it("creates the org without writing a silo Tenant row (the CR carries the owner for projection)", async function _createNoSeed()
   {
     const tenants = new Map<string, Row>();
-    const { api, created } = _mockCustomApi({ phase: "pending" }); // CRD absent → helper creates it
+    const { api } = _mockCustomApi({ phase: "pending" });
     const app = _buildApp(_mockPrisma(new Map(), tenants), _mockRegistry(false), api, { sub: "owner-sub", email: "owner@acme.com" });
 
     const res = await request(app).post("/api/v1/cluster-tenants").send(_sharedBody());
     expect(res.status).toBe(201);
-
-    // DB projection row written for the owner's workspace (the bit the operator-only path missed).
-    const row = tenants.get("acme-default");
-    expect(row).toMatchObject({ name: "acme-default", email: "owner@acme.com", clusterTenantRef: "acme", displayName: "Acme Corp workspace", subject: "owner-sub" });
-    // CRD dual-written too.
-    expect(created.some((c) => (c.metadata as Row)?.name === "acme-default")).toBe(true);
+    // No <org>-default workspace is seeded by the fleet plane — that is the silo's projection job.
+    expect(tenants.has("acme-default")).toBe(false);
   });
 
   it("does not fail org create when no owner email is available (dev-auth path)", async function _noEmail()
   {
     const tenants = new Map<string, Row>();
     const { api } = _mockCustomApi({ phase: "pending" });
-    // Session carries only a subject (no email) and the CRD is absent → seed is skipped, org still created.
     const app = _buildApp(_mockPrisma(new Map(), tenants), _mockRegistry(false), api, { sub: "dev-sub" });
 
     const res = await request(app).post("/api/v1/cluster-tenants").send(_sharedBody());
@@ -308,47 +307,19 @@ describe("clusterTenantsRouter — owner default tenant (create-time seed + refr
     expect(tenants.has("acme-default")).toBe(false);
   });
 
-  it("refresh on a ready org with no tenant row seeds it, recovering the email from the CRD", async function _refreshSeeds()
+  it("refresh returns the observed status and does NOT seed a default tenant", async function _refreshNoSeed()
   {
     const store = new Map<string, Row>([["acme", { name: "acme", displayName: "Acme Corp", isolationTier: "Shared", computeMode: "Shared", phase: "ready", nodePool: null, message: null, boundNamespace: "opencrane-acme", provisioner: "shared" }]]);
-    const tenants = new Map<string, Row>(); // no tenant row yet — the broken state we are repairing
-    const { api, created } = _mockCustomApi({ phase: "ready", crdEmail: "owner@acme.com" }); // CRD already exists
-
-    const app = _buildApp(_mockPrisma(store, tenants), _mockRegistry(false), api);
-    const res = await request(app).post("/api/v1/cluster-tenants/acme/refresh");
-
-    expect(res.status).toBe(200);
-    expect(res.body.status.phase).toBe("ready");
-    expect(res.body.defaultTenant).toMatchObject({ tenantName: "acme-default", created: true });
-    // DB row created from the existing CRD's email; the CRD is NOT recreated (AlreadyExists path).
-    expect(tenants.get("acme-default")).toMatchObject({ name: "acme-default", email: "owner@acme.com", clusterTenantRef: "acme" });
-    expect(created.length).toBe(0);
-  });
-
-  it("refresh is idempotent: a ready org that already has its tenant creates nothing", async function _refreshIdempotent()
-  {
-    const store = new Map<string, Row>([["acme", { name: "acme", displayName: "Acme Corp", isolationTier: "Shared", computeMode: "Shared", phase: "ready", nodePool: null, message: null, boundNamespace: "opencrane-acme", provisioner: "shared" }]]);
-    const tenants = new Map<string, Row>([["acme-default", { name: "acme-default", email: "owner@acme.com", clusterTenantRef: "acme" }]]);
+    const tenants = new Map<string, Row>();
     const { api } = _mockCustomApi({ phase: "ready", crdEmail: "owner@acme.com" });
 
     const app = _buildApp(_mockPrisma(store, tenants), _mockRegistry(false), api);
     const res = await request(app).post("/api/v1/cluster-tenants/acme/refresh");
 
     expect(res.status).toBe(200);
-    expect(res.body.defaultTenant).toMatchObject({ tenantName: "acme-default", created: false });
-  });
-
-  it("refresh does not seed a tenant while the org is not yet ready", async function _refreshNotReady()
-  {
-    const store = new Map<string, Row>([["acme", { name: "acme", displayName: "Acme Corp", isolationTier: "Shared", computeMode: "Shared", phase: "pending", nodePool: null, message: null, boundNamespace: null, provisioner: null }]]);
-    const tenants = new Map<string, Row>();
-    const { api } = _mockCustomApi({ phase: "provisioning", crdEmail: "owner@acme.com" });
-
-    const app = _buildApp(_mockPrisma(store, tenants), _mockRegistry(false), api);
-    const res = await request(app).post("/api/v1/cluster-tenants/acme/refresh");
-
-    expect(res.status).toBe(200);
-    expect(res.body.defaultTenant).toBeNull();
+    expect(res.body.status.phase).toBe("ready");
+    // The fleet plane no longer returns or seeds a default tenant — the silo projects it.
+    expect(res.body.defaultTenant).toBeUndefined();
     expect(tenants.has("acme-default")).toBe(false);
   });
 
