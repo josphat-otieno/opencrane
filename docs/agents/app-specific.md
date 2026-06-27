@@ -12,8 +12,8 @@ linked below** — read it before non-trivial work in that package. The whole-cl
 
 | Package | Deep-dive | One-liner |
 |---------|-----------|-----------|
-| `@opencrane/operator` | [apps/operator.md](./apps/operator.md) | K8s operator — resilient watch loops reconciling Tenant/ClusterTenant/AccessPolicy CRs into namespaces, pods, NetworkPolicies, storage. Pluggable hosting adapters (GCP/on-prem). |
-| `@opencrane/control-plane` | [apps/control-plane.md](./apps/control-plane.md) | API-first hub (**Express 5** + Prisma + K8s client). Source of truth for tenants/grants/MCP/skills; OIDC broker; dual-writes CRDs ↔ Postgres. Listens `:8080`. |
+| `@opencrane/fleet-manager` | [apps/fleet-manager.md](./apps/fleet-manager.md) | K8s operator — resilient watch loops reconciling Tenant/ClusterTenant/AccessPolicy CRs into namespaces, pods, NetworkPolicies, storage. Pluggable hosting adapters (GCP/on-prem). |
+| `@opencrane/clustertenant-manager` | [apps/clustertenant-manager.md](./apps/clustertenant-manager.md) | API-first hub (**Express 5** + Prisma + K8s client). Source of truth for tenants/grants/MCP/skills; OIDC broker; dual-writes CRDs ↔ Postgres. Listens `:8080`. |
 | `@opencrane/cli` | [apps/cli.md](./apps/cli.md) | The `oc` CLI — a **thin typed wrapper** over the contracts client, no business logic. OIDC device-flow login; `--output table|json`. |
 | `@opencrane/skill-registry` | [apps/skill-registry.md](./apps/skill-registry.md) | Entitlement-gated skill delivery (`:5000`). TokenReview (`aud=skill-registry`) → proxy to control-plane; non-entitled **and** non-existent → `404` (existence-hiding). |
 | `@opencrane/harvesting-agent` | [apps/harvesting-agent.md](./apps/harvesting-agent.md) | Background ingestion worker (not API-first). Slack → normalise → Cognee; cursor in Postgres. `/healthz`, `/metrics`. |
@@ -36,5 +36,5 @@ another client of the management API, never a privileged path.
 ## Nested AGENTS.md
 
 Some subdirectories carry their own `AGENTS.md` (e.g. tenant workspace templates under
-`apps/operator/src/tenants/deploy/workspace/`). Those are scoped to that directory's generated
+`apps/fleet-manager/src/tenants/deploy/workspace/`). Those are scoped to that directory's generated
 artifacts and do not override this guidance for platform source.

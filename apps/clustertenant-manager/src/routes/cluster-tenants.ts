@@ -302,7 +302,7 @@ export function clusterTenantsRouter(prisma: PrismaClient, registry: ClusterTena
     //    its users at `<user>.<name>.<base>`. Two cluster-side side effects must follow
     //    — the per-org DNS record (`*.<org>.<base>` → ingress IP) and the per-org
     //    wildcard TLS cert — both owned by the OPERATOR's `DefaultOrgDomainProvisioner`
-    //    (apps/operator/src/cluster-tenants/internal), which the ClusterTenant reconciler
+    //    (apps/fleet-manager/src/cluster-tenants/internal), which the ClusterTenant reconciler
     //    drives on the `pending` → `ready` reconcile via `provisionOrgDomain(...)`. It is
     //    runtime-gated there and never executed inline here; this handler only persists/
     //    declares desired state and does not mutate DNS or cert-manager.

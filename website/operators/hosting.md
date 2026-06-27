@@ -42,7 +42,7 @@ The on-prem adapter doubles as a **Null Object**: cloud-only operations (externa
 The operator depends on exactly this contract. Everything cloud-shaped is expressed as data the adapter returns, not behaviour the loop performs.
 
 ```typescript
-// apps/operator/src/hosting/hosting-adapter.types.ts
+// apps/fleet-manager/src/hosting/hosting-adapter.types.ts
 import type * as k8s from "@kubernetes/client-node";
 
 /** Supported hosting substrates. On-prem is the default. */
@@ -123,7 +123,7 @@ export interface HostingAdapter
 Cloud code is physically isolated; each provider is one self-contained folder. Core/shared primitives are provider-agnostic.
 
 ```
-apps/operator/src/
+apps/fleet-manager/src/
 ├── hosting/
 │   ├── index.ts                          # barrel: exports HostingAdapter, factory, enum, DTOs
 │   ├── hosting-adapter.types.ts          # Target interface + DTOs (§3)
@@ -158,7 +158,7 @@ Rules enforced by review (and ideally an ESLint boundary):
 The baseline. No cloud SDK, no annotations, PVC storage, in-cluster ingress.
 
 ```typescript
-// apps/operator/src/hosting/adapters/onprem/onprem-hosting.adapter.ts
+// apps/fleet-manager/src/hosting/adapters/onprem/onprem-hosting.adapter.ts
 import type * as k8s from "@kubernetes/client-node";
 
 import { HostingProvider } from "../../hosting-adapter.types.js";
@@ -208,7 +208,7 @@ export class OnPremHostingAdapter implements HostingAdapter
 The GCP adapter is the only place GKE annotations and `@google-cloud/storage` appear. Per the `cloud-provisioning` analysis, bucket creation moves **into the operator via the cloud SDK + Workload Identity** — Crossplane is no longer on the default or required path.
 
 ```typescript
-// apps/operator/src/hosting/adapters/gcp/gcp-hosting.adapter.ts
+// apps/fleet-manager/src/hosting/adapters/gcp/gcp-hosting.adapter.ts
 import type * as k8s from "@kubernetes/client-node";
 
 import { HostingProvider } from "../../hosting-adapter.types.js";
@@ -292,7 +292,7 @@ export class GcpHostingAdapter implements HostingAdapter
 ### 4.4 Factory (the single decision point)
 
 ```typescript
-// apps/operator/src/hosting/hosting-adapter.factory.ts
+// apps/fleet-manager/src/hosting/hosting-adapter.factory.ts
 import type { OperatorConfig } from "../config.js";
 import { HostingProvider } from "./hosting-adapter.types.js";
 import type { HostingAdapter } from "./hosting-adapter.types.js";
@@ -350,11 +350,11 @@ The builders (`_BuildServiceAccount`, `_BuildDeployment`, `_BuildIngress`) take 
 
 The on-prem default must not depend on any cloud SDK — at install time or at runtime. If `@google-cloud/storage` (and later the Azure/AWS SDKs) were ordinary `dependencies`, every on-prem install would drag in all of them, defeating the adapter pattern's whole purpose. Two mechanisms enforce the separation:
 
-1. **`optionalDependencies`** — each cloud SDK is declared under `optionalDependencies` in `apps/operator/package.json`, never `dependencies`. A normal `pnpm install` fetches them for development and cloud images; an on-prem image built with `pnpm install --no-optional` omits them entirely and still runs.
+1. **`optionalDependencies`** — each cloud SDK is declared under `optionalDependencies` in `apps/fleet-manager/package.json`, never `dependencies`. A normal `pnpm install` fetches them for development and cloud images; an on-prem image built with `pnpm install --no-optional` omits them entirely and still runs.
 2. **Lazy `import()` at the SDK boundary** — the SDK is loaded with a dynamic `await import("@google-cloud/storage")` inside the client method that uses it, not with a top-level import. The only compile-time reference is a TypeScript `import type`, which is erased and produces zero runtime code. So the static chain `factory → GcpHostingAdapter → GcpBucketClient` loads with the SDK absent; the SDK is `require`d only when a GCP bucket operation actually executes.
 
 ```typescript
-// apps/operator/src/hosting/adapters/gcp/gcp-bucket.client.ts
+// apps/fleet-manager/src/hosting/adapters/gcp/gcp-bucket.client.ts
 import type { Storage } from "@google-cloud/storage"; // erased at compile time — no runtime dep
 
 export class GcpBucketClient implements GcsBucketOperations

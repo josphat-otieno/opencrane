@@ -97,7 +97,7 @@ All member endpoints sit under the org path and are gated by the org-manager mid
 | 404 | `MEMBERSHIP_NOT_FOUND` | `DELETE` target subject is not a member of the org. |
 | 409 | `LAST_OWNER` | The operation would leave the org with zero Owners. |
 
-Source: [`apps/control-plane/src/routes/cluster-tenant-members.ts`](https://github.com/italanta/opencrane/blob/main/apps/control-plane/src/routes/cluster-tenant-members.ts)
+Source: [`apps/clustertenant-manager/src/routes/cluster-tenant-members.ts`](https://github.com/italanta/opencrane/blob/main/apps/clustertenant-manager/src/routes/cluster-tenant-members.ts)
 
 ---
 
@@ -167,7 +167,7 @@ The `_RequireOrgManager` middleware is applied to every route mounted under `/ap
 
 The gate never leaks which specific check failed — every rejection returns the same `FORBIDDEN_ORG_SCOPE` code. A platform operator (identified by the `isPlatformOperator` session flag) bypasses the membership check and can manage every org.
 
-Source: [`apps/control-plane/src/infra/middleware/cluster-tenant-org-admin.ts`](https://github.com/italanta/opencrane/blob/main/apps/control-plane/src/infra/middleware/cluster-tenant-org-admin.ts)
+Source: [`apps/clustertenant-manager/src/infra/middleware/cluster-tenant-org-admin.ts`](https://github.com/italanta/opencrane/blob/main/apps/clustertenant-manager/src/infra/middleware/cluster-tenant-org-admin.ts)
 
 ---
 

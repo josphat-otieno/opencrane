@@ -71,7 +71,7 @@ validation even starts.
 ```
 
 Source:
-[`routes/admin/zitadel-key.ts`](https://github.com/italanta/opencrane/blob/main/apps/control-plane/src/routes/admin/zitadel-key.ts).
+[`routes/admin/zitadel-key.ts`](https://github.com/italanta/opencrane/blob/main/apps/clustertenant-manager/src/routes/admin/zitadel-key.ts).
 
 ---
 

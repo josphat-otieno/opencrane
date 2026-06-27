@@ -222,7 +222,7 @@ Stacked on `feat/org-admin-billing`.
   (the old `var.org_wildcards` direct-record path is removed). The install scripts bundle external-dns as a
   value-gated cluster singleton (`externalDns.install`, default ON in acme mode, `--no-external-dns` to BYO).
 - **Per-org provisioning — IMPLEMENTED (operator-owned, PR #50):** `DefaultOrgDomainProvisioner`
-  (`apps/operator/src/cluster-tenants/internal/org-domain.provisioner.ts`) behind the `OrgDomainProvisioner`
+  (`apps/fleet-manager/src/cluster-tenants/internal/org-domain.provisioner.ts`) behind the `OrgDomainProvisioner`
   interface. It applies the per-org wildcard `Certificate` (`*.<org>.<base>` + apex/vanity SANs) via
   cert-manager DNS-01 (`CertManagerClient` over the custom-objects API) and declares the
   `*.<org>.<base>`/`<org>.<base>` A records as a namespaced external-dns `DNSEndpoint` CR
@@ -235,7 +235,7 @@ Stacked on `feat/org-admin-billing`.
   does (fail-closed, API-first).
 - **Docs:** `docs/agents/cluster-architecture.md` + `website/operators/dns-config.md` rewritten to the new
   topology with the exact customer CNAME instruction.
-- **PR #50 (org-provision-wiring) — LANDED:** the ClusterTenant reconciler (`apps/operator/src/cluster-tenants/operator.ts`)
+- **PR #50 (org-provision-wiring) — LANDED:** the ClusterTenant reconciler (`apps/fleet-manager/src/cluster-tenants/operator.ts`)
   now CALLS the real `provisionOrgDomain(...)` on every reconcile. The dead control-plane copies of the
   provisioner/cert/DNS clients (never invoked there) and the hardcoded always-skip `GatedOrgDomainProvisioner`
   stub were deleted; the one real provisioner is owned by the operator (the reconciler/executor). Helm wires
@@ -460,7 +460,7 @@ Stacked on `feat/org-admin-billing`.
 
 - [x] **CONN.9 Trusted-proxy connection model pinned (fail-closed).** Product accepted trusted-proxy;
   single-use tokens are **not** re-introduced. The operator now parses `GATEWAY_TRUSTED_PROXIES`
-  fail-closed (`apps/operator/src/trusted-proxies.ts`): **empty ⇒ trust nothing** (never the ambiguous
+  fail-closed (`apps/fleet-manager/src/trusted-proxies.ts`): **empty ⇒ trust nothing** (never the ambiguous
   trust-all) surfaced as `config.gatewayTrustNothing`, a CIDR/IP allowlist when configured, and a
   **malformed entry crashes config load** rather than silently shifting the trust boundary. The tenant
   ConfigMap renders both the empty allowlist *and* an explicit `gateway.auth.trustedProxy.trustNothing`
@@ -472,7 +472,7 @@ Stacked on `feat/org-admin-billing`.
   to the `ingress-nginx` namespace, and its Ingress carries `auth-url → /api/v1/auth/gateway-verify` +
   `auth-response-headers: X-Forwarded-User`. **Remaining (live seam):** the end-to-end auth_request →
   204 + header → pod-accepts-identity handshake needs one additive test pod (prepared, authorization-gated,
-  in the PR). Anchors: `apps/operator/src/{trusted-proxies.ts,config.ts}`, `tenants/deploy/2-config-map.ts`,
+  in the PR). Anchors: `apps/fleet-manager/src/{trusted-proxies.ts,config.ts}`, `tenants/deploy/2-config-map.ts`,
   `platform/helm/{values.yaml,values/gke-dev.yaml,templates/operator-deployment.yaml}`.
 
 
@@ -575,7 +575,7 @@ Stacked on `feat/org-admin-billing`.
   (delivery), `apps/skill-registry/src`, `networkpolicy-planes.yaml`. (Phase 4 Decisions:
   "Skill substrate" ✅, "Skill registry OCI store" + "OCI artifact naming"; Deliverables 7 & 9.)
   - **Landed (2026-06-13, foundation slice):** `OciBundleStore`
-    (`apps/control-plane/src/core/oci/oci-bundle-store.ts` + `.types.ts`) — OCI Distribution v2
+    (`apps/clustertenant-manager/src/core/oci/oci-bundle-store.ts` + `.types.ts`) — OCI Distribution v2
     push (blob upload + manifest so the blob isn't GC'd) and **digest-verified** pull-by-digest
     (rejects bytes that don't hash to the requested digest). Hardened per review: idempotent
     re-push (accepts 2xx / blob-already-exists, not strict 201), `sha256:<64hex>` digest
@@ -664,12 +664,12 @@ CT.1 ───────┼─> CT.6 (provisioner seam) ───────�
   - **Lane A · control-plane API — CT.2.** `routes/cluster-tenants.ts(+.types.ts)`, `openapi/spec.ts`.
   - **Lane B · provisioner — CT.6.** `core/cluster-tenants/provisioner.ts(+.types.ts)`, MIT DTOs.
     CT.2↔CT.6 share only the registry interface fixed in CT.1 → *coordinate, don't serialise*.
-  - **Lane C · operator — CT.4.** `apps/operator/src/tenants/operator.ts`, Tenant CRD. Separate
+  - **Lane C · operator — CT.4.** `apps/fleet-manager/src/tenants/operator.ts`, Tenant CRD. Separate
     package from A/B → zero contention.
 - **Wave 2 — 2 parallel lanes:**
   - **Lane A · CT.3** (`oc cluster-tenant` CLI) — needs CT.2's regenerated `libs/contracts` client.
   - **Lane C · CT.5** (namespace + ResourceQuota/LimitRange + scheduling) — needs CT.4's parent
-    resolution; `apps/operator/.../deploy/3-deployment.ts` + quota builders.
+    resolution; `apps/fleet-manager/.../deploy/3-deployment.ts` + quota builders.
 - **Wave 3 — integration (serial):** **CT.7**. Opt-in gating, docs, conformance — depends on all.
 
 **Critical path:** CT.1 → {CT.2→CT.3 ∥ CT.4→CT.5} → CT.7 (depth 4). Max width 3 (Wave 1).
@@ -683,7 +683,7 @@ With one agent per lane, wall-clock ≈ 4 sequential slices instead of 7.
   CRD `clustertenants.opencrane.io` in `platform/helm/crds/`. Prisma model + migration (dual-write
   alongside the CRD, mirroring how Tenant/AccessPolicy persist). **Acceptance:** type exported; CRD
   validates (`helm template` + `kubectl --dry-run`); migration applies; `tsc` green. **Anchors:**
-  `libs/contracts/src/cluster-tenant.types.ts`, `platform/helm/crds/`, `apps/control-plane/prisma/`.
+  `libs/contracts/src/cluster-tenant.types.ts`, `platform/helm/crds/`, `apps/clustertenant-manager/prisma/`.
   **Headless-buildable.** ✅ Landed: contract types + provisioner webhook DTOs + registry signature
   (`ClusterTenantProvisionerRegistry.isTierAvailable`) exported; cluster-scoped CRD
   `opencrane.io_clustertenants.yaml`; Prisma `ClusterTenant` model + enums + migration `0014`.
@@ -694,8 +694,8 @@ With one agent per lane, wall-clock ≈ 4 sequential slices instead of 7.
   validated; `dedicatedCluster` rejected `422 TIER_UNAVAILABLE` unless an external provisioner is
   registered for it (CT.6). Update `openapi/spec.ts` → regenerate `openapi.json` + the `libs/contracts`
   client. **Acceptance:** endpoints in `openapi.json`; CRUD works; over-tier rejected with a typed
-  error; control-plane tests. **Anchors:** `apps/control-plane/src/routes/cluster-tenants.ts(+.types.ts)`,
-  `apps/control-plane/src/openapi/spec.ts`, `libs/contracts/src/generated/api.ts`. **Headless-buildable.**
+  error; control-plane tests. **Anchors:** `apps/clustertenant-manager/src/routes/cluster-tenants.ts(+.types.ts)`,
+  `apps/clustertenant-manager/src/openapi/spec.ts`, `libs/contracts/src/generated/api.ts`. **Headless-buildable.**
 
 - [x] **CT.3 `oc cluster-tenant` CLI.** _(Wave 2 · Lane A — ✅ landed 2026-06-15)_ `create|list|show|update|delete` with
   `--tier`/`--compute`/`--node-pool`/`--quota-*` flags, consuming the generated client (just another
@@ -709,7 +709,7 @@ With one agent per lane, wall-clock ≈ 4 sequential slices instead of 7.
   synthetic "default" ClusterTenant binds the install namespace and ref-less openclaws attach to it —
   existing installs deploy byte-for-byte unchanged. **Acceptance:** default-mode openclaws unchanged
   (operator test); a ref'd openclaw lands in the parent's namespace. **Anchors:** `libs/contracts`
-  Tenant type + CRD, `apps/operator/src/tenants/operator.ts`. **Headless-buildable.**
+  Tenant type + CRD, `apps/fleet-manager/src/tenants/operator.ts`. **Headless-buildable.**
 
 - [x] **CT.5 Native isolation enforcement — namespace-per-ClusterTenant + quota + scheduling
   (the hardening).** _(Wave 2 · Lane C — ✅ landed 2026-06-15)_ When opt-in, provision a per-ClusterTenant namespace labelled
@@ -718,7 +718,7 @@ With one agent per lane, wall-clock ≈ 4 sequential slices instead of 7.
   spec. Off by default (single-install unchanged). **Acceptance:** rendered/operator test shows
   quota + limitrange + PSA label + scheduling constraints applied per ClusterTenant; the conformance
   script gains per-ClusterTenant assertions. **Anchors:**
-  `apps/operator/src/tenants/deploy/3-deployment.ts`, new quota/limitrange builders, the namespace
+  `apps/fleet-manager/src/tenants/deploy/3-deployment.ts`, new quota/limitrange builders, the namespace
   provisioning path, `platform/tests/multi-instance-conformance.sh`. **Headless-buildable** (live
   quota/PSA enforcement is the cluster seam).
 
@@ -734,7 +734,7 @@ With one agent per lane, wall-clock ≈ 4 sequential slices instead of 7.
   registered capability (the webhook advertises supported tiers). **Acceptance:** the built-in path
   provisions `shared`; a test stub external provisioner is invoked over HTTP for a registered tier; a
   grep gate confirms no vendor string under AGPL paths. **Anchors:**
-  `apps/control-plane/src/core/cluster-tenants/provisioner.ts(+.types.ts)`, MIT `libs/contracts`
+  `apps/clustertenant-manager/src/core/cluster-tenants/provisioner.ts(+.types.ts)`, MIT `libs/contracts`
   webhook DTOs, `docs/enterprise-needs.md`. **Headless-buildable.**
 
 - [x] **CT.7 Opt-in gating + docs + conformance.** _(Wave 3 · integration — ✅ landed 2026-06-15)_ Gate all ClusterTenant machinery behind the
@@ -848,7 +848,7 @@ With one agent per lane, wall-clock ≈ 4 sequential slices instead of 7.
   **Auto runs only when explicitly selected** (request- or skill-level flag) — never global-implicit.
   Write the resolved per-skill model into the effective-contract + propagate to the pod
   (`2-config-map.ts` `models[]`/default). **Anchors:** effective-contract endpoint,
-  `apps/operator/src/tenants/deploy/2-config-map.ts`.
+  `apps/fleet-manager/src/tenants/deploy/2-config-map.ts`.
 - [x] **AIR.3 Skill-level model definition. — LANDED 2026-06-18.** `Skill` gained
   `modelMode`/`pinnedModel`/`autoConfig`; dedicated `/api/v1/skills/posture` router (the `Skill` model had
   no prior read/write path — `skill-catalog` operates on the separate `SkillBundle`) keyed by
@@ -873,7 +873,7 @@ With one agent per lane, wall-clock ≈ 4 sequential slices instead of 7.
   operator→models data path). _(Original:)_ Extend `_generateLiteLlmVirtualKey` to send `team_id`
   (ClusterTenant→LiteLLM Team), `models[]` allowlist, `budget_duration`, `tpm/rpm`; fix the no-rotation
   early-return; complete revocation (`/key/delete`); stop the `org-shared-secrets` `envFrom` broadcast
-  (keys stay at the proxy). **Anchors:** `apps/operator/src/tenants/internal/tenant-litellm-keys.ts`,
+  (keys stay at the proxy). **Anchors:** `apps/fleet-manager/src/tenants/internal/tenant-litellm-keys.ts`,
   `deploy/3-deployment.ts`, `core/ai-budget/ai-budget.logic.ts`.
 - [x] **AIR.6 Shadow-mode savings measurement. — LANDED 2026-06-18 (foundation).** `RoutingEvalCase`
   data model + `/api/v1/model-routing/eval-cases` API + `oc routing eval-case`; pure `savings.ts`

@@ -62,7 +62,7 @@ When `LINKERD_MESH_ENABLED=true`, the operator performs two actions for every Cl
 
 The three objects share the same deterministic name, so re-applies converge idempotently and one silo's bundle never collides with another's. All carry the labels `app.kubernetes.io/component=silo-isolation` and `opencrane.io/cluster-tenant=<org>`, matching the S2 NetworkPolicy labels so both isolation layers are discoverable together.
 
-Source: [`apps/operator/src/tenants/deploy/silo-linkerd-identity.ts`](https://github.com/italanta/opencrane/blob/main/apps/operator/src/tenants/deploy/silo-linkerd-identity.ts)
+Source: [`apps/fleet-manager/src/tenants/deploy/silo-linkerd-identity.ts`](https://github.com/italanta/opencrane/blob/main/apps/fleet-manager/src/tenants/deploy/silo-linkerd-identity.ts)
 
 ---
 
@@ -91,7 +91,7 @@ Set the environment variable on the operator deployment:
 LINKERD_MESH_ENABLED=true
 ```
 
-The operator picks this up at startup via `_readEnvValue<boolean>("LINKERD_MESH_ENABLED", "boolean", false, false)` in [`apps/operator/src/config.ts`](https://github.com/italanta/opencrane/blob/main/apps/operator/src/config.ts). The default is `false`.
+The operator picks this up at startup via `_readEnvValue<boolean>("LINKERD_MESH_ENABLED", "boolean", false, false)` in [`apps/fleet-manager/src/config.ts`](https://github.com/italanta/opencrane/blob/main/apps/fleet-manager/src/config.ts). The default is `false`.
 
 **Prerequisites before enabling:**
 

@@ -1,4 +1,4 @@
-# @opencrane/control-plane
+# @opencrane/clustertenant-manager
 
 Express REST API that serves as the management layer for the OpenCrane platform. It provides endpoints for tenant lifecycle management, access policy administration, shared skills discovery, and audit log querying.
 
@@ -79,5 +79,5 @@ pnpm test           # run vitest integration tests
 Built from `deploy/Dockerfile` using the repo root as build context:
 
 ```bash
-docker build -f apps/control-plane/deploy/Dockerfile -t ghcr.io/opencrane/control-plane:latest .
+docker build -f apps/clustertenant-manager/deploy/Dockerfile -t ghcr.io/opencrane/control-plane:latest .
 ```

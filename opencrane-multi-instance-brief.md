@@ -35,10 +35,10 @@ Credit where due: the data model does not block this. We found:
   So custom resources are already isolated per namespace; **no CR name collisions**
   across instances.
 - **The operator already supports namespace-scoped watching** — `WATCH_NAMESPACE`
-  (`apps/operator/src/config.ts:12`) drives `listNamespacedCustomObject` vs
-  `listClusterCustomObject` (`apps/operator/src/tenants/runtime/idle-checker.ts:105-106`).
+  (`apps/fleet-manager/src/config.ts:12`) drives `listNamespacedCustomObject` vs
+  `listClusterCustomObject` (`apps/fleet-manager/src/tenants/runtime/idle-checker.ts:105-106`).
 - **The control-plane already targets a configurable namespace** for CR writes
-  (`apps/control-plane/src/routes/tenants.ts:32` — `process.env.NAMESPACE ?? "default"`).
+  (`apps/clustertenant-manager/src/routes/tenants.ts:32` — `process.env.NAMESPACE ?? "default"`).
 - **Helm names are release-prefixed** via `opencrane.fullname`, so distinct releases
   produce distinct object names.
 

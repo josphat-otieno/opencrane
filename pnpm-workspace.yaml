@@ -2,8 +2,8 @@ packages:
   - libs/contracts
   - libs/awareness
   - libs/observability
-  - apps/operator
-  - apps/control-plane
+  - apps/fleet-manager
+  - apps/clustertenant-manager
   - apps/harvesting-agent
   - apps/cli
   - apps/skill-registry

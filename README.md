@@ -151,8 +151,8 @@ Legend
 | Component | Path | Description |
 |-----------|------|-------------|
 | Helm chart | `platform/helm/` | K8s manifests, CRDs, operator + control plane deployments |
-| Operator | `apps/operator/` | Watches Tenant/AccessPolicy CRDs, reconciles per-tenant resources via `HostingAdapter` |
-| Control Plane | `apps/control-plane/` | Headless Express REST API (`/api/v1`) with Prisma ORM; emits `openapi.json` at build time |
+| Operator | `apps/fleet-manager/` | Watches Tenant/AccessPolicy CRDs, reconciles per-tenant resources via `HostingAdapter` |
+| Control Plane | `apps/clustertenant-manager/` | Headless Express REST API (`/api/v1`) with Prisma ORM; emits `openapi.json` at build time |
 | CLI | `apps/cli/` | `oc` binary — full administrative surface over the control-plane API |
 | Contracts | `libs/contracts/` | Generated TypeScript client + DTOs from `openapi.json`; consumed by CLI and external surfaces |
 | Docker | `docker/` | Container images for tenant pods, operator, and control plane |

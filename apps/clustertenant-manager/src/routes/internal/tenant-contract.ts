@@ -51,7 +51,7 @@ function _ParseTenantNameFromSubject(subject: string): string | null
  * which pods can reach this path, providing defence in depth.
  *
  * @see platform/helm/templates/networkpolicy-planes.yaml — NetworkPolicy.
- * @see apps/operator/src/tenants/deploy/3-deployment.ts — token injection.
+ * @see apps/fleet-manager/src/tenants/deploy/3-deployment.ts — token injection.
  *
  * @param prisma   - Prisma client for database access.
  * @param authApi  - Kubernetes authentication API for TokenReview calls.

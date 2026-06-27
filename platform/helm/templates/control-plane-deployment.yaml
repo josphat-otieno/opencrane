@@ -30,7 +30,7 @@ spec:
         - name: db-migrate
           image: "{{ .Values.controlPlane.image.repository }}:{{ .Values.controlPlane.image.tag }}"
           imagePullPolicy: {{ .Values.controlPlane.image.pullPolicy }}
-          command: ["node", "apps/control-plane/dist/scripts/migrate.js"]
+          command: ["node", "apps/clustertenant-manager/dist/scripts/migrate.js"]
           env:
             {{- include "opencrane.controlPlaneDatabaseEnv" . | nindent 12 }}
       containers:

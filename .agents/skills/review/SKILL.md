@@ -70,7 +70,7 @@ scope, review those.
 5. **Test coverage and validation**
    - Tests exist for changed behaviour and for the regression being fixed.
    - Confirm relevant package validation ran. When in doubt, run it: e.g.
-     `pnpm --filter @opencrane/control-plane test` and `pnpm build`.
+     `pnpm --filter @opencrane/clustertenant-manager test` and `pnpm build`.
 6. **Roadmap integrity**
    - Any `plan.md` checkbox/status change must be consistent with implemented,
      validated evidence — not aspirational.

@@ -2,7 +2,7 @@ name: Deploy docs site
 
 # Builds the VitePress documentation site (website/) and deploys it to GitHub
 # Pages. The interactive API reference is generated from the committed, drift-gated
-# apps/control-plane/openapi.json (synced by the site's prebuild step), so this
+# apps/clustertenant-manager/openapi.json (synced by the site's prebuild step), so this
 # workflow needs no database or Prisma generation.
 
 on:
@@ -11,7 +11,7 @@ on:
       - main
     paths:
       - "website/**"
-      - "apps/control-plane/openapi.json"
+      - "apps/clustertenant-manager/openapi.json"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
 

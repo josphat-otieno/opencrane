@@ -332,7 +332,7 @@ resource "kubernetes_job" "db_migrate"
           image   = "${var.registry_url}/control-plane:${var.image_tag}"
           command = ["npx", "prisma", "migrate", "deploy"]
 
-          working_dir = "/app/apps/control-plane"
+          working_dir = "/app/apps/clustertenant-manager"
 
           env
           {

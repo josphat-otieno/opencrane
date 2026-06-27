@@ -19,11 +19,11 @@
     "ignoredBuiltDependencies": []
   },
   "scripts": {
-    "build": "pnpm --filter @opencrane/control-plane db:generate && pnpm -r build",
+    "build": "pnpm --filter @opencrane/clustertenant-manager db:generate && pnpm -r build",
     "dev": "pnpm -r --parallel dev",
     "test": "pnpm -r test",
     "test:e2e:k3d": "./platform/tests/k3d-e2e.sh",
-    "test:phase1": "pnpm --filter @opencrane/operator test && pnpm --filter @opencrane/control-plane test && ./platform/tests/k3d-e2e.sh",
+    "test:phase1": "pnpm --filter @opencrane/fleet-manager test && pnpm --filter @opencrane/clustertenant-manager test && ./platform/tests/k3d-e2e.sh",
     "install:phase1:local": "./platform/install.sh local --keep-cluster",
     "install:phase1:gcp": "./platform/install.sh gcp",
     "wizard": "./platform/wizard.sh",
@@ -33,8 +33,8 @@
     "docs:build": "pnpm --filter @opencrane/website build",
     "docs:preview": "pnpm --filter @opencrane/website preview",
     "docker:build:tenant": "docker build -f apps/tenant/deploy/Dockerfile -t ghcr.io/italanta/opencrane-tenant:latest .",
-    "docker:build:operator": "docker build -f apps/operator/deploy/Dockerfile -t ghcr.io/italanta/opencrane-operator:latest .",
-    "docker:build:control-plane": "docker build -f apps/control-plane/deploy/Dockerfile -t ghcr.io/italanta/opencrane-control-plane:latest .",
+    "docker:build:operator": "docker build -f apps/fleet-manager/deploy/Dockerfile -t ghcr.io/italanta/opencrane-operator:latest .",
+    "docker:build:control-plane": "docker build -f apps/clustertenant-manager/deploy/Dockerfile -t ghcr.io/italanta/opencrane-control-plane:latest .",
     "docker:build:docs": "docker build -f website/Dockerfile -t ghcr.io/italanta/docs:latest ."
   }
 }

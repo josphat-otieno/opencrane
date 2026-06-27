@@ -82,7 +82,7 @@ Both shapes use the same Helm chart and the same control-plane image. The `deplo
 
 ## How the control-plane knows its role
 
-Both release shapes use the same container image. The Helm chart sets the `OPENCRANE_CONTROL_PLANE_ROLE` environment variable from `deploymentRole`, and the control-plane reads it at boot via `_ControlPlaneRole()` in [`apps/control-plane/src/infra/deployment-role.ts`](https://github.com/italanta/opencrane/blob/main/apps/control-plane/src/infra/deployment-role.ts).
+Both release shapes use the same container image. The Helm chart sets the `OPENCRANE_CONTROL_PLANE_ROLE` environment variable from `deploymentRole`, and the control-plane reads it at boot via `_ControlPlaneRole()` in [`apps/clustertenant-manager/src/infra/deployment-role.ts`](https://github.com/italanta/opencrane/blob/main/apps/clustertenant-manager/src/infra/deployment-role.ts).
 
 - `central` → only `_ServesFleetSurface()` routes mount (ClusterTenant lifecycle, Zitadel key management, platform DNS, billing).
 - `silo` → only `_ServesTenantSurface()` routes mount (tenants, policies, skills, model routing, MCP servers, AI budget, sessions, …).
