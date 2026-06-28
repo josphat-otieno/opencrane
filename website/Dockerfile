@@ -2,7 +2,7 @@
 
 # --- Build the VitePress static site -----------------------------------------
 # Built from the repo root context (`docker build -f website/Dockerfile .`) because
-# the site's prebuild copies apps/clustertenant-manager/openapi.json for the API reference.
+# the site's prebuild copies apps/clustertenant-platform/openapi.json for the API reference.
 FROM node:22-alpine AS builder
 WORKDIR /repo
 RUN corepack enable

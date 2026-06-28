@@ -42,7 +42,7 @@ function _ParseTenantNameFromSubject(subject: string): string | null
  * TokenReview; NetworkPolicy further limits which pods can reach it.
  *
  * @see platform/helm/templates/networkpolicy-planes.yaml — NetworkPolicy.
- * @see apps/fleet-manager/src/tenants/deploy/3-deployment.ts — projected-token injection.
+ * @see apps/fleet-platform/src/tenants/deploy/3-deployment.ts — projected-token injection.
  *
  * @param prisma  - Prisma client.
  * @param authApi - Kubernetes authentication API for TokenReview.

@@ -4,8 +4,8 @@ packages:
   - libs/observability
   - libs/infra-api
   - libs/infra-auth
-  - apps/fleet-manager
-  - apps/clustertenant-manager
+  - apps/fleet-platform
+  - apps/clustertenant-platform
   - apps/harvesting-agent
   - apps/cli
   - apps/skill-registry

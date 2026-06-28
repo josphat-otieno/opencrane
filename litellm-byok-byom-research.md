@@ -39,19 +39,19 @@ OpenCrane has **two disconnected credential paths** and **no model dimension at 
 
 ### Layer 1 — Global provider keys → `org-shared-secrets` broadcast (the working path)
 
-- The control plane exposes flat CRUD over a single install-global `ProviderApiKey` table: `GET /providers/keys`, `PUT/DELETE /providers/keys/{provider}` (`apps/clustertenant-manager/src/routes/provider-keys.ts`; OpenAPI `apps/clustertenant-manager/src/openapi/spec.ts:1508-1553`). The provider universe is **hardcoded** to `const providers = ["openai","claude"]` (`provider-keys.ts:23`), and the raw key is stored **in plaintext** in `prisma.providerApiKey.keyValue` (`schema.prisma:538-544`).
+- The control plane exposes flat CRUD over a single install-global `ProviderApiKey` table: `GET /providers/keys`, `PUT/DELETE /providers/keys/{provider}` (`apps/clustertenant-platform/src/routes/provider-keys.ts`; OpenAPI `apps/clustertenant-platform/src/openapi/spec.ts:1508-1553`). The provider universe is **hardcoded** to `const providers = ["openai","claude"]` (`provider-keys.ts:23`), and the raw key is stored **in plaintext** in `prisma.providerApiKey.keyValue` (`schema.prisma:538-544`).
 - **This table is orphaned.** Nothing reads `providerApiKey` and writes it into a Secret. The function the original brief referenced — **`_providerToSecretKey` — does not exist in the codebase** (grep is empty). The DB→Secret bridge was never built; setting a key via the API has zero runtime effect.
-- The credentials that *actually* reach pods come from the cluster-scoped `org-shared-secrets` Secret, populated by ExternalSecrets (`platform/helm/templates/external-secrets.yaml`, mapping via `values.yaml` `orgSecrets.envMappings`, e.g. `openai-api-key → OPENAI_API_KEY`), injected **into every tenant pod** via `envFrom: [{ secretRef: { name: "org-shared-secrets", optional: true } }]` (`apps/fleet-manager/src/tenants/deploy/3-deployment.ts:189-191`). Every tenant runs on the *same* central key — which, given decision #4 (central provider keys), is **the intended model**; the only flaw is the *broadcast into every pod* rather than keeping the key at the proxy.
+- The credentials that *actually* reach pods come from the cluster-scoped `org-shared-secrets` Secret, populated by ExternalSecrets (`platform/helm/templates/external-secrets.yaml`, mapping via `values.yaml` `orgSecrets.envMappings`, e.g. `openai-api-key → OPENAI_API_KEY`), injected **into every tenant pod** via `envFrom: [{ secretRef: { name: "org-shared-secrets", optional: true } }]` (`apps/fleet-platform/src/tenants/deploy/3-deployment.ts:189-191`). Every tenant runs on the *same* central key — which, given decision #4 (central provider keys), is **the intended model**; the only flaw is the *broadcast into every pod* rather than keeping the key at the proxy.
 
 ### Layer 2 — Per-tenant LiteLLM virtual key (the per-tenant identity — keep this)
 
-- During reconcile (`apps/fleet-manager/src/tenants/operator.ts:243-250`, best-effort), the operator mints **one virtual key per tenant** via `/key/generate` with the master key, sending only `{ key_alias, metadata: { tenant }, max_budget }` (`apps/fleet-manager/src/tenants/internal/tenant-litellm-keys.ts:115-119`), writes Secret `openclaw-{name}-litellm-key` (`:48-102`), injected as `LITELLM_API_KEY` (`3-deployment.ts:70-79`). This is a **spend-metering token, not a provider key** — exactly the right per-tenant primitive. It is **never rotated** (early-return on Secret existence, `:65-74`), so budget/model changes drift from the CR.
-- Tenant config-map writes one `litellm-proxy` provider into `openclaw.json` with `apiKey: "${LITELLM_API_KEY}"`, `api: "openai-completions"`, **`models: []`** — empty, no model pinning (`apps/fleet-manager/src/tenants/deploy/2-config-map.ts:43-57`).
+- During reconcile (`apps/fleet-platform/src/tenants/operator.ts:243-250`, best-effort), the operator mints **one virtual key per tenant** via `/key/generate` with the master key, sending only `{ key_alias, metadata: { tenant }, max_budget }` (`apps/fleet-platform/src/tenants/internal/tenant-litellm-keys.ts:115-119`), writes Secret `openclaw-{name}-litellm-key` (`:48-102`), injected as `LITELLM_API_KEY` (`3-deployment.ts:70-79`). This is a **spend-metering token, not a provider key** — exactly the right per-tenant primitive. It is **never rotated** (early-return on Secret existence, `:65-74`), so budget/model changes drift from the CR.
+- Tenant config-map writes one `litellm-proxy` provider into `openclaw.json` with `apiKey: "${LITELLM_API_KEY}"`, `api: "openai-completions"`, **`models: []`** — empty, no model pinning (`apps/fleet-platform/src/tenants/deploy/2-config-map.ts:43-57`).
 - Vestigial: `OPENAI_API_KEY` from a per-tenant Secret `openclaw-{name}-openai-key` (`3-deployment.ts:82-91`, `optional`) that **no code ever creates** — dead wiring.
 
 ### Layer 3 — Budget / spend (the only per-principal accounting)
 
-- Ceilings in Prisma: `GlobalBudgetSetting` (`schema.prisma:507-514`), `AccountBudgetSetting` (`:516-523`), `TokenUsageSnapshot` (`:492-505`). Tenant spend is **pulled** from LiteLLM by `SpendLogic.getTenantSpend` (`apps/clustertenant-manager/src/core/spend/spend.logic.ts:24`) via `LITELLM_SPEND_PATH_TEMPLATE`. Revocation (`ai-budget.logic.ts:159`) deletes the Secret but **never calls LiteLLM `/key/delete`** — the key stays valid on the proxy.
+- Ceilings in Prisma: `GlobalBudgetSetting` (`schema.prisma:507-514`), `AccountBudgetSetting` (`:516-523`), `TokenUsageSnapshot` (`:492-505`). Tenant spend is **pulled** from LiteLLM by `SpendLogic.getTenantSpend` (`apps/clustertenant-platform/src/core/spend/spend.logic.ts:24`) via `LITELLM_SPEND_PATH_TEMPLATE`. Revocation (`ai-budget.logic.ts:159`) deletes the Secret but **never calls LiteLLM `/key/delete`** — the key stays valid on the proxy.
 
 ### Why the current path can't scale to BYOM
 
@@ -254,7 +254,7 @@ flowchart TD
 
 ## 6. API-first + `oc` CLI surface
 
-Honor the repo rule (`docs/agents/app-specific.md:30-34`): *"Every control-plane capability must be API-first and expose a matching `oc` CLI command… a UI is just another client, never a privileged path."* New paths → `apps/clustertenant-manager/src/openapi/spec.ts` → regenerate `libs/contracts/src/generated/api.ts` → `oc` subcommands in `apps/cli/src/commands/`.
+Honor the repo rule (`docs/agents/app-specific.md:30-34`): *"Every control-plane capability must be API-first and expose a matching `oc` CLI command… a UI is just another client, never a privileged path."* New paths → `apps/clustertenant-platform/src/openapi/spec.ts` → regenerate `libs/contracts/src/generated/api.ts` → `oc` subcommands in `apps/cli/src/commands/`.
 
 | Concern | OpenAPI path | `oc` command | Notes |
 |---|---|---|---|
@@ -297,7 +297,7 @@ Caveats: the KMS key must be in the **same location** as the cluster; CMEK prote
 
 **Inject end-user id server-side.** A client can self-declare the `user` body field; set `x-litellm-end-user-id` at the gateway (headers win) and ensure no client path overrides it.
 
-**The "auth is OPEN on dev" prerequisite.** `apps/clustertenant-manager/src/infra/middleware/auth.middleware.ts:117` falls through to a dev bypass when no OIDC/`OPENCRANE_API_TOKEN`, and there is **no per-route RBAC** (`docs/agents/architecture.md:35`). The credential/model mutation routes handle live secrets and **must get ClusterTenant-scoped route authz before BYOK ships** — the single most important security prerequisite, and it's an OpenCrane control-plane change.
+**The "auth is OPEN on dev" prerequisite.** `apps/clustertenant-platform/src/infra/middleware/auth.middleware.ts:117` falls through to a dev bypass when no OIDC/`OPENCRANE_API_TOKEN`, and there is **no per-route RBAC** (`docs/agents/architecture.md:35`). The credential/model mutation routes handle live secrets and **must get ClusterTenant-scoped route authz before BYOK ships** — the single most important security prerequisite, and it's an OpenCrane control-plane change.
 
 **If using the optional `/credentials` DB store:** set `LITELLM_SALT_KEY` **before** adding anything and **never rotate it** (rows become unrecoverable). Cached prompts/DB logs are **not** encrypted — fine here, since keys are resolved server-side and never appear in bodies.
 
@@ -342,4 +342,4 @@ Caveats: the KMS key must be in the **same location** as the cluster; CMEK prote
 
 ---
 
-*Grounding: OpenCrane claims cite `apps/clustertenant-manager/`, `apps/fleet-manager/`, `apps/cli/`, `platform/helm/`, `platform/terraform/`, `docs/agents/`. LiteLLM claims use the verified (post-fact-check) form. Reflects the locked decisions of 2026-06-18: full AGPL, no fee, no Enterprise license, BYOK at control-plane/ClusterTenant level only, k8s-native secrets (GCP-SM + ESO + CMEK).*
+*Grounding: OpenCrane claims cite `apps/clustertenant-platform/`, `apps/fleet-platform/`, `apps/cli/`, `platform/helm/`, `platform/terraform/`, `docs/agents/`. LiteLLM claims use the verified (post-fact-check) form. Reflects the locked decisions of 2026-06-18: full AGPL, no fee, no Enterprise license, BYOK at control-plane/ClusterTenant level only, k8s-native secrets (GCP-SM + ESO + CMEK).*

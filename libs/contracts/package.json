@@ -15,8 +15,8 @@
   "scripts": {
     "build": "pnpm generate && tsc",
     "generate": "pnpm generate:silo && pnpm generate:fleet",
-    "generate:silo": "openapi-typescript ../../apps/clustertenant-manager/openapi.json -o src/generated/api.ts",
-    "generate:fleet": "openapi-typescript ../../apps/fleet-manager/openapi.json -o src/generated/fleet-api.ts",
+    "generate:silo": "openapi-typescript ../../apps/clustertenant-platform/openapi.json -o src/generated/api.ts",
+    "generate:fleet": "openapi-typescript ../../apps/fleet-platform/openapi.json -o src/generated/fleet-api.ts",
     "lint": "tsc --noEmit"
   },
   "devDependencies": {

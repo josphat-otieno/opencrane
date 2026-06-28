@@ -84,7 +84,7 @@ UserTenant pods are **not** exposed on their own public host.
   not the org's identity.
 
 > **Note (June 2026):** the operator derives per-org DNS records via `DefaultOrgDomainProvisioner`
-> (`apps/fleet-manager/src/cluster-tenants/internal/org-domain.provisioner.ts`); the platform
+> (`apps/fleet-platform/src/cluster-tenants/internal/org-domain.provisioner.ts`); the platform
 > cert-manager `Certificate` covers `*.<base>` + apex + the control-plane host
 > (`cluster-issuer.yaml`); the control-plane host is wired by `control-plane-ingress.yaml`.
 > `*.<base>` matches **org hosts** `<org>.<base>` — one label — which is sufficient because
@@ -121,8 +121,8 @@ CRDs are shipped separately under `platform/helm/crds/` (see below), not in `tem
 
 All planes are **ClusterIP-only** (no external LB) — external traffic arrives through Ingress. Internal DNS is `<release>-<plane>.<namespace>.svc`. Each plane is independently release-local (`instance`) or `shared` via `values.yaml` (`sharedPlatform.*`).
 
-- **operator** → Kubernetes API only. Watches Tenant/AccessPolicy/ClusterTenant CRs; injects the other planes' URLs into tenant pods. Deep-dive: [`apps/fleet-manager.md`](./apps/fleet-manager.md).
-- **control-plane** (`:8080`) → Postgres + K8s API + Cognee + LiteLLM. The hub everything else talks to. Deep-dive: [`apps/clustertenant-manager.md`](./apps/clustertenant-manager.md).
+- **operator** → Kubernetes API only. Watches Tenant/AccessPolicy/ClusterTenant CRs; injects the other planes' URLs into tenant pods. Deep-dive: [`apps/fleet-platform.md`](./apps/fleet-platform.md).
+- **control-plane** (`:8080`) → Postgres + K8s API + Cognee + LiteLLM. The hub everything else talks to. Deep-dive: [`apps/clustertenant-platform.md`](./apps/clustertenant-platform.md).
 - **mcp-gateway / Obot** (`:8080`) → polls control-plane `GET /api/internal/obot-registry`; tenant pods reach MCP servers through it (projected token `aud=obot-gateway`).
 - **skill-registry** (`:5000`) → validates tenant projected token (`aud=skill-registry`) via TokenReview, proxies to control-plane internal bundle endpoint. Deep-dive: [`apps/skill-registry.md`](./apps/skill-registry.md).
 - **litellm** (`:4000`) → the only LLM egress path for tenant pods; operator mints a per-tenant virtual key Secret; enforces budget.
@@ -162,8 +162,8 @@ auto-renewed; it requires no per-org action.
 When an org is created (`POST /api/v1/cluster-tenants`), the control plane persists desired state and
 hands off the cluster-side side effects to the ClusterTenant operator/CR watcher. The interface the
 reconciler calls is `OrgDomainProvisioner.provisionOrgDomain(...)`
-(`apps/fleet-manager/src/cluster-tenants/internal/org-domain-provisioner.types.ts`), implemented by
-`DefaultOrgDomainProvisioner` (`apps/fleet-manager/src/cluster-tenants/internal/org-domain.provisioner.ts`):
+(`apps/fleet-platform/src/cluster-tenants/internal/org-domain-provisioner.types.ts`), implemented by
+`DefaultOrgDomainProvisioner` (`apps/fleet-platform/src/cluster-tenants/internal/org-domain.provisioner.ts`):
 it **declares** the explicit `<org>.<base>` A record as a namespaced external-dns `DNSEndpoint` custom
 resource (`externaldns.k8s.io/v1alpha1`); the external-dns controller reconciles it into whatever DNS
 provider the platform runs (Cloud DNS, Route53, …) — no cloud SDK in the operator. When a `vanityDomain`
@@ -183,7 +183,7 @@ reconciler (in the operator) does (fail-closed, API-first).
 | `dedicatedNodes` | Namespace + a tainted node pool; operator stamps `nodeSelector`+`tolerations` (from `compute.mode=dedicated`, `compute.nodePool`). | ✅ Built |
 | `dedicatedCluster` | Customer gets its own kube-apiserver via an **external provisioner** (webhook seam, AGPL-clean; Kamaji-shaped). | ⏸️ **Parked** — control-plane validates and rejects with `422 TIER_UNAVAILABLE` unless a provisioner is registered. |
 
-The provisioner seam is a registry (`apps/clustertenant-manager/src/core/cluster-tenants/`) with a built-in shared provisioner plus an optional external webhook (`CLUSTER_TENANT_PROVISIONER_WEBHOOK_*`).
+The provisioner seam is a registry (`apps/clustertenant-platform/src/core/cluster-tenants/`) with a built-in shared provisioner plus an optional external webhook (`CLUSTER_TENANT_PROVISIONER_WEBHOOK_*`).
 
 ## Multi-Instance Cluster Shape
 

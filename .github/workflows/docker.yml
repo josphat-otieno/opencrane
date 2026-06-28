@@ -38,10 +38,10 @@ jobs:
         run: pnpm build
 
       - name: Test operator
-        run: pnpm --filter @opencrane/fleet-manager test
+        run: pnpm --filter @opencrane/fleet-platform test
 
       - name: Test control-plane
-        run: pnpm --filter @opencrane/clustertenant-manager test
+        run: pnpm --filter @opencrane/clustertenant-platform test
 
       - name: Test skill-registry
         run: pnpm --filter @opencrane/skill-registry test
@@ -101,7 +101,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: apps/fleet-manager/deploy/Dockerfile
+          file: apps/fleet-platform/deploy/Dockerfile
           push: ${{ github.event_name == 'push' }}
           tags: ${{ steps.meta-operator.outputs.tags }}
           labels: ${{ steps.meta-operator.outputs.labels }}
@@ -121,7 +121,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: apps/clustertenant-manager/deploy/Dockerfile
+          file: apps/clustertenant-platform/deploy/Dockerfile
           push: ${{ github.event_name == 'push' }}
           tags: ${{ steps.meta-control-plane.outputs.tags }}
           labels: ${{ steps.meta-control-plane.outputs.labels }}

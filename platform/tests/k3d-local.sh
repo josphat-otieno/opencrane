@@ -103,13 +103,13 @@ _require_free_space
 
 # 2. Build local images so the cluster does not depend on published registries.
 echo "[local] Building operator image"
-docker build -f "$ROOT_DIR/apps/fleet-manager/deploy/Dockerfile" -t opencrane/operator:local "$ROOT_DIR"
+docker build -f "$ROOT_DIR/apps/fleet-platform/deploy/Dockerfile" -t opencrane/operator:local "$ROOT_DIR"
 
 echo "[local] Building tenant image"
 docker build -f "$ROOT_DIR/apps/tenant/deploy/Dockerfile" -t opencrane/tenant:local "$ROOT_DIR"
 
 echo "[local] Building control-plane image"
-docker build -f "$ROOT_DIR/apps/clustertenant-manager/deploy/Dockerfile" -t opencrane/control-plane:local "$ROOT_DIR"
+docker build -f "$ROOT_DIR/apps/clustertenant-platform/deploy/Dockerfile" -t opencrane/control-plane:local "$ROOT_DIR"
 
 # 3. Create a fresh cluster for a deterministic full-stack install.
 echo "[local] Recreating k3d cluster '$CLUSTER_NAME'"
@@ -271,7 +271,7 @@ spec:
           image: opencrane/control-plane:local
           imagePullPolicy: IfNotPresent
           command: ["npx", "prisma@6", "migrate", "deploy"]
-          workingDir: /app/apps/clustertenant-manager
+          workingDir: /app/apps/clustertenant-platform
           env:
             - name: DATABASE_URL
               valueFrom:

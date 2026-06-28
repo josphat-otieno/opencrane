@@ -7,8 +7,8 @@
 - Install deps: `pnpm install`
 - Build all: `pnpm build`
 - Test all: `pnpm test`
-- Build single package: `pnpm --filter @opencrane/fleet-manager build`
-- Test single package: `pnpm --filter @opencrane/clustertenant-manager test`
+- Build single package: `pnpm --filter @opencrane/fleet-platform build`
+- Test single package: `pnpm --filter @opencrane/clustertenant-platform test`
 
 ## Infrastructure Architecture Context
 

@@ -1,11 +1,11 @@
 /**
  * Emit the OpenAPI 3.1 spec to openapi.json in the package root.
  *
- * Run via:  pnpm --filter @opencrane/clustertenant-manager emit-openapi
+ * Run via:  pnpm --filter @opencrane/clustertenant-platform emit-openapi
  *
  * CI drift gate:
- *   pnpm --filter @opencrane/clustertenant-manager emit-openapi
- *   git diff --exit-code apps/clustertenant-manager/openapi.json
+ *   pnpm --filter @opencrane/clustertenant-platform emit-openapi
+ *   git diff --exit-code apps/clustertenant-platform/openapi.json
  *
  * If the diff is non-empty, the committed openapi.json is stale.
  * Update the spec in src/openapi/spec.ts and re-run this script,

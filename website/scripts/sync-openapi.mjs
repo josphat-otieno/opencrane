@@ -3,7 +3,7 @@
  * directory so VitePress can serve it and `vitepress-openapi` can render the
  * interactive API reference from it.
  *
- * The spec is the single source of truth (`apps/clustertenant-manager/openapi.json`,
+ * The spec is the single source of truth (`apps/clustertenant-platform/openapi.json`,
  * emitted at build time and guarded by a CI drift gate), so this is a pure copy
  * — the website never hand-edits the API surface.
  */
@@ -12,13 +12,13 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const source = resolve(here, '../../apps/clustertenant-manager/openapi.json')
+const source = resolve(here, '../../apps/clustertenant-platform/openapi.json')
 const dest = resolve(here, '../public/openapi.json')
 
 if (!existsSync(source)) {
   console.error(
     `[sync-openapi] spec not found at ${source}\n` +
-      `Run \`pnpm --filter @opencrane/clustertenant-manager emit-openapi\` first.`,
+      `Run \`pnpm --filter @opencrane/clustertenant-platform emit-openapi\` first.`,
   )
   process.exit(1)
 }

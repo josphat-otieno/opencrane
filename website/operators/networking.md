@@ -66,7 +66,7 @@ There are **no per-user subdomains**. Every user in an org connects through one 
 
 ### How an org host resolves
 
-When a new org is provisioned, the operator's domain provisioner ([`apps/fleet-manager/src/cluster-tenants/internal/org-domain.provisioner.ts`](https://github.com/italanta/opencrane/blob/main/apps/fleet-manager/src/cluster-tenants/internal/org-domain.provisioner.ts)) creates a `DNSEndpoint` CR named `org-dns-<org>` in the org's namespace. This CR carries a single A record:
+When a new org is provisioned, the operator's domain provisioner ([`apps/fleet-platform/src/cluster-tenants/internal/org-domain.provisioner.ts`](https://github.com/italanta/opencrane/blob/main/apps/fleet-platform/src/cluster-tenants/internal/org-domain.provisioner.ts)) creates a `DNSEndpoint` CR named `org-dns-<org>` in the org's namespace. This CR carries a single A record:
 
 ```
 <org>.<base>  A  <ingress-ip>  TTL 300
@@ -140,7 +140,7 @@ browser ─── wss://<org>.<base> + OIDC cookie ───► wildcard Ingress
                                               tenant OpenClaw pod :18789
 ```
 
-**Layer 1 — NetworkPolicy (L4).** The operator builds and applies a per-tenant NetworkPolicy named `openclaw-<tenant>-gateway` (see [`apps/fleet-manager/src/tenants/deploy/network-policy.ts`](https://github.com/italanta/opencrane/blob/main/apps/fleet-manager/src/tenants/deploy/network-policy.ts)). It selects the tenant pod by its labels and admits ingress to port 18789 from exactly one source: pods with `component=operator` in the namespace labelled `kubernetes.io/metadata.name=opencrane-system`. No other in-cluster pod can reach the gateway port. Without this policy, any pod that knew the ClusterIP could assert an arbitrary `X-Forwarded-User` header and be trusted.
+**Layer 1 — NetworkPolicy (L4).** The operator builds and applies a per-tenant NetworkPolicy named `openclaw-<tenant>-gateway` (see [`apps/fleet-platform/src/tenants/deploy/network-policy.ts`](https://github.com/italanta/opencrane/blob/main/apps/fleet-platform/src/tenants/deploy/network-policy.ts)). It selects the tenant pod by its labels and admits ingress to port 18789 from exactly one source: pods with `component=operator` in the namespace labelled `kubernetes.io/metadata.name=opencrane-system`. No other in-cluster pod can reach the gateway port. Without this policy, any pod that knew the ClusterIP could assert an arbitrary `X-Forwarded-User` header and be trusted.
 
 **Layer 2 — trusted-proxy auth (L7).** The OpenClaw gateway runs in `trusted-proxy` mode and accepts the `X-Forwarded-User` identity header only from sources listed in `GATEWAY_TRUSTED_PROXIES` (the cluster pod CIDR; dev = `10.8.0.0/14`). OpenClaw fails closed on an empty `trustedProxies` list.
 
@@ -167,7 +167,7 @@ Tenant-to-plane calls carry **audience-bound projected-identity tokens** mounted
 
 ## The per-silo default-deny baseline
 
-Each ClusterTenant (org) is modelled as a strictly isolated **silo**. The operator now emits a per-silo default-deny baseline `NetworkPolicy` in **every** ClusterTenant namespace as it provisions the silo — `_BuildSiloBaselineNetworkPolicy` (see [`apps/fleet-manager/src/tenants/deploy/silo-baseline-network-policy.ts`](https://github.com/italanta/opencrane/blob/main/apps/fleet-manager/src/tenants/deploy/silo-baseline-network-policy.ts)), named `opencrane-<cluster-tenant>-silo-baseline`.
+Each ClusterTenant (org) is modelled as a strictly isolated **silo**. The operator now emits a per-silo default-deny baseline `NetworkPolicy` in **every** ClusterTenant namespace as it provisions the silo — `_BuildSiloBaselineNetworkPolicy` (see [`apps/fleet-platform/src/tenants/deploy/silo-baseline-network-policy.ts`](https://github.com/italanta/opencrane/blob/main/apps/fleet-platform/src/tenants/deploy/silo-baseline-network-policy.ts)), named `opencrane-<cluster-tenant>-silo-baseline`.
 
 The policy uses an **empty `podSelector`** (it selects every pod in the silo namespace) and names both `Ingress` and `Egress` in `policyTypes`, which flips the namespace to **default-deny**: anything not explicitly allowed below is dropped. The allow-list is the minimum a silo needs to function while staying isolated from every *other* silo — there is no silo→silo path because no rule ever names another silo namespace:
 
