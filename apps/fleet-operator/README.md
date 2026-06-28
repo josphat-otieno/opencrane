@@ -1,4 +1,4 @@
-# @opencrane/fleet-platform
+# @opencrane/fleet-operator
 
 Kubernetes operator that watches `Tenant` and `AccessPolicy` custom resources and creates the Kubernetes objects needed to match them.
 
@@ -148,5 +148,5 @@ pnpm test           # run vitest
 Built from `deploy/Dockerfile` using the repo root as build context:
 
 ```bash
-docker build -f apps/fleet-platform/deploy/Dockerfile -t ghcr.io/opencrane/operator:latest .
+docker build -f apps/fleet-operator/deploy/Dockerfile -t ghcr.io/opencrane/operator:latest .
 ```

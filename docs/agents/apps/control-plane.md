@@ -1,6 +1,6 @@
-# App: control-plane (`@opencrane/clustertenant-platform`)
+# App: control-plane (`@opencrane/clustertenant-operator`)
 
-> Deep-dive for `apps/clustertenant-platform`. Index: [`../app-specific.md`](../app-specific.md). Identity model:
+> Deep-dive for `apps/clustertenant-operator`. Index: [`../app-specific.md`](../app-specific.md). Identity model:
 > [`../architecture.md`](../architecture.md). Verified June 2026.
 
 The API-first management hub. **Express 5 + Prisma (PostgreSQL) + `@kubernetes/client-node`.** Source

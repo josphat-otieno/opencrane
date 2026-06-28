@@ -5,8 +5,8 @@ packages:
   - libs/infra-api
   - libs/infra-auth
   - libs/infra-http
-  - apps/fleet-platform
-  - apps/clustertenant-platform
+  - apps/fleet-operator
+  - apps/clustertenant-operator
   - apps/harvesting-agent
   - apps/cli
   - apps/skill-registry

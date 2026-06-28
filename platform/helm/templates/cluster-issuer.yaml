@@ -73,7 +73,7 @@ spec:
       # ingress, so cert-manager answers the challenge over HTTP through the ingress — no
       # access to the customer's DNS zone is needed (DNS-01 there is impossible). The
       # operator's per-org vanity Certificate references THIS issuer — see
-      # apps/fleet-platform/src/cluster-tenants/internal/org-domain.provisioner.ts.
+      # apps/fleet-operator/src/cluster-tenants/internal/org-domain.provisioner.ts.
       - http01:
           ingress:
             ingressClassName: {{ $.Values.ingress.className | default "nginx" | quote }}
@@ -101,7 +101,7 @@ spec:
   # There is NO per-org `*.<org>.<domain>` cert — every user in an org is served at the
   # SINGLE host `<org>.<domain>` via the gateway proxy. The only per-org cert is for an
   # optional customer-VANITY host, issued at provision time by the cluster-tenants operator
-  # against this issuer's HTTP-01 solver (apps/fleet-platform/src/cluster-tenants/internal/org-domain.provisioner.ts).
+  # against this issuer's HTTP-01 solver (apps/fleet-operator/src/cluster-tenants/internal/org-domain.provisioner.ts).
   dnsNames:
     - {{ printf "*.%s" .Values.ingress.domain | quote }}
     {{- /* Apex SAN is opt-in: many installs use the bare domain as a marketing site
@@ -158,7 +158,7 @@ spec:
       # ingress, so cert-manager answers the challenge over HTTP through the ingress — no
       # access to the customer's DNS zone is needed (DNS-01 there is impossible). The
       # operator's per-org vanity Certificate references THIS issuer — see
-      # apps/fleet-platform/src/cluster-tenants/internal/org-domain.provisioner.ts.
+      # apps/fleet-operator/src/cluster-tenants/internal/org-domain.provisioner.ts.
       - http01:
           ingress:
             ingressClassName: {{ $.Values.ingress.className | default "nginx" | quote }}

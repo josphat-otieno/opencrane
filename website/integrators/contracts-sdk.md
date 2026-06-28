@@ -3,7 +3,7 @@
 `@opencrane/contracts` is the **public SDK and API contract** for the OpenCrane
 control plane: a typed TypeScript client (`openapi-fetch`) plus DTOs generated
 from the control-plane OpenAPI 3.1 specification
-([`apps/clustertenant-platform/openapi.json`](https://github.com/italanta/opencrane/blob/main/apps/clustertenant-platform/openapi.json)).
+([`apps/clustertenant-operator/openapi.json`](https://github.com/italanta/opencrane/blob/main/apps/clustertenant-operator/openapi.json)).
 
 It is the same contract the `oc` CLI consumes — and the recommended way for any
 external surface to talk to OpenCrane.

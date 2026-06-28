@@ -91,7 +91,7 @@ _require_free_space
 
 # 2. Build local images so e2e does not depend on pre-published GHCR tags.
 echo "[e2e] Building operator image"
-docker build -f "$ROOT_DIR/apps/fleet-platform/deploy/Dockerfile" -t opencrane/operator:e2e "$ROOT_DIR"
+docker build -f "$ROOT_DIR/apps/fleet-operator/deploy/Dockerfile" -t opencrane/operator:e2e "$ROOT_DIR"
 
 echo "[e2e] Building tenant image"
 docker build -f "$ROOT_DIR/apps/tenant/deploy/Dockerfile" -t opencrane/tenant:e2e "$ROOT_DIR"
@@ -227,7 +227,7 @@ EOF
 _wait_for_tenant_running
 
 # 8. Assert core reconciled resources exist. No per-user Ingress is asserted: the
-#    operator retired per-user Ingresses (apps/fleet-platform/src/tenants/operator.ts) — every
+#    operator retired per-user Ingresses (apps/fleet-operator/src/tenants/operator.ts) — every
 #    user reaches the pod through the org host, reverse-proxied to this pod's Service, so
 #    only the SA/ConfigMap/Deployment/Service/encryption-key Secret are minted per tenant.
 kubectl get serviceaccount openclaw-e2e -n "$NAMESPACE" >/dev/null

@@ -14,7 +14,7 @@
 # with --source=crd, scoped to <domain>). Terraform therefore provisions only the zone,
 # the install-time platform records, and the zone-WRITE identity the controllers share —
 # it must NOT write per-org/per-host records itself (the old imperative Cloud DNS client
-# is gone). See apps/fleet-platform/src/cluster-tenants/internal/dns-endpoint.client.ts.
+# is gone). See apps/fleet-operator/src/cluster-tenants/internal/dns-endpoint.client.ts.
 #
 # Identity vs records are DECOUPLED by dependency. The zone + the shared DNS-writer GSA
 # need nothing from the running app, so they are created whenever this module runs (i.e.

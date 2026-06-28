@@ -36,8 +36,8 @@ Full cluster context lives in `README.md`; this brief covers the two service pla
 
 ## Non-negotiable invariants
 
-1. **Control plane is the only authority.** Neither plane holds authoritative config. Native admin UIs/APIs are disabled; both are operator-reconciled and drift-detected (reuse `apps/clustertenant-platform/src/routes/internal/projection-drift.ts` pattern).
-2. **Tenant→plane auth = projected ServiceAccount token**, audience-bound (`aud=obot-gateway` / `aud=skill-registry`), ~600s TTL, kubelet-rotated. **Delete** the predictable `OPENCLAW_GATEWAY_TOKEN` (`apps/fleet-platform/src/tenants/deploy/3-deployment.ts:36`).
+1. **Control plane is the only authority.** Neither plane holds authoritative config. Native admin UIs/APIs are disabled; both are operator-reconciled and drift-detected (reuse `apps/clustertenant-operator/src/routes/internal/projection-drift.ts` pattern).
+2. **Tenant→plane auth = projected ServiceAccount token**, audience-bound (`aud=obot-gateway` / `aud=skill-registry`), ~600s TTL, kubelet-rotated. **Delete** the predictable `OPENCLAW_GATEWAY_TOKEN` (`apps/fleet-operator/src/tenants/deploy/3-deployment.ts:36`).
 3. **The serving plane is the live authority; the pod contract is advisory** and can never widen access.
 4. **Authorization is group-based, not tier-based.** The compiler knows only principals, groups, and grants (deny-wins → priority); the control plane owns the org→group mapping, sync, and nesting. Tiers are a UI affordance only. See *Authorization model* below — this is canonical.
 5. **MCP downstream secrets live only in Obot**, injected server-side via the shim; never reach a pod.
@@ -75,8 +75,8 @@ The compiler never interprets what a group *means*.
 
 ## Components & responsibilities
 
-- **Control plane** (`apps/clustertenant-platform`): MCP + skill registry CRUD, permission compiler, versioned effective-contract endpoint, config authority for both planes, promotion/demotion workflow. Absorbs both admin UIs.
-- **Operator** (`apps/fleet-platform`): reconciles both planes' config + registries into the cluster; injects projected token + contract into tenant pods; drift-detects/repairs.
+- **Control plane** (`apps/clustertenant-operator`): MCP + skill registry CRUD, permission compiler, versioned effective-contract endpoint, config authority for both planes, promotion/demotion workflow. Absorbs both admin UIs.
+- **Operator** (`apps/fleet-operator`): reconciles both planes' config + registries into the cluster; injects projected token + contract into tenant pods; drift-detects/repairs.
 - **Obot MCP Gateway** (headless, in-cluster): validates projected JWT, per-call scope check, brokers downstream creds via RFC 8693 shim.
 - **Skill Registry & Delivery** (in-cluster ingress): scoped content delivery over OCI/ORAS; entitlement enforced per read.
 - **Tenant pod / claw** (`apps/tenant`): presents projected token; re-pulls contract at agentic-loop boundaries; pulls only entitled skill digests; holds no downstream secret.
@@ -102,7 +102,7 @@ Build our own registry, but stand it on existing substrate — do **not** rebuil
 ### Discovery & delivery
 
 - The **effective-contract carries the entitled skill index** as cheap metadata: `{ name, description, scope, digest }`. This is the agent's discovery index (progressive disclosure) — bodies are lazy-pulled on first selection.
-- OpenClaw discovers skills by scanning `$STATE_DIR/agents/main/skills`. Replace the shared-PVC symlink (`apps/tenant/deploy/entrypoint.sh:144`, mount at `apps/fleet-platform/src/tenants/deploy/3-deployment.ts:82`) with per-tenant entitled pulls into that dir. Keep a pull-through cache for cold-start.
+- OpenClaw discovers skills by scanning `$STATE_DIR/agents/main/skills`. Replace the shared-PVC symlink (`apps/tenant/deploy/entrypoint.sh:144`, mount at `apps/fleet-operator/src/tenants/deploy/3-deployment.ts:82`) with per-tenant entitled pulls into that dir. Keep a pull-through cache for cold-start.
 - At each loop boundary: re-pull contract → diff entitled set → pull new bodies, drop de-entitled → refresh the `{name, description}` index.
 
 ### Entitlement-scoping (security-critical)
@@ -117,7 +117,7 @@ The registry — not the contract — is the boundary. The pod can reach the ing
 
 ## Control-plane extensions for MCP & skill management
 
-The existing control plane (`apps/clustertenant-platform`) needs three new domain surfaces: **MCP server management**, **skill catalog & sharing**, and **third-party source installation**. Each surface follows the same pattern — the control plane is the sole authority; the planes are config-slaved consumers.
+The existing control plane (`apps/clustertenant-operator`) needs three new domain surfaces: **MCP server management**, **skill catalog & sharing**, and **third-party source installation**. Each surface follows the same pattern — the control plane is the sole authority; the planes are config-slaved consumers.
 
 ### MCP server management
 
@@ -129,7 +129,7 @@ Extend the control plane to own the full lifecycle of MCP servers available to t
 - `McpServerGrant` — an instance of the canonical `Grant`: `{ mcpServerId, targetGroupId, effect (allow | deny), priority, grantedBy, createdAt }`. The group-based compiler rolls these into the effective set (deny-wins → priority).
 - `McpServerCredential` — pointer to the Obot token store entry (never stored in the control-plane DB directly): `{ mcpServerId, obotCredentialRef, rotatedAt }`.
 
-**Routes** (`apps/clustertenant-platform/src/routes/mcp-servers.ts`):
+**Routes** (`apps/clustertenant-operator/src/routes/mcp-servers.ts`):
 
 | Verb | Path | Purpose |
 |------|------|---------|
@@ -147,7 +147,7 @@ On every write, the control plane pushes updated config + grants to the Obot MCP
 
 ### Skill catalog, sharing & promotion
 
-Replace the current filesystem-only `skillsRouter` (`apps/clustertenant-platform/src/routes/skills.ts`) with a registry-backed catalog that supports authoring, group-scoped sharing, and promotion/demotion across groups (see *Authorization model*). The filesystem-only router is **deleted**, not kept alongside.
+Replace the current filesystem-only `skillsRouter` (`apps/clustertenant-operator/src/routes/skills.ts`) with a registry-backed catalog that supports authoring, group-scoped sharing, and promotion/demotion across groups (see *Authorization model*). The filesystem-only router is **deleted**, not kept alongside.
 
 **Data model** (Prisma, extend existing `Skill` model):
 
@@ -155,7 +155,7 @@ Replace the current filesystem-only `skillsRouter` (`apps/clustertenant-platform
 - `SkillEntitlement` — an instance of the canonical `Grant` (mirrors `McpServerGrant`): `{ skillBundleId, targetGroupId, effect (allow | deny), priority, grantedBy, createdAt }`.
 - `SkillPromotion` — audit trail for promotion/demotion: `{ id, skillBundleId, fromGroupId, toGroupId, promotedBy, reviewedBy?, decision (pending | approved | rejected), decidedAt? }`.
 
-**Routes** (`apps/clustertenant-platform/src/routes/skill-catalog.ts`):
+**Routes** (`apps/clustertenant-operator/src/routes/skill-catalog.ts`):
 
 | Verb | Path | Purpose |
 |------|------|---------|
@@ -198,7 +198,7 @@ Support installing MCP servers and skills from external registries and curated u
 - `ThirdPartySource` — upstream registry pointer: `{ id, name, type (mcp-registry | skill-registry | git-repo | oci-registry), url, syncSchedule (cron), lastSyncAt?, authSecretRef?, enabled, createdAt, updatedAt }`.
 - `ThirdPartySourceItem` — tracked upstream item: `{ id, sourceId, externalId, name, description, latestVersion, localRef? (McpServer.id or SkillBundle.id), syncStatus (available | installed | outdated | removed), lastCheckedAt }`.
 
-**Routes** (`apps/clustertenant-platform/src/routes/third-party-sources.ts`):
+**Routes** (`apps/clustertenant-operator/src/routes/third-party-sources.ts`):
 
 | Verb | Path | Purpose |
 |------|------|---------|
@@ -253,8 +253,8 @@ The `GET /api/tenants/:name/effective-contract` endpoint compiles this by evalua
 
 Split by ownership:
 
-- **Platform background agents** (registry sync, drift reconcile, grant recompile-and-push, harvesting, promotion review, eval/SLO harness, token/cert rotation): run as **platform-plane controllers / Kubernetes CronJobs** with their own Workload Identity. Follow existing patterns (`apps/harvesting-agent`, `apps/fleet-platform/src/tenant-rollout`). **Claws do not run these.**
-- **Per-tenant scheduled work** ("nightly report for jane"): a **central scheduler owns the schedule + governance**; at fire time it wakes the claw and dispatches the job **as the tenant identity** via the projected-token path. Claws do **not** self-schedule (breaks against `autoSuspend`, `apps/fleet-platform/src/tenants/deploy/2-config-map.ts:70`; loses central audit). Guard the wake/dispatch path: the scheduler may only fire schedules a tenant registered, with a job-scoped token, audited — never a broad impersonation primitive.
+- **Platform background agents** (registry sync, drift reconcile, grant recompile-and-push, harvesting, promotion review, eval/SLO harness, token/cert rotation): run as **platform-plane controllers / Kubernetes CronJobs** with their own Workload Identity. Follow existing patterns (`apps/harvesting-agent`, `apps/fleet-operator/src/tenant-rollout`). **Claws do not run these.**
+- **Per-tenant scheduled work** ("nightly report for jane"): a **central scheduler owns the schedule + governance**; at fire time it wakes the claw and dispatches the job **as the tenant identity** via the projected-token path. Claws do **not** self-schedule (breaks against `autoSuspend`, `apps/fleet-operator/src/tenants/deploy/2-config-map.ts:70`; loses central audit). Guard the wake/dispatch path: the scheduler may only fire schedules a tenant registered, with a job-scoped token, audited — never a broad impersonation primitive.
 
 ## Implementation slices (suggested order)
 
@@ -266,7 +266,7 @@ Split by ownership:
 6. **Skill registry service:** new ingress service over OCI/ORAS; scoped `get-by-entitled-digest`; entitlement enforcement; ingest/scan pipeline.
 7. **Helm/network:** deploy Obot headless (admin disabled, IdP bound to central OIDC); deploy skill registry + OCI store; NetworkPolicies restricting tenant → plane ingress only (no path to Obot DB or OCI store).
 8. **Scheduler:** central per-tenant scheduler that owns schedules and dispatches into claws as the tenant.
-9. **UI** (`apps/clustertenant-platform-ui`): MCP install, skill catalog/install, permission-set management, schedule management (PrimeNG, shared components per `AGENTS.md`).
+9. **UI** (`apps/clustertenant-operator-ui`): MCP install, skill catalog/install, permission-set management, schedule management (PrimeNG, shared components per `AGENTS.md`).
 
 ## Acceptance criteria (testable)
 

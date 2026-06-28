@@ -3,7 +3,7 @@
  *
  * This is the single source of truth for the HTTP API contract.
  * Edit this file when you add or change routes, then run:
- *   pnpm --filter @opencrane/clustertenant-platform emit-openapi
+ *   pnpm --filter @opencrane/clustertenant-operator emit-openapi
  * and commit the regenerated openapi.json alongside the code change.
  *
  * The CI drift gate runs `emit-openapi` and fails if openapi.json is stale.

@@ -1,6 +1,6 @@
-# App: operator (`@opencrane/fleet-platform`)
+# App: operator (`@opencrane/fleet-operator`)
 
-> Deep-dive for `apps/fleet-platform`. Index: [`../app-specific.md`](../app-specific.md). Cluster context:
+> Deep-dive for `apps/fleet-operator`. Index: [`../app-specific.md`](../app-specific.md). Cluster context:
 > [`../cluster-architecture.md`](../cluster-architecture.md). Verified June 2026.
 
 The Kubernetes operator: a set of resilient watch loops that reconcile OpenCrane CRs into running

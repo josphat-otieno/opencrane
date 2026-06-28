@@ -8,7 +8,7 @@
  * (Stage 5), so the fleet keeps only the handful of fields the CT operator + its
  * org-domain provisioner read.
  *
- * @see apps/clustertenant-platform/src/config.ts - the full operator config the silo loads.
+ * @see apps/clustertenant-operator/src/config.ts - the full operator config the silo loads.
  */
 
 /** Cert-manager issuer kind for per-org wildcard certificates. */

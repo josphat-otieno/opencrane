@@ -33,13 +33,13 @@ jobs:
       # Regenerate the spec from source so the asset always matches the tagged
       # commit, even if the committed openapi.json had drifted.
       - name: Emit OpenAPI spec
-        run: pnpm --filter @opencrane/clustertenant-platform build
+        run: pnpm --filter @opencrane/clustertenant-operator build
 
       - name: Verify committed spec is up to date
-        run: git diff --exit-code apps/clustertenant-platform/openapi.json
+        run: git diff --exit-code apps/clustertenant-operator/openapi.json
 
       - name: Attach openapi.json to the release
         uses: softprops/action-gh-release@v2
         with:
-          files: apps/clustertenant-platform/openapi.json
+          files: apps/clustertenant-operator/openapi.json
           fail_on_unmatched_files: true

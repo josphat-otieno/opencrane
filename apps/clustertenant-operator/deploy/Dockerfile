@@ -9,20 +9,20 @@ COPY tsconfig.base.json ./
 COPY libs/contracts/package.json libs/contracts/tsconfig.json libs/contracts/
 COPY libs/awareness/package.json libs/awareness/tsconfig.json libs/awareness/
 COPY libs/observability/package.json libs/observability/tsconfig.json libs/observability/
-COPY apps/clustertenant-platform/scripts apps/clustertenant-platform/scripts
-COPY apps/clustertenant-platform/openapi.json apps/clustertenant-platform/openapi.json
-COPY apps/clustertenant-platform/package.json apps/clustertenant-platform/tsconfig.json apps/clustertenant-platform/
-COPY apps/clustertenant-platform/prisma apps/clustertenant-platform/prisma
-RUN pnpm install --frozen-lockfile --filter @opencrane/contracts --filter @opencrane/awareness --filter @opencrane/observability --filter @opencrane/clustertenant-platform
+COPY apps/clustertenant-operator/scripts apps/clustertenant-operator/scripts
+COPY apps/clustertenant-operator/openapi.json apps/clustertenant-operator/openapi.json
+COPY apps/clustertenant-operator/package.json apps/clustertenant-operator/tsconfig.json apps/clustertenant-operator/
+COPY apps/clustertenant-operator/prisma apps/clustertenant-operator/prisma
+RUN pnpm install --frozen-lockfile --filter @opencrane/contracts --filter @opencrane/awareness --filter @opencrane/observability --filter @opencrane/clustertenant-operator
 
 COPY libs/contracts/src libs/contracts/src
 COPY libs/awareness/src libs/awareness/src
 COPY libs/observability/src libs/observability/src
-COPY apps/clustertenant-platform/src apps/clustertenant-platform/src
+COPY apps/clustertenant-operator/src apps/clustertenant-operator/src
 RUN pnpm --filter @opencrane/contracts build
 RUN pnpm --filter @opencrane/awareness build
 RUN pnpm --filter @opencrane/observability build
-RUN pnpm --filter @opencrane/clustertenant-platform build
+RUN pnpm --filter @opencrane/clustertenant-operator build
 # Stage generated Prisma client to a fixed path for the runtime stage
 RUN find /app -path '*/node_modules/.prisma/client' -type d | head -1 | \
     xargs -I{} cp -r {} /generated-prisma
@@ -37,9 +37,9 @@ COPY --from=build /app/package.json /app/pnpm-workspace.yaml /app/pnpm-lock.yaml
 COPY --from=build /app/libs/contracts/package.json libs/contracts/
 COPY --from=build /app/libs/awareness/package.json libs/awareness/
 COPY --from=build /app/libs/observability/package.json libs/observability/
-COPY --from=build /app/apps/clustertenant-platform/package.json apps/clustertenant-platform/
-COPY --from=build /app/apps/clustertenant-platform/prisma apps/clustertenant-platform/prisma
-RUN pnpm install --frozen-lockfile --filter @opencrane/contracts --filter @opencrane/awareness --filter @opencrane/observability --filter @opencrane/clustertenant-platform --prod
+COPY --from=build /app/apps/clustertenant-operator/package.json apps/clustertenant-operator/
+COPY --from=build /app/apps/clustertenant-operator/prisma apps/clustertenant-operator/prisma
+RUN pnpm install --frozen-lockfile --filter @opencrane/contracts --filter @opencrane/awareness --filter @opencrane/observability --filter @opencrane/clustertenant-operator --prod
 COPY --from=build /generated-prisma /tmp/generated-prisma
 # Retrieve the generated Prisma client for the runtime stage
 RUN target=$(find /app -path '*/node_modules/.prisma/client' -type d | head -1) && \
@@ -50,10 +50,10 @@ RUN target=$(find /app -path '*/node_modules/.prisma/client' -type d | head -1) 
 COPY --from=build /app/libs/contracts/dist libs/contracts/dist
 COPY --from=build /app/libs/awareness/dist libs/awareness/dist
 COPY --from=build /app/libs/observability/dist libs/observability/dist
-COPY --from=build /app/apps/clustertenant-platform/dist apps/clustertenant-platform/dist
+COPY --from=build /app/apps/clustertenant-operator/dist apps/clustertenant-operator/dist
 
 USER node
 
 EXPOSE 8080
 
-CMD ["node", "apps/clustertenant-platform/dist/index.js"]
+CMD ["node", "apps/clustertenant-operator/dist/index.js"]

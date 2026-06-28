@@ -74,7 +74,7 @@ validation even starts.
 ```
 
 Source:
-[`apps/fleet-platform/src/routes/admin/zitadel-key.ts`](https://github.com/italanta/opencrane/blob/main/apps/fleet-platform/src/routes/admin/zitadel-key.ts).
+[`apps/fleet-operator/src/routes/admin/zitadel-key.ts`](https://github.com/italanta/opencrane/blob/main/apps/fleet-operator/src/routes/admin/zitadel-key.ts).
 
 ---
 

@@ -4,7 +4,7 @@
  * The fleet plane's HTTP API contract (cluster-tenant lifecycle, billing, org membership,
  * platform DNS, Zitadel admin). The per-silo clustertenant-manager has its OWN spec.
  * Edit this file when you add or change fleet routes, then run:
- *   pnpm --filter @opencrane/fleet-platform emit-openapi
+ *   pnpm --filter @opencrane/fleet-operator emit-openapi
  * and commit the regenerated openapi.json alongside the code change.
  *
  * The CI drift gate runs `emit-openapi` and fails if openapi.json is stale.

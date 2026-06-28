@@ -9,7 +9,7 @@
 #
 # This file is the exact shape `DefaultOrgDomainProvisioner` emits per org through the
 # `OrgDomainProvisioner.provisionOrgDomain(...)` seam
-# (apps/clustertenant-platform/src/core/cluster-tenants/org-domain.provisioner.ts). It is
+# (apps/clustertenant-operator/src/core/cluster-tenants/org-domain.provisioner.ts). It is
 # NOT a chart template and is NOT installed by `helm install` — issuing a cert is a
 # live, authorised action. To provision a single org by hand (before the reconciler
 # runs in a given cluster), substitute the placeholders and apply under human

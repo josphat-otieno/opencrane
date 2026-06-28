@@ -1,11 +1,11 @@
 /**
  * Emit the fleet-manager OpenAPI 3.1 spec to openapi.json in the package root.
  *
- * Run via:  pnpm --filter @opencrane/fleet-platform emit-openapi
+ * Run via:  pnpm --filter @opencrane/fleet-operator emit-openapi
  *
  * CI drift gate:
- *   pnpm --filter @opencrane/fleet-platform emit-openapi
- *   git diff --exit-code apps/fleet-platform/openapi.json
+ *   pnpm --filter @opencrane/fleet-operator emit-openapi
+ *   git diff --exit-code apps/fleet-operator/openapi.json
  *
  * If the diff is non-empty, the committed openapi.json is stale. Update the spec in
  * src/openapi/spec.ts and re-run this script, then commit both files together.

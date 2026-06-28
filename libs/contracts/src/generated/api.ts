@@ -1789,25 +1789,6 @@ export interface components {
              */
             role: "Owner" | "Admin" | "Member";
         };
-        BillingAccount: {
-            /** @description Surrogate identifier. */
-            id: string;
-            /** @description IdP-verified subject (OIDC sub) that owns this billing account. */
-            subject: string;
-            /** @description The caller's verified email at create time (for human reconciliation; not the key). */
-            email?: string | null;
-            /** @description Optional human-readable billing name (company / individual). */
-            displayName?: string | null;
-            /** Format: date-time */
-            createdAt: string;
-            /** Format: date-time */
-            updatedAt: string;
-        };
-        /** @description Create payload for the caller's own billing account. The subject and email come from the session (never the body); only an optional displayName is accepted. */
-        BillingAccountWrite: {
-            /** @description Optional human-readable billing name (company / individual). */
-            displayName?: string;
-        };
         Group: {
             id?: string;
             name?: string;

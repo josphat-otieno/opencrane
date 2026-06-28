@@ -134,7 +134,7 @@ Zitadel *drives* workload-identity policy indirectly — it never *issues* workl
 ### Zitadel as the PDP system-of-record (auto-provisioning) · NEW
 
 Today the control-plane only **consumes** Zitadel (OIDC login + claim parsing in
-`apps/clustertenant-platform/src/infra/auth/oidc.service.ts`). It never **writes** to Zitadel — so a
+`apps/clustertenant-operator/src/infra/auth/oidc.service.ts`). It never **writes** to Zitadel — so a
 new org host's redirect URI isn't registered (live login bug at `<org>.dev.opencrane.ai/login`,
 see `_buildRedirectUri` at `oidc.service.ts:606`), no role/group is created per CT, and a
 removed user lingers in the IdP. To close the IAM loop, the control-plane must own Zitadel's
@@ -208,7 +208,7 @@ local Postgres AND remote Zitadel; there is no 2PC across a remote API, so:
 | role/group change | update grant + emit session-invalidation so the user re-logs to pick up new claims |
 
 **Service-layer shape (mirror `OciBundleStore` / `_NoopGatewayAdmin` factory pattern):**
-`apps/clustertenant-platform/src/core/zitadel/zitadel-client.ts` + `_BuildZitadelManagementClient()` →
+`apps/clustertenant-operator/src/core/zitadel/zitadel-client.ts` + `_BuildZitadelManagementClient()` →
 returns a no-op when unconfigured (fail-closed: lifecycle ops are best-effort + reconciled, never
 block the local write), throws fail-loud on bad config. Auth via a **Zitadel service-account JWT
 key** — this is the *one* legitimate Zitadel SA (an automation principal acting on the API), NOT
