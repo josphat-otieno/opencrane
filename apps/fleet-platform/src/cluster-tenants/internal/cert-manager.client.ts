@@ -1,6 +1,6 @@
 import type * as k8s from "@kubernetes/client-node";
 
-import { _IsConflict, _IsCrdAbsent, _IsNotFound } from "@opencrane/infra-api";
+import { _IsConflict, _IsCrdAbsent, _IsNotFound, __ReplaceCustomObjectWithLiveVersion } from "@opencrane/infra-api";
 import type { CertManagerOperations, CertificateReadiness } from "./org-domain-provisioner.types.js";
 
 /** cert-manager API group for the Certificate custom resource. */
@@ -62,10 +62,7 @@ export class CertManagerClient implements CertManagerOperations
       //    so a re-apply converges (idempotent) without a content-type patch pitfall.
       if (_IsConflict(err))
       {
-        const existing = await this.customApi.getNamespacedCustomObject({ group: _CM_GROUP, version: _CM_VERSION, namespace, plural: _CM_CERTIFICATE_PLURAL, name });
-        const resourceVersion = (existing as { metadata?: { resourceVersion?: string } }).metadata?.resourceVersion;
-        const body = { ...manifest, metadata: { ...(manifest.metadata as Record<string, unknown>), resourceVersion } };
-        applied = await this.customApi.replaceNamespacedCustomObject({ group: _CM_GROUP, version: _CM_VERSION, namespace, plural: _CM_CERTIFICATE_PLURAL, name, body });
+        applied = await __ReplaceCustomObjectWithLiveVersion(this.customApi, { group: _CM_GROUP, version: _CM_VERSION, namespace, plural: _CM_CERTIFICATE_PLURAL, name, manifest });
         return _readReadiness(applied);
       }
       throw err;

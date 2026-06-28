@@ -10,6 +10,7 @@ export * from "./crd-constants.js";
 export * from "./k8s-errors.js";
 export * from "./k8s-api-errors.js";
 export * from "./k8s-apply.js";
+export * from "./custom-object-apply.js";
 export * from "./watch-runner.js";
 export * from "./cluster-tenant.types.js";
 export * from "./linkerd.js";

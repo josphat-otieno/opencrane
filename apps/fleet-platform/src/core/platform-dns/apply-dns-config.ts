@@ -1,6 +1,6 @@
 import * as k8s from "@kubernetes/client-node";
 
-import { _IsK8sConflict } from "@opencrane/infra-api";
+import { _IsK8sConflict, __ReplaceCustomObjectWithLiveVersion } from "@opencrane/infra-api";
 import { _RenderDns01Issuer, _RenderDnsCredentialsSecret } from "./cluster-issuer.js";
 import type { CertIssuerKind, DnsProviderConfig } from "./cluster-issuer.types.js";
 import type { ApplyDnsConfigResult } from "./apply-dns-config.types.js";
@@ -151,10 +151,7 @@ async function _UpsertNamespacedIssuer(customApi: k8s.CustomObjectsApi, namespac
     // 409 Conflict → exists; fetch the live resourceVersion and replace in-place.
     if (_IsK8sConflict(err))
     {
-      const existing = await customApi.getNamespacedCustomObject({ group: _CM_GROUP, version: _CM_VERSION, namespace, plural: _CM_ISSUER_PLURAL, name });
-      const resourceVersion = (existing as { metadata?: { resourceVersion?: string } }).metadata?.resourceVersion;
-      const body = { ...manifest, metadata: { ...(manifest.metadata as Record<string, unknown>), resourceVersion } };
-      await customApi.replaceNamespacedCustomObject({ group: _CM_GROUP, version: _CM_VERSION, namespace, plural: _CM_ISSUER_PLURAL, name, body });
+      await __ReplaceCustomObjectWithLiveVersion(customApi, { group: _CM_GROUP, version: _CM_VERSION, namespace, plural: _CM_ISSUER_PLURAL, name, manifest });
       return;
     }
     throw err;

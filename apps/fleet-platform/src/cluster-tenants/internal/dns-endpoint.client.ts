@@ -1,6 +1,6 @@
 import type * as k8s from "@kubernetes/client-node";
 
-import { _IsConflict, _IsCrdAbsent, _IsNotFound } from "@opencrane/infra-api";
+import { _IsConflict, _IsCrdAbsent, _IsNotFound, __ReplaceCustomObjectWithLiveVersion } from "@opencrane/infra-api";
 import type { DnsEndpointOperations, DnsEndpointReadiness } from "./org-domain-provisioner.types.js";
 
 /** external-dns API group for the DNSEndpoint custom resource. */
@@ -66,10 +66,7 @@ export class DnsEndpointClient implements DnsEndpointOperations
       //    in-place so a re-apply converges (idempotent).
       if (_IsConflict(err))
       {
-        const existing = await this.customApi.getNamespacedCustomObject({ group: _ED_GROUP, version: _ED_VERSION, namespace, plural: _ED_DNSENDPOINT_PLURAL, name });
-        const resourceVersion = (existing as { metadata?: { resourceVersion?: string } }).metadata?.resourceVersion;
-        const body = { ...manifest, metadata: { ...(manifest.metadata as Record<string, unknown>), resourceVersion } };
-        await this.customApi.replaceNamespacedCustomObject({ group: _ED_GROUP, version: _ED_VERSION, namespace, plural: _ED_DNSENDPOINT_PLURAL, name, body });
+        await __ReplaceCustomObjectWithLiveVersion(this.customApi, { group: _ED_GROUP, version: _ED_VERSION, namespace, plural: _ED_DNSENDPOINT_PLURAL, name, manifest });
         return { applied: true };
       }
       throw err;
