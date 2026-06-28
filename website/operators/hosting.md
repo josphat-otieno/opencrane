@@ -544,7 +544,7 @@ are **done**; step 6 (Azure/AWS) remains a future extension that needs no core c
 1. ✅ **Introduce the seam (additive).** Add `hosting/` with the interface, DTOs, `OnPremHostingAdapter`, and the factory. Add `hostingProvider` to config defaulting to `onprem`. Nothing consumes it yet. Build + tests stay green.
 2. ✅ **Route the on-prem path through the adapter.** `operator.ts` and the deploy builders consume `HostingAdapter` for SA identity, state volume, and ingress; with the default adapter this reproduces the PVC/local behaviour exactly. Operator unit tests assert against the adapter output.
 3. ✅ **Build the GCP adapter.** `GcpHostingAdapter` + `GcpBucketClient` (in-operator bucket provisioning) + `gcp-hosting.types.ts` + `values/gcp.yaml`. The Crossplane `BucketClaim` path and `crossplaneEnabled` are deleted.
-4. ✅ **Split infra folders.** `terraform/core/` carved out; GCP modules under `cloud/gcp/`; `crossplane` module dropped from `core`. Installers (`libs/k8s-platform/install.sh`, `gke-deploy.sh`) call `core` for on-prem and `cloud/gcp` for GCP.
+4. ✅ **Split infra folders.** `terraform/core/` carved out; GCP modules under `cloud/gcp/`; `crossplane` module dropped from `core`. The deploy scripts' `--provision gke` (via `provision.sh`) calls `cloud/gcp`; on-prem/k3s uses `core`.
 5. ✅ **Remove legacy flags + docs.** `storageProvider`/`csiDriver`/`gcpProject`/`crossplaneEnabled` deleted; README + `plan.md` describe on-prem-default + cloud-override.
 6. ⬜ **(Future) Azure/AWS adapters.** New folders only; no core change required — the proof the seam is correct.
 

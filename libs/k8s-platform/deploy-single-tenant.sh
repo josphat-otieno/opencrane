@@ -42,6 +42,8 @@ ORG_OWNER_EMAIL=""
 ORG_TIER="shared"
 BASE_DOMAIN="${OPENCRANE_BASE_DOMAIN:-}"
 PASSTHROUGH=()
+PROVISION=""        # optional: local|gke|vps — provision a cluster first (else use current context)
+PROVISION_ARGS=()   # provisioner-specific flags (--project-id/--region/--cluster/--yes)
 
 err() { echo -e "\033[0;31m[single-tenant]\033[0m $1" >&2; }
 log() { echo -e "\033[0;32m[single-tenant]\033[0m $1"; }
@@ -55,6 +57,9 @@ while [[ $# -gt 0 ]]; do
     --org-owner-email)   ORG_OWNER_EMAIL="$2"; shift 2 ;;
     --org-tier)          ORG_TIER="$2"; shift 2 ;;
     --base-domain)       BASE_DOMAIN="$2"; shift 2 ;;
+    --provision)         PROVISION="$2"; shift 2 ;;
+    --project-id|--region|--cluster) PROVISION_ARGS+=("$1" "$2"); shift 2 ;;
+    --yes)               PROVISION_ARGS+=("$1"); shift ;;
     -h|--help)           grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *)                   PASSTHROUGH+=("$1"); shift ;;
   esac
@@ -63,6 +68,16 @@ done
 [[ -n "$BASE_DOMAIN" ]]     || { err "--base-domain is required (the org is served at <org-name>.<base-domain>)."; exit 1; }
 [[ -n "$ORG_NAME" ]]        || { err "--org-name is required (the seeded organisation name)."; exit 1; }
 [[ -n "$ORG_OWNER_EMAIL" ]] || { err "--org-owner-email is required (the org's single owner)."; exit 1; }
+
+# Optionally provision a cluster first (--provision local|gke|vps), then run BOTH passes onto it.
+# Without --provision, deploy onto the current kubectl context. PROVISION_DEPLOY_SET (e.g. k3s's
+# traefik) rides on PASSTHROUGH so it reaches both the fleet and silo passes.
+if [[ -n "$PROVISION" ]]; then
+  # shellcheck source=/dev/null
+  source "$SCRIPT_DIR/provision.sh"
+  _provision_cluster "$PROVISION" ${PROVISION_ARGS[@]+"${PROVISION_ARGS[@]}"}
+  [[ ${#PROVISION_DEPLOY_SET[@]} -gt 0 ]] && PASSTHROUGH+=("${PROVISION_DEPLOY_SET[@]}")
+fi
 
 # --- Pass 1: the FLEET chart — bootstrap + fleet-manager, self-service OFF, ONE org seeded. ---
 log "Pass 1/2: fleet chart (cluster bootstrap + fleet-manager; self-service OFF; seeding org '$ORG_NAME')"

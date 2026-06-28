@@ -154,7 +154,7 @@ Legend
 | Silo operator | `apps/clustertenant-operator/` | Per-silo control plane: headless Express REST API (`/api/v1`) + in-silo controllers; emits `openapi.json` at build time |
 | Fleet chart | `apps/fleet-platform/` | Helm chart `opencrane-fleet` — fleet install: fleet-manager, CRDs, cert-manager issuer, external-secrets, monitoring, network policies. Deploy with `apps/fleet-platform/deploy.sh`. |
 | Silo chart | `apps/clustertenant-platform/` | Helm chart `opencrane-silo` — per-org silo: silo operator + planes (Cognee, LiteLLM, Obot, skill registry) + Langfuse + gateway. Deploy with `apps/clustertenant-platform/deploy.sh`. |
-| Platform library | `libs/k8s-platform/` | Helm library chart (shared named templates), shared deploy engine (`k8s-deploy.sh`, `gke-deploy.sh`, `configure-oidc.sh`), Terraform, migrations, tests, and `deploy-single-tenant.sh` (fleet + one silo in one pass) |
+| Platform library | `libs/k8s-platform/` | Helm library chart (shared named templates), shared deploy engine (`k8s-deploy.sh`, `configure-oidc.sh`) + cluster provisioning (`provision.sh`, behind `--provision`), Terraform, migrations, tests, and `deploy-single-tenant.sh` |
 | CLI | `apps/cli/` | `oc` binary — full administrative surface over the control-plane API |
 | Contracts | `libs/contracts/` | Generated TypeScript client + DTOs from `openapi.json`; consumed by CLI and external surfaces |
 | Docker | `docker/` | Container images for tenant pods, fleet operator, and silo operator |
@@ -199,40 +199,37 @@ pnpm test
 
 ### Local Deployment
 
-```bash
-# Default local stack: operator + control-plane + LiteLLM + in-cluster PostgreSQL
-./libs/k8s-platform/install.sh local
+The deploy scripts can provision the cluster too — `--provision local|gke|vps` creates and targets a cluster before installing (otherwise they deploy onto the current kubectl context).
 
-# Strict local stack: same core workloads, but with prod-style Helm validation
-# and an explicit LiteLLM master-key Secret matching the GCP control flow.
-./libs/k8s-platform/install.sh local --profile strict
+```bash
+# One command: provision a local k3d cluster AND install the fleet onto it.
+apps/fleet-platform/deploy.sh --provision local --base-domain opencrane.local
+
+# Add an organisation (silo) once the fleet is up:
+apps/clustertenant-platform/deploy.sh --cluster-tenant acme --base-domain opencrane.local
 ```
 
-The `strict` profile does not emulate GCP-only capabilities such as Workload Identity, GCS bucket provisioning, External Secrets, GCE ingress, or Cloud DNS. It is intended to validate the same core application wiring and stricter production-style chart inputs locally.
+For fast dev iteration with locally-built images, the `libs/k8s-platform/tests/k3d-local.sh` harness (k3d + local images; `LOCAL_PROFILE=strict` for prod-style Helm validation) remains available. The `strict` profile does not emulate GCP-only capabilities (Workload Identity, GCS, External Secrets, GCE ingress, Cloud DNS) — it validates the same core wiring with stricter chart inputs locally.
 
 ### GCP Deployment
 
 ```bash
-# 1. Provision infrastructure
-cd libs/k8s-platform/terraform/environments/dev
-cp terraform.tfvars.example terraform.tfvars  # edit with your GCP project
-terraform init && terraform apply
+# One command: provision a GKE cluster (Terraform, internally) AND install the fleet.
+apps/fleet-platform/deploy.sh --provision gke \
+  --project-id my-project --base-domain opencrane.ai
 
-# 2a. Install the fleet (once per cluster)
-apps/fleet-platform/deploy.sh \
-  --project my-project \
-  --domain opencrane.ai
-
-# 2b. Install a silo for an organisation (once per org)
+# Add a silo for an organisation (once per org)
 apps/clustertenant-platform/deploy.sh \
-  --cluster-tenant acme \
-  --domain opencrane.ai
+  --cluster-tenant acme --base-domain opencrane.ai
 
-# Or deploy fleet + a single silo in one pass
-libs/k8s-platform/deploy-single-tenant.sh \
-  --project my-project \
-  --domain opencrane.ai \
-  --cluster-tenant acme
+# Or provision + deploy the fleet AND one seeded org in a single pass
+libs/k8s-platform/deploy-single-tenant.sh --provision gke \
+  --project-id my-project --base-domain opencrane.ai \
+  --org-name acme --org-owner-email owner@acme.example
+
+# Prefer to manage infra yourself? Provision with Terraform
+# (libs/k8s-platform/terraform/environments/dev) and run the deploy scripts WITHOUT
+# --provision against the resulting cluster.
 
 # 3. Create a tenant via the oc CLI
 export OPENCRANE_URL=https://opencrane.ai

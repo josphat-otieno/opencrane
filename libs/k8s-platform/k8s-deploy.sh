@@ -7,7 +7,7 @@
 # DB migrations. Uses the published ghcr.io/opencrane images and the cluster's
 # default StorageClass — pure, provider-agnostic Kubernetes.
 #
-# This is the shared core. vps-deploy.sh and gke-deploy.sh provision a cluster
+# This is the shared core. the deploy scripts' --provision (provision.sh) provisions a cluster
 # and then call this script.
 #
 # Usage:

@@ -38,6 +38,8 @@ BASE_DOMAIN="${OPENCRANE_BASE_DOMAIN:-}"
 INGRESS_IP=""
 DNS_MANAGED_ZONE=""
 PASSTHROUGH=()
+PROVISION=""        # optional: local|gke|vps — provision a cluster first (else use current context)
+PROVISION_ARGS=()   # provisioner-specific flags (--project-id/--region/--cluster/--yes)
 
 err() { echo -e "\033[0;31m[multi-tenant]\033[0m $1" >&2; }
 
@@ -48,6 +50,9 @@ while [[ $# -gt 0 ]]; do
     --ingress-ip)        INGRESS_IP="$2"; shift 2 ;;
     --dns-managed-zone)  DNS_MANAGED_ZONE="$2"; shift 2 ;;
     --base-domain)       BASE_DOMAIN="$2"; PASSTHROUGH+=(--base-domain "$2"); shift 2 ;;
+    --provision)         PROVISION="$2"; shift 2 ;;
+    --project-id|--region|--cluster) PROVISION_ARGS+=("$1" "$2"); shift 2 ;;
+    --yes)               PROVISION_ARGS+=("$1"); shift ;;
     -h|--help)           grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *)                   PASSTHROUGH+=("$1"); shift ;;
   esac
@@ -73,6 +78,16 @@ if [[ -n "$INGRESS_IP" ]]; then
   PROFILE_SET+=(--set "ingress.externalIp=$INGRESS_IP")
 else
   PROFILE_SET+=(--auto-ingress-ip)
+fi
+
+# Optionally provision a cluster first (--provision local|gke|vps), then deploy onto it. Without
+# --provision, deploy onto the current kubectl context. Provisioning lives in the k8s-platform lib
+# (this absorbs the old install.sh / gke-deploy.sh / vps-deploy.sh).
+if [[ -n "$PROVISION" ]]; then
+  # shellcheck source=/dev/null
+  source "$SCRIPT_DIR/../../libs/k8s-platform/provision.sh"
+  _provision_cluster "$PROVISION" ${PROVISION_ARGS[@]+"${PROVISION_ARGS[@]}"}
+  [[ ${#PROVISION_DEPLOY_SET[@]} -gt 0 ]] && PROFILE_SET+=("${PROVISION_DEPLOY_SET[@]}")
 fi
 
 echo -e "\033[0;32m[multi-tenant]\033[0m Profile: multi-tenant platform on $BASE_DOMAIN (self-service orgs + billing ON)"
