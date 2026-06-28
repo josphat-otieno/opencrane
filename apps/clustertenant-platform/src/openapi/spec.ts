@@ -322,27 +322,6 @@ const ClusterTenantWriteSchema = {
   },
 };
 
-const BillingAccountSchema = {
-  type: "object" as const,
-  required: ["id", "subject", "createdAt", "updatedAt"],
-  properties: {
-    id: { type: "string", description: "Surrogate identifier." },
-    subject: { type: "string", description: "IdP-verified subject (OIDC sub) that owns this billing account." },
-    email: { type: ["string", "null"], description: "The caller's verified email at create time (for human reconciliation; not the key)." },
-    displayName: { type: ["string", "null"], description: "Optional human-readable billing name (company / individual)." },
-    createdAt: { type: "string", format: "date-time" },
-    updatedAt: { type: "string", format: "date-time" },
-  },
-};
-
-const BillingAccountWriteSchema = {
-  type: "object" as const,
-  description: "Create payload for the caller's own billing account. The subject and email come from the session (never the body); only an optional displayName is accepted.",
-  properties: {
-    displayName: { type: "string", description: "Optional human-readable billing name (company / individual)." },
-  },
-};
-
 const ClusterTenantUpdateSchema = {
   type: "object" as const,
   description: "Partial cluster-tenant update; the immutable name comes from the path. Every field is optional — only those present are changed.",
@@ -804,8 +783,6 @@ export const spec = {
       ClusterTenantResourceQuota: ClusterTenantResourceQuotaSchema,
       OrgMember: OrgMemberSchema,
       OrgMemberWrite: OrgMemberWriteSchema,
-      BillingAccount: BillingAccountSchema,
-      BillingAccountWrite: BillingAccountWriteSchema,
       Group: GroupSchema,
       Share: {
         type: "object",

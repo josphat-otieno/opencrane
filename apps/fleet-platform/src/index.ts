@@ -8,6 +8,7 @@ import express from "express";
 
 import { ___BindConsole, ___ShutdownTelemetry } from "@opencrane/observability";
 import { ___AuthMiddleware } from "@opencrane/infra-auth";
+import { _ErrorHandler } from "@opencrane/infra-http";
 
 import { _LoadFleetOperatorConfig } from "./config.js";
 import { _CreateClusterTenantOperator } from "./cluster-tenants/index.js";
@@ -15,7 +16,6 @@ import { _log as log } from "./log.js";
 import { ___CreateFleetPrismaClient } from "./infra/db/db.js";
 import { ___CreateFleetOidcAuthService } from "./infra/auth/oidc.service.js";
 import { _SeedClusterTenant } from "./infra/cluster-tenant-seed.js";
-import { _ErrorHandler } from "@opencrane/infra-http";
 import { _RegisterFleetRoutes } from "./routes.js";
 import type { PrismaClient } from "./generated/prisma/index.js";
 

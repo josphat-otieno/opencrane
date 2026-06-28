@@ -10,16 +10,7 @@ import type { OidcAuthConfig } from "./oidc-config.types.js";
 import { _ResolveIdentityClaims } from "./identity-claims.js";
 import { _ResolveOrgMembershipFacts } from "./org-membership.js";
 import type { OrgMembershipReader, OwnedOrg } from "./org-membership.js";
-import {
-  _buildCurrentUrl,
-  _buildPostLogoutRedirectUri,
-  _buildRedirectUri,
-  _destroySession,
-  _regenerateSession,
-  _sanitizeReturnTo,
-  _saveSession,
-} from "./session.js";
-import type { AuthUser } from "./session.js";
+import { _buildCurrentUrl, _buildPostLogoutRedirectUri, _buildRedirectUri, _destroySession, _regenerateSession, _sanitizeReturnTo, _saveSession, type AuthUser } from "./session.js";
 
 /** Auth mode exposed to the UI so it can decide whether login is required. */
 export type ManagerAuthMode = "development" | "oidc" | "token";
