@@ -1,0 +1,39 @@
+{{- if .Values.fleetManager.enabled }}{{- if .Values.fleetManager.migrationJob.enabled }}
+# Run Prisma migrations on EVERY install/upgrade, independent of the fleet-manager
+# pod template. The fleet-manager also carries a `db-migrate` initContainer, but an
+# initContainer only fires when the pod is (re)created — so a `helm upgrade` whose
+# fleet-manager values are unchanged never rolls the pod and never re-runs migrations.
+# That left the schema silently behind whenever the database was recreated under a
+# still-running pod (e.g. a CNPG cluster rebuild). This pre-upgrade hook closes that
+# gap: it blocks the rollout until `prisma migrate deploy` succeeds against the live
+# database, so every deploy reconciles the schema. Idempotent — a no-op when the DB is
+# already at the latest migration.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "opencrane.fullname" . }}-fleet-manager-migrate
+  labels:
+    {{- include "opencrane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: fleet-manager-migrate
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ .Values.fleetManager.migrationJob.backoffLimit }}
+  template:
+    metadata:
+      labels:
+        {{- include "opencrane.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: fleet-manager-migrate
+    spec:
+      serviceAccountName: {{ include "opencrane.fullname" . }}-fleet-manager
+      restartPolicy: Never
+      containers:
+        - name: db-migrate
+          image: "{{ .Values.fleetManager.image.repository }}:{{ .Values.fleetManager.image.tag }}"
+          imagePullPolicy: {{ .Values.fleetManager.image.pullPolicy }}
+          command: ["node", "apps/fleet-operator/dist/scripts/migrate.js"]
+          env:
+            {{- include "opencrane.fleetManagerDatabaseEnv" . | nindent 12 }}
+{{- end }}{{- end }}

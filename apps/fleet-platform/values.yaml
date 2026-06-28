@@ -135,6 +135,13 @@ fleetManager:
     existingSecret: ""
     url: ""
     secretKey: DATABASE_URL
+  # -- Prisma migration Helm hook. Runs `prisma migrate deploy` as a
+  #    pre-install/pre-upgrade Job so EVERY deploy reconciles the fleet registry
+  #    schema, even when the fleet-manager pod template is unchanged.
+  migrationJob:
+    enabled: true
+    # -- Retries before the migration hook is considered failed (fails the deploy).
+    backoffLimit: 3
   # -- OIDC human-login for the FLEET plane. This is the fleet's OWN Zitadel project with
   #    fleet-level roles (billing identity + platform operator) — SEPARATE from each silo's
   #    per-org OIDC (clustertenantManager.oidc). Rendered into fleet-manager only when

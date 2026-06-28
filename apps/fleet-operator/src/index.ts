@@ -16,6 +16,7 @@ import { _log as log } from "./log.js";
 import { ___CreateFleetPrismaClient } from "./infra/db/db.js";
 import { ___CreateFleetOidcAuthService } from "./infra/auth/oidc.service.js";
 import { _SeedClusterTenant } from "./infra/cluster-tenant-seed.js";
+import { ___FleetAuthRouter } from "./infra/auth/auth.router.js";
 import { _RegisterFleetRoutes } from "./routes.js";
 import type { PrismaClient } from "./generated/prisma/index.js";
 
@@ -63,12 +64,15 @@ async function main(): Promise<void>
   app.set("trust proxy", true);
   app.use(...authService.createSessionMiddleware());
   app.use(express.json());
+  // Browser OIDC login flow + session introspection. Mounted BEFORE ___AuthMiddleware so the
+  // login routes are reachable without a valid session — no bypass hack required.
+  app.use("/api/v1/auth", ___FleetAuthRouter(authService));
   // No DB access-token reader: the fleet registry has no AccessToken model, so auth is OIDC
-  // session or the env-var token only. The middleware lets /healthz + /api/v1/auth through.
+  // session or the env-var token only.
   app.use(___AuthMiddleware());
   const fleetCustomApi = kc.makeApiClient(k8s.CustomObjectsApi);
   const fleetCoreApi = kc.makeApiClient(k8s.CoreV1Api);
-  _RegisterFleetRoutes(app, prisma, fleetCustomApi, fleetCoreApi, authService);
+  _RegisterFleetRoutes(app, prisma, fleetCustomApi, fleetCoreApi);
   // Global error handler — registered AFTER routes so route errors (incl. the authz gates'
   // `.catch(next)`) are structured-logged + returned as the standard envelope, not Express's
   // unlogged default 500.

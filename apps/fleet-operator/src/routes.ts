@@ -5,8 +5,6 @@ import { _CheckDbHealth, _OpenapiRouter } from "@opencrane/infra-http";
 
 import type { PrismaClient } from "./generated/prisma/index.js";
 import { spec } from "./openapi/spec.js";
-import { ___FleetAuthRouter } from "./infra/auth/auth.router.js";
-import type { FleetOidcAuthService } from "./infra/auth/oidc.service.js";
 import { _BuildClusterTenantProvisionerRegistry } from "./core/cluster-tenants/registry.js";
 import { _BuildZitadelManagementClient } from "./infra/zitadel/zitadel-client.js";
 import { _BuildZitadelKeySecretStore } from "./infra/zitadel/key-secret-store.js";
@@ -41,11 +39,10 @@ function _featureEnabled(name: string): boolean
  * org membership, platform DNS, and Zitadel administration — all against the fleet registry DB
  * and the one Zitadel instance the fleet-manager (sole IAM_OWNER holder) provisions orgs on.
  *
- * @param app         - Express application to register routes on.
- * @param prisma      - Fleet registry Prisma client used by the route handlers.
- * @param customApi   - Kubernetes Custom Objects API (ClusterTenant CR bridge, platform DNS).
- * @param coreApi     - Kubernetes Core V1 API (platform DNS creds Secret, Zitadel key Secret).
- * @param authService - The fleet OIDC auth service backing the auth router + session gates.
+ * @param app       - Express application to register routes on.
+ * @param prisma    - Fleet registry Prisma client used by the route handlers.
+ * @param customApi - Kubernetes Custom Objects API (ClusterTenant CR bridge, platform DNS).
+ * @param coreApi   - Kubernetes Core V1 API (platform DNS creds Secret, Zitadel key Secret).
  * @returns The Express application with routes registered.
  */
 export function _RegisterFleetRoutes(
@@ -53,13 +50,8 @@ export function _RegisterFleetRoutes(
   prisma: PrismaClient,
   customApi: k8s.CustomObjectsApi,
   coreApi: k8s.CoreV1Api,
-  authService: FleetOidcAuthService,
 ): Express
 {
-  // Browser OIDC login flow + session introspection. Mounted under /api/v1/auth, which the
-  // auth middleware lets through unauthenticated so login itself is reachable.
-  app.use("/api/v1/auth", ___FleetAuthRouter(authService));
-
   // ClusterTenant lifecycle + Zitadel admin + platform DNS — the super-admin / org-management
   // surface. Gated so a fleet install can be stood up without it; Zitadel is a hard dependency
   // of this path, built (and only built) here so an install without it never requires Zitadel.

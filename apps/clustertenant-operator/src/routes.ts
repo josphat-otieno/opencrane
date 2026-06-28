@@ -39,6 +39,7 @@ import { companyDocsRouter } from "./routes/company-docs.js";
 import { awarenessRolloutRouter } from "./routes/awareness-rollout.js";
 import { awarenessParticipationRouter } from "./routes/awareness-participation.js";
 import { sessionsRouter } from "./routes/sessions.js";
+import { spendRouter } from "./routes/spend.js";
 import { _CheckDbHealth, _OpenapiRouter } from "@opencrane/infra-http";
 import { spec } from "./openapi/spec.js";
 
@@ -121,6 +122,7 @@ export function _RegisterRoutes(app: Express, prisma: PrismaClient, customApi: k
   app.use("/api/v1/awareness/rollout", awarenessRolloutRouter(prisma));
   app.use("/api/v1/awareness/participation", awarenessParticipationRouter(prisma));
   app.use("/api/v1/sessions", sessionsRouter(prisma));
+  app.use("/api/v1/spend", spendRouter(prisma));
   app.use("/api/v1/access-tokens", accessTokensRouter(prisma));
   app.use("/api/v1/providers/keys", providerKeysRouter(prisma));
   app.use("/api/v1/providers/credentials", providerCredentialsRouter(prisma));
