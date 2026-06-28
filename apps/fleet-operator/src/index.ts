@@ -61,7 +61,7 @@ async function main(): Promise<void>
   // Trust the ingress proxy's X-Forwarded-* so cookie `secure` + host-derived redirect URIs
   // resolve correctly behind the load balancer.
   app.set("trust proxy", true);
-  app.use(authService.createSessionMiddleware());
+  app.use(...authService.createSessionMiddleware());
   app.use(express.json());
   // No DB access-token reader: the fleet registry has no AccessToken model, so auth is OIDC
   // session or the env-var token only. The middleware lets /healthz + /api/v1/auth through.

@@ -103,31 +103,86 @@ export abstract class OidcAuthServiceBase
     return this.config.enabled;
   }
 
-  /** Build the Express session middleware required by the OIDC login flow. */
-  createSessionMiddleware(): RequestHandler
+  /**
+   * Build the Express session + CSRF middleware pair required by the OIDC login flow.
+   *
+   * Returns two handlers that must be mounted together (spread into `app.use`):
+   *   1. `express-session` — establishes the cookie-backed session.
+   *   2. CSRF origin check — on state-changing requests from a session-authenticated caller,
+   *      validates the `Origin` header (or `Referer` when `Origin` is absent) against the
+   *      request's own host. Exempt: safe methods (GET/HEAD/OPTIONS), unauthenticated requests
+   *      (no session `authUser` — token-auth and public routes carry no CSRF surface).
+   */
+  createSessionMiddleware(): RequestHandler[]
   {
     if (!this.config.enabled)
     {
-      return function _skipSession(req, res, next)
-      {
-        next();
-      };
+      return [function _skipSession(req, res, next) { next(); }];
     }
 
-    return session({
-      name: this.config.cookieName,
-      secret: this.config.sessionSecret,
-      resave: false,
-      saveUninitialized: false,
-      proxy: true,
-      unset: "destroy",
-      cookie: {
-        httpOnly: true,
-        sameSite: "lax",
-        secure: this.config.cookieSecure,
-        maxAge: this.config.sessionMaxAgeMs,
-      },
-    });
+    return [
+      session({
+        name: this.config.cookieName,
+        secret: this.config.sessionSecret,
+        resave: false,
+        saveUninitialized: false,
+        proxy: true,
+        unset: "destroy",
+        cookie: {
+          httpOnly: true,
+          sameSite: "lax",
+          secure: this.config.cookieSecure,
+          maxAge: this.config.sessionMaxAgeMs,
+        },
+      }),
+      this._csrfOriginCheck(),
+    ];
+  }
+
+  /** CSRF protection via Origin / Referer header validation for session-authenticated mutations. */
+  private _csrfOriginCheck(): RequestHandler
+  {
+    const _SAFE = new Set(["GET", "HEAD", "OPTIONS"]);
+    return function _csrfCheck(req, res, next)
+    {
+      if (_SAFE.has(req.method) || !req.session?.authUser)
+      {
+        return void next();
+      }
+
+      const expected = `${req.protocol}://${req.hostname}`;
+      const origin = req.headers.origin;
+      const referer = req.headers.referer;
+
+      if (origin !== undefined)
+      {
+        if (origin !== expected)
+        {
+          res.status(403).json({ error: "CSRF check failed.", code: "CSRF_ORIGIN_MISMATCH" });
+          return;
+        }
+        return void next();
+      }
+
+      if (referer !== undefined)
+      {
+        let refOrigin: string;
+        try { refOrigin = new URL(referer).origin; }
+        catch
+        {
+          res.status(403).json({ error: "CSRF check failed.", code: "CSRF_INVALID_REFERER" });
+          return;
+        }
+        if (refOrigin !== expected)
+        {
+          res.status(403).json({ error: "CSRF check failed.", code: "CSRF_REFERER_MISMATCH" });
+          return;
+        }
+      }
+      // Neither Origin nor Referer: non-browser API client or strict same-origin fetch.
+      // SameSite=lax already blocks cross-site cookie delivery for these requests.
+      next();
+    };
   }
 
   /**

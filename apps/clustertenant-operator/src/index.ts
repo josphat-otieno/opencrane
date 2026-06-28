@@ -66,7 +66,7 @@ export function createApp(prisma: PrismaClient, customApi: k8s.CustomObjectsApi,
   // ___RequestContext() (mounted above) always seeds the id; the ?? is only a
   // type-level fallback so genReqId never returns undefined.
   app.use(pinoHttp({ logger: log, genReqId: function _genReqId() { return ___GetContext()?.requestId ?? randomUUID(); } }));
-  app.use(authService.createSessionMiddleware());
+  app.use(...authService.createSessionMiddleware());
 
   // Auth router is mounted before the auth middleware so its endpoints are
   // inherently public — the device-flow activate handler enforces its own
