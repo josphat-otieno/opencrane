@@ -90,8 +90,11 @@ _require_docker_healthy
 _require_free_space
 
 # 2. Build local images so e2e does not depend on pre-published GHCR tags.
-echo "[e2e] Building operator image"
+echo "[e2e] Building fleet-operator image"
 docker build -f "$ROOT_DIR/apps/fleet-operator/deploy/Dockerfile" -t opencrane/operator:e2e "$ROOT_DIR"
+
+echo "[e2e] Building clustertenant-operator (silo) image"
+docker build -f "$ROOT_DIR/apps/clustertenant-operator/deploy/Dockerfile" -t opencrane/clustertenant-manager:e2e "$ROOT_DIR"
 
 echo "[e2e] Building tenant image"
 docker build -f "$ROOT_DIR/apps/tenant/deploy/Dockerfile" -t opencrane/tenant:e2e "$ROOT_DIR"
@@ -108,6 +111,7 @@ docker pull ghcr.io/cloudnative-pg/postgresql:16
 # 4b. Import images into the k3d cluster runtime.
 echo "[e2e] Importing images into k3d"
 k3d image import opencrane/operator:e2e --cluster "$CLUSTER_NAME"
+k3d image import opencrane/clustertenant-manager:e2e --cluster "$CLUSTER_NAME"
 k3d image import opencrane/tenant:e2e --cluster "$CLUSTER_NAME"
 k3d image import ghcr.io/cloudnative-pg/postgresql:16 --cluster "$CLUSTER_NAME"
 
@@ -154,6 +158,10 @@ spec:
       postInitApplicationSQL:
         - CREATE DATABASE obot OWNER opencrane;
         - CREATE DATABASE litellm OWNER opencrane;
+        # The silo (clustertenant) control-plane is a SEPARATE Prisma client from the fleet
+        # registry — they cannot share a database (each owns its own _prisma_migrations), so
+        # the silo gets its own DB on the same server.
+        - CREATE DATABASE silo OWNER opencrane;
 EOF
 
 echo "[e2e] Waiting for Control-Plane Database Engine to stabilize..."
@@ -163,6 +171,13 @@ kubectl wait --for=condition=Ready cluster/"${DB_RELEASE_NAME}" -n "$NAMESPACE" 
 kubectl create secret generic "$DB_SECRET_NAME" \
   -n "$NAMESPACE" \
   --from-literal=DATABASE_URL="postgresql://opencrane:${DB_PASSWORD}@${DB_RELEASE_NAME}-rw.${NAMESPACE}.svc.cluster.local:5432/opencrane" \
+  --dry-run=client \
+  -o yaml | kubectl apply -f -
+
+# Silo control-plane DB secret (separate database; see CREATE DATABASE silo above).
+kubectl create secret generic "opencrane-silo-db" \
+  -n "$NAMESPACE" \
+  --from-literal=DATABASE_URL="postgresql://opencrane:${DB_PASSWORD}@${DB_RELEASE_NAME}-rw.${NAMESPACE}.svc.cluster.local:5432/silo" \
   --dry-run=client \
   -o yaml | kubectl apply -f -
 
@@ -198,14 +213,26 @@ echo "[e2e] Installing Helm release '$RELEASE_NAME'"
 helm upgrade --install "$RELEASE_NAME" "$ROOT_DIR/apps/fleet-platform" \
   --namespace "$NAMESPACE" \
   --create-namespace \
-  --values "$ROOT_DIR/libs/k8s-platform/tests/values-k3d-e2e.yaml" \
-  --set "litellm.existingDatabaseSecret=opencrane-litellm-db"
+  --values "$ROOT_DIR/libs/k8s-platform/tests/values-k3d-e2e.yaml"
 
-# Wait for operator deployment (skip helm --wait because local-path PVCs don't bind
-# until a pod mounts them, creating a chicken-and-egg with Helm's readiness checks).
+# Wait for the fleet-manager (skip helm --wait because local-path PVCs don't bind until a pod
+# mounts them, creating a chicken-and-egg with Helm's readiness checks).
 kubectl rollout status deployment/opencrane-fleet-manager -n "$NAMESPACE" --timeout=120s
 
-# Wait for LiteLLM when cost routing is enabled by chart values.
+# 6b. Install the SILO chart (clustertenant-manager + the in-silo TenantOperator + planes) into the
+#     SAME namespace for this single-namespace smoke test. The Tenant CR below is reconciled by the
+#     silo's TenantOperator — the fleet chart has none (it stops at ClusterTenant lifecycle). The
+#     two charts' resource sets are disjoint, so co-installing them in one namespace is safe.
+echo "[e2e] Installing silo release 'opencrane-silo'"
+helm upgrade --install opencrane-silo "$ROOT_DIR/apps/clustertenant-platform" \
+  --namespace "$NAMESPACE" \
+  --values "$ROOT_DIR/libs/k8s-platform/tests/values-k3d-e2e.yaml" \
+  --set "clustertenantManager.database.existingSecret=opencrane-silo-db" \
+  --set "litellm.existingDatabaseSecret=opencrane-litellm-db"
+
+kubectl rollout status deployment/opencrane-clustertenant-manager -n "$NAMESPACE" --timeout=180s
+
+# Wait for LiteLLM (a silo plane) when cost routing is enabled by chart values.
 if kubectl get deployment/opencrane-litellm -n "$NAMESPACE" >/dev/null 2>&1; then
   kubectl rollout status deployment/opencrane-litellm -n "$NAMESPACE" --timeout=240s
 fi
@@ -246,4 +273,4 @@ if [[ "$INGRESS_HOST" != "opencrane.local" ]]; then
   exit 1
 fi
 
-echo "[e2e] PASS: Helm install + Tenant reconcile smoke test succeeded"
+echo "[e2e] PASS: fleet + silo charts install; silo TenantOperator reconciles the Tenant CR"

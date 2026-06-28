@@ -180,60 +180,40 @@ resource "helm_release" "opencrane"
   create_namespace = true
   # Chart split (Option 2): the once-per-cluster FLEET chart (bootstrap + fleet-manager).
   # Per-org SILO charts deploy dynamically out-of-band, not as a static terraform release.
-  # NOTE: the `set` blocks below use pre-rename keys (operator.* etc.) and need updating to
-  # the fleet chart's keys — tracked separately.
   chart            = "${path.module}/../../../../../apps/fleet-platform"
   wait             = true
   timeout          = 600
 
-  # Operator image
+  # Fleet-manager image (this release is the FLEET chart, chart-split / rename). The per-silo
+  # clustertenant-manager image is set by the silo chart's own deploy, not here.
   set
   {
-    name  = "operator.image.repository"
-    value = "${var.registry_url}/operator"
+    name  = "fleetManager.image.repository"
+    value = "${var.registry_url}/fleet-manager"
   }
 
   set
   {
-    name  = "operator.image.tag"
+    name  = "fleetManager.image.tag"
     value = var.image_tag
   }
 
   set
   {
-    name  = "operator.image.pullPolicy"
+    name  = "fleetManager.image.pullPolicy"
     value = "Always"
   }
 
-  # Control-plane image
+  # Fleet registry database — use the in-cluster secret.
   set
   {
-    name  = "controlPlane.image.repository"
-    value = "${var.registry_url}/control-plane"
-  }
-
-  set
-  {
-    name  = "controlPlane.image.tag"
-    value = var.image_tag
-  }
-
-  set
-  {
-    name  = "controlPlane.image.pullPolicy"
-    value = "Always"
-  }
-
-  # Database — use the in-cluster secret
-  set
-  {
-    name  = "controlPlane.database.existingSecret"
+    name  = "fleetManager.database.existingSecret"
     value = kubernetes_secret.database_url.metadata[0].name
   }
 
   set
   {
-    name  = "controlPlane.database.secretKey"
+    name  = "fleetManager.database.secretKey"
     value = "DATABASE_URL"
   }
 

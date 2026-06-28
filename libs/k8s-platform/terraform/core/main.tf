@@ -68,23 +68,17 @@ resource "helm_release" "opencrane"
   # Chart split (Option 2): terraform provisions the cluster + the once-per-cluster FLEET chart
   # (bootstrap + fleet-manager). Per-org SILO charts (apps/clustertenant-platform) are deployed
   # DYNAMICALLY out-of-band (deploy-silo.sh today; the fleet operator auto-stamps them in S2),
-  # so they are intentionally NOT a static terraform release. NOTE: the `set` blocks below still
-  # use pre-rename value keys (operator.* / control-plane.*) and need updating to the fleet
-  # chart's keys (fleetManager.* etc.) — tracked separately.
+  # so they are intentionally NOT a static terraform release.
   chart      = "${path.module}/../../../../apps/fleet-platform"
   namespace  = kubernetes_namespace.opencrane.metadata[0].name
   wait       = true
   timeout    = 600
 
+  # This release is the FLEET chart (chart-split / rename); the per-silo image is set by the
+  # silo chart's own deploy, not here.
   set
   {
-    name  = "operator.image.tag"
-    value = var.image_tag
-  }
-
-  set
-  {
-    name  = "controlPlane.image.tag"
+    name  = "fleetManager.image.tag"
     value = var.image_tag
   }
 
