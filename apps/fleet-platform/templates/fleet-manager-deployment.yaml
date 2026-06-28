@@ -19,6 +19,21 @@ spec:
         app.kubernetes.io/component: fleet-manager
     spec:
       serviceAccountName: {{ include "opencrane.fullname" . }}-fleet-manager
+      {{- $fleetDb := .Values.fleetManager.database | default dict }}
+      {{- if or $fleetDb.existingSecret $fleetDb.url }}
+      initContainers:
+        # Apply pending Prisma migrations to the FLEET REGISTRY DB before the server starts, so the
+        # fleet-manager never boots against an un-migrated registry (ClusterTenant/BillingAccount/
+        # OrgMembership). Same image as the server → schema/migrations match the binary. Idempotent
+        # (a no-op when already current). Only rendered when a fleet DB is wired (existingSecret/url);
+        # a DB-less fleet has no registry to migrate. Mirrors the silo's db-migrate initContainer.
+        - name: db-migrate
+          image: "{{ .Values.fleetManager.image.repository }}:{{ .Values.fleetManager.image.tag }}"
+          imagePullPolicy: {{ .Values.fleetManager.image.pullPolicy }}
+          command: ["node", "apps/fleet-operator/dist/scripts/migrate.js"]
+          env:
+            {{- include "opencrane.fleetManagerDatabaseEnv" . | nindent 12 }}
+      {{- end }}
       containers:
         - name: operator
           image: "{{ .Values.fleetManager.image.repository }}:{{ .Values.fleetManager.image.tag }}"

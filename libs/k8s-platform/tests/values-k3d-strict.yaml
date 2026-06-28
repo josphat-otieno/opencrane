@@ -1,16 +1,17 @@
 global:
   environment: prod
 
-operator:
+# Fleet chart image (fleet-manager = ClusterTenantOperator + fleet API).
+fleetManager:
   image:
     repository: opencrane/operator
     tag: local
     pullPolicy: IfNotPresent
-  watchNamespace: opencrane-system
 
-controlPlane:
+# Silo chart image (clustertenant-manager = in-silo controllers incl. the TenantOperator + API).
+clustertenantManager:
   image:
-    repository: opencrane/control-plane
+    repository: opencrane/clustertenant-manager
     tag: local
     pullPolicy: IfNotPresent
   replicas: 1

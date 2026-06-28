@@ -109,7 +109,7 @@ echo "[local] Building tenant image"
 docker build -f "$ROOT_DIR/apps/tenant/deploy/Dockerfile" -t opencrane/tenant:local "$ROOT_DIR"
 
 echo "[local] Building control-plane image"
-docker build -f "$ROOT_DIR/apps/clustertenant-operator/deploy/Dockerfile" -t opencrane/control-plane:local "$ROOT_DIR"
+docker build -f "$ROOT_DIR/apps/clustertenant-operator/deploy/Dockerfile" -t opencrane/clustertenant-manager:local "$ROOT_DIR"
 
 # 3. Create a fresh cluster for a deterministic full-stack install.
 echo "[local] Recreating k3d cluster '$CLUSTER_NAME'"
@@ -124,7 +124,7 @@ docker pull ghcr.io/cloudnative-pg/postgresql:16
 echo "[local] Importing images into k3d"
 k3d image import opencrane/operator:local --cluster "$CLUSTER_NAME"
 k3d image import opencrane/tenant:local --cluster "$CLUSTER_NAME"
-k3d image import opencrane/control-plane:local --cluster "$CLUSTER_NAME"
+k3d image import opencrane/clustertenant-manager:local --cluster "$CLUSTER_NAME"
 k3d image import ghcr.io/cloudnative-pg/postgresql:16 --cluster "$CLUSTER_NAME"
 
 echo "[local] Using profile '$LOCAL_PROFILE' with values '$VALUES_FILE'"
@@ -172,6 +172,9 @@ spec:
       postInitApplicationSQL:
         - CREATE DATABASE obot OWNER opencrane;
         - CREATE DATABASE litellm OWNER opencrane;
+        # The silo (clustertenant) control-plane is a SEPARATE Prisma client from the fleet
+        # registry — they cannot share a database (each owns its own _prisma_migrations).
+        - CREATE DATABASE silo OWNER opencrane;
 EOF
 
 echo "[local] Waiting for Control-Plane Database Engine to stabilize..."
@@ -181,6 +184,13 @@ kubectl wait --for=condition=Ready cluster/"${DB_RELEASE_NAME}" -n "$NAMESPACE" 
 kubectl create secret generic "$DB_SECRET_NAME" \
   -n "$NAMESPACE" \
   --from-literal=DATABASE_URL="postgresql://opencrane:${DB_PASSWORD}@${DB_RELEASE_NAME}-rw.${NAMESPACE}.svc.cluster.local:5432/opencrane" \
+  --dry-run=client \
+  -o yaml | kubectl apply -f -
+
+# Silo control-plane DB secret (separate database; see CREATE DATABASE silo above).
+kubectl create secret generic "opencrane-silo-db" \
+  -n "$NAMESPACE" \
+  --from-literal=DATABASE_URL="postgresql://opencrane:${DB_PASSWORD}@${DB_RELEASE_NAME}-rw.${NAMESPACE}.svc.cluster.local:5432/silo" \
   --dry-run=client \
   -o yaml | kubectl apply -f -
 
@@ -218,20 +228,20 @@ if grep -A 5 "certManager:" "$VALUES_FILE" 2>/dev/null | grep -q "enabled: true"
     --wait
 fi
 
-# 6. Install the OpenCrane chart with local-strict overrides wired to the in-cluster database.
-echo "[local] Installing Helm release '$RELEASE_NAME'"
+# 6. Install the FLEET chart (fleet-manager + cluster bootstrap) wired to the in-cluster registry DB.
+echo "[local] Installing fleet release '$RELEASE_NAME'"
 helm_args=(
   upgrade
   --install
   "$RELEASE_NAME"
-  "$ROOT_DIR/apps/fleet-platform"  # TODO(chart-split): also cover apps/clustertenant-platform
+  "$ROOT_DIR/apps/fleet-platform"
   --namespace
   "$NAMESPACE"
   --create-namespace
   --values
   "$VALUES_FILE"
   --set
-  "controlPlane.database.existingSecret=$DB_SECRET_NAME"
+  "fleetManager.database.existingSecret=$DB_SECRET_NAME"
   --set
   "litellm.existingDatabaseSecret=opencrane-litellm-db"
 )
@@ -246,43 +256,39 @@ fi
 # so a default local install grants operator to nobody (fail-closed). Set via the
 # OPENCRANE_PLATFORM_OPERATOR_SEED_EMAIL env (e.g. from the wizard).
 if [[ -n "${OPENCRANE_PLATFORM_OPERATOR_SEED_EMAIL:-}" ]]; then
-  helm_args+=(--set-string "controlPlane.oidc.platformOperatorSeedEmail=${OPENCRANE_PLATFORM_OPERATOR_SEED_EMAIL}")
+  helm_args+=(--set-string "fleetManager.oidc.platformOperatorSeedEmail=${OPENCRANE_PLATFORM_OPERATOR_SEED_EMAIL}")
   echo "[local] Seeding platform operator (verified OIDC email match) for this cluster"
 fi
 
 helm "${helm_args[@]}"
 
-# 7. Run schema migrations so the control-plane and LiteLLM share an initialized database.
-echo "[local] Running Prisma migrations"
-cat <<EOF | kubectl apply -f -
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: opencrane-db-migrate
-  namespace: ${NAMESPACE}
-spec:
-  ttlSecondsAfterFinished: 300
-  backoffLimit: 3
-  template:
-    spec:
-      restartPolicy: OnFailure
-      containers:
-        - name: migrate
-          image: opencrane/control-plane:local
-          imagePullPolicy: IfNotPresent
-          command: ["npx", "prisma@6", "migrate", "deploy"]
-          workingDir: /app/apps/clustertenant-operator
-          env:
-            - name: DATABASE_URL
-              valueFrom:
-                secretKeyRef:
-                  name: ${DB_SECRET_NAME}
-                  key: DATABASE_URL
-EOF
+# 6b. Install the SILO chart (clustertenant-manager + the in-silo TenantOperator + planes) into the
+#     SAME namespace for this single-machine full stack. The two charts' resource sets are disjoint,
+#     so co-installing them in one namespace is safe; each self-migrates its own DB via its db-migrate
+#     initContainer (fleet → registry DB, silo → the separate `silo` DB) — no manual migration Job.
+echo "[local] Installing silo release 'opencrane-silo'"
+silo_args=(
+  upgrade
+  --install
+  opencrane-silo
+  "$ROOT_DIR/apps/clustertenant-platform"
+  --namespace
+  "$NAMESPACE"
+  --values
+  "$VALUES_FILE"
+  --set
+  "clustertenantManager.database.existingSecret=opencrane-silo-db"
+  --set
+  "litellm.existingDatabaseSecret=opencrane-litellm-db"
+)
+if [[ "$LOCAL_PROFILE" == "strict" ]]; then
+  silo_args+=(--set "litellm.existingSecret=$LITELLM_SECRET_NAME")
+else
+  silo_args+=(--set-string "litellm.masterKey=$LITELLM_MASTER_KEY")
+fi
+helm "${silo_args[@]}"
 
-_wait_for_job "opencrane-db-migrate"
-
-# 8. Wait for the platform workloads that depend on the database.
+# 7. Wait for the platform workloads that depend on the database.
 _wait_for_rollout "deployment/opencrane-fleet-manager"
 _wait_for_rollout "deployment/opencrane-clustertenant-manager"
 
