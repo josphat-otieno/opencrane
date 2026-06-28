@@ -3,6 +3,18 @@ dist/
 .env
 .env.*
 !.env.example
+
+# Secrets / credentials — never commit key material (it must flow via k8s existingSecret).
+# The leaked Zitadel SA key was a *.json service-account key; block that shape + common kinds.
+*.pem
+*.key
+*-key.json
+*service-account*.json
+*serviceaccount*.json
+*credentials*.json
+kubeconfig
+*.kubeconfig
+
 coverage/
 .DS_Store
 *.tsbuildinfo
