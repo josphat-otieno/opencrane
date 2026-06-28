@@ -19,6 +19,9 @@ COPY libs/contracts/src libs/contracts/src
 COPY apps/clustertenant-operator/openapi.json apps/clustertenant-operator/openapi.json
 COPY apps/fleet-operator/openapi.json apps/fleet-operator/openapi.json
 COPY apps/fleet-operator/src apps/fleet-operator/src
+# Prisma schema + migrations: `prisma generate` (in the fleet build below) needs the schema,
+# and the runtime db-migrate initContainer runs `prisma migrate deploy` over the migrations.
+COPY apps/fleet-operator/prisma apps/fleet-operator/prisma
 RUN pnpm --filter @opencrane/observability build
 RUN pnpm --filter @opencrane/contracts build
 RUN pnpm --filter @opencrane/fleet-operator build
@@ -38,6 +41,9 @@ RUN pnpm install --frozen-lockfile --filter @opencrane/observability --filter @o
 COPY --from=build /app/libs/observability/dist libs/observability/dist
 COPY --from=build /app/libs/contracts/dist libs/contracts/dist
 COPY --from=build /app/apps/fleet-operator/dist apps/fleet-operator/dist
+# Schema + migrations for the db-migrate initContainer (`node dist/scripts/migrate.js` →
+# `npx prisma migrate deploy`). The generated client itself ships inside dist/generated/prisma.
+COPY --from=build /app/apps/fleet-operator/prisma apps/fleet-operator/prisma
 
 USER node
 

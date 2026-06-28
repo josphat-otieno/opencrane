@@ -5,7 +5,7 @@
   "license": "AGPL-3.0-or-later",
   "type": "module",
   "scripts": {
-    "build": "prisma generate && tsc && tsx scripts/emit-openapi.mts",
+    "build": "prisma generate && tsc && mkdir -p dist/generated && cp -r src/generated/prisma dist/generated/prisma && tsx scripts/emit-openapi.mts",
     "emit-openapi": "tsx scripts/emit-openapi.mts",
     "db:generate": "prisma generate",
     "dev": "tsx watch src/index.ts",
@@ -22,13 +22,13 @@
     "@opencrane/observability": "workspace:*",
     "@prisma/client": "^6.0.0",
     "express": "^5.1.0",
-    "pino": "^9.6.0"
+    "pino": "^9.6.0",
+    "prisma": "^6.0.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
     "@types/node": "^22.0.0",
     "@types/supertest": "^6.0.0",
-    "prisma": "^6.0.0",
     "supertest": "^7.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
