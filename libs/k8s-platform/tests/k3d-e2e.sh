@@ -52,6 +52,26 @@ function _require_free_space()
 
 function _cleanup()
 {
+  local exit_code=$?
+
+  # On a failed run, dump cluster diagnostics BEFORE the teardown deletes the (otherwise lost)
+  # cluster — pod/job states, recent events, and each pod's describe + current/previous logs
+  # across both containers. Without this a CI failure in the deploy phase is undebuggable.
+  if [[ "$exit_code" -ne 0 ]]; then
+    echo "[e2e] ===== FAILURE (exit $exit_code): cluster diagnostics ====="
+    kubectl get pods,jobs -n "$NAMESPACE" -o wide 2>/dev/null || true
+    echo "[e2e] --- recent events ---"
+    kubectl get events -n "$NAMESPACE" --sort-by=.lastTimestamp 2>/dev/null | tail -40 || true
+    for p in $(kubectl get pods -n "$NAMESPACE" -o name 2>/dev/null); do
+      echo "[e2e] ### describe $p"
+      kubectl describe "$p" -n "$NAMESPACE" 2>/dev/null | tail -30 || true
+      echo "[e2e] ### logs $p"
+      kubectl logs "$p" -n "$NAMESPACE" --all-containers --tail=60 2>/dev/null || true
+      kubectl logs "$p" -n "$NAMESPACE" --all-containers --previous --tail=60 2>/dev/null || true
+    done
+    echo "[e2e] ===== end diagnostics ====="
+  fi
+
   if [[ "$KEEP_CLUSTER" == "1" ]]; then
     echo "[e2e] KEEP_CLUSTER=1, leaving k3d cluster '$CLUSTER_NAME' running"
     return

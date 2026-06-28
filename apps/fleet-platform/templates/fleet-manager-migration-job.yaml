@@ -27,7 +27,11 @@ spec:
         {{- include "opencrane.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: fleet-manager-migrate
     spec:
-      serviceAccountName: {{ include "opencrane.fullname" . }}-fleet-manager
+      # No serviceAccountName: this is a pre-install/pre-upgrade hook, so it runs BEFORE the
+      # chart's own ServiceAccount exists — referencing it would wedge the Job (the pod is
+      # rejected for a missing SA, the hook never completes, and `helm install` times out).
+      # The migration only needs DB network access (prisma migrate deploy), not k8s RBAC, so
+      # the namespace's default ServiceAccount is sufficient.
       restartPolicy: Never
       containers:
         - name: db-migrate
