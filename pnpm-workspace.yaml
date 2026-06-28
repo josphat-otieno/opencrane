@@ -4,6 +4,7 @@ packages:
   - libs/observability
   - libs/infra-api
   - libs/infra-auth
+  - libs/infra-http
   - apps/fleet-platform
   - apps/clustertenant-platform
   - apps/harvesting-agent

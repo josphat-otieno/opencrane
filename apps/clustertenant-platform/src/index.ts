@@ -20,7 +20,7 @@ import { ___CreateOidcAuthService } from "./infra/auth/oidc.service.js";
 import { ___CreatePrismaClient } from "./infra/db/db.js";
 import { ___AuthMiddleware } from "@opencrane/infra-auth";
 import { _TransportSecurity } from "./infra/middleware/transport-security.middleware.js";
-import { _ErrorHandler } from "./middleware/error-handler.js";
+import { _ErrorHandler } from "@opencrane/infra-http";
 
 import { _log as log } from "./log.js";
 import { _RegisterRoutes } from "./routes.js";

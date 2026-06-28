@@ -13,7 +13,6 @@ import { _RegisterInternalParticipation } from "./routes/internal/participation.
 import { mcpOperatorRouter } from "./routes/mcp-operator.js";
 import { mcpServersRouter } from "./routes/mcp-servers.js";
 import { metricsRouter } from "./routes/metrics.js";
-import { openapiRouter } from "./routes/openapi-route.js";
 import { policiesRouter } from "./routes/policies.js";
 import { prometheusMetricsRouter } from "./routes/prometheus-metrics.js";
 import { providerKeysRouter } from "./routes/provider-keys.js";
@@ -40,7 +39,8 @@ import { companyDocsRouter } from "./routes/company-docs.js";
 import { awarenessRolloutRouter } from "./routes/awareness-rollout.js";
 import { awarenessParticipationRouter } from "./routes/awareness-participation.js";
 import { sessionsRouter } from "./routes/sessions.js";
-import { _CheckDbHealth } from "./infra/db/healtcheck-db.js";
+import { _CheckDbHealth, _OpenapiRouter } from "@opencrane/infra-http";
+import { spec } from "./openapi/spec.js";
 
 /**
  * Build the optional OCI (Zot) skill-bundle store from the environment.
@@ -125,7 +125,7 @@ export function _RegisterRoutes(app: Express, prisma: PrismaClient, customApi: k
   app.use("/api/v1/providers/keys", providerKeysRouter(prisma));
   app.use("/api/v1/providers/credentials", providerCredentialsRouter(prisma));
   app.use("/api/v1/models", modelRegistryRouter(prisma));
-  app.use("/api/v1/openapi.json", openapiRouter());
+  app.use("/api/v1/openapi.json", _OpenapiRouter(spec));
   app.get("/healthz", _CheckDbHealth(prisma));
   app.use("/prom", prometheusMetricsRouter(prisma, customApi));
   return app;

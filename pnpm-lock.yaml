@@ -50,6 +50,9 @@ importers:
       '@opencrane/infra-auth':
         specifier: workspace:*
         version: link:../../libs/infra-auth
+      '@opencrane/infra-http':
+        specifier: workspace:*
+        version: link:../../libs/infra-http
       '@opencrane/observability':
         specifier: workspace:*
         version: link:../../libs/observability
@@ -127,6 +130,9 @@ importers:
       '@opencrane/infra-auth':
         specifier: workspace:*
         version: link:../../libs/infra-auth
+      '@opencrane/infra-http':
+        specifier: workspace:*
+        version: link:../../libs/infra-http
       '@opencrane/observability':
         specifier: workspace:*
         version: link:../../libs/observability
@@ -295,6 +301,34 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.15.31
+      typescript:
+        specifier: ^5.7.0
+        version: 5.8.2
+      vitest:
+        specifier: ^3.1.0
+        version: 3.2.4(@types/node@22.15.31)(jiti@2.6.1)(sass@1.97.1)(tsx@4.21.0)
+
+  libs/infra-http:
+    dependencies:
+      express:
+        specifier: ^5.1.0
+        version: 5.2.1
+      pino:
+        specifier: ^9.6.0
+        version: 9.14.0
+    devDependencies:
+      '@types/express':
+        specifier: ^5.0.0
+        version: 5.0.6
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.15.31
+      '@types/supertest':
+        specifier: ^6.0.0
+        version: 6.0.3
+      supertest:
+        specifier: ^7.0.0
+        version: 7.2.2
       typescript:
         specifier: ^5.7.0
         version: 5.8.2

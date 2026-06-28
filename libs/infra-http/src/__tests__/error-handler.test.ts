@@ -1,9 +1,8 @@
 import type { NextFunction, Request, Response } from "express";
-import { Prisma } from "@prisma/client";
 import pino from "pino";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { _ErrorHandler } from "../../middleware/error-handler.js";
+import { _ErrorHandler } from "../error-handler.js";
 
 const log = pino({ level: "silent" });
 
@@ -18,6 +17,17 @@ function _mockRes(): { res: Response; sent: { status?: number; body?: Record<str
   return { res, sent };
 }
 
+/**
+ * Fabricate a Prisma known-request error WITHOUT importing a Prisma client — the handler
+ * duck-types on `name === "PrismaClientKnownRequestError"` + `code`, which is exactly the
+ * contract both managers' divergent generated clients satisfy. Testing the contract (not the
+ * class) is what keeps the lib Prisma-free.
+ */
+function _prismaError(code: string, message: string): Error
+{
+  return Object.assign(new Error(message), { name: "PrismaClientKnownRequestError", code });
+}
+
 const req = { url: "/x", method: "POST" } as Request;
 const next = (() => {}) as NextFunction;
 
@@ -29,13 +39,20 @@ describe("_ErrorHandler", function _suite()
   {
     process.env["NODE_ENV"] = "production";
     const { res, sent } = _mockRes();
-    const err = new Prisma.PrismaClientKnownRequestError("Unique constraint failed on the fields: (`name`)", { code: "P2002", clientVersion: "test" });
+    const err = _prismaError("P2002", "Unique constraint failed on the fields: (`name`)");
 
     _ErrorHandler(log)(err, req, res, next);
 
     expect(sent.status).toBe(409);
     expect(sent.body).toEqual({ error: "A resource with these unique values already exists.", code: "CONFLICT" });
     expect(JSON.stringify(sent.body)).not.toMatch(/Unique constraint|P2002/);
+  });
+
+  it("does NOT treat a non-P2002 Prisma error as a conflict", function _otherCode()
+  {
+    const { res, sent } = _mockRes();
+    _ErrorHandler(log)(_prismaError("P2025", "record not found"), req, res, next);
+    expect(sent.status).toBe(500);
   });
 
   it("strips detail from a generic 500 in production", function _prodStrip()

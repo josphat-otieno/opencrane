@@ -15,7 +15,7 @@ import { _log as log } from "./log.js";
 import { ___CreateFleetPrismaClient } from "./infra/db/db.js";
 import { ___CreateFleetOidcAuthService } from "./infra/auth/oidc.service.js";
 import { _SeedClusterTenant } from "./infra/cluster-tenant-seed.js";
-import { _ErrorHandler } from "./middleware/error-handler.js";
+import { _ErrorHandler } from "@opencrane/infra-http";
 import { _RegisterFleetRoutes } from "./routes.js";
 import type { PrismaClient } from "./generated/prisma/index.js";
 

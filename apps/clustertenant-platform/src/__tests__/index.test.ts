@@ -4,7 +4,7 @@ import type { Express } from "express";
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import request from "supertest";
 
-import { _CheckDbHealth } from "../infra/db/healtcheck-db.js";
+import { _CheckDbHealth } from "@opencrane/infra-http";
 
 /**
  * Build a minimal Express app with a mocked database health handler.
