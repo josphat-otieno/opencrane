@@ -224,7 +224,7 @@ helm_args=(
   upgrade
   --install
   "$RELEASE_NAME"
-  "$ROOT_DIR/platform/helm"
+  "$ROOT_DIR/apps/fleet-platform"  # TODO(chart-split): also cover apps/clustertenant-platform
   --namespace
   "$NAMESPACE"
   --create-namespace

@@ -46,7 +46,7 @@
 #       [--platform-operator-seed-email you@org]   # bootstrap the FIRST operator
 #       [--session-secret <secret>]         # default: preserve existing, else generate
 #       [--context KUBECTX] [--namespace opencrane-system] [--release opencrane]
-#       [--chart platform/helm] [--dry-run]
+#       [--chart <role-chart-dir>] [--dry-run]
 #
 # Required: --issuer-url, --client-id, and a client secret (flag or env).
 # Disable OIDC again with: ./platform/configure-oidc.sh --disable [--context …]
@@ -56,7 +56,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CHART_DIR="$SCRIPT_DIR/helm"
+CHART_DIR="${OPENCRANE_CHART_DIR:-$SCRIPT_DIR/../../apps/fleet-platform}"
 
 NAMESPACE="opencrane-system"
 RELEASE="opencrane"

@@ -65,7 +65,8 @@ resource "kubernetes_namespace" "opencrane"
 resource "helm_release" "opencrane"
 {
   name       = "opencrane"
-  chart      = "${path.module}/../../helm"
+  # TODO(chart-split): models a single chart; add a 2nd helm_release for the silo (apps/clustertenant-platform).
+  chart      = "${path.module}/../../../../apps/fleet-platform"
   namespace  = kubernetes_namespace.opencrane.metadata[0].name
   wait       = true
   timeout    = 600

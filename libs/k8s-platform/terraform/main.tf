@@ -3,7 +3,7 @@
 #
 # DEFAULT FLOW (plain-k8s on GKE): a single `terraform apply` provisions just a
 # GKE cluster on the project's default VPC — nothing else required. You then
-# install OpenCrane the standard way: `helm install opencrane platform/helm`.
+# install OpenCrane the standard way: the per-role charts (apps/fleet-platform, apps/clustertenant-platform).
 # Custom VPC/NAT, Artifact Registry, Cloud DNS, GCS-backed storage, and even
 # installing the Helm chart via Terraform (enable_app_deploy) are all OPT-IN
 # (see variables.tf).

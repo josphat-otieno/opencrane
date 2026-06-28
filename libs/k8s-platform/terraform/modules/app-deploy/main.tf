@@ -178,7 +178,8 @@ resource "helm_release" "opencrane"
   name             = var.release_name
   namespace        = var.namespace
   create_namespace = true
-  chart            = "${path.module}/../../../helm"
+  # TODO(chart-split): single-chart model; add a 2nd release for apps/clustertenant-platform.
+  chart            = "${path.module}/../../../../../apps/fleet-platform"
   wait             = true
   timeout          = 600
 

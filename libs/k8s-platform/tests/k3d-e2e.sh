@@ -195,7 +195,7 @@ fi
 
 # 6. Install Helm chart with k3d-safe overrides wired to the in-cluster database.
 echo "[e2e] Installing Helm release '$RELEASE_NAME'"
-helm upgrade --install "$RELEASE_NAME" "$ROOT_DIR/platform/helm" \
+helm upgrade --install "$RELEASE_NAME" "$ROOT_DIR/apps/fleet-platform"  # TODO(chart-split): also cover apps/clustertenant-platform \
   --namespace "$NAMESPACE" \
   --create-namespace \
   --values "$ROOT_DIR/platform/tests/values-k3d-e2e.yaml" \

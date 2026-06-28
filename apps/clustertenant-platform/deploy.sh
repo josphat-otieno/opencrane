@@ -35,7 +35,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CORE="$SCRIPT_DIR/k8s-deploy.sh"
+# Shared deploy engine now lives in the k8s-platform lib; the SILO chart is co-located here.
+CORE="$SCRIPT_DIR/../../libs/k8s-platform/k8s-deploy.sh"
+export OPENCRANE_CHART_DIR="$SCRIPT_DIR"
 
 CLUSTER_TENANT=""
 NAMESPACE=""

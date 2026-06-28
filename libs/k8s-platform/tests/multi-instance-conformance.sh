@@ -25,7 +25,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
-CHART_DIR="$ROOT_DIR/platform/helm"
+CHART_DIR="$ROOT_DIR/apps/fleet-platform"  # TODO(chart-split): also cover apps/clustertenant-platform
 VALUES_DIR="$CHART_DIR/values/multi-instance"
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT

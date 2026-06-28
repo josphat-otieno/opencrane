@@ -90,7 +90,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CHART_DIR="$SCRIPT_DIR/helm"
+# The Helm chart no longer sits beside this engine — it is per-role and lives in the calling
+# app (apps/fleet-platform = the fleet chart, apps/clustertenant-platform = the silo chart).
+# Each app's deploy.sh wrapper exports OPENCRANE_CHART_DIR to its own chart dir before exec'ing
+# this engine; running k8s-deploy.sh directly without it fails loud rather than guessing.
+CHART_DIR="${OPENCRANE_CHART_DIR:?OPENCRANE_CHART_DIR must point to a role chart dir (apps/fleet-platform | apps/clustertenant-platform) — run the app's deploy.sh, not k8s-deploy.sh directly}"
 
 NAMESPACE="opencrane-system"
 RELEASE="opencrane"
