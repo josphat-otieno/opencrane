@@ -969,6 +969,124 @@ export const spec = {
   paths: {
 
     // ------------------------------------------------------------------
+    // Auth — platform-operator OIDC session (browser login flow only;
+    // no per-user pod brokering / device grant — those are silo-plane).
+    // ------------------------------------------------------------------
+
+    "/auth/me": {
+      get: {
+        operationId: "getAuthStatus",
+        summary: "Return current auth mode and authenticated user identity (if any)",
+        description: "No authentication required. Returns 200 with the current session or an anonymous identity when no session is established. The fleet plane is cluster-wide, so (unlike the silo control plane) the user carries no per-silo `clusterTenant`.",
+        tags: ["Auth"],
+        security: [],
+        responses: {
+          200: ok("Auth status.", {
+            type: "object",
+            required: ["mode", "authenticated"],
+            properties: {
+              mode: { type: "string", enum: ["development", "oidc", "token"], description: "Active authentication mode for this instance." },
+              authenticated: { type: "boolean" },
+              user: {
+                type: "object",
+                nullable: true,
+                required: ["sub", "issuer", "groups", "isPlatformOperator", "isOrgAdmin"],
+                properties: {
+                  sub: { type: "string" },
+                  issuer: { type: "string", description: "Identity provider that authenticated the user." },
+                  groups: { type: "array", items: { type: "string" }, description: "The caller's group memberships from the OIDC groups claim (empty when none)." },
+                  isPlatformOperator: {
+                    type: "boolean",
+                    description: "True iff the caller's groups intersect OPENCRANE_PLATFORM_OPERATOR_GROUPS. Empty/unset config ⇒ false (fail-closed). Introspection only — the API stays the enforcement point and the frontend uses this only to hide UI.",
+                  },
+                  isOrgAdmin: {
+                    type: "boolean",
+                    description: "True iff the caller is an organisation admin (groups intersect OPENCRANE_ORG_ADMIN_GROUPS, or the caller is a platform operator). Empty/unset config ⇒ false (fail-closed). Introspection only — the API stays the enforcement point.",
+                  },
+                  ownedOrgs: {
+                    type: "array",
+                    description: "Organisations the caller owns or administers, derived fresh from their OrgMembership rows (owner/admin only; members excluded). Empty when the caller administers no org. Introspection only — never taken from request input.",
+                    items: {
+                      type: "object",
+                      required: ["clusterTenant", "role"],
+                      properties: {
+                        clusterTenant: { type: "string", description: "The organisation (ClusterTenant) key." },
+                        role: { type: "string", enum: ["owner", "admin"], description: "The administering role the caller holds in this org." },
+                      },
+                    },
+                  },
+                  email: { type: "string" },
+                  emailVerified: { type: "boolean" },
+                  name: { type: "string" },
+                  picture: { type: "string" },
+                  authenticatedAt: { type: "string", format: "date-time" },
+                },
+              },
+            },
+          }),
+        },
+      },
+    },
+
+    "/auth/login": {
+      get: {
+        operationId: "startOidcLogin",
+        summary: "Redirect the browser to the configured OIDC identity provider to start login",
+        description: "Browser redirect — not intended for programmatic use. Returns 503 when OIDC is not configured.",
+        tags: ["Auth"],
+        security: [],
+        parameters: [
+          { name: "returnTo", in: "query", schema: { type: "string" }, description: "Path to redirect back to after a successful login." },
+        ],
+        responses: {
+          302: { description: "Redirect to identity provider." },
+          503: { description: "OIDC not configured.", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+        },
+      },
+    },
+
+    "/auth/callback": {
+      get: {
+        operationId: "completeOidcLogin",
+        summary: "OIDC authorization callback — validates the response and establishes a session",
+        description: "Called by the identity provider after a successful login. Redirects back to the SPA.",
+        tags: ["Auth"],
+        security: [],
+        parameters: [
+          { name: "code", in: "query", schema: { type: "string" } },
+          { name: "state", in: "query", schema: { type: "string" } },
+        ],
+        responses: {
+          302: { description: "Redirect back into the application." },
+          503: { description: "OIDC not configured.", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+        },
+      },
+    },
+
+    "/auth/logout": {
+      post: {
+        operationId: "logout",
+        summary: "Destroy the current session and return the IdP RP-initiated logout URL",
+        description: "Invalidates the server-side session. When OIDC is enabled and the identity provider advertises an `end_session_endpoint`, returns the URL the browser should navigate to so the upstream IdP session is also terminated (OIDC RP-Initiated Logout). The local session is always destroyed; `endSessionUrl` is null when no upstream logout is possible (OIDC disabled, IdP exposes no end-session endpoint, or the session captured no id_token). Non-browser callers may ignore the URL.",
+        tags: ["Auth"],
+        security: [],
+        responses: {
+          200: ok("Session destroyed; optional IdP logout URL returned.", {
+            type: "object",
+            required: ["endSessionUrl"],
+            properties: {
+              endSessionUrl: {
+                type: "string",
+                nullable: true,
+                description: "Absolute URL the browser should navigate to in order to terminate the upstream IdP session. Null when no upstream logout is configured or possible.",
+              },
+            },
+          }),
+        },
+      },
+    },
+
+    // ------------------------------------------------------------------
     // Admin — Zitadel SA key rotation (superadmin / platform-operator only)
     // ------------------------------------------------------------------
 
