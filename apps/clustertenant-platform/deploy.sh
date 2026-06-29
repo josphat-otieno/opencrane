@@ -77,6 +77,18 @@ fi
 # silo and from the central release. Default `opencrane-<cluster-tenant>`; --namespace overrides.
 [[ -n "$NAMESPACE" ]] || NAMESPACE="opencrane-${CLUSTER_TENANT}"
 
+# Per-org OIDC (org-admin login). The clustertenant-manager resolves the per-org CLIENT from the
+# ClusterTenant CR at runtime, but its BASE OIDC config must be present or login 503s ("OIDC is not
+# configured for this control-plane instance"). The shared loader requires ALL of issuer+client+
+# redirect+session once ANY is set, else the pod crashloops ("OIDC is partially configured"). So when
+# an issuer is given: require this org's client id (from provisionOrg / the ClusterTenant row), and
+# DERIVE this silo's callback at the org host when not supplied (the core generates the session
+# secret, and forwards these to clustertenantManager.oidc.* via --set-string). Issue #100 item 3.
+if [[ -n "${OIDC_ISSUER_URL:-}" ]]; then
+  [[ -n "${OIDC_CLIENT_ID:-}" ]] || { err "OIDC_ISSUER_URL is set but OIDC_CLIENT_ID is not — a silo's OIDC needs THIS org's Zitadel client id (from provisionOrg / the ClusterTenant row). Set OIDC_CLIENT_ID, or unset OIDC_ISSUER_URL to run token/dev auth."; exit 1; }
+  [[ -n "${OIDC_REDIRECT_URI:-}" ]] || export OIDC_REDIRECT_URI="https://${CLUSTER_TENANT}.${BASE_DOMAIN}/api/v1/auth/callback"
+fi
+
 # SILO value profile: a per-ClusterTenant install in its own namespace — self-service manager +
 # billing OFF, multi-instance OFF. The cluster-wide infra is installed once by the admin/registry
 # release, so skip re-installing the ingress controller, external-dns and the CNPG operator (the
