@@ -14,7 +14,9 @@
   },
   "scripts": {
     "build": "pnpm generate && tsc",
-    "generate": "openapi-typescript ../../apps/control-plane/openapi.json -o src/generated/api.ts",
+    "generate": "pnpm generate:silo && pnpm generate:fleet",
+    "generate:silo": "openapi-typescript ../../apps/clustertenant-operator/openapi.json -o src/generated/api.ts",
+    "generate:fleet": "openapi-typescript ../../apps/fleet-operator/openapi.json -o src/generated/fleet-api.ts",
     "lint": "tsc --noEmit"
   },
   "devDependencies": {

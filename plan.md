@@ -1,5 +1,10 @@
 # OpenCrane — Active Plan
 
+> **Execution sequence rebased 2026-06-25:** the forward roadmap is now the **S-series** in
+> *Open Backlog* — the silo-multi-tenant program (`silo-multi-tenant-plan.md`) runs first as
+> S1–S7, then the independent leftovers as S8–S12. The dated *Current State* + lettered tracks
+> below are kept as reference/history.
+
 ## Current State (2026-06-10)
 
 - **Phases 1–3**: complete and validated.
@@ -17,8 +22,84 @@
 
 ## Open Backlog (Execute Next)
 
-> Authoritative, code-verified worklist as of 2026-06-10. Work top-to-bottom.
-> Items marked **[BLOCKED]** need a decision before implementation — do not guess.
+> **Canonical forward sequence = the S-series roadmap below (rebased 2026-06-25).** The
+> silo-multi-tenant program runs FIRST (S1–S7, driven by `silo-multi-tenant-plan.md`); the
+> independent leftovers follow (S8–S12). The lettered tracks further down (WOI/CONN/P4D/AIR/CT/…)
+> are now **reference detail + landed history** — each open one is absorbed by an S-step, noted
+> inline. Items marked **[BLOCKED]** need an external decision/dependency — do not guess.
+
+### ▶ Forward roadmap (S-series — execute in order)
+
+**Silo program (S1–S7) — full detail in `silo-multi-tenant-plan.md`.**
+- **S1 — Demo-able shared tier + unblock login.** *(silo Phase 0)* trustedProxies auto-derive,
+  preflight + `values.schema.json` guards, externalIp auto-derive + post-deploy verify,
+  openclaw-schema CI test; **interim manual redirect-URI add so `elewa-be.dev.opencrane.ai/login`
+  works**. Absorbs Go-Live → *DNS + ingress verification* (per-org-host path). No deps.
+- **S2 — Enforcement floor: make isolation real.** *(silo Phase 1)* Enable Dataplane-V2/Cilium +
+  default-deny baseline (cluster-lifecycle/Terraform, **not** Helm); per-silo egress NetworkPolicy.
+  Absorbs Go-Live → *GCP installer smoke* (must now provision DV2 + Workload Identity, which also
+  revives external-dns) and **CONN.8** remaining (cross-namespace wildcard-cert distribution + live
+  ACME e2e — per-silo namespaces each need the cert). Dep: S1.
+- **S3 — Zitadel as PDP system-of-record (control-plane controls Zitadel).** *(silo Phase 2a)*
+  🟢 **IN REVIEW (PR #73 → strong-siloes):** schema (migration 0025), **live** `_HttpZitadelManagementClient`
+  (jwt-bearer SA auth + create Org→project→roles→OIDC app→master-admin-grant + teardown, **validated
+  against the live instance**), transactional CT create/delete wiring, no-op removed (Zitadel is a
+  hard dependency; single-cluster mode unaffected), `infra/zitadel`. **PREREQ: SA needs instance
+  `IAM_OWNER`.** 🔜 **remaining S3 slices:** `oidc.service` host→CT→client login refactor, member API
+  + `oc cluster-tenant members`, reconcile/backfill, masters self-registration. Dep: S1.
+- **S4 — Inheritance + scope-aware memory: the openclaw Tenant acts as its user.** *(silo Phase 2b)*
+  Now broken into sub-slices:
+  - **S4a [DONE — PR #77]** bind `Tenant.subject` + compile the contract over `{tenant, subject, groups}`
+    (`compileForPrincipals`; Deny>Allow holds across principals).
+  - **S4c.1 [DONE — PR #81]** sync the grant + dataset scope vocabularies (grants gain `team`, datasets
+    gain `department`) so they map 1:1; migration 0029.
+  - **S4c.2 [DONE — PR #82]** derive Cognee dataset memberships from the group expansion (**every tier
+    IS a scope-typed `Group`**); diff-gated replace→Cognee sync on the contract poll; resource-group
+    sharing (`/resource-shares` + `oc share resource`); added `DATASET_SCOPE_RETRIEVAL_PRECEDENCE`
+    (Personal→Project→Team→Department→Org).
+  - **S4d [DONE — PR #78]** inter-user tool/skill sharing API + `oc share` (least-privilege Grant).
+  - **S4b [TODO]** mirror Zitadel groups → `Group.members` so groups are IdP-sourced, not hand-maintained.
+    **BLOCKED on a decision:** Zitadel has no native group primitive — must decide the mapping (project
+    roles vs user metadata vs org-level). The derivation works off manual groups until this lands.
+  - **S4e [TODO] = P4B.7.2** the scope-aware Cognee retrieval plugin — the precedence cascade itself
+    ("get here"); full Cognee design captured in **Track P4-B → P4B.7.2** below. Dep: S4c.2 (the
+    derived memberships + precedence constant it consumes).
+  **Absorbs P4B.7** (.1 session→scope binding LANDED; .2 retrieval plugin = S4e; .3 per-scope memory
+  partitioning still its own sub-item). Dep: S3.
+- **S5 — Identity loop + workload identity (SPIFFE/Cilium PEP).** *(silo Phase 2 identity loop)*
+  SPIRE/Cilium identity wiring; operator provisions per-silo workload identities + identity
+  policies; **super-admin identity issuance/rotation/audit (the crown jewel)**. **Absorbs CONN.4**
+  (the CP-held operator device IS the super-admin cross-silo identity) and **CONN.5** remaining
+  (adds identity-revocation + silo-level cut alongside the landed pod-delete). Deps: S2, S3.
+- **S6 — Silo architecture: per-CT operator + per-CT planes + ADR.** *(silo Phase 3)* ADR
+  `task_5164276f` (substrate; which planes move into the silo; per-CT operator; **per-CT API + DB**
+  that retires the resolution-ambiguity class — PR #68 is the interim shim). Decides placement that
+  gates S8/S9/S10. **Subsumes CONN.7** (a mesh substrate makes its per-session-cut/per-frame-audit
+  vision a mesh feature). Deps: S2, S5.
+- **S7 — Tiers & cost.** *(silo Phase 4)* Map `isolationTier` shared → dedicatedNodes →
+  dedicatedCluster (vcluster/Kamaji); cost/footprint model per tier. Dep: S6.
+
+**Independent leftovers (S8–S12) — re-sequenced after the silo program.**
+
+- **S8 — Obot downstream-credential brokering.** *(P4D.1)* The silo work **unblocks the hard part**:
+  S4 `Tenant.subject` makes per-user real, S5 SPIFFE→OIDC exchange propagates the human identity to
+  Obot's shim, S6 moves Obot into the silo. Then build the parked push-to-Obot OBO config surface +
+  enc-at-rest + live round-trip. Deps: S4, S5, S6.
+- **S9 — Zot digest-pinned skill-bundle storage.** *(P4D.2)* Placement (shared vs per-silo) decided
+  in the S6 ADR; the digest-pull egress must be an explicit allow in the default-deny silo policy.
+  Build: deploy Zot, push bundles by digest, fetch-by-digest, drop `SkillBundle.content`. Dep: S6.
+- **S10 — Provider-secret cutover. [BLOCKED]** *(AIR.0c)* Remove the `org-shared-secrets` `envFrom`
+  broadcast (a cross-silo secret leak the silo model forbids) + retire orphaned `ProviderApiKey`.
+  Silo strengthens the rationale and S6 per-CT LiteLLM makes keys silo-scoped, **but stays blocked**
+  on the OpenClaw translator-backend image change + WeOwnAI off the legacy endpoint.
+- **S11 — Fixed-model savings evaluator. (FUTURE)** *(AIR.8)* Advisory WeOwnAI view; in-repo enablers
+  done; per-CT-scoped. Low silo impact (data source shifts only if LiteLLM/Langfuse go per-silo).
+- **S12 — Safety / guardrail stream. (FUTURE)** *(AIR.9)* Adopt an OSS guardrail service when needed;
+  placement (per-silo vs main-network egress) follows the S6 substrate. No such service exists today.
+
+---
+
+### Reference detail — open-item bodies + landed history (indexed by the S-series above)
 
 ### Track WOI — WeOwnAI control-plane integration (frontend cutover dependencies)
 
@@ -141,7 +222,7 @@ Stacked on `feat/org-admin-billing`.
   (the old `var.org_wildcards` direct-record path is removed). The install scripts bundle external-dns as a
   value-gated cluster singleton (`externalDns.install`, default ON in acme mode, `--no-external-dns` to BYO).
 - **Per-org provisioning — IMPLEMENTED (operator-owned, PR #50):** `DefaultOrgDomainProvisioner`
-  (`apps/operator/src/cluster-tenants/internal/org-domain.provisioner.ts`) behind the `OrgDomainProvisioner`
+  (`apps/fleet-operator/src/cluster-tenants/internal/org-domain.provisioner.ts`) behind the `OrgDomainProvisioner`
   interface. It applies the per-org wildcard `Certificate` (`*.<org>.<base>` + apex/vanity SANs) via
   cert-manager DNS-01 (`CertManagerClient` over the custom-objects API) and declares the
   `*.<org>.<base>`/`<org>.<base>` A records as a namespaced external-dns `DNSEndpoint` CR
@@ -154,7 +235,7 @@ Stacked on `feat/org-admin-billing`.
   does (fail-closed, API-first).
 - **Docs:** `docs/agents/cluster-architecture.md` + `website/operators/dns-config.md` rewritten to the new
   topology with the exact customer CNAME instruction.
-- **PR #50 (org-provision-wiring) — LANDED:** the ClusterTenant reconciler (`apps/operator/src/cluster-tenants/operator.ts`)
+- **PR #50 (org-provision-wiring) — LANDED:** the ClusterTenant reconciler (`apps/fleet-operator/src/cluster-tenants/operator.ts`)
   now CALLS the real `provisionOrgDomain(...)` on every reconcile. The dead control-plane copies of the
   provisioner/cert/DNS clients (never invoked there) and the hardcoded always-skip `GatedOrgDomainProvisioner`
   stub were deleted; the one real provisioner is owned by the operator (the reconciler/executor). Helm wires
@@ -270,13 +351,31 @@ Stacked on `feat/org-admin-billing`.
      **Seam:** binding identity (`principal`) is supplied in the body on this admin/frontend control
      surface (consistent with the rest of `/api/v1`); the *runtime* tenant-identity binding is the
      plugin's job (component 2), which reads the live `sessionKey`.
-  2. **[ ] Scope-aware OpenClaw retrieval plugin.** Replace the stock single-dataset Cognee plugin
+  2. **[ ] Scope-aware OpenClaw retrieval plugin (= S4e).** Replace the stock single-dataset Cognee plugin
      (which is `datasetName`-singular, dataset-wide, no scope filtering — confirmed via
      docs.cognee.ai/integrations/openclaw-integration) with a plugin wrapping `@opencrane/awareness`:
      per turn it resolves the active `sessionKey`→scope binding (cached; via CP API or contract
      re-pull) and restricts the Cognee query to those datasets, so other-project context is **never
      retrieved or auto-injected**. Requires extending the P4B.1 SDK with a `ScopeContext` +
      most-specific-wins/deny-overrides merge across the active levels.
+     **Cognee retrieval design (researched 2026-06-25 — docs.cognee.ai):** scope precedence is **NOT a
+     Cognee setting**. Cognee exposes `datasets`/`dataset_ids`, `node_set`/`node_name` (graph tags),
+     `top_k`, and the search types — but **no per-scope weighting and no exposed similarity score** for
+     the GRAPH_COMPLETION family. **Do NOT bake scope into the embedding** (keep vectors pure semantic);
+     scope is a partition/filter/re-rank dimension applied *around* the vector search. Realise precedence
+     in OUR layer over `DATASET_SCOPE_RETRIEVAL_PRECEDENCE` (Personal=self/session → Project → Team →
+     Department → Org; most→least relevant):
+       - **Pattern A — cascade (start here):** query the most-specific scope first, widen to broader
+         scopes only to fill remaining `top_k`. Deterministic; needs no score; broad-scope context strictly
+         trails. Encodes the precedence by construction.
+       - **Pattern B — parallel + weighted re-rank (upgrade):** fetch candidates with `only_context=true`/
+         `CHUNKS`, tag each by source scope, re-rank by `similarity × scope_weight` (Personal 1.0 → Org 0.2),
+         then synthesise. Interleaves broad context by relevance instead of trailing it.
+     - **Ingestion change (small, in harvesting-agent `_PushDocumentToCognee`):** also pass
+       `node_set=[scope, \`${scope}:${subject}\`]` so scope is a first-class, filterable graph tag (today
+       only `metadata.scope` + the `<scope>/<subject>` dataset name are set).
+     - **Isolation stays on the `/v1/permissions` ACL we sync, NOT the `datasets=` param** — the param
+       leaks across datasets (topoteretes/cognee#1023); datasets/node_set are the relevance/partition layer.
   3. **[ ] (Separate vector) per-scope memory partitioning.** Scoped retrieval stops *knowledge-base*
      spill; the pod-global L2 `MEMORY.md` + any cross-session summarisation are a second vector
      (window A's written notes readable by window B). Partition written memory per scope — track as
@@ -361,7 +460,7 @@ Stacked on `feat/org-admin-billing`.
 
 - [x] **CONN.9 Trusted-proxy connection model pinned (fail-closed).** Product accepted trusted-proxy;
   single-use tokens are **not** re-introduced. The operator now parses `GATEWAY_TRUSTED_PROXIES`
-  fail-closed (`apps/operator/src/trusted-proxies.ts`): **empty ⇒ trust nothing** (never the ambiguous
+  fail-closed (`apps/fleet-operator/src/trusted-proxies.ts`): **empty ⇒ trust nothing** (never the ambiguous
   trust-all) surfaced as `config.gatewayTrustNothing`, a CIDR/IP allowlist when configured, and a
   **malformed entry crashes config load** rather than silently shifting the trust boundary. The tenant
   ConfigMap renders both the empty allowlist *and* an explicit `gateway.auth.trustedProxy.trustNothing`
@@ -373,7 +472,7 @@ Stacked on `feat/org-admin-billing`.
   to the `ingress-nginx` namespace, and its Ingress carries `auth-url → /api/v1/auth/gateway-verify` +
   `auth-response-headers: X-Forwarded-User`. **Remaining (live seam):** the end-to-end auth_request →
   204 + header → pod-accepts-identity handshake needs one additive test pod (prepared, authorization-gated,
-  in the PR). Anchors: `apps/operator/src/{trusted-proxies.ts,config.ts}`, `tenants/deploy/2-config-map.ts`,
+  in the PR). Anchors: `apps/fleet-operator/src/{trusted-proxies.ts,config.ts}`, `tenants/deploy/2-config-map.ts`,
   `platform/helm/{values.yaml,values/gke-dev.yaml,templates/operator-deployment.yaml}`.
 
 
@@ -476,7 +575,7 @@ Stacked on `feat/org-admin-billing`.
   (delivery), `apps/skill-registry/src`, `networkpolicy-planes.yaml`. (Phase 4 Decisions:
   "Skill substrate" ✅, "Skill registry OCI store" + "OCI artifact naming"; Deliverables 7 & 9.)
   - **Landed (2026-06-13, foundation slice):** `OciBundleStore`
-    (`apps/control-plane/src/core/oci/oci-bundle-store.ts` + `.types.ts`) — OCI Distribution v2
+    (`apps/clustertenant-operator/src/core/oci/oci-bundle-store.ts` + `.types.ts`) — OCI Distribution v2
     push (blob upload + manifest so the blob isn't GC'd) and **digest-verified** pull-by-digest
     (rejects bytes that don't hash to the requested digest). Hardened per review: idempotent
     re-push (accepts 2xx / blob-already-exists, not strict 201), `sha256:<64hex>` digest
@@ -565,12 +664,12 @@ CT.1 ───────┼─> CT.6 (provisioner seam) ───────�
   - **Lane A · control-plane API — CT.2.** `routes/cluster-tenants.ts(+.types.ts)`, `openapi/spec.ts`.
   - **Lane B · provisioner — CT.6.** `core/cluster-tenants/provisioner.ts(+.types.ts)`, MIT DTOs.
     CT.2↔CT.6 share only the registry interface fixed in CT.1 → *coordinate, don't serialise*.
-  - **Lane C · operator — CT.4.** `apps/operator/src/tenants/operator.ts`, Tenant CRD. Separate
+  - **Lane C · operator — CT.4.** `apps/fleet-operator/src/tenants/operator.ts`, Tenant CRD. Separate
     package from A/B → zero contention.
 - **Wave 2 — 2 parallel lanes:**
   - **Lane A · CT.3** (`oc cluster-tenant` CLI) — needs CT.2's regenerated `libs/contracts` client.
   - **Lane C · CT.5** (namespace + ResourceQuota/LimitRange + scheduling) — needs CT.4's parent
-    resolution; `apps/operator/.../deploy/3-deployment.ts` + quota builders.
+    resolution; `apps/fleet-operator/.../deploy/3-deployment.ts` + quota builders.
 - **Wave 3 — integration (serial):** **CT.7**. Opt-in gating, docs, conformance — depends on all.
 
 **Critical path:** CT.1 → {CT.2→CT.3 ∥ CT.4→CT.5} → CT.7 (depth 4). Max width 3 (Wave 1).
@@ -584,7 +683,7 @@ With one agent per lane, wall-clock ≈ 4 sequential slices instead of 7.
   CRD `clustertenants.opencrane.io` in `platform/helm/crds/`. Prisma model + migration (dual-write
   alongside the CRD, mirroring how Tenant/AccessPolicy persist). **Acceptance:** type exported; CRD
   validates (`helm template` + `kubectl --dry-run`); migration applies; `tsc` green. **Anchors:**
-  `libs/contracts/src/cluster-tenant.types.ts`, `platform/helm/crds/`, `apps/control-plane/prisma/`.
+  `libs/contracts/src/cluster-tenant.types.ts`, `platform/helm/crds/`, `apps/clustertenant-operator/prisma/`.
   **Headless-buildable.** ✅ Landed: contract types + provisioner webhook DTOs + registry signature
   (`ClusterTenantProvisionerRegistry.isTierAvailable`) exported; cluster-scoped CRD
   `opencrane.io_clustertenants.yaml`; Prisma `ClusterTenant` model + enums + migration `0014`.
@@ -595,8 +694,8 @@ With one agent per lane, wall-clock ≈ 4 sequential slices instead of 7.
   validated; `dedicatedCluster` rejected `422 TIER_UNAVAILABLE` unless an external provisioner is
   registered for it (CT.6). Update `openapi/spec.ts` → regenerate `openapi.json` + the `libs/contracts`
   client. **Acceptance:** endpoints in `openapi.json`; CRUD works; over-tier rejected with a typed
-  error; control-plane tests. **Anchors:** `apps/control-plane/src/routes/cluster-tenants.ts(+.types.ts)`,
-  `apps/control-plane/src/openapi/spec.ts`, `libs/contracts/src/generated/api.ts`. **Headless-buildable.**
+  error; control-plane tests. **Anchors:** `apps/clustertenant-operator/src/routes/cluster-tenants.ts(+.types.ts)`,
+  `apps/clustertenant-operator/src/openapi/spec.ts`, `libs/contracts/src/generated/api.ts`. **Headless-buildable.**
 
 - [x] **CT.3 `oc cluster-tenant` CLI.** _(Wave 2 · Lane A — ✅ landed 2026-06-15)_ `create|list|show|update|delete` with
   `--tier`/`--compute`/`--node-pool`/`--quota-*` flags, consuming the generated client (just another
@@ -610,7 +709,7 @@ With one agent per lane, wall-clock ≈ 4 sequential slices instead of 7.
   synthetic "default" ClusterTenant binds the install namespace and ref-less openclaws attach to it —
   existing installs deploy byte-for-byte unchanged. **Acceptance:** default-mode openclaws unchanged
   (operator test); a ref'd openclaw lands in the parent's namespace. **Anchors:** `libs/contracts`
-  Tenant type + CRD, `apps/operator/src/tenants/operator.ts`. **Headless-buildable.**
+  Tenant type + CRD, `apps/fleet-operator/src/tenants/operator.ts`. **Headless-buildable.**
 
 - [x] **CT.5 Native isolation enforcement — namespace-per-ClusterTenant + quota + scheduling
   (the hardening).** _(Wave 2 · Lane C — ✅ landed 2026-06-15)_ When opt-in, provision a per-ClusterTenant namespace labelled
@@ -619,7 +718,7 @@ With one agent per lane, wall-clock ≈ 4 sequential slices instead of 7.
   spec. Off by default (single-install unchanged). **Acceptance:** rendered/operator test shows
   quota + limitrange + PSA label + scheduling constraints applied per ClusterTenant; the conformance
   script gains per-ClusterTenant assertions. **Anchors:**
-  `apps/operator/src/tenants/deploy/3-deployment.ts`, new quota/limitrange builders, the namespace
+  `apps/fleet-operator/src/tenants/deploy/3-deployment.ts`, new quota/limitrange builders, the namespace
   provisioning path, `platform/tests/multi-instance-conformance.sh`. **Headless-buildable** (live
   quota/PSA enforcement is the cluster seam).
 
@@ -635,7 +734,7 @@ With one agent per lane, wall-clock ≈ 4 sequential slices instead of 7.
   registered capability (the webhook advertises supported tiers). **Acceptance:** the built-in path
   provisions `shared`; a test stub external provisioner is invoked over HTTP for a registered tier; a
   grep gate confirms no vendor string under AGPL paths. **Anchors:**
-  `apps/control-plane/src/core/cluster-tenants/provisioner.ts(+.types.ts)`, MIT `libs/contracts`
+  `apps/clustertenant-operator/src/core/cluster-tenants/provisioner.ts(+.types.ts)`, MIT `libs/contracts`
   webhook DTOs, `docs/enterprise-needs.md`. **Headless-buildable.**
 
 - [x] **CT.7 Opt-in gating + docs + conformance.** _(Wave 3 · integration — ✅ landed 2026-06-15)_ Gate all ClusterTenant machinery behind the
@@ -749,7 +848,7 @@ With one agent per lane, wall-clock ≈ 4 sequential slices instead of 7.
   **Auto runs only when explicitly selected** (request- or skill-level flag) — never global-implicit.
   Write the resolved per-skill model into the effective-contract + propagate to the pod
   (`2-config-map.ts` `models[]`/default). **Anchors:** effective-contract endpoint,
-  `apps/operator/src/tenants/deploy/2-config-map.ts`.
+  `apps/fleet-operator/src/tenants/deploy/2-config-map.ts`.
 - [x] **AIR.3 Skill-level model definition. — LANDED 2026-06-18.** `Skill` gained
   `modelMode`/`pinnedModel`/`autoConfig`; dedicated `/api/v1/skills/posture` router (the `Skill` model had
   no prior read/write path — `skill-catalog` operates on the separate `SkillBundle`) keyed by
@@ -774,7 +873,7 @@ With one agent per lane, wall-clock ≈ 4 sequential slices instead of 7.
   operator→models data path). _(Original:)_ Extend `_generateLiteLlmVirtualKey` to send `team_id`
   (ClusterTenant→LiteLLM Team), `models[]` allowlist, `budget_duration`, `tpm/rpm`; fix the no-rotation
   early-return; complete revocation (`/key/delete`); stop the `org-shared-secrets` `envFrom` broadcast
-  (keys stay at the proxy). **Anchors:** `apps/operator/src/tenants/internal/tenant-litellm-keys.ts`,
+  (keys stay at the proxy). **Anchors:** `apps/fleet-operator/src/tenants/internal/tenant-litellm-keys.ts`,
   `deploy/3-deployment.ts`, `core/ai-budget/ai-budget.logic.ts`.
 - [x] **AIR.6 Shadow-mode savings measurement. — LANDED 2026-06-18 (foundation).** `RoutingEvalCase`
   data model + `/api/v1/model-routing/eval-cases` API + `oc routing eval-case`; pure `savings.ts`
@@ -864,10 +963,13 @@ With one agent per lane, wall-clock ≈ 4 sequential slices instead of 7.
 
 ## Go-Live Checklist (Open Items)
 
+> Both open items are now folded into the S-series: *GCP installer smoke* → **S2** (must provision
+> Dataplane-V2 + Workload Identity), *DNS + ingress verification* → **S1** (per-org-host path).
+
 | Item | Status | Done Criteria |
 |------|--------|---------------|
-| GCP installer smoke (`./platform/install.sh gcp`) | Not yet revalidated | Fresh GCP project deploys end-to-end; control-plane endpoint reachable; test tenant reconciles successfully. |
-| DNS + ingress verification | Not started | Domain and TLS resolve correctly; control-plane and tenant subdomains accessible externally. |
+| GCP installer smoke (`./platform/install.sh gcp`) → **S2** | Not yet revalidated | Fresh GCP project deploys end-to-end; control-plane endpoint reachable; test tenant reconciles successfully. |
+| DNS + ingress verification → **S1** | Not started | Domain and TLS resolve correctly; control-plane and tenant subdomains accessible externally. |
 
 All other checklist items (local baseline, k3d e2e, Helm chart, Docker CI publish, Prisma migrations, CI e2e gate, runbook) are complete. See `plan-done.md` for the full table.
 

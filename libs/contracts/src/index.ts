@@ -1,4 +1,4 @@
-export { ___CreateControlPlaneClient, type ControlPlaneClient, type paths } from "./client.js";
+export { ___CreateControlPlaneClient, ___CreateFleetClient, type ControlPlaneClient, type FleetClient, type paths, type fleetPaths } from "./client.js";
 export {
   ClusterTenantComputeMode,
   ClusterTenantIsolationTier,
@@ -49,6 +49,7 @@ export {
   type SavingsRecommendation,
 } from "./model-routing.types.js";
 export { SkillBundleStatus, SkillPromotionStatus, type SkillBundle, type SkillPromotion } from "./skill-bundle.types.js";
+export { type TenantModelSet } from "./tenant-models.types.js";
 export {
   ThirdPartySourceItemKind,
   ThirdPartySourceKind,

@@ -84,7 +84,7 @@ UserTenant pods are **not** exposed on their own public host.
   not the org's identity.
 
 > **Note (June 2026):** the operator derives per-org DNS records via `DefaultOrgDomainProvisioner`
-> (`apps/operator/src/cluster-tenants/internal/org-domain.provisioner.ts`); the platform
+> (`apps/fleet-operator/src/cluster-tenants/internal/org-domain.provisioner.ts`); the platform
 > cert-manager `Certificate` covers `*.<base>` + apex + the control-plane host
 > (`cluster-issuer.yaml`); the control-plane host is wired by `control-plane-ingress.yaml`.
 > `*.<base>` matches **org hosts** `<org>.<base>` — one label — which is sufficient because
@@ -92,12 +92,12 @@ UserTenant pods are **not** exposed on their own public host.
 
 ## Physical Cluster
 
-- **Cloud target: GKE Autopilot** (`platform/terraform/cloud/gcp/`) — Google-managed nodes, pay-per-pod, private nodes, VPC-native with secondary IP ranges for pods/services, Cloud NAT egress, an install-time Cloud DNS wildcard (`*.<base>`, covering org hosts `<org>.<base>`) pointing at a reserved static global IP. Per-org `<org>.<base>` A records are emitted at runtime by the operator as external-dns `DNSEndpoint` CRs. Provisioned in phases: networking → cluster → Artifact Registry → in-cluster Bitnami PostgreSQL + the chart → DNS.
-- **Cloud-agnostic target** (`platform/terraform/core/`) — assumes a ready kubeconfig and applies only the chart; works on k3d (local dev/e2e), EKS, AKS, on-prem. `hosting.provider: onprem` makes cloud storage/identity no-ops.
+- **Cloud target: GKE Autopilot** (`libs/k8s-platform/terraform/cloud/gcp/`) — Google-managed nodes, pay-per-pod, private nodes, VPC-native with secondary IP ranges for pods/services, Cloud NAT egress, an install-time Cloud DNS wildcard (`*.<base>`, covering org hosts `<org>.<base>`) pointing at a reserved static global IP. Per-org `<org>.<base>` A records are emitted at runtime by the operator as external-dns `DNSEndpoint` CRs. Provisioned in phases: networking → cluster → Artifact Registry → in-cluster Bitnami PostgreSQL + the chart → DNS.
+- **Cloud-agnostic target** (`libs/k8s-platform/terraform/core/`) — assumes a ready kubeconfig and applies only the chart; works on k3d (local dev/e2e), EKS, AKS, on-prem. `hosting.provider: onprem` makes cloud storage/identity no-ops.
 
 ## Helm Template Inventory
 
-Everything the chart can deploy lives in `platform/helm/templates/` (`_helpers.tpl` holds the scope-resolution logic):
+The deployable templates are split across two charts: the central **fleet** chart `apps/fleet-platform/templates/` (`opencrane-fleet` — operator, control-plane, CRDs, cert issuer, external-secrets) and the per-silo **silo** chart `apps/clustertenant-platform/templates/` (`opencrane-silo` — litellm, obot gateway, skill-registry, OCI store, plane NetworkPolicies). Both pull shared named-templates from the `k8s-platform` Helm **library** chart `libs/k8s-platform/templates/` (`_helpers.tpl` holds the scope-resolution logic):
 
 | Template | Creates |
 |----------|---------|
@@ -115,14 +115,14 @@ Everything the chart can deploy lives in `platform/helm/templates/` (`_helpers.t
 | `awareness-prometheusrule.yaml` / `awareness-grafana-dashboard.yaml` | Awareness SLO alerts + Grafana dashboard ConfigMap |
 | `validate-config.yaml` | Pre-install validation hook (rejects unsafe non-dev config) |
 
-CRDs are shipped separately under `platform/helm/crds/` (see below), not in `templates/`.
+CRDs are shipped separately under `apps/fleet-platform/crds/` (see below), not in `templates/`.
 
 ## The Planes, Wired
 
 All planes are **ClusterIP-only** (no external LB) — external traffic arrives through Ingress. Internal DNS is `<release>-<plane>.<namespace>.svc`. Each plane is independently release-local (`instance`) or `shared` via `values.yaml` (`sharedPlatform.*`).
 
-- **operator** → Kubernetes API only. Watches Tenant/AccessPolicy/ClusterTenant CRs; injects the other planes' URLs into tenant pods. Deep-dive: [`apps/operator.md`](./apps/operator.md).
-- **control-plane** (`:8080`) → Postgres + K8s API + Cognee + LiteLLM. The hub everything else talks to. Deep-dive: [`apps/control-plane.md`](./apps/control-plane.md).
+- **operator** → Kubernetes API only. Watches Tenant/AccessPolicy/ClusterTenant CRs; injects the other planes' URLs into tenant pods. Deep-dive: [`apps/fleet-operator.md`](./apps/fleet-operator.md).
+- **control-plane** (`:8080`) → Postgres + K8s API + Cognee + LiteLLM. The hub everything else talks to. Deep-dive: [`apps/clustertenant-operator.md`](./apps/clustertenant-operator.md).
 - **mcp-gateway / Obot** (`:8080`) → polls control-plane `GET /api/internal/obot-registry`; tenant pods reach MCP servers through it (projected token `aud=obot-gateway`).
 - **skill-registry** (`:5000`) → validates tenant projected token (`aud=skill-registry`) via TokenReview, proxies to control-plane internal bundle endpoint. Deep-dive: [`apps/skill-registry.md`](./apps/skill-registry.md).
 - **litellm** (`:4000`) → the only LLM egress path for tenant pods; operator mints a per-tenant virtual key Secret; enforces budget.
@@ -162,8 +162,8 @@ auto-renewed; it requires no per-org action.
 When an org is created (`POST /api/v1/cluster-tenants`), the control plane persists desired state and
 hands off the cluster-side side effects to the ClusterTenant operator/CR watcher. The interface the
 reconciler calls is `OrgDomainProvisioner.provisionOrgDomain(...)`
-(`apps/operator/src/cluster-tenants/internal/org-domain-provisioner.types.ts`), implemented by
-`DefaultOrgDomainProvisioner` (`apps/operator/src/cluster-tenants/internal/org-domain.provisioner.ts`):
+(`apps/fleet-operator/src/cluster-tenants/internal/org-domain-provisioner.types.ts`), implemented by
+`DefaultOrgDomainProvisioner` (`apps/fleet-operator/src/cluster-tenants/internal/org-domain.provisioner.ts`):
 it **declares** the explicit `<org>.<base>` A record as a namespaced external-dns `DNSEndpoint` custom
 resource (`externaldns.k8s.io/v1alpha1`); the external-dns controller reconciles it into whatever DNS
 provider the platform runs (Cloud DNS, Route53, …) — no cloud SDK in the operator. When a `vanityDomain`
@@ -183,11 +183,11 @@ reconciler (in the operator) does (fail-closed, API-first).
 | `dedicatedNodes` | Namespace + a tainted node pool; operator stamps `nodeSelector`+`tolerations` (from `compute.mode=dedicated`, `compute.nodePool`). | ✅ Built |
 | `dedicatedCluster` | Customer gets its own kube-apiserver via an **external provisioner** (webhook seam, AGPL-clean; Kamaji-shaped). | ⏸️ **Parked** — control-plane validates and rejects with `422 TIER_UNAVAILABLE` unless a provisioner is registered. |
 
-The provisioner seam is a registry (`apps/control-plane/src/core/cluster-tenants/`) with a built-in shared provisioner plus an optional external webhook (`CLUSTER_TENANT_PROVISIONER_WEBHOOK_*`).
+The provisioner seam is a registry (`apps/clustertenant-operator/src/core/cluster-tenants/`) with a built-in shared provisioner plus an optional external webhook (`CLUSTER_TENANT_PROVISIONER_WEBHOOK_*`).
 
 ## Multi-Instance Cluster Shape
 
-`multiInstance.enabled` flips these safety defaults (conformance-tested statically by `platform/tests/multi-instance-conformance.sh`):
+`multiInstance.enabled` flips these safety defaults (conformance-tested statically by `libs/k8s-platform/tests/multi-instance-conformance.sh`):
 
 | Concern | Single-install | Multi-instance |
 |---------|---------------|----------------|
@@ -204,7 +204,7 @@ The provisioner seam is a registry (`apps/control-plane/src/core/cluster-tenants
 
 ## CRDs
 
-Six CRDs in `platform/helm/crds/`, across **two API groups**:
+Six CRDs in `apps/fleet-platform/crds/`, across **two API groups**:
 
 | CRD | Group | Scope |
 |-----|-------|-------|

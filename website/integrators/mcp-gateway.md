@@ -30,14 +30,14 @@ oc CLI / API ──▶ Control plane (McpServer rows + grants)
 
 ## Deployment & network posture
 
-- **Workload:** `platform/helm/templates/obot-mcp-gateway-deployment.yaml` +
+- **Workload:** `apps/clustertenant-platform/templates/obot-mcp-gateway-deployment.yaml` +
   `mcp-gateway-service.yaml`; configured by the `mcpGateway` block in
-  `platform/helm/values.yaml` (image `ghcr.io/obot-platform/obot`, 1 replica, port
+  `apps/clustertenant-platform/values.yaml` (image `ghcr.io/obot-platform/obot`, 1 replica, port
   8080). Requires a per-instance, release-prefixed `<release>-obot` Secret (resolved by
   the `opencrane.obotSecretName` Helm helper) with key `dsn` for Obot's own Postgres.
 - **Auth disabled, network-gated.** `OBOT_SERVER_ENABLE_AUTHENTICATION=false` — Obot
   itself runs no auth. Access is enforced at the network layer: the
-  `mcp-gateway-ingress` policy in `platform/helm/templates/networkpolicy-planes.yaml`
+  `mcp-gateway-ingress` policy in `apps/clustertenant-platform/templates/networkpolicy-planes.yaml`
   admits port 8080 **only** from tenant, control-plane, and operator pods. There is
   no external ingress; the browser never reaches Obot.
 - **Kubernetes runtime backend.** `OBOT_SERVER_MCPRUNTIME_BACKEND=kubernetes` — Obot
@@ -46,16 +46,16 @@ oc CLI / API ──▶ Control plane (McpServer rows + grants)
 ## Catalog sync (control plane → Obot)
 
 - The control plane owns the `McpServer` table (Prisma model in
-  `apps/control-plane/prisma/schema.prisma`): `id`, `name` (unique), `description`,
+  `apps/clustertenant-operator/prisma/schema.prisma`): `id`, `name` (unique), `description`,
   `endpoint`, `transport`, `scope`, `status`, `capabilities`, plus optional
   `sourceId` linking to a `ThirdPartySource` (MCP registry / git / manual upload).
 - It exposes the Obot-wire catalog at **`GET /api/internal/obot-registry`**
-  ([obot-registry.ts](https://github.com/italanta/opencrane/blob/main/apps/control-plane/src/routes/internal/obot-registry.ts)),
+  ([obot-registry.ts](https://github.com/italanta/opencrane/blob/main/apps/clustertenant-operator/src/routes/internal/obot-registry.ts)),
   serving only `status = Active` servers, ordered by name. The endpoint is **not**
   behind `___AuthMiddleware`; NetworkPolicy is its access control.
 - Obot is pointed at it via `OBOT_SERVER_PROVIDER_REGISTRIES` and polls to sync.
 - **Management surface:** CRUD lives at `/api/v1/mcp-servers`
-  ([mcp-servers.ts](https://github.com/italanta/opencrane/blob/main/apps/control-plane/src/routes/mcp-servers.ts)) and via
+  ([mcp-servers.ts](https://github.com/italanta/opencrane/blob/main/apps/clustertenant-operator/src/routes/mcp-servers.ts)) and via
   `oc mcp …`. Third-party sources are ingested through the
   fetch → scan → validate → register → entitle pipeline.
 
@@ -64,7 +64,7 @@ oc CLI / API ──▶ Control plane (McpServer rows + grants)
 The operator injects a **projected ServiceAccount token with audience
 `obot-gateway`** into every tenant pod at
 `/var/run/opencrane/tokens/obot-gateway.token`, alongside `OPENCRANE_MCP_GATEWAY_URL`
-([3-deployment.ts](https://github.com/italanta/opencrane/blob/main/apps/operator/src/tenants/deploy/3-deployment.ts)). The pod
+([3-deployment.ts](https://github.com/italanta/opencrane/blob/main/apps/fleet-operator/src/tenants/deploy/3-deployment.ts)). The pod
 (OpenClaw) calls Obot server-side with that token. This token is **workload
 identity** — it is never handed to a browser. (The browser's path to the pod is the
 separate pairing-link broker; see [auth.md](/security/identity).)
@@ -78,7 +78,7 @@ the same grant-compiler output — so they cannot disagree by construction:
    will route at all.
 2. **Runtime contract policy** — `policy.mcpServers.allow/deny` in the effective
    contract, re-pulled by the pod
-   ([tenant-contract.ts](https://github.com/italanta/opencrane/blob/main/apps/control-plane/src/routes/internal/tenant-contract.ts)).
+   ([tenant-contract.ts](https://github.com/italanta/opencrane/blob/main/apps/clustertenant-operator/src/routes/internal/tenant-contract.ts)).
 3. **In-pod enforcement** — `entrypoint.sh` `_load_mcp_policy` / `_mcp_server_is_enabled`
    evaluate, in precedence order: tenant-CRD `mcpPolicy.deny` (always wins) → tenant-CRD
    `mcpPolicy.allow` → AccessPolicy deny → AccessPolicy allow.
@@ -92,7 +92,7 @@ the enforcement boundary.
 ## Keeping Obot from drifting
 
 The operator's runtime-plane drift repairer
-([drift-repairer.ts](https://github.com/italanta/opencrane/blob/main/apps/operator/src/runtime-planes/drift-repairer.ts)) runs on a
+([drift-repairer.ts](https://github.com/italanta/opencrane/blob/main/apps/fleet-operator/src/runtime-planes/drift-repairer.ts)) runs on a
 ~60s interval and re-patches Obot's critical env (`OBOT_SERVER_PROVIDER_REGISTRIES`,
 `OBOT_SERVER_ENABLE_AUTHENTICATION`, `OBOT_SERVER_MCPRUNTIME_BACKEND`) in place if it
 drifts from control-plane intent — without a pod restart, preserving `valueFrom`

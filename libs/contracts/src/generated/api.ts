@@ -4,24 +4,6 @@
  */
 
 export interface paths {
-    "/platform/dns": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Show the configured platform DNS-01 issuer (ClusterIssuer or namespaced Issuer) */
-        get: operations["getPlatformDns"];
-        /** Configure the platform DNS-01 issuer for wildcard TLS (ClusterIssuer or namespaced Issuer) */
-        put: operations["setPlatformDns"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/awareness/rollout": {
         parameters: {
             query?: never;
@@ -338,123 +320,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/cluster-tenants": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List all cluster tenants (fleet view — platform-operator only)
-         * @description Fleet-wide list. Restricted to platform operators; a per-org owner/admin reads only their own org via GET /cluster-tenants/{name}.
-         */
-        get: operations["listClusterTenants"];
-        put?: never;
-        /**
-         * Create a cluster tenant (organisation) and become its owner
-         * @description Any authenticated user WITH an existing billing account may create an organisation; the caller is recorded as the org's single owner transactionally. Requires a billing account first (POST /billing-accounts), NOT pre-existing org-admin — a user becomes an org admin by creating their first org. Rejects an isolation tier no provisioner can serve.
-         */
-        post: operations["createClusterTenant"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/cluster-tenants/{name}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get a single cluster tenant by name (operator OR owner/admin of that org) */
-        get: operations["getClusterTenant"];
-        /** Update a cluster tenant (operator OR owner/admin of that org); re-gates the isolation tier when it changes */
-        put: operations["updateClusterTenant"];
-        post?: never;
-        /** Delete a cluster tenant (operator OR owner/admin of that org) */
-        delete: operations["deleteClusterTenant"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/cluster-tenants/{name}/status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get the observed status of a cluster tenant (operator OR owner/admin of that org) */
-        get: operations["getClusterTenantStatus"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/cluster-tenants/{name}/refresh": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Refresh a cluster tenant's status and reconcile its owner workspace tenant
-         * @description Re-reads the operator's observed phase from the CR (mirroring it to the DB), then — when the org is fully `ready` but has no workspace Tenant projected — seeds the owner's `<org>-default` Tenant via the same dual-write (CRD + DB row) the create path uses. Idempotent: a ready org that already has its tenant just returns the current status.
-         */
-        post: operations["refreshClusterTenant"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/billing-accounts": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Create the caller's own billing account (idempotent per subject)
-         * @description Any authenticated user creates their OWN billing account, keyed to their IdP-verified subject (never request input). Idempotent: a repeat call returns the existing account (200) instead of failing. Having a billing account is the gate for creating an organisation (POST /cluster-tenants).
-         */
-        post: operations["createBillingAccount"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/billing-accounts/me": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Return the caller's own billing account */
-        get: operations["getMyBillingAccount"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/mcp-servers": {
         parameters: {
             query?: never;
@@ -733,6 +598,76 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resource-shares": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the file/chat resource shares the caller is a member of */
+        get: operations["listResourceShares"];
+        put?: never;
+        /** Share a file/chat with a user (creates/extends the resource's share group) */
+        post: operations["shareResource"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resource-shares/{groupId}/recipients/{subject}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke a recipient from a resource share */
+        delete: operations["revokeResourceShare"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shares": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the shares the authenticated caller has created */
+        get: operations["listShares"];
+        put?: never;
+        /** Share an entitlement you hold with another user or group (least-privilege bounded) */
+        post: operations["createShare"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/shares/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke a share you created */
+        delete: operations["revokeShare"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1834,24 +1769,25 @@ export interface components {
             /** @description Total GPUs the customer may request. */
             gpu?: number;
         };
-        BillingAccount: {
-            /** @description Surrogate identifier. */
-            id: string;
-            /** @description IdP-verified subject (OIDC sub) that owns this billing account. */
+        /** @description A single organisation membership row — the LOCAL membership registry the org-admin gate reads (an OrgMembership, NOT a Zitadel grant). */
+        OrgMember: {
+            /** @description IdP-verified subject (OIDC `sub`) holding the membership. */
             subject: string;
-            /** @description The caller's verified email at create time (for human reconciliation; not the key). */
-            email?: string | null;
-            /** @description Optional human-readable billing name (company / individual). */
-            displayName?: string | null;
-            /** Format: date-time */
-            createdAt: string;
-            /** Format: date-time */
-            updatedAt: string;
+            /**
+             * @description Role held within the organisation.
+             * @enum {string}
+             */
+            role: "Owner" | "Admin" | "Member";
         };
-        /** @description Create payload for the caller's own billing account. The subject and email come from the session (never the body); only an optional displayName is accepted. */
-        BillingAccountWrite: {
-            /** @description Optional human-readable billing name (company / individual). */
-            displayName?: string;
+        /** @description Add or update an organisation member (upsert on the unique [org, subject]). */
+        OrgMemberWrite: {
+            /** @description IdP-verified subject (OIDC `sub`) of the member to add/update. */
+            subject: string;
+            /**
+             * @description Role to grant within the organisation.
+             * @enum {string}
+             */
+            role: "Owner" | "Admin" | "Member";
         };
         Group: {
             id?: string;
@@ -1859,6 +1795,41 @@ export interface components {
             description?: string;
             memberCount?: number;
             awarenessGrants?: Record<string, never>[];
+        };
+        /** @description An inter-user share: an Allow grant the caller created on a recipient for an entitlement they hold (S4). */
+        Share: {
+            id: string;
+            /**
+             * @description The entitlement family shared.
+             * @enum {string}
+             */
+            payloadType: "mcp-server" | "skill-bundle";
+            /** @description Id of the shared MCP server or skill bundle. */
+            payloadId: string;
+            /**
+             * @description Whether the share targets a user (IdP subject) or a group.
+             * @enum {string}
+             */
+            recipientType: "user" | "group";
+            /** @description The recipient user subject or group id. */
+            recipientId: string;
+            /** @enum {string} */
+            scope: "org" | "department" | "project" | "personal";
+            note?: string;
+            /** @description IdP subject of the user who created the share. */
+            sharedBy?: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /** @description A direct share of a file/chat (S4c): the resource-scoped Personal group whose members can access it. */
+        ResourceShare: {
+            /** @description Id of the resource-scoped share group. */
+            groupId: string;
+            /** @enum {string} */
+            resourceType: "file" | "chat" | "dataset";
+            resourceId: string;
+            /** @description IdP subjects the resource is shared with (incl. the owner). */
+            members: string[];
         };
         SkillBundle: {
             id?: string;
@@ -2337,6 +2308,7 @@ export interface components {
         DatasetMembership: {
             org: string[];
             team: string[];
+            department: string[];
             project: string[];
             personal: string[];
         };
@@ -2391,6 +2363,49 @@ export interface components {
             /** @description Minimum polling interval in seconds (5). */
             interval: number;
         };
+        ZitadelCandidateKeyValidation: {
+            /** @description Whether the candidate key's jwt-bearer token exchange succeeded. */
+            tokenExchangeOk: boolean;
+            /** @description Whether the candidate key passed the non-destructive instance IAM_OWNER probe. */
+            instanceScopeOk: boolean;
+            /** @description The candidate key's keyId, or null when the key was malformed. */
+            keyId: string | null;
+            /** @description Human-readable validation detail (never contains key material). */
+            detail: string;
+        };
+        ZitadelKeyRotateRequest: {
+            /** @description The candidate Zitadel service-account key — a JSON string (the downloaded key file) or the equivalent JSON object. */
+            serviceAccountKey: string | Record<string, never>;
+        };
+        ZitadelKeyRotateResult: {
+            /** @description True only when the live key was replaced (both validation flags passed and the Secret persisted). */
+            rotated: boolean;
+            /** @description The newly-active key's keyId (present only when rotated). */
+            keyId?: string;
+            /** @description The keyId that was active before the swap (present only when rotated). */
+            previousKeyId?: string;
+            validation: components["schemas"]["ZitadelCandidateKeyValidation"];
+        };
+        ZitadelReconcileRequest: {
+            /** @description When set, reconcile ONLY this ClusterTenant; when absent, scan the whole fleet. */
+            name?: string;
+        };
+        ZitadelReconcileSummary: {
+            /** @description Names of ClusterTenants whose Zitadel ids were (re-)provisioned and persisted. */
+            reconciled: string[];
+            /** @description ClusterTenants left untouched, with the reason. */
+            skipped: {
+                name: string;
+                /** @enum {string} */
+                reason: "already-provisioned" | "no-owner";
+            }[];
+            /** @description ClusterTenants whose reconcile threw (a per-CT failure never aborts the run). */
+            failed: {
+                name: string;
+                /** @description Human-readable error detail (never key material). */
+                error: string;
+            }[];
+        };
     };
     responses: never;
     parameters: never;
@@ -2400,80 +2415,6 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    getPlatformDns: {
-        parameters: {
-            query?: {
-                issuerName?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Current issuer status. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        configured?: boolean;
-                        issuerName?: string;
-                        /** @enum {string} */
-                        issuerKind?: "ClusterIssuer" | "Issuer";
-                        issuerNamespace?: string | null;
-                        provider?: string | null;
-                        email?: string | null;
-                        server?: string | null;
-                    };
-                };
-            };
-        };
-    };
-    setPlatformDns: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    provider: string;
-                    zone: string;
-                    email: string;
-                    server?: string;
-                    issuerName?: string;
-                    apiToken?: string;
-                    solverConfig?: {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-        responses: {
-            /** @description Issuer configured. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        status?: string;
-                        issuerName?: string;
-                        /** @enum {string} */
-                        issuerKind?: "ClusterIssuer" | "Issuer";
-                        issuerNamespace?: string | null;
-                        provider?: string;
-                        zone?: string;
-                        secretName?: string | null;
-                    };
-                };
-            };
-        };
-    };
     getAwarenessRollout: {
         parameters: {
             query?: never;
@@ -3323,482 +3264,6 @@ export interface operations {
             };
         };
     };
-    listClusterTenants: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Cluster tenant list. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ClusterTenant"][];
-                };
-            };
-            /** @description No authenticated session (real-auth deployments). */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Caller is not a platform operator. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    createClusterTenant: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ClusterTenantWrite"];
-            };
-        };
-        responses: {
-            /** @description Cluster tenant created; caller recorded as owner. */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ClusterTenant"];
-                };
-            };
-            /** @description Request body failed validation. */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description No authenticated session (real-auth deployments). */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Caller has no billing account (code BILLING_ACCOUNT_REQUIRED). */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description A workspace with this name already exists (code CONFLICT). */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Requested isolation tier is not served by any registered provisioner (code TIER_UNAVAILABLE). */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    getClusterTenant: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                name: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Cluster tenant detail. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ClusterTenant"];
-                };
-            };
-            /** @description No authenticated session (real-auth deployments). */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Caller is neither a platform operator nor an owner/admin of this org. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Cluster tenant not found. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    updateClusterTenant: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                name: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ClusterTenantUpdate"];
-            };
-        };
-        responses: {
-            /** @description Cluster tenant updated. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ClusterTenant"];
-                };
-            };
-            /** @description Request body failed validation. */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description No authenticated session (real-auth deployments). */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Caller is neither a platform operator nor an owner/admin of this org. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Cluster tenant not found. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Requested isolation tier is not served by any registered provisioner (code TIER_UNAVAILABLE). */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    deleteClusterTenant: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                name: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Cluster tenant deleted. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        name?: string;
-                        status?: string;
-                    };
-                };
-            };
-            /** @description No authenticated session (real-auth deployments). */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Caller is neither a platform operator nor an owner/admin of this org. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Cluster tenant not found. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    getClusterTenantStatus: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                name: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Cluster tenant status. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** @enum {string} */
-                        phase?: "pending" | "provisioning" | "ready" | "failed";
-                        message?: string;
-                        boundNamespace?: string;
-                        provisioner?: string;
-                    };
-                };
-            };
-            /** @description No authenticated session (real-auth deployments). */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Caller is neither a platform operator nor an owner/admin of this org. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Cluster tenant not found. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    refreshClusterTenant: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                name: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Refreshed status, plus the default-tenant reconcile outcome (null when the org is not yet ready). */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        status?: {
-                            /** @enum {string} */
-                            phase?: "pending" | "provisioning" | "ready" | "failed";
-                            message?: string;
-                            boundNamespace?: string;
-                            provisioner?: string;
-                        };
-                        defaultTenant?: {
-                            tenantName?: string;
-                            created?: boolean;
-                            skippedReason?: string;
-                        } | null;
-                    };
-                };
-            };
-            /** @description No authenticated session (real-auth deployments). */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Caller is neither a platform operator nor an owner/admin of this org. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Cluster tenant not found. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    createBillingAccount: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["BillingAccountWrite"];
-            };
-        };
-        responses: {
-            /** @description Billing account already existed (idempotent). */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BillingAccount"];
-                };
-            };
-            /** @description Billing account created. */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BillingAccount"];
-                };
-            };
-            /** @description No authenticated session (real-auth deployments). */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    getMyBillingAccount: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Billing account detail. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BillingAccount"];
-                };
-            };
-            /** @description No authenticated session (real-auth deployments). */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Caller has no billing account (code BILLING_ACCOUNT_NOT_FOUND). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
     listMcpServers: {
         parameters: {
             query?: never;
@@ -4619,6 +4084,296 @@ export interface operations {
             };
             /** @description Caller is not an organisation admin. */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listResourceShares: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Resource shares the caller is in. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourceShare"][];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    shareResource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    resourceType: "file" | "chat" | "dataset";
+                    resourceId: string;
+                    /** @description IdP subject of the user to share with. */
+                    recipientSubject: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Recipient added (or already present). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourceShare"];
+                };
+            };
+            /** @description Resource share created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourceShare"];
+                };
+            };
+            /** @description Invalid resource share request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description You can only share a resource you have access to. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    revokeResourceShare: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: string;
+                subject: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Recipient revoked. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourceShare"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Resource share not found, or caller is not a member. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listShares: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Shares created by the caller. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Share"][];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createShare: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    payloadType: "mcp-server" | "skill-bundle";
+                    payloadId: string;
+                    /** @enum {string} */
+                    recipientType: "user" | "group";
+                    recipientId: string;
+                    /**
+                     * @default personal
+                     * @enum {string}
+                     */
+                    scope?: "org" | "department" | "project" | "personal";
+                    note?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description An identical share already existed (idempotent). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Share"];
+                };
+            };
+            /** @description Share created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Share"];
+                };
+            };
+            /** @description Invalid share request. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description You can only share an entitlement you currently hold. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Payload or recipient group not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    revokeShare: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Share revoked. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id?: string;
+                        status?: string;
+                    };
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Share not found, or not one the caller created. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

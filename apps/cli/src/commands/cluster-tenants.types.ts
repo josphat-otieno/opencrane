@@ -56,6 +56,17 @@ export interface ClusterTenantUpdateOptions extends ClusterTenantQuotaOptions
   output: OutputFormat;
 }
 
+/** Flag values accepted by `oc cluster-tenant members add`. */
+export interface ClusterTenantMemberAddOptions
+{
+  /** IdP-verified subject (OIDC `sub`) of the member to add/update. */
+  subject: string;
+  /** Role to grant within the org: Owner | Admin | Member. */
+  role: string;
+  /** Output format: table | json. */
+  output: OutputFormat;
+}
+
 /** Resource-quota body block built from the quota flags. */
 export interface ClusterTenantQuotaBody
 {

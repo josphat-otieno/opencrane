@@ -111,10 +111,10 @@ OpenCrane governs access, budgets, and networking, but never inspects them.
 │                                                                                                │
 │  ┌────────────────────────┐    ┌────────────────────────┐    ┌──────────────────────────────┐  │
 │  │ Operator Control       │    │       jente.oc         │    │ Obot MCP Gateway            ▒▒▒▒▒▒ NETWORKPOLICY TO WEB
-│  │ - tenant/policy        │    │       OpenClaw         │    │ (headless · config-slaved)   │  │
+│  │ - tenant/policy        │    │       OpenClaw         │    │ (headless · control-plane     │  │
 │  │   reconcile            │    │      (isolated)        │    │ - native admin disabled      │  │
-│  │ - projected-token +    │    ├───────────┬────────────┤    │ - validate projected JWT     │  │
-│  │   contract injection   │    │ Personal  │    IAM     │    │ - per-call scope check       │  │
+│  │ - token + contract     │    ├───────────┬────────────┤    │ - validate identity token    │  │
+│  │   injection            │    │ Personal  │    IAM     │    │ - per-call scope check       │  │
 │  │ - reconciles Obot      │    │   Drive   │ + Workload │    │ - credential broker/shim     │  │
 │  │   config + registry    │    │           │  Identity  │    ├──────────────────────────────┤  │
 │  │ - drift detect/repair  │    │           |            |    │ In-cluster MCP servers       │  │
@@ -143,21 +143,22 @@ Legend
 (0) config — control plane owns Obot's registry, IdP/gateway/auth, lifecycle; operator reconciles + drift-repairs.
 (1) grants — per-tenant compiled scope, pushed live; revocation effective next call.
 (2) contract — versioned effective-contract the pod re-pulls at loop boundaries.
-(3) JWT — short-lived, audience-bound projected SA token; shim injects downstream creds server-side, never to the pod.
+(3) token — short-lived, audience-bound identity token; the gateway injects downstream credentials server-side, never exposing them to the pod.
 ```
 
 ## Components
 
 | Component | Path | Description |
 |-----------|------|-------------|
-| Helm chart | `platform/helm/` | K8s manifests, CRDs, operator + control plane deployments |
-| Operator | `apps/operator/` | Watches Tenant/AccessPolicy CRDs, reconciles per-tenant resources via `HostingAdapter` |
-| Control Plane | `apps/control-plane/` | Headless Express REST API (`/api/v1`) with Prisma ORM; emits `openapi.json` at build time |
+| Fleet operator | `apps/fleet-operator/` | Cluster-wide singleton: ClusterTenant lifecycle, fleet API, and registry DB |
+| Silo operator | `apps/clustertenant-operator/` | Per-silo control plane: headless Express REST API (`/api/v1`) + in-silo controllers; emits `openapi.json` at build time |
+| Fleet chart | `apps/fleet-platform/` | Helm chart `opencrane-fleet` — fleet install: fleet-manager, CRDs, cert-manager issuer, external-secrets, monitoring, network policies. Deploy with `apps/fleet-platform/deploy.sh`. |
+| Silo chart | `apps/clustertenant-platform/` | Helm chart `opencrane-silo` — per-org silo: silo operator + planes (Cognee, LiteLLM, Obot, skill registry) + Langfuse + gateway. Deploy with `apps/clustertenant-platform/deploy.sh`. |
+| Platform library | `libs/k8s-platform/` | Helm library chart (shared named templates), shared deploy engine (`k8s-deploy.sh`, `configure-oidc.sh`) + cluster provisioning (`provision.sh`, behind `--provision`), Terraform, migrations, tests, and `deploy-single-tenant.sh` |
 | CLI | `apps/cli/` | `oc` binary — full administrative surface over the control-plane API |
 | Contracts | `libs/contracts/` | Generated TypeScript client + DTOs from `openapi.json`; consumed by CLI and external surfaces |
-| Docker | `docker/` | Container images for tenant pods, operator, and control plane |
+| Docker | `docker/` | Container images for tenant pods, fleet operator, and silo operator |
 | Skills | `skills/shared/` | Org/team shared skill library |
-| Terraform | `platform/terraform/` | `core/` (cloud-agnostic) + `cloud/gcp/` (GCP-specific) |
 | Docs site | `website/` | VitePress documentation site published to GitHub Pages |
 
 ## Documentation
@@ -198,31 +199,37 @@ pnpm test
 
 ### Local Deployment
 
-```bash
-# Default local stack: operator + control-plane + LiteLLM + in-cluster PostgreSQL
-./platform/install.sh local
+The deploy scripts can provision the cluster too — `--provision local|gke|vps` creates and targets a cluster before installing (otherwise they deploy onto the current kubectl context).
 
-# Strict local stack: same core workloads, but with prod-style Helm validation
-# and an explicit LiteLLM master-key Secret matching the GCP control flow.
-./platform/install.sh local --profile strict
+```bash
+# One command: provision a local k3d cluster AND install the fleet onto it.
+apps/fleet-platform/deploy.sh --provision local --base-domain opencrane.local
+
+# Add an organisation (silo) once the fleet is up:
+apps/clustertenant-platform/deploy.sh --cluster-tenant acme --base-domain opencrane.local
 ```
 
-The `strict` profile does not emulate GCP-only capabilities such as Workload Identity, GCS bucket provisioning, External Secrets, GCE ingress, or Cloud DNS. It is intended to validate the same core application wiring and stricter production-style chart inputs locally.
+For fast dev iteration with locally-built images, the `libs/k8s-platform/tests/k3d-local.sh` harness (k3d + local images; `LOCAL_PROFILE=strict` for prod-style Helm validation) remains available. The `strict` profile does not emulate GCP-only capabilities (Workload Identity, GCS, External Secrets, GCE ingress, Cloud DNS) — it validates the same core wiring with stricter chart inputs locally.
 
 ### GCP Deployment
 
 ```bash
-# 1. Provision infrastructure
-cd platform/terraform/environments/dev
-cp terraform.tfvars.example terraform.tfvars  # edit with your GCP project
-terraform init && terraform apply
+# One command: provision a GKE cluster (Terraform, internally) AND install the fleet.
+apps/fleet-platform/deploy.sh --provision gke \
+  --project-id my-project --base-domain opencrane.ai
 
-# 2. Install the platform
-helm install opencrane platform/helm \
-  -f platform/helm/values/gcp.yaml \
-  --set hosting.gcp.projectId=my-project \
-  --set ingress.domain=opencrane.ai \
-  --set controlPlane.database.existingSecret=opencrane-cloudsql
+# Add a silo for an organisation (once per org)
+apps/clustertenant-platform/deploy.sh \
+  --cluster-tenant acme --base-domain opencrane.ai
+
+# Or provision + deploy the fleet AND one seeded org in a single pass
+libs/k8s-platform/deploy-single-tenant.sh --provision gke \
+  --project-id my-project --base-domain opencrane.ai \
+  --org-name acme --org-owner-email owner@acme.example
+
+# Prefer to manage infra yourself? Provision with Terraform
+# (libs/k8s-platform/terraform/environments/dev) and run the deploy scripts WITHOUT
+# --provision against the resulting cluster.
 
 # 3. Create a tenant via the oc CLI
 export OPENCRANE_URL=https://opencrane.ai
@@ -245,7 +252,7 @@ spec:
 EOF
 ```
 
-The operator provisions everything the tenant needs — storage, identity, an encryption key, and its own ingress. With `ingress.domain=opencrane.ai`, the `jente` assistant is reachable at `https://jente.opencrane.ai`. See [Set up your domain](https://opencrane.ai/guide/dns) for DNS and TLS.
+The operator provisions everything the tenant needs — storage, identity, an encryption key, and its own ingress. With `--domain opencrane.ai`, the `jente` assistant is reachable at `https://jente.opencrane.ai`. See [Set up your domain](https://opencrane.ai/guide/dns) for DNS and TLS.
 
 ### CLI Quick Reference
 

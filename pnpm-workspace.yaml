@@ -2,8 +2,11 @@ packages:
   - libs/contracts
   - libs/awareness
   - libs/observability
-  - apps/operator
-  - apps/control-plane
+  - libs/infra-api
+  - libs/infra-auth
+  - libs/infra-http
+  - apps/fleet-operator
+  - apps/clustertenant-operator
   - apps/harvesting-agent
   - apps/cli
   - apps/skill-registry

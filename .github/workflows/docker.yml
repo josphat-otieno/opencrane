@@ -8,10 +8,15 @@ on:
     branches:
       - main
 
+# Least-privilege default for every job (read-only). The build-and-push job overrides this
+# with its own `packages: write` to publish images to GHCR.
+permissions:
+  contents: read
+
 env:
   REGISTRY: ghcr.io
-  OPERATOR_IMAGE: ghcr.io/${{ github.repository_owner }}/opencrane-operator
-  CONTROL_PLANE_IMAGE: ghcr.io/${{ github.repository_owner }}/opencrane-control-plane
+  OPERATOR_IMAGE: ghcr.io/${{ github.repository_owner }}/opencrane-fleet-manager
+  CONTROL_PLANE_IMAGE: ghcr.io/${{ github.repository_owner }}/opencrane-clustertenant-manager
   TENANT_IMAGE: ghcr.io/${{ github.repository_owner }}/opencrane-tenant
   SKILL_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/opencrane-skill-registry
 
@@ -38,10 +43,10 @@ jobs:
         run: pnpm build
 
       - name: Test operator
-        run: pnpm --filter @opencrane/operator test
+        run: pnpm --filter @opencrane/fleet-operator test
 
       - name: Test control-plane
-        run: pnpm --filter @opencrane/control-plane test
+        run: pnpm --filter @opencrane/clustertenant-operator test
 
       - name: Test skill-registry
         run: pnpm --filter @opencrane/skill-registry test
@@ -61,7 +66,7 @@ jobs:
         uses: azure/setup-helm@v5
 
       - name: Run k3d e2e smoke test
-        run: ./platform/tests/k3d-e2e.sh
+        run: ./libs/k8s-platform/tests/k3d-e2e.sh
         env:
           KEEP_CLUSTER: "0"
           TIMEOUT_SECONDS: "300"
@@ -101,7 +106,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: apps/operator/deploy/Dockerfile
+          file: apps/fleet-operator/deploy/Dockerfile
           push: ${{ github.event_name == 'push' }}
           tags: ${{ steps.meta-operator.outputs.tags }}
           labels: ${{ steps.meta-operator.outputs.labels }}
@@ -121,7 +126,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: apps/control-plane/deploy/Dockerfile
+          file: apps/clustertenant-operator/deploy/Dockerfile
           push: ${{ github.event_name == 'push' }}
           tags: ${{ steps.meta-control-plane.outputs.tags }}
           labels: ${{ steps.meta-control-plane.outputs.labels }}

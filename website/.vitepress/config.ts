@@ -105,10 +105,15 @@ export default defineConfig({
         collapsed: true,
         items: [
           { text: 'Hosting & deployment', link: '/operators/hosting' },
+          { text: 'Fleet and silo operating model', link: '/operators/fleet-silo-model' },
+          { text: 'Silo deployment model', link: '/operators/silo-deployment' },
           { text: 'DNS configuration', link: '/operators/dns-config' },
           { text: 'Networking & isolation', link: '/operators/networking' },
+          { text: 'Linkerd identity substrate', link: '/operators/linkerd-identity' },
+          { text: 'ClusterTenant members', link: '/operators/cluster-tenant-members' },
           { text: 'Identity & connection auth', link: '/security/identity' },
           { text: 'Connection security', link: '/security/connection-security' },
+          { text: 'Zitadel key rotation', link: '/security/zitadel-key-rotation' },
           { text: 'Runbook', link: '/operators/runbook' },
           { text: 'Telemetry & logging', link: '/operators/telemetry-logging' },
           { text: 'Awareness SLOs', link: '/operators/awareness-slos' },
@@ -122,6 +127,7 @@ export default defineConfig({
           { text: 'MCP gateway (Obot)', link: '/integrators/mcp-gateway' },
           { text: 'Skill registry & delivery', link: '/integrators/skill-registry' },
           { text: 'Retrieval & memory (Cognee)', link: '/integrators/retrieval-memory' },
+          { text: 'Silo IAM: inheritance & sharing', link: '/integrators/silo-iam' },
         ],
       },
       {

@@ -16,6 +16,9 @@ The memory layer provides:
 > for the workspace layering). *This* document is about the **Cognee retrieval plane**,
 > a different thing entirely: org knowledge, not the agent's own scratch notes.
 
+> See also: [Silo IAM: inheritance & sharing](/integrators/silo-iam) (how IAM groups drive Cognee dataset
+> memberships, resource share-groups, and the designed retrieval scope precedence cascade).
+
 ## Current state (2026-06)
 
 The core path is **cut over and live**; some controls remain deferred:

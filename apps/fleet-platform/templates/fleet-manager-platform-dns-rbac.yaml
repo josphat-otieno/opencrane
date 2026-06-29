@@ -1,0 +1,111 @@
+{{- /*
+  Platform-DNS RBAC for the fleet-manager (Stage 4).
+
+  The `oc platform dns set` endpoint (now served by the fleet plane) provisions the onboarding
+  TLS issuer for the wildcard tenant cert: in cluster-issuer mode it upserts a cert-manager
+  ACME DNS-01 ClusterIssuer (cluster-scoped → ClusterRole) and writes the DNS-provider
+  credentials Secret into the cert-manager controller namespace (cert-manager reads ClusterIssuer
+  solver Secrets only from its own namespace → a namespaced Role there, not cluster-wide secrets).
+  In namespaced cert-issuer mode (MI.4) it upserts a per-namespace Issuer + Secret in the fleet's
+  own namespace instead.
+
+  Rendered only when fleetManager.clusterTenantApi.enabled (the platform-DNS router is mounted) AND
+  cert-manager is enabled. These grants moved here from the clustertenant-manager (the silo no
+  longer serves platform DNS).
+*/}}
+{{- if and .Values.fleetManager.enabled .Values.fleetManager.clusterTenantApi.enabled .Values.certManager.enabled }}
+{{- if ne (include "opencrane.namespacedCertIssuer" .) "true" }}
+---
+# Cluster-issuer mode: the cluster-scoped ClusterIssuer the platform-DNS endpoint upserts.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "opencrane.fullname" . }}-fleet-manager-clusterissuer
+  labels:
+    {{- include "opencrane.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["cert-manager.io"]
+    resources: ["clusterissuers"]
+    verbs: ["get", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "opencrane.fullname" . }}-fleet-manager-clusterissuer
+  labels:
+    {{- include "opencrane.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "opencrane.fullname" . }}-fleet-manager-clusterissuer
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "opencrane.fullname" . }}-fleet-manager
+    namespace: {{ .Release.Namespace }}
+---
+# The DNS-01 solver credentials Secret the ClusterIssuer references lives in the cert-manager
+# controller namespace (cert-manager reads it only from there). Grant secrets write THERE via a
+# namespaced Role — never cluster-wide.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "opencrane.fullname" . }}-fleet-manager-dns01
+  namespace: {{ default "cert-manager" .Values.certManager.namespace }}
+  labels:
+    {{- include "opencrane.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "opencrane.fullname" . }}-fleet-manager-dns01
+  namespace: {{ default "cert-manager" .Values.certManager.namespace }}
+  labels:
+    {{- include "opencrane.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "opencrane.fullname" . }}-fleet-manager-dns01
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "opencrane.fullname" . }}-fleet-manager
+    namespace: {{ .Release.Namespace }}
+{{- else }}
+---
+# Namespaced cert-issuer mode (MI.4): a per-namespace Issuer + its DNS-01 credentials Secret,
+# both in the fleet's release namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "opencrane.fullname" . }}-fleet-manager-dns01
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "opencrane.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["cert-manager.io"]
+    resources: ["issuers"]
+    verbs: ["get", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "opencrane.fullname" . }}-fleet-manager-dns01
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "opencrane.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "opencrane.fullname" . }}-fleet-manager-dns01
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "opencrane.fullname" . }}-fleet-manager
+    namespace: {{ .Release.Namespace }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,42 @@
+# Fleet chart image (fleet-manager = ClusterTenantOperator + fleet API). Built as
+# opencrane/operator:e2e from apps/fleet-operator.
+fleetManager:
+  image:
+    repository: opencrane/operator
+    tag: e2e
+    pullPolicy: IfNotPresent
+
+# Silo chart image (clustertenant-manager = the in-silo controllers incl. the TenantOperator
+# that reconciles the Tenant CR, plus the control-plane API). Built as
+# opencrane/clustertenant-manager:e2e from apps/clustertenant-operator.
+clustertenantManager:
+  image:
+    repository: opencrane/clustertenant-manager
+    tag: e2e
+    pullPolicy: IfNotPresent
+
+tenant:
+  defaultImage:
+    repository: opencrane/tenant
+    tag: e2e
+    pullPolicy: IfNotPresent
+
+sharedSkills:
+  enabled: true
+  pvc:
+    storageClass: local-path
+    accessMode: ReadWriteOnce
+    size: 1Gi
+
+ingress:
+  enabled: true
+  className: nginx
+  domain: opencrane.local
+
+litellm:
+  enabled: true
+  masterKey: e2e-master-key
+  image:
+    repository: ghcr.io/berriai/litellm-non_root
+    tag: main-v1.81.0-stable
+    pullPolicy: Always

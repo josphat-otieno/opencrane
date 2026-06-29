@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
-import { ___CreateControlPlaneClient } from "@opencrane/contracts";
+import { ___CreateFleetClient } from "@opencrane/contracts";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { _BuildQuotaBody } from "../commands/cluster-tenants.js";
@@ -174,7 +174,7 @@ describe("oc cluster-tenant — control-plane client round-trip", function _crud
 {
   it("creates, lists, shows, reads status, updates, and deletes via the generated client", async function _crud()
   {
-    const client = ___CreateControlPlaneClient(_baseUrl, "test-token");
+    const client = ___CreateFleetClient(_baseUrl, "test-token");
 
     // 1. Create (shared tier).
     const created = await client.POST("/cluster-tenants", {
@@ -208,7 +208,7 @@ describe("oc cluster-tenant — control-plane client round-trip", function _crud
 
   it("surfaces a 422 TIER_UNAVAILABLE envelope (clean error, not a throw) for an over-tier request", async function _overTier()
   {
-    const client = ___CreateControlPlaneClient(_baseUrl, "test-token");
+    const client = ___CreateFleetClient(_baseUrl, "test-token");
 
     // An over-tier dedicatedCluster create returns a typed error envelope —
     // openapi-fetch resolves (does not throw), so the CLI's _PrintApiError can

@@ -38,16 +38,33 @@ This document covers the essential operational procedures for deploying, verifyi
 k3d cluster create opencrane --agents 1 --port "8080:80@loadbalancer"
 
 # 2. Bootstrap the full local stack (PostgreSQL + LiteLLM + control-plane + operator)
-./platform/tests/k3d-local.sh
+libs/k8s-platform/tests/k3d-local.sh
 
 # 3. Verify all pods are running
 kubectl get pods -n opencrane
 
 # 4. Run smoke tests
-./platform/tests/k3d-e2e.sh
+libs/k8s-platform/tests/k3d-e2e.sh
 ```
 
-### GCP Production Installation
+### Production installation (fleet + silos)
+
+Use the deploy scripts rather than bare Helm commands — they set the correct value
+profiles for the fleet and silo releases. See [Silo deployment model](/operators/silo-deployment).
+
+```bash
+# Step 1: install the fleet release (opencrane-system namespace)
+apps/fleet-platform/deploy.sh \
+    --base-domain prod.example.com \
+    --cert-manager --acme-email ops@example.com --dns01-provider clouddns
+
+# Step 2: install one silo per ClusterTenant
+apps/clustertenant-platform/deploy.sh \
+    --base-domain prod.example.com \
+    --cluster-tenant acme
+```
+
+### GCP Production Installation (Terraform path)
 
 ```bash
 # 1. Authenticate with Google Cloud
@@ -58,36 +75,38 @@ export GOOGLE_CLOUD_PROJECT=your-project-id
 export GOOGLE_CLOUD_REGION=us-central1
 
 # 3. Apply Terraform infrastructure
-cd platform/terraform
+cd libs/k8s-platform/terraform
 terraform init
 terraform apply -var-file environments/prod/terraform.tfvars
 
 # 4. Get cluster credentials
 gcloud container clusters get-credentials opencrane-prod --region $GOOGLE_CLOUD_REGION
 
-# 5. Install OpenCrane Helm chart
-helm upgrade --install opencrane platform/helm/ \
-  --namespace opencrane --create-namespace \
-  --values platform/helm/values/gcp.yaml \
-  --set litellm.existingSecret=opencrane-litellm \
-  --wait --timeout 10m
-
-# 6. Run Prisma migrations
-kubectl exec -n opencrane deployment/control-plane -- \
-  npx prisma migrate deploy
+# 5. Install fleet release then silo releases via deploy scripts (see above)
 ```
 
 ### Required Environment Variables
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `LITELLM_MASTER_KEY` | Yes (if LiteLLM enabled) | LiteLLM master API key |
-| `LITELLM_ENDPOINT` | Yes (if LiteLLM enabled) | LiteLLM service URL (default: `http://litellm:4000`) |
-| `OPENCRANE_API_TOKEN` | Yes | Bearer token for control-plane API auth |
-| `NAMESPACE` | No | Kubernetes namespace (default: `default`) |
-| `OPENCRANE_PROJECTION_DRIFT_ALERT_THRESHOLD` | No | Drift count before alert fires (0 = disabled) |
-| `OPENCRANE_DRIFT_WEBHOOK_URL` | No | Webhook URL for projection-drift alert delivery |
+Set these via Helm values — the deploy scripts wire them automatically. The variables below are split by which component they apply to.
+
+**Fleet-manager** (`opencrane-system`):
+
+| Variable | Required | Helm key | Description |
+|----------|----------|----------|-------------|
+| `DATABASE_URL` | Yes | `fleetManager.database.existingSecret` | Fleet registry PostgreSQL connection string |
+| `OPENCRANE_CLUSTER_TENANT_MANAGER_ENABLED` | Yes | `clusterTenantManagement.enabled` | Gates the ClusterTenant lifecycle and Zitadel-admin routes |
+| `ZITADEL_MGMT_API_URL` | When CT management on | `fleetManager.zitadel.mgmtApiUrl` | Zitadel Management API URL |
+| `ZITADEL_MGMT_SA_KEY` | When CT management on | `fleetManager.zitadel.existingSecret` | Zitadel SA key JSON |
+
+**Clustertenant-manager** (each silo namespace):
+
+| Variable | Required | Helm key | Description |
+|----------|----------|----------|-------------|
+| `DATABASE_URL` | Yes | `clustertenantManager.database.existingSecret` | Per-silo PostgreSQL connection string |
+| `LITELLM_MASTER_KEY` | Yes (if LiteLLM enabled) | `litellm.existingSecret` | LiteLLM master API key |
+| `OPENCRANE_API_TOKEN` | Yes | — | Bearer token for control-plane API auth |
+| `OPENCRANE_PROJECTION_DRIFT_ALERT_THRESHOLD` | No | — | Drift count before alert fires (0 = disabled) |
+| `OPENCRANE_DRIFT_WEBHOOK_URL` | No | — | Webhook URL for projection-drift alert delivery |
 
 ---
 
@@ -96,30 +115,37 @@ kubectl exec -n opencrane deployment/control-plane -- \
 ### Health Checks
 
 ```bash
-# Control-plane health
-curl -H "Authorization: Bearer $OPENCRANE_API_TOKEN" \
-  https://control.opencrane.io/healthz
-
+# Fleet-manager health (opencrane-system)
+curl -H "Authorization: Bearer $OPENCRANE_TOKEN" \
+  https://<fleet-host>/api/v1/healthz
 # Expected response: {"status":"ok","db":true}
 
-# LiteLLM health
-curl http://litellm.opencrane.svc.cluster.local:4000/health
+# Silo clustertenant-manager health
+curl -H "Authorization: Bearer $OPENCRANE_TOKEN" \
+  https://<silo-host>/api/v1/healthz
+# Expected response: {"status":"ok","db":true}
 
-# Operator logs
-kubectl logs -n opencrane deployment/operator --tail 50
+# LiteLLM health (per-silo namespace)
+curl http://litellm.opencrane-acme.svc.cluster.local:4000/health
 
-# List all tenants and their phases
-kubectl get tenants -n opencrane
+# Fleet-manager logs
+kubectl logs -n opencrane-system deployment/opencrane-fleet-manager --tail 50
+
+# Silo clustertenant-manager logs (replace <ct> with the ClusterTenant name)
+kubectl logs -n opencrane-<ct> deployment/opencrane-clustertenant-manager --tail 50
+
+# List all tenants and their phases (in a specific silo)
+kubectl get tenants -n opencrane-<ct>
 
 # Check a specific tenant
-kubectl describe tenant acme -n opencrane
+kubectl describe tenant acme -n opencrane-<ct>
 ```
 
 ### Smoke Test Suite
 
 ```bash
 # Run the full k3d e2e smoke test
-./platform/tests/k3d-e2e.sh
+libs/k8s-platform/tests/k3d-e2e.sh
 
 # Run workspace unit tests
 pnpm test
@@ -152,52 +178,63 @@ kubectl logs -n opencrane deployment/harvesting-agent --tail 50
 
 ## 3. Upgrade Procedures
 
-### Control-plane Upgrade (Helm)
+### Upgrade (fleet and silo releases)
+
+Use the deploy scripts to upgrade — they set the correct value profiles. Upgrade the fleet release and each silo release independently.
+
+```bash
+# Upgrade the fleet release
+apps/fleet-platform/deploy.sh \
+    --base-domain prod.example.com \
+    --reuse-values
+
+# Upgrade a silo release
+apps/clustertenant-platform/deploy.sh \
+    --base-domain prod.example.com \
+    --cluster-tenant acme \
+    --reuse-values
+```
+
+For manual Helm upgrades (with `helm diff` review):
 
 ```bash
 # 1. Pull the latest chart updates
 git pull origin main
 
-# 2. Review changes
-helm diff upgrade opencrane platform/helm/ \
-  --namespace opencrane \
-  --values platform/helm/values/gcp.yaml
+# 2. Review changes for the fleet release
+helm diff upgrade opencrane-fleet apps/fleet-platform/ \
+  --namespace opencrane-system \
+  --reuse-values
 
-# 3. Apply the upgrade
-helm upgrade opencrane platform/helm/ \
-  --namespace opencrane \
-  --values platform/helm/values/gcp.yaml \
-  --wait --timeout 10m
+# 3. Apply the fleet upgrade
+helm upgrade opencrane-fleet apps/fleet-platform/ \
+  --namespace opencrane-system \
+  --reuse-values --wait --timeout 10m
 
-# 4. Run database migrations if needed
-kubectl exec -n opencrane deployment/control-plane -- \
-  npx prisma migrate deploy
-
-# 5. Verify rollout
-kubectl rollout status deployment/control-plane -n opencrane
-kubectl rollout status deployment/operator -n opencrane
+# 4. Verify rollout
+kubectl rollout status deployment/opencrane-fleet-manager -n opencrane-system
 ```
 
-### Operator Rolling Restart
+### Fleet-manager rolling restart
 
 ```bash
-# Force a rolling restart of the operator (picks up config changes)
-kubectl rollout restart deployment/operator -n opencrane
+# Force a rolling restart of the fleet-manager (picks up config changes)
+kubectl rollout restart deployment/opencrane-fleet-manager -n opencrane-system
 
 # Monitor progress
-kubectl rollout status deployment/operator -n opencrane --timeout 5m
+kubectl rollout status deployment/opencrane-fleet-manager -n opencrane-system --timeout 5m
 ```
 
 ### OpenClaw Version Update for a Tenant
 
 ```bash
-# Pin a tenant to a specific OpenClaw version
-kubectl patch tenant acme -n opencrane \
+# Pin a tenant to a specific OpenClaw version (replace <ct> with the ClusterTenant name)
+kubectl patch tenant acme -n opencrane-<ct> \
   --type merge \
   --patch '{"spec":{"openclawVersion":"2026.5.1"}}'
 
 # The operator reconciles on next event or restart the pod to trigger immediately
-kubectl delete pod -n opencrane -l opencrane.io/tenant=acme
+kubectl delete pod -n opencrane-<ct> -l opencrane.io/tenant=acme
 ```
 
 ---
@@ -207,23 +244,26 @@ kubectl delete pod -n opencrane -l opencrane.io/tenant=acme
 ### Helm Chart Rollback
 
 ```bash
-# View Helm release history
-helm history opencrane -n opencrane
+# View fleet release history
+helm history opencrane-fleet -n opencrane-system
 
-# Roll back to the previous release
-helm rollback opencrane -n opencrane --wait
+# Roll back fleet release to the previous revision
+helm rollback opencrane-fleet -n opencrane-system --wait
 
-# Roll back to a specific revision
-helm rollback opencrane 3 -n opencrane --wait
+# View a silo release history (replace <ct> with the ClusterTenant name)
+helm history opencrane-<ct> -n opencrane-<ct>
+
+# Roll back a silo release to the previous revision
+helm rollback opencrane-<ct> -n opencrane-<ct> --wait
 ```
 
 ### Database Migration Rollback
 
 Prisma migrations do not have automatic down-migrations. For critical data rollbacks:
 
-1. **Stop the control-plane** to prevent write conflicts:
+1. **Stop the clustertenant-manager** in the affected silo to prevent write conflicts:
    ```bash
-   kubectl scale deployment/control-plane -n opencrane --replicas 0
+   kubectl scale deployment/opencrane-clustertenant-manager -n opencrane-<ct> --replicas 0
    ```
 
 2. **Restore from backup** (GCP Cloud SQL):
@@ -233,66 +273,78 @@ Prisma migrations do not have automatic down-migrations. For critical data rollb
      --backup-instance=opencrane-db
    ```
 
-3. **Redeploy the previous control-plane version**:
+3. **Redeploy the previous version**:
    ```bash
-   helm rollback opencrane -n opencrane
-   kubectl scale deployment/control-plane -n opencrane --replicas 1
+   helm rollback opencrane-<ct> -n opencrane-<ct>
+   kubectl scale deployment/opencrane-clustertenant-manager -n opencrane-<ct> --replicas 1
    ```
 
 ### Tenant Rollback (OpenClaw Version Pin)
 
 ```bash
 # If a new OpenClaw version is causing failures, pin to the last known good version
-kubectl patch tenant acme -n opencrane \
+# (replace <ct> with the ClusterTenant name)
+kubectl patch tenant acme -n opencrane-<ct> \
   --type merge \
   --patch '{"spec":{"openclawVersion":"2026.4.15"}}'
 
 # Delete the pod to force an immediate restart with the pinned version
-kubectl delete pod -n opencrane -l opencrane.io/tenant=acme
+kubectl delete pod -n opencrane-<ct> -l opencrane.io/tenant=acme
 ```
 
 ---
 
 ## 5. Incident Response
 
-### P0: Control-plane is down
+### P0: Fleet-manager is down
 
-**Symptoms**: `GET /healthz` returns non-200; tenants cannot be created or modified.
+**Symptoms**: `GET <fleet-host>/api/v1/healthz` returns non-200; ClusterTenants cannot be created or modified.
 
 **Response**:
-1. Check pod status: `kubectl get pods -n opencrane`
-2. Check logs: `kubectl logs -n opencrane deployment/control-plane --tail 100`
-3. Check database connectivity: `kubectl exec -n opencrane deployment/control-plane -- npx prisma db pull`
-4. If database is unreachable, verify `DATABASE_URL` secret and network policies
-5. Roll back if a recent upgrade is suspected: `helm rollback opencrane -n opencrane`
+1. Check pod status: `kubectl get pods -n opencrane-system`
+2. Check logs: `kubectl logs -n opencrane-system deployment/opencrane-fleet-manager --tail 100`
+3. Check database connectivity (fleet registry DB)
+4. If database is unreachable, verify `fleetManager.database.existingSecret` and network policies
+5. Roll back if a recent upgrade is suspected: `helm rollback opencrane-fleet -n opencrane-system`
+
+### P0: Silo clustertenant-manager is down
+
+**Symptoms**: `GET <silo-host>/api/v1/healthz` returns non-200; tenants within a silo cannot be created or modified.
+
+**Response**:
+1. Check pod status: `kubectl get pods -n opencrane-<ct>`
+2. Check logs: `kubectl logs -n opencrane-<ct> deployment/opencrane-clustertenant-manager --tail 100`
+3. Check database connectivity (per-silo DB)
+4. Roll back if a recent upgrade is suspected: `helm rollback opencrane-<ct> -n opencrane-<ct>`
 
 ### P0: Operator is not reconciling
 
-**Symptoms**: `kubectl get tenants` shows tenants stuck in `Pending` or `Error` phase.
+**Symptoms**: `kubectl get tenants -n opencrane-<ct>` shows tenants stuck in `Pending` or `Error` phase.
 
 **Response**:
-1. Check operator logs: `kubectl logs -n opencrane deployment/operator --tail 100`
-2. Verify RBAC: `kubectl auth can-i get tenants.opencrane.io --as system:serviceaccount:opencrane:operator`
+1. Check operator logs: `kubectl logs -n opencrane-<ct> deployment/opencrane-clustertenant-operator --tail 100`
+2. Verify RBAC: `kubectl auth can-i get tenants.opencrane.io --as system:serviceaccount:opencrane-<ct>:opencrane-clustertenant-operator -n opencrane-<ct>`
 3. Check Kubernetes API server reachability from the operator pod
 4. Force reconcile by annotating the tenant:
    ```bash
-   kubectl annotate tenant acme opencrane.io/reconcile-at=$(date -u +%s) -n opencrane
+   kubectl annotate tenant acme opencrane.io/reconcile-at=$(date -u +%s) -n opencrane-<ct>
    ```
-5. Restart the operator if needed: `kubectl rollout restart deployment/operator -n opencrane`
+5. Restart the operator if needed: `kubectl rollout restart deployment/opencrane-clustertenant-operator -n opencrane-<ct>`
 
 ### P1: LiteLLM is unreachable
 
-**Symptoms**: Tenant pods fail to start; `LITELLM_API_KEY` injection is failing.
+**Symptoms**: Tenant pods in a silo fail to start; `LITELLM_API_KEY` injection is failing. LiteLLM is a per-silo component in `opencrane-<ct>`.
 
 **Response**:
-1. Check LiteLLM pod: `kubectl get pods -n opencrane -l app=litellm`
-2. Check LiteLLM logs: `kubectl logs -n opencrane deployment/litellm --tail 50`
-3. Verify the master key secret: `kubectl get secret opencrane-litellm -n opencrane -o jsonpath='{.data.LITELLM_MASTER_KEY}' | base64 -d`
+1. Check LiteLLM pod: `kubectl get pods -n opencrane-<ct> -l app=litellm`
+2. Check LiteLLM logs: `kubectl logs -n opencrane-<ct> deployment/litellm --tail 50`
+3. Verify the master key secret: `kubectl get secret opencrane-litellm -n opencrane-<ct> -o jsonpath='{.data.LITELLM_MASTER_KEY}' | base64 -d`
 4. Check database connectivity from LiteLLM
-5. If LiteLLM is permanently unavailable, disable it for recovery:
+5. If LiteLLM is permanently unavailable, disable it for recovery on the affected silo:
    ```bash
-   helm upgrade opencrane platform/helm/ \
-     --namespace opencrane \
+   helm upgrade opencrane-<ct> apps/clustertenant-platform/ \
+     --namespace opencrane-<ct> \
+     --reuse-values \
      --set litellm.enabled=false \
      --wait
    ```
@@ -324,7 +376,8 @@ kubectl delete pod -n opencrane -l opencrane.io/tenant=acme
 2. Discuss with tenant owner whether to increase budget or wait for reset
 3. Increase the budget by patching the Tenant CRD and revoking/regenerating the key:
    ```bash
-   kubectl patch tenant acme -n opencrane \
+   # replace <ct> with the ClusterTenant name
+   kubectl patch tenant acme -n opencrane-<ct> \
      --type merge \
      --patch '{"spec":{"monthlyBudgetUsd":500}}'
    
@@ -340,77 +393,83 @@ Projection drift occurs when the PostgreSQL projection rows diverge from the Kub
 
 ### Detect drift
 
+Drift is detected and repaired per silo. Replace `<silo-host>` with the URL of the affected silo's clustertenant-manager.
+
 ```bash
 # Full drift report with lag metrics
-curl -H "Authorization: Bearer $OPENCRANE_API_TOKEN" \
-  https://control.opencrane.io/api/metrics/projection-drift | jq .
+curl -H "Authorization: Bearer $OPENCRANE_TOKEN" \
+  https://<silo-host>/api/v1/metrics/projection-drift | jq .
 
 # Tenant-specific drift report
-curl -H "Authorization: Bearer $OPENCRANE_API_TOKEN" \
-  https://control.opencrane.io/api/tenants/drift | jq .
+curl -H "Authorization: Bearer $OPENCRANE_TOKEN" \
+  https://<silo-host>/api/v1/tenants/drift | jq .
 
 # Policy-specific drift report
-curl -H "Authorization: Bearer $OPENCRANE_API_TOKEN" \
-  https://control.opencrane.io/api/policies/drift | jq .
+curl -H "Authorization: Bearer $OPENCRANE_TOKEN" \
+  https://<silo-host>/api/v1/policies/drift | jq .
 ```
 
 ### Repair drift
 
 ```bash
 # Dry-run repair (shows what would change, does not write)
-curl -X POST -H "Authorization: Bearer $OPENCRANE_API_TOKEN" \
-  https://control.opencrane.io/api/tenants/repair | jq .
+curl -X POST -H "Authorization: Bearer $OPENCRANE_TOKEN" \
+  https://<silo-host>/api/v1/tenants/repair | jq .
 
 # Apply repair (write changes to PostgreSQL)
-curl -X POST -H "Authorization: Bearer $OPENCRANE_API_TOKEN" \
-  "https://control.opencrane.io/api/tenants/repair?dryRun=false" | jq .
+curl -X POST -H "Authorization: Bearer $OPENCRANE_TOKEN" \
+  "https://<silo-host>/api/v1/tenants/repair?dryRun=false" | jq .
 
 # Repair AccessPolicy projections
-curl -X POST -H "Authorization: Bearer $OPENCRANE_API_TOKEN" \
-  "https://control.opencrane.io/api/policies/repair?dryRun=false" | jq .
+curl -X POST -H "Authorization: Bearer $OPENCRANE_TOKEN" \
+  "https://<silo-host>/api/v1/policies/repair?dryRun=false" | jq .
 ```
 
 ---
 
 ## 7. LiteLLM Key Lifecycle
 
+LiteLLM keys are managed per silo. Replace `<silo-host>` with the clustertenant-manager URL of the relevant silo, and `<ct>` with the ClusterTenant name.
+
 ### View active key for a tenant
 
 ```bash
-curl -H "Authorization: Bearer $OPENCRANE_API_TOKEN" \
-  https://control.opencrane.io/api/ai-budget/acme/litellm-key | jq .
+curl -H "Authorization: Bearer $OPENCRANE_TOKEN" \
+  https://<silo-host>/api/v1/ai-budget/acme/litellm-key | jq .
 ```
 
 ### Revoke and regenerate a key
 
 ```bash
 # Revoke the current key
-curl -X POST -H "Authorization: Bearer $OPENCRANE_API_TOKEN" \
-  https://control.opencrane.io/api/ai-budget/acme/litellm-key/revoke
+curl -X POST -H "Authorization: Bearer $OPENCRANE_TOKEN" \
+  https://<silo-host>/api/v1/ai-budget/acme/litellm-key/revoke
 
 # The operator will generate a new key on the next reconcile cycle.
 # Force reconcile by deleting the tenant pod:
-kubectl delete pod -n opencrane -l opencrane.io/tenant=acme
+kubectl delete pod -n opencrane-<ct> -l opencrane.io/tenant=acme
 ```
 
 ### View tenant spend
 
 ```bash
-curl -H "Authorization: Bearer $OPENCRANE_API_TOKEN" \
-  https://control.opencrane.io/api/ai-budget/acme/spend | jq .
+curl -H "Authorization: Bearer $OPENCRANE_TOKEN" \
+  https://<silo-host>/api/v1/ai-budget/acme/spend | jq .
 ```
 
 ---
 
 ## 8. Tenant Lifecycle Operations
 
+Tenant lifecycle operations target a **silo's clustertenant-manager**. Replace `<silo-host>` with the URL of the target silo and `<ct>` with the ClusterTenant name.
+
 ### Create a tenant
 
 ```bash
 curl -X POST \
-  -H "Authorization: Bearer $OPENCRANE_API_TOKEN" \
+  -H "Authorization: Bearer $OPENCRANE_TOKEN" \
   -H "Content-Type: application/json" \
-  https://control.opencrane.io/api/tenants \
+  https://<silo-host>/api/v1/tenants \
   -d '{
     "name": "acme",
     "displayName": "ACME Corp",
@@ -424,32 +483,32 @@ curl -X POST \
 
 ```bash
 curl -X POST \
-  -H "Authorization: Bearer $OPENCRANE_API_TOKEN" \
-  https://control.opencrane.io/api/tenants/acme/suspend
+  -H "Authorization: Bearer $OPENCRANE_TOKEN" \
+  https://<silo-host>/api/v1/tenants/acme/suspend
 ```
 
 ### Resume a tenant
 
 ```bash
 curl -X POST \
-  -H "Authorization: Bearer $OPENCRANE_API_TOKEN" \
-  https://control.opencrane.io/api/tenants/acme/resume
+  -H "Authorization: Bearer $OPENCRANE_TOKEN" \
+  https://<silo-host>/api/v1/tenants/acme/resume
 ```
 
 ### Delete a tenant
 
 ```bash
 curl -X DELETE \
-  -H "Authorization: Bearer $OPENCRANE_API_TOKEN" \
-  https://control.opencrane.io/api/tenants/acme
+  -H "Authorization: Bearer $OPENCRANE_TOKEN" \
+  https://<silo-host>/api/v1/tenants/acme
 ```
 
-> **Note**: Deletion removes the Kubernetes deployment and service but retains the tenant's GCS bucket and encryption key Secret for data recovery.
+> **Note**: Deletion removes the Kubernetes deployment and service but retains the tenant's encryption key Secret for data recovery.
 
 ### Apply a skill allowlist to a tenant
 
 ```bash
-kubectl patch tenant acme -n opencrane \
+kubectl patch tenant acme -n opencrane-<ct> \
   --type merge \
   --patch '{"spec":{"skillAllowlist":["company-policy","engineering-tools"]}}'
 ```
@@ -457,7 +516,7 @@ kubectl patch tenant acme -n opencrane \
 ### Apply MCP server restrictions to a tenant
 
 ```bash
-kubectl patch tenant acme -n opencrane \
+kubectl patch tenant acme -n opencrane-<ct> \
   --type merge \
   --patch '{"spec":{"mcpPolicy":{"deny":["external-search"],"allow":["skills","retrieval"]}}}'
 ```

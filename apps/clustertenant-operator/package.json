@@ -1,0 +1,50 @@
+{
+  "name": "@opencrane/clustertenant-operator",
+  "version": "0.1.0",
+  "private": true,
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "build": "prisma generate && tsc && cp -r src/tenants/deploy/workspace dist/tenants/deploy/workspace && tsx scripts/emit-openapi.mts",
+    "emit-openapi": "tsx scripts/emit-openapi.mts",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "lint": "tsc --noEmit",
+    "db:migrate": "prisma migrate deploy",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push"
+  },
+  "dependencies": {
+    "@kubernetes/client-node": "^1.0.0",
+    "@opencrane/awareness": "workspace:*",
+    "@opencrane/infra-api": "workspace:*",
+    "@opencrane/infra-auth": "workspace:*",
+    "@opencrane/infra-http": "workspace:*",
+    "@opencrane/contracts": "workspace:*",
+    "@opencrane/observability": "workspace:*",
+    "@prisma/client": "^6.0.0",
+    "@types/express-session": "^1.19.0",
+    "express": "^5.1.0",
+    "express-session": "^1.19.0",
+    "http-proxy": "^1.18.1",
+    "openid-client": "^6.8.4",
+    "pino": "^9.6.0",
+    "pino-http": "^10.0.0",
+    "prisma": "^6.0.0",
+    "zod": "^3.25.0"
+  },
+  "optionalDependencies": {
+    "@google-cloud/storage": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/http-proxy": "^1.17.14",
+    "@types/node": "^22.0.0",
+    "@types/supertest": "^6.0.0",
+    "supertest": "^7.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.1.0"
+  }
+}

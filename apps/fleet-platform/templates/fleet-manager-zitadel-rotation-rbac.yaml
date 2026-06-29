@@ -1,0 +1,55 @@
+{{- /*
+  Superadmin Zitadel SA-key rotation RBAC (S4 key-rotation feature).
+
+  The fleet-manager (cluster-wide singleton, sole IAM_OWNER holder) rotates its own Zitadel
+  service-account key in-place via the superadmin API: it `patch`es the Secret with the newly
+  issued key after validating it. (The current key is read from env at boot, not from the k8s
+  API, so no `get` is needed — least privilege.)
+
+  Rendered ONLY when:
+    - fleetManager.clusterTenantApi.enabled is true  (the management/Zitadel surface is mounted here)
+    - fleetManager.zitadel.existingSecret is set  (there is a Secret to rotate)
+
+  The Role is scoped to a single named Secret via `resourceNames`, so the fleet-manager SA
+  cannot read or write any other Secret in the release namespace. Namespaced Role + RoleBinding
+  (NOT ClusterRole) — the SA-key Secret lives in the fleet's release namespace.
+
+  Stage 4: Zitadel management/provisioning moved wholly to the fleet-manager — a silo never holds
+  the Zitadel SA key, so this RBAC is rendered for the fleet plane only.
+*/}}
+{{- if and .Values.fleetManager.enabled .Values.fleetManager.clusterTenantApi.enabled .Values.fleetManager.zitadel.existingSecret }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "opencrane.fullname" . }}-fleet-manager-zitadel-rotation
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "opencrane.labels" . | nindent 4 }}
+rules:
+  # Superadmin key-rotation: the fleet-manager PATCHES the SA-key Secret with the newly issued
+  # key after validating it (the in-use key is read from env at boot, not via the k8s API, so
+  # `get` is intentionally NOT granted — least privilege). Locked to the single named Secret
+  # that carries the SA key — never all secrets.
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["patch"]
+    resourceNames:
+      - {{ .Values.fleetManager.zitadel.existingSecret | quote }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "opencrane.fullname" . }}-fleet-manager-zitadel-rotation
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "opencrane.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "opencrane.fullname" . }}-fleet-manager-zitadel-rotation
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "opencrane.fullname" . }}-fleet-manager
+    namespace: {{ .Release.Namespace }}
+{{- end }}

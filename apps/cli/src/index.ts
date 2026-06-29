@@ -27,6 +27,7 @@ import { Command } from "commander";
 import { ___ShutdownTelemetry } from "@opencrane/observability";
 
 import { type CliConfig, _ResolveConfig } from "./config.js";
+import { _RegisterAdmin } from "./commands/admin.js";
 import { _RegisterAudit } from "./commands/audit.js";
 import { _RegisterAuth } from "./commands/auth.js";
 import { _RegisterAwareness } from "./commands/awareness.js";
@@ -42,6 +43,7 @@ import { _RegisterPolicies } from "./commands/policies.js";
 import { _RegisterProviders } from "./commands/providers.js";
 import { _RegisterRouting } from "./commands/routing.js";
 import { _RegisterSessions } from "./commands/sessions.js";
+import { _RegisterShare } from "./commands/share.js";
 import { _RegisterSkills } from "./commands/skills.js";
 import { _RegisterSkillPosture } from "./commands/skill-posture.js";
 import { _RegisterTenants } from "./commands/tenants.js";
@@ -54,7 +56,8 @@ program
   .name("oc")
   .description("OpenCrane platform CLI — manage tenants, policies, budgets, MCP servers, and skills")
   .version("0.1.0")
-  .option("--url <url>", "Control-plane base URL (overrides OPENCRANE_URL)", undefined);
+  .option("--url <url>", "Silo control-plane base URL (overrides OPENCRANE_URL)", undefined)
+  .option("--fleet-url <url>", "Fleet-manager base URL for fleet/admin commands (overrides OPENCRANE_FLEET_URL; defaults to --url)", undefined);
 
 /** Lazily resolved config — deferred so --help works without credentials. */
 let _resolvedConfig: CliConfig | undefined;
@@ -74,11 +77,13 @@ function _getConfig(): CliConfig
 }
 
 // Register all command groups against the root program.
+_RegisterAdmin(program, _getConfig);
 _RegisterTenants(program, _getConfig);
 _RegisterClusterTenants(program, _getConfig);
 _RegisterPolicies(program, _getConfig);
 _RegisterMcpServers(program, _getConfig);
 _RegisterSkills(program, _getConfig);
+_RegisterShare(program, _getConfig);
 _RegisterBudget(program, _getConfig);
 _RegisterAudit(program, _getConfig);
 _RegisterTokens(program, _getConfig);

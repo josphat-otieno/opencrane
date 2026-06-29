@@ -1,12 +1,15 @@
 import type { Command } from "commander";
 
 import type { CliConfig } from "../config.js";
-import { _MakeClient } from "../config.js";
+import { _MakeFleetClient } from "../config.js";
 import { _Print, _PrintApiError, _PrintSuccess, type OutputFormat } from "../format.js";
-import type { ClusterTenantCreateOptions, ClusterTenantQuotaBody, ClusterTenantQuotaOptions, ClusterTenantUpdateOptions } from "./cluster-tenants.types.js";
+import type { ClusterTenantCreateOptions, ClusterTenantMemberAddOptions, ClusterTenantQuotaBody, ClusterTenantQuotaOptions, ClusterTenantUpdateOptions } from "./cluster-tenants.types.js";
 
 /** Columns shown for `oc cluster-tenant list` in table mode. */
 const _LIST_COLUMNS = ["name", "displayName", "isolationTier", "compute", "resources", "status"];
+
+/** Columns shown for `oc cluster-tenant members list` in table mode. */
+const _MEMBER_LIST_COLUMNS = ["subject", "role"];
 
 /**
  * Build the resource-quota body block from the raw quota flags.
@@ -57,7 +60,7 @@ export function _RegisterClusterTenants(parent: Command, getConfig: () => CliCon
     .option("-o, --output <format>", "Output format: table|json", "table")
     .action(async function _list(opts: { output: OutputFormat })
     {
-      const client = _MakeClient(getConfig());
+      const client = _MakeFleetClient(getConfig());
       const { data, error } = await client.GET("/cluster-tenants");
       if (error) _PrintApiError("cluster-tenant list", error);
       _Print(data, opts.output, _LIST_COLUMNS);
@@ -69,7 +72,7 @@ export function _RegisterClusterTenants(parent: Command, getConfig: () => CliCon
     .option("-o, --output <format>", "Output format: table|json", "table")
     .action(async function _show(name: string, opts: { output: OutputFormat })
     {
-      const client = _MakeClient(getConfig());
+      const client = _MakeFleetClient(getConfig());
       const { data, error } = await client.GET("/cluster-tenants/{name}", { params: { path: { name } } });
       if (error) _PrintApiError("cluster-tenant show", error);
       _Print(data, opts.output);
@@ -81,7 +84,7 @@ export function _RegisterClusterTenants(parent: Command, getConfig: () => CliCon
     .option("-o, --output <format>", "Output format: table|json", "table")
     .action(async function _status(name: string, opts: { output: OutputFormat })
     {
-      const client = _MakeClient(getConfig());
+      const client = _MakeFleetClient(getConfig());
       const { data, error } = await client.GET("/cluster-tenants/{name}/status", { params: { path: { name } } });
       if (error) _PrintApiError("cluster-tenant status", error);
       _Print(data, opts.output);
@@ -93,7 +96,7 @@ export function _RegisterClusterTenants(parent: Command, getConfig: () => CliCon
     .option("-o, --output <format>", "Output format: table|json", "table")
     .action(async function _refresh(name: string, opts: { output: OutputFormat })
     {
-      const client = _MakeClient(getConfig());
+      const client = _MakeFleetClient(getConfig());
       const { data, error } = await client.POST("/cluster-tenants/{name}/refresh", { params: { path: { name } } });
       if (error) _PrintApiError("cluster-tenant refresh", error);
       _Print(data, opts.output);
@@ -128,7 +131,7 @@ export function _RegisterClusterTenants(parent: Command, getConfig: () => CliCon
 
       // 2. POST through the generated client — just another API client, no
       //    privileged path. An over-tier request surfaces the API's 422.
-      const client = _MakeClient(getConfig());
+      const client = _MakeFleetClient(getConfig());
       const { data, error } = await client.POST("/cluster-tenants", { body });
 
       // 3. Surface any API error as a clean CLI message (not a stack trace).
@@ -166,7 +169,7 @@ export function _RegisterClusterTenants(parent: Command, getConfig: () => CliCon
       // 2. PUT through the generated client; a tier change is re-gated server-side.
       //    The update body is typed as an open object in the contract, so the
       //    assembled partial is forwarded as-is for the API to validate.
-      const client = _MakeClient(getConfig());
+      const client = _MakeFleetClient(getConfig());
       const { data, error } = await client.PUT("/cluster-tenants/{name}", { params: { path: { name } }, body: body as Record<string, never> });
 
       // 3. Surface any API error (e.g. 422 TIER_UNAVAILABLE) as a clean message.
@@ -179,9 +182,71 @@ export function _RegisterClusterTenants(parent: Command, getConfig: () => CliCon
     .description("Delete a cluster tenant")
     .action(async function _delete(name: string)
     {
-      const client = _MakeClient(getConfig());
+      const client = _MakeFleetClient(getConfig());
       const { error } = await client.DELETE("/cluster-tenants/{name}", { params: { path: { name } } });
       if (error) _PrintApiError("cluster-tenant delete", error);
       _PrintSuccess(`Cluster tenant "${name}" deleted`);
+    });
+
+  clusterTenant
+    .command("reconcile-zitadel [name]")
+    .description("Reconcile/backfill incomplete Zitadel orgs (superadmin) — re-provisions every cluster tenant whose Zitadel ids are missing/partial, or just [name] when given")
+    .option("-o, --output <format>", "Output format: table|json", "json")
+    .action(async function _reconcileZitadel(name: string | undefined, opts: { output: OutputFormat })
+    {
+      // Scope the run to a single org when a name is given, else reconcile the whole fleet.
+      // The API is superadmin-gated and idempotent; it always returns the run summary.
+      const client = _MakeFleetClient(getConfig());
+      const { data, error } = await client.POST("/admin/zitadel/reconcile", { body: name ? { name } : {} });
+      if (error) _PrintApiError("cluster-tenant reconcile-zitadel", error);
+      _Print(data, opts.output);
+    });
+
+  // --- members sub-group: the org's LOCAL membership registry (the rows the
+  //     org-admin gate reads — OrgMembership, NOT Zitadel grants). ----------
+  const members = clusterTenant
+    .command("members")
+    .description("Manage an organisation's members (list, add/update, remove) — the local membership registry");
+
+  members
+    .command("list <name>")
+    .description("List an organisation's members (subject + role)")
+    .option("-o, --output <format>", "Output format: table|json", "table")
+    .action(async function _membersList(name: string, opts: { output: OutputFormat })
+    {
+      const client = _MakeFleetClient(getConfig());
+      const { data, error } = await client.GET("/cluster-tenants/{name}/members", { params: { path: { name } } });
+      if (error) _PrintApiError("cluster-tenant members list", error);
+      _Print(data, opts.output, _MEMBER_LIST_COLUMNS);
+    });
+
+  members
+    .command("add <name>")
+    .description("Add or update an organisation member (upsert on subject)")
+    .requiredOption("--subject <subject>", "IdP-verified subject (OIDC sub) of the member")
+    .requiredOption("--role <role>", "Role to grant: Owner|Admin|Member")
+    .option("-o, --output <format>", "Output format: table|json", "table")
+    .action(async function _membersAdd(name: string, opts: ClusterTenantMemberAddOptions)
+    {
+      // The role string is passed straight through so the API stays the single
+      // validator (it rejects anything outside Owner|Admin|Member with a 400).
+      const client = _MakeFleetClient(getConfig());
+      const { data, error } = await client.POST("/cluster-tenants/{name}/members", {
+        params: { path: { name } },
+        body: { subject: opts.subject, role: opts.role as "Owner" | "Admin" | "Member" },
+      });
+      if (error) _PrintApiError("cluster-tenant members add", error);
+      _Print(data, opts.output);
+    });
+
+  members
+    .command("remove <name> <subject>")
+    .description("Remove an organisation member (rejected for the last Owner)")
+    .action(async function _membersRemove(name: string, subject: string)
+    {
+      const client = _MakeFleetClient(getConfig());
+      const { error } = await client.DELETE("/cluster-tenants/{name}/members/{subject}", { params: { path: { name, subject } } });
+      if (error) _PrintApiError("cluster-tenant members remove", error);
+      _PrintSuccess(`Member "${subject}" removed from "${name}"`);
     });
 }

@@ -13,6 +13,226 @@ follows [Keep a Changelog](https://keepachangelog.com/); the project uses
 
 ## [Unreleased]
 
+Stage 4 "strong-siloes" fleet/silo architecture split plus earlier silo-program identity work.
+All items below are unreleased and landed on the `strong-siloes` branch.
+
+### Added (Stage 4 — fleet/silo split)
+
+- **The platform is now governed by two purpose-built managers — one fleet-wide, one per-silo —
+  so the super-admin plane and the tenant-facing plane can never bleed scope into each other.**
+  The former `operator` is renamed `fleet-manager`: it is the cluster-wide singleton that owns
+  ClusterTenant lifecycle, billing accounts, org membership, platform DNS, and the Zitadel admin
+  credential. The former `control-plane` is renamed `clustertenant-manager`: it is deployed once
+  per silo (one per ClusterTenant) and serves only tenant-facing routes (tenants, policies,
+  groups, skills, model routing, shares, awareness, sessions). Neither binary can serve the other's
+  routes — an unrecognised role crashes at boot, so a misconfigured deploy fails loud.
+
+- **Fleet operations are reachable at a dedicated fleet endpoint, distinct from any silo.**
+  The `oc` CLI reads `--fleet-url` / `OPENCRANE_FLEET_URL` (falls back to `--url` for
+  co-located single-host dev) and routes all `cluster-tenant`, `admin zitadel`, and
+  `platform dns` commands there. In a production topology, platform operators point the CLI at
+  the fleet-manager; tenant operators point it at their silo — and neither can accidentally hit
+  the wrong plane.
+
+- **The fleet-manager has its own OpenAPI specification and typed client.**  `GET /api/v1/openapi.json`
+  on the fleet-manager returns its own spec covering the 11 fleet paths. `@opencrane/contracts`
+  now ships two typed clients — `___CreateFleetClient` and the existing silo client — so
+  integrators can depend on exactly the surface they need and get compile-time safety for both.
+
+- **Shared infrastructure code is extracted into two workspace libs usable by both managers.**
+  `@opencrane/infra-api` provides CRD constants and typed Kubernetes error helpers.
+  `@opencrane/infra-auth` provides the shared OIDC login/auth substrate — `OidcAuthServiceBase`,
+  auth middleware, org-membership helpers, and the gating primitives — parametrised over each
+  manager's Prisma client so neither app ships a duplicate copy of the auth stack.
+
+- **Each org's OIDC login now resolves from the cluster-scoped ClusterTenant CR, not a silo
+  database row.** When a user hits a silo at `<org>.<base>`, the silo reads the ClusterTenant
+  CR (keyed by host label or `spec.vanityDomain`) to find the correct Zitadel `client_id` and
+  org scope — the CR is the single source of truth, written by the fleet and readable by any
+  silo. The previous per-silo database lookup is gone, so a silo never holds a stale or
+  diverged copy of IdP routing data.
+
+- **The fleet projects each org's public Zitadel identifiers onto the ClusterTenant CR** so that
+  silos can resolve per-org login without access to the fleet registry database. The fleet writes
+  the org's Zitadel organisation ID, project ID, and OIDC client ID onto `spec` at provision
+  time and keeps them current on reconcile.
+
+- **A new org's first workspace is seeded automatically by the fleet operator, not the silo.**
+  When a ClusterTenant CR transitions to `ready`, the fleet operator writes the `<org>-default`
+  Tenant CRD directly into the bound namespace — owner identity is carried on `spec.owner`.
+  The silo TenantOperator then reconciles it into a running openclaw pod. Seeding is idempotent
+  and fail-soft: a transient error retries on the next reconcile without wedging the org.
+
+- **The silo periodically repairs its Tenant projection to stay in sync with CRDs.**  A
+  background `TenantProjectionRepairer` loop (default interval: 60 s; set
+  `OPENCRANE_PROJECTION_REPAIR_INTERVAL_SECONDS=0` to disable) diffs the silo's Postgres
+  Tenant rows against the namespace's Tenant CRDs and upserts any missing entries. This ensures
+  fleet-seeded workspaces surface in the silo's management API (e.g. `oc tenant list`) without
+  requiring the silo to watch the fleet write-path.
+
+- **The silo schema no longer carries fleet-owned tables.** Migration `0030` drops the silo's
+  `cluster_tenants` and `billing_accounts` tables along with their enums; `OrgMembership` retains
+  a soft string reference to the ClusterTenant name (no cascade FK) as a local read-model for
+  `/auth/me` and the org-admin gate. The fleet-manager is now the sole owner of the fleet
+  registry.
+
+### Changed (Stage 4 — fleet/silo split)
+
+- **The Zitadel management credential, key-rotation RBAC, and platform-DNS RBAC all move to the
+  fleet-manager service account.** The silo's ClusterRole for `clustertenants` is reduced to
+  read-only (needed only for per-org login CR reads). The Helm values key for the self-service
+  flag is renamed `clusterTenantManagement.enabled` (was `clusterTenantManager.enabled`) to
+  disambiguate it from the `clustertenantManager` component key; fleet-specific OIDC is under
+  `fleetManager.oidc` and fleet-specific Zitadel config under `fleetManager.zitadel`.
+
+### Added
+
+- **Every agent now acts with its user's full entitlements — not a flat tenant identity.** An
+  openclaw Tenant is bound to a specific OIDC user (the new `Tenant.subject` field); when the
+  contract is compiled the grant compiler expands `{tenant-name, user-subject, groups(subject)}`
+  so the agent inherits the same group memberships, skill entitlements, and MCP access-policy
+  decisions as the human behind it. Previously the compiler was keyed on the tenant name alone,
+  so user-level group grants never reached the agent. The contract poll and hot-reload are
+  unchanged — the capability propagates without a pod restart.
+
+- **An agent's Cognee dataset memberships are now derived automatically from the user's groups
+  and grants.** On every contract poll the control plane expands the user's principal-set, diffs
+  the result against the current memberships, and applies only the delta to Cognee — so
+  dataset access converges to the correct set without any manual `_ApplyTenantDatasetMembership`
+  call. The diff is dup-safe (no re-add on unchanged memberships) and scoped across
+  Org/Department/Team/Project/Personal tiers.
+
+- **Dataset-scope vocabulary is kept consistent between the grant system and Cognee.** A new
+  sync pass ensures the `DatasetScope` labels used in grants match those used when declaring
+  Cognee datasets, so the compiler's expansion produces the same scope identifiers that Cognee
+  dataset membership checks expect — closing a silent mis-match that caused group grants to
+  expand but not reach the right datasets.
+
+- **Users can share tools and skills with other users or groups via `oc share`.** Calling
+  `oc share grant --to <user|group> <resource>` writes a `Grant(subject=User|Group, Allow)`
+  bounded by least-privilege (a caller cannot share more than they themselves hold — no
+  privilege escalation). Revoking with `oc share revoke` removes the grant; the existing
+  compile→poll→reload loop propagates both changes to every affected agent without a restart.
+
+- **Sharing a file or chat creates a resource group that other users can be granted access to.**
+  `oc share resource` associates a file or chat artefact with a named resource group; a caller
+  with access to the group automatically gains access to everything inside it via the grant
+  compiler, and the group membership is derived into Cognee dataset memberships on the next
+  contract poll. The resource-group model extends the existing grant vocabulary with no new
+  enforcement surface.
+
+- **Each organisation's users log in through a fully isolated Zitadel Organisation — provisioned
+  automatically when the org is created.** On `POST /cluster-tenants` the control plane provisions
+  a dedicated Zitadel Organization, project, roles, and OIDC application for that org, and
+  registers the org's callback URI (`<org>.<base>/api/v1/auth/callback`) so login works
+  immediately at the org's host. The provisioning is transactional: Zitadel is called as the
+  last step inside the Prisma transaction so the database never commits without a matching IdP
+  object. Deleting the org tears down the Zitadel Organisation, roles, and redirect URI in the
+  same pattern — no orphaned IdP objects.
+
+- **Login at an org's host resolves to that org's OIDC client automatically.** The control
+  plane now maintains a per-org client registry (keyed on `<org>.<base>`); each request host
+  is resolved to the matching OIDC `client_id` and Zitadel org scope so only that org's user
+  pool can authenticate. The masters / control-plane host continues to use the platform-level
+  client. The previous single-client model that reused one redirect URI for all hosts is replaced.
+
+- **A customer's vanity domain is registered as a valid redirect URI in Zitadel automatically.**
+  When a `vanityDomain` is set on a ClusterTenant, the control plane adds the vanity host's
+  callback to the org's Zitadel OIDC application alongside the canonical `<org>.<base>` URI —
+  so users who reach the org via a custom CNAME can log in without a manual console step.
+
+- **Each silo namespace gets a default-deny network baseline on provision.** The operator emits
+  a `NetworkPolicy` for every ClusterTenant namespace that denies all ingress and egress by
+  default, then selectively allows intra-silo traffic, control-plane/operator reach, DNS (UDP 53),
+  and external HTTPS (TCP 443). No rule names another silo — east-west default-deny is structural,
+  not a configuration option. The misplaced install-namespace policy that previously provided no
+  real isolation is removed.
+
+- **The trusted-proxy CIDR is derived from the operator's own pod IP when configured with
+  `[auto]`.** Instead of requiring operators to look up and hard-code the ingress-nginx pod CIDR,
+  setting `tenant.gateway.trustedProxies: ["[auto]"]` causes the operator to read its own pod
+  IP from the downward API and derive a `/14` allowlist. The `[auto]` path still fails closed
+  (an unresolvable pod IP stays trust-nothing) and the CONN.9 default remains an empty allowlist
+  (trust nothing) — `[auto]` is opt-in only.
+
+- **Platform operators can rotate the master Zitadel service-account key with a safety
+  guarantee — the live key only changes after the candidate is proven working.** Calling
+  `oc admin zitadel rotate-key` (or `POST /api/v1/admin/zitadel/sa-key:rotate`) validates
+  the candidate key in full before touching anything live: it exchanges the candidate for a
+  short-lived token and then probes for `IAM_OWNER` on the Zitadel instance. Only when both
+  checks pass does the rotation proceed — the new key is written to the Kubernetes Secret
+  first (so a pod restart keeps it), then swapped in-memory with the token cache cleared.
+  If validation fails the endpoint returns `422` with per-check flags (`tokenExchangeOk` /
+  `instanceScopeOk`) and the old key remains active. Key material is accepted on stdin, via
+  `--key-file`, or inline; it is never echoed or logged. The route is platform-operator
+  gated and the Helm RBAC is tightly scoped to patch-only on the single named Secret.
+
+- **Org administrators can manage who belongs to their organisation — and the last owner
+  can never be accidentally removed.** The `oc cluster-tenant members` sub-commands
+  (`list`, `add`, `remove`) and the underlying
+  `GET / POST / DELETE /api/v1/cluster-tenants/:name/members` endpoints let an org manager
+  list current members, upsert a member at a given role (Owner / Admin / Member), and
+  remove a member. A last-Owner guardrail enforces that demoting or removing the sole Owner
+  returns `409 LAST_OWNER`, so an organisation can never be left without an owner. Access
+  is gated on the org-manager role; no Zitadel call is made in this slice — membership is
+  held in the platform database and read by the org-admin gate on every request.
+
+- **Each silo can optionally enforce cryptographic workload identity between its services —
+  layered on top of the existing L3/4 network baseline.** When `linkerd.meshEnabled` is set
+  to `true` in Helm (default off), the operator annotates the silo namespace for Linkerd
+  injection and emits a per-silo deny-by-default `Server` + `MeshTLSAuthentication` +
+  `AuthorizationPolicy` that allows intra-silo and operator-namespace mTLS traffic while
+  denying cross-silo communication at the identity layer. The policy is the mesh-layer
+  analogue of the S2 `NetworkPolicy` baseline — both must be satisfied. Fail-closed: on a
+  cluster without Linkerd CRDs installed the step is logged as skipped and the silo remains
+  fully L3/4-isolated; no error, no partial state. This is the first slice of S5; SPIFFE
+  workload-identity issuance and the super-admin identity loop are follow-on slices.
+
+- **Each ClusterTenant runs as a fully self-contained silo — its own operator, planes, and
+  database — on shared nodes, with the central control-plane as the only component that crosses
+  silo boundaries.** Rather than multiplexing all tenants through shared singleton instances of
+  Obot, LiteLLM, Cognee, and the skill-registry (where isolation depends entirely on each
+  plane's app-level ACL being correct), each ClusterTenant now gets dedicated instances of every
+  runtime plane plus its own operator and its own CNPG Postgres database. The central
+  super-admin control-plane in `opencrane-system` (and Zitadel) remain the sole shared
+  components and act only on named ClusterTenants — never on caller-inferred tenant identity.
+  A silo control-plane therefore never has to guess which tenant a request belongs to: the silo
+  is the scope. This retires the resolution-ambiguity class (the recurring family of
+  default-tenant-projection and cross-tenant-lookup bugs) by construction, without a code shim.
+  All dedicated stacks run on shared cluster nodes; dedicated-node and dedicated-cluster
+  scheduling tiers are a future upgrade layered on this topology.
+
+- **Operators deploy the central super-admin control-plane and each per-ClusterTenant silo
+  independently, from source, with two purpose-built scripts.** `./platform/deploy-multi-tenant.sh`
+  installs the cluster-wide infrastructure (ingress-nginx, CloudNativePG operator, cert-manager,
+  external-dns) and the central control-plane (`deploymentRole=central`) that manages the fleet,
+  provisions ClusterTenants, and runs Zitadel — but serves no tenant-facing API. Once the central
+  release is up, `./platform/deploy-silo.sh --base-domain <domain> --cluster-tenant <name>`
+  installs one silo into `opencrane-<name>`: its own operator, runtime planes, and a per-CT CNPG
+  database in that namespace, with `deploymentRole=silo`. The silo script reuses the
+  cluster-wide infra already present (`--no-ingress-nginx`, `--no-external-dns`,
+  `--no-db-operator` are set automatically) and fails fast with a clear message if the central
+  release has not been installed first. Additional silos are added by running the silo script
+  again with a different `--cluster-tenant` value.
+
+- **The control-plane image mounts only the API routes that belong to its deployed role.**
+  Setting `OPENCRANE_CONTROL_PLANE_ROLE=central` (the default; also set via Helm
+  `deploymentRole`) mounts fleet, ClusterTenant-lifecycle, Zitadel, and platform-DNS routes and
+  suppresses every tenant-facing route. Setting `deploymentRole=silo` mounts tenant-facing
+  routes (tenants, policies, groups, skills, model routing, shares, awareness, sessions) and
+  suppresses every fleet/cross-silo route. An unrecognised value crashes at boot with the
+  offending value named, so a misconfigured topology fails loud rather than silently presenting
+  a partial API surface.
+
+### Security
+
+- **The platform gateway block in every tenant config is now pinned against `configOverrides`
+  clobber.** A shallow merge of `configOverrides` could previously replace the entire `gateway`
+  block, silently dropping the owner `allowUsers` pin and any crashing-key guard. The operator
+  now renders the gateway block in a way that `configOverrides` cannot overwrite it, so the
+  cross-tenant ownership check is structurally preserved regardless of what a tenant's overlay
+  supplies.
+
 ## [0.5.3] — 2026-06-23
 
 Tenant operator stability: eliminates the status-write hot-loop that inflated ResourceQuota usage and blocked workspace provisioning under high tenant counts.

@@ -1,5 +1,5 @@
 node_modules/
 .vitepress/cache/
 .vitepress/dist/
-# Generated from apps/control-plane/openapi.json by scripts/sync-openapi.mjs
+# Generated from apps/clustertenant-operator/openapi.json by scripts/sync-openapi.mjs
 public/openapi.json

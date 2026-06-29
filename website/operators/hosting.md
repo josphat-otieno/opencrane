@@ -42,7 +42,7 @@ The on-prem adapter doubles as a **Null Object**: cloud-only operations (externa
 The operator depends on exactly this contract. Everything cloud-shaped is expressed as data the adapter returns, not behaviour the loop performs.
 
 ```typescript
-// apps/operator/src/hosting/hosting-adapter.types.ts
+// apps/fleet-operator/src/hosting/hosting-adapter.types.ts
 import type * as k8s from "@kubernetes/client-node";
 
 /** Supported hosting substrates. On-prem is the default. */
@@ -123,7 +123,7 @@ export interface HostingAdapter
 Cloud code is physically isolated; each provider is one self-contained folder. Core/shared primitives are provider-agnostic.
 
 ```
-apps/operator/src/
+apps/fleet-operator/src/
 ├── hosting/
 │   ├── index.ts                          # barrel: exports HostingAdapter, factory, enum, DTOs
 │   ├── hosting-adapter.types.ts          # Target interface + DTOs (§3)
@@ -158,7 +158,7 @@ Rules enforced by review (and ideally an ESLint boundary):
 The baseline. No cloud SDK, no annotations, PVC storage, in-cluster ingress.
 
 ```typescript
-// apps/operator/src/hosting/adapters/onprem/onprem-hosting.adapter.ts
+// apps/fleet-operator/src/hosting/adapters/onprem/onprem-hosting.adapter.ts
 import type * as k8s from "@kubernetes/client-node";
 
 import { HostingProvider } from "../../hosting-adapter.types.js";
@@ -208,7 +208,7 @@ export class OnPremHostingAdapter implements HostingAdapter
 The GCP adapter is the only place GKE annotations and `@google-cloud/storage` appear. Per the `cloud-provisioning` analysis, bucket creation moves **into the operator via the cloud SDK + Workload Identity** — Crossplane is no longer on the default or required path.
 
 ```typescript
-// apps/operator/src/hosting/adapters/gcp/gcp-hosting.adapter.ts
+// apps/fleet-operator/src/hosting/adapters/gcp/gcp-hosting.adapter.ts
 import type * as k8s from "@kubernetes/client-node";
 
 import { HostingProvider } from "../../hosting-adapter.types.js";
@@ -292,7 +292,7 @@ export class GcpHostingAdapter implements HostingAdapter
 ### 4.4 Factory (the single decision point)
 
 ```typescript
-// apps/operator/src/hosting/hosting-adapter.factory.ts
+// apps/fleet-operator/src/hosting/hosting-adapter.factory.ts
 import type { OperatorConfig } from "../config.js";
 import { HostingProvider } from "./hosting-adapter.types.js";
 import type { HostingAdapter } from "./hosting-adapter.types.js";
@@ -350,11 +350,11 @@ The builders (`_BuildServiceAccount`, `_BuildDeployment`, `_BuildIngress`) take 
 
 The on-prem default must not depend on any cloud SDK — at install time or at runtime. If `@google-cloud/storage` (and later the Azure/AWS SDKs) were ordinary `dependencies`, every on-prem install would drag in all of them, defeating the adapter pattern's whole purpose. Two mechanisms enforce the separation:
 
-1. **`optionalDependencies`** — each cloud SDK is declared under `optionalDependencies` in `apps/operator/package.json`, never `dependencies`. A normal `pnpm install` fetches them for development and cloud images; an on-prem image built with `pnpm install --no-optional` omits them entirely and still runs.
+1. **`optionalDependencies`** — each cloud SDK is declared under `optionalDependencies` in `apps/fleet-operator/package.json`, never `dependencies`. A normal `pnpm install` fetches them for development and cloud images; an on-prem image built with `pnpm install --no-optional` omits them entirely and still runs.
 2. **Lazy `import()` at the SDK boundary** — the SDK is loaded with a dynamic `await import("@google-cloud/storage")` inside the client method that uses it, not with a top-level import. The only compile-time reference is a TypeScript `import type`, which is erased and produces zero runtime code. So the static chain `factory → GcpHostingAdapter → GcpBucketClient` loads with the SDK absent; the SDK is `require`d only when a GCP bucket operation actually executes.
 
 ```typescript
-// apps/operator/src/hosting/adapters/gcp/gcp-bucket.client.ts
+// apps/fleet-operator/src/hosting/adapters/gcp/gcp-bucket.client.ts
 import type { Storage } from "@google-cloud/storage"; // erased at compile time — no runtime dep
 
 export class GcpBucketClient implements GcsBucketOperations
@@ -404,7 +404,7 @@ The same on-prem-default / cloud-override split applies to deployment, in mirror
 ### 6.1 Terraform
 
 ```
-platform/terraform/
+libs/k8s-platform/terraform/
 ├── core/                      # cloud-agnostic: namespace, opencrane Helm release, CRDs,
 │                              #   optional in-cluster PostgreSQL. Runs against ANY cluster.
 ├── modules/                   # reusable building blocks
@@ -417,19 +417,27 @@ platform/terraform/
     └── aws/                   # (future)
 ```
 
-- **On-prem install** runs `core/` only (or just `helm install` — no Terraform required).
+- **On-prem install** runs `core/` only (or just the deploy scripts — no Terraform required).
 - **Cloud install** runs `cloud/<provider>/`, which provisions the managed cluster + data services, then applies `core/` onto it.
 - The Crossplane module is removed from the default. If anyone still wants Crossplane-managed cloud resources, it becomes an optional component under `cloud/gcp/` — never in `core/`.
 
 ### 6.2 Helm
 
+The platform is split into two charts:
+
 ```
-platform/helm/
-├── Chart.yaml
-├── values.yaml                # ON-PREM DEFAULTS: hosting.provider=onprem, storage.mode=pvc,
-│                              #   ingress.className=nginx, ingress.tls.enabled=false,
-│                              #   certManager.enabled=false, NO cloud blocks set.
-└── values/
+apps/fleet-platform/      # chart: opencrane-fleet
+├── Chart.yaml            # fleet-manager + cluster-wide bootstrap (CRDs, cert-manager,
+│                         #   ingress-nginx, external-dns, CNPG operator, otel, monitoring)
+└── values.yaml           # ON-PREM DEFAULTS: hosting.provider=onprem, storage.mode=pvc,
+                          #   ingress.className=nginx, certManager.enabled=false.
+
+apps/clustertenant-platform/   # chart: opencrane-silo
+├── Chart.yaml                 # per-org control-plane + runtime planes (Obot, skill-registry,
+│                              #   LiteLLM, Cognee) + per-silo CNPG Cluster CR
+└── values.yaml
+
+libs/k8s-platform/values/      # shared value overlays
     ├── gcp.yaml               # hosting.provider=gcp, gcsfuse CSI, gce ingress, workloadIdentity
     ├── azure.yaml             # (future)
     └── aws.yaml               # (future)
@@ -437,16 +445,21 @@ platform/helm/
 
 Install examples:
 ```bash
-# On-prem / self-hosted (default — no override file needed)
-helm install opencrane platform/helm
+# On-prem / self-hosted — fleet release (cluster bootstrap + fleet-manager)
+apps/fleet-platform/deploy.sh --base-domain <your-domain>
 
-# GCP
-helm install opencrane platform/helm -f platform/helm/values/gcp.yaml
+# On-prem — silo release per org
+apps/clustertenant-platform/deploy.sh \
+  --base-domain <your-domain> --cluster-tenant <org-name>
+
+# GCP — fleet release with GCP value overlay
+apps/fleet-platform/deploy.sh \
+  --base-domain <your-domain> \
+  --values libs/k8s-platform/values/gcp.yaml
 ```
 
 The chart's `hosting` block maps 1:1 onto the operator's `hostingProvider` + per-cloud config, so the Helm value selects the adapter.
 
-Both examples above are **single-install** (one instance + its CRDs, applied in one step).
 To run **multiple isolated instances in one cluster**, the CRDs are installed once
 cluster-wide and each per-instance release is installed with `--skip-crds`. See
 [`docs/multi-instance.md`](/advanced/multi-instance) for the procedure and the CRD-version
@@ -464,8 +477,8 @@ certs, so the same mechanism works on-prem and on any cloud.
 - A **per-org vanity cert** (HTTP-01, SAN = the customer-vanity host) is issued by the
   operator only when `vanityDomain` is set on a ClusterTenant. HTTP-01 is sufficient here
   because the vanity host is a non-wildcard name.
-- The chart renders a `ClusterIssuer` + wildcard `Certificate`
-  (`platform/helm/templates/cluster-issuer.yaml`) when `certManager.enabled=true` —
+- The fleet chart renders a `ClusterIssuer` + wildcard `Certificate`
+  (`apps/fleet-platform/templates/cluster-issuer.yaml`) when `certManager.enabled=true` —
   `mode: selfSigned` for dev/local, `mode: acme` with a DNS-01 solver for production.
 - **Install-time cert modes (the deploy core's Step 2.5)** — three explicit modes, picked
   by the deploy scripts / wizard:
@@ -531,7 +544,7 @@ are **done**; step 6 (Azure/AWS) remains a future extension that needs no core c
 1. ✅ **Introduce the seam (additive).** Add `hosting/` with the interface, DTOs, `OnPremHostingAdapter`, and the factory. Add `hostingProvider` to config defaulting to `onprem`. Nothing consumes it yet. Build + tests stay green.
 2. ✅ **Route the on-prem path through the adapter.** `operator.ts` and the deploy builders consume `HostingAdapter` for SA identity, state volume, and ingress; with the default adapter this reproduces the PVC/local behaviour exactly. Operator unit tests assert against the adapter output.
 3. ✅ **Build the GCP adapter.** `GcpHostingAdapter` + `GcpBucketClient` (in-operator bucket provisioning) + `gcp-hosting.types.ts` + `values/gcp.yaml`. The Crossplane `BucketClaim` path and `crossplaneEnabled` are deleted.
-4. ✅ **Split infra folders.** `terraform/core/` carved out; GCP modules under `cloud/gcp/`; `crossplane` module dropped from `core`. Installers (`platform/install.sh`, `deploy.sh`) call `core` for on-prem and `cloud/gcp` for GCP.
+4. ✅ **Split infra folders.** `terraform/core/` carved out; GCP modules under `cloud/gcp/`; `crossplane` module dropped from `core`. The deploy scripts' `--provision gke` (via `provision.sh`) calls `cloud/gcp`; on-prem/k3s uses `core`.
 5. ✅ **Remove legacy flags + docs.** `storageProvider`/`csiDriver`/`gcpProject`/`crossplaneEnabled` deleted; README + `plan.md` describe on-prem-default + cloud-override.
 6. ⬜ **(Future) Azure/AWS adapters.** New folders only; no core change required — the proof the seam is correct.
 

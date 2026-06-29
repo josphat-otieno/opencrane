@@ -60,7 +60,7 @@
 - **Process:** Track-A + Phase-5 work committed on branch `phase-4-5-fixes`.
 
 **Live update (2026-06-09) — _(partially superseded by 2026-06-10 above)_**:
-- Phase 5 shipped (headless API + CLI). `oc` CLI, OpenAPI, generated `libs/contracts` client, and removal of `apps/control-plane-ui` in place.
+- Phase 5 shipped (headless API + CLI). `oc` CLI, OpenAPI, generated `libs/contracts` client, and removal of `apps/clustertenant-operator-ui` in place.
 - Phase 4 was paused mid-flight: org-index schema v2, Slack lineage/freshness, projected-token migration, and the control-plane MCP/Skills/third-party management layer built. Runtime enforcement planes and fleet-awareness track not built at that point.
 
 ---
@@ -103,7 +103,7 @@ Use three labels consistently across README/pitch/sales material:
 |------|--------|----------|
 | **Helm templates** (operator/control-plane + RBAC/services) | ✅ Complete | Deploys successfully in k3d via chart install |
 | **Docker image CI publish workflow** | ✅ Complete | `.github/workflows/docker.yml` builds/tests/e2e and publishes on `main` |
-| **Prisma migrations present** | ✅ Complete | `apps/control-plane/prisma/migrations/0001_init` committed |
+| **Prisma migrations present** | ✅ Complete | `apps/clustertenant-operator/prisma/migrations/0001_init` committed |
 | **Tenant runtime image + entrypoint** | ✅ Complete | `apps/tenant/deploy/Dockerfile` + `entrypoint.sh` exercised in k3d e2e |
 | **k3d end-to-end smoke test** | ✅ Complete | `platform/tests/k3d-e2e.sh` passes and validates tenant reconcile |
 
@@ -198,13 +198,13 @@ Use three labels consistently across README/pitch/sales material:
 
 1. **API as the single boundary** — Every capability reachable through `/api/v1`. OpenAPI emitted from build; CI drift gate enforced.
 2. **CLI as a first-class surface** — `oc` CLI covers full administrative surface; authenticates via OIDC device flow (`oc auth login`); no static bearer token required by default.
-3. **UI decoupled** — `apps/control-plane-ui` removed from this repo. Helm chart and installers no longer reference it. Platform operable via API + CLI only.
+3. **UI decoupled** — `apps/clustertenant-operator-ui` removed from this repo. Helm chart and installers no longer reference it. Platform operable via API + CLI only.
 4. **Hosting adapter migration** — GoF Adapter pattern; `OnPremHostingAdapter` is default; `GcpHostingAdapter` provisions GCS buckets via `@google-cloud/storage` + Workload Identity (no Crossplane). Terraform split into `terraform/core/` + `terraform/cloud/gcp/`.
 
 ### Steps (All Complete)
 
 **Step 1 — Hosting adapter migration** ✅
-- `HostingAdapter` interface + `OnPremHostingAdapter` + `GcpHostingAdapter` in `apps/operator/src/hosting/`.
+- `HostingAdapter` interface + `OnPremHostingAdapter` + `GcpHostingAdapter` in `apps/fleet-operator/src/hosting/`.
 - Crossplane `BucketClaim` path deleted; `modules/crossplane/` and `crossplane-provider.yaml` removed.
 - Terraform split: `terraform/core/` + `terraform/cloud/gcp/`; Crossplane module retired.
 - `platform/helm/values/gcp.yaml` override added; `values.yaml` defaults to `hosting.provider: onprem`.
@@ -225,7 +225,7 @@ Use three labels consistently across README/pitch/sales material:
 - OIDC device flow (`POST /auth/device` → browser activation → poll `/auth/device/token` → credentials saved to `~/.config/opencrane/credentials.json`). Break-glass `--token` flag removed from CLI.
 
 **Step 5 — UI extraction + chart cleanup** ✅
-- `apps/control-plane-ui` removed from `pnpm-workspace.yaml` and deleted from repo.
+- `apps/clustertenant-operator-ui` removed from `pnpm-workspace.yaml` and deleted from repo.
 - `docs/api.md`, `docs/cli.md`, `docs/integration-guide.md` published.
 
 ### Success Criteria
@@ -235,7 +235,7 @@ Use three labels consistently across README/pitch/sales material:
 - [x] OpenAPI emitted from build; CI drift gate enforced.
 - [x] `libs/contracts` publishes a generated, versioned client consumed by the CLI.
 - [x] `oc` CLI authenticates via OIDC device flow; no command requires a static bearer token by default.
-- [x] `apps/control-plane-ui` removed; Helm chart/installers no longer reference it.
+- [x] `apps/clustertenant-operator-ui` removed; Helm chart/installers no longer reference it.
 - [x] External repository can integrate as git submodule and drive every operation through the published contract.
 - [x] GCP adapter provisions per-tenant GCS buckets directly in operator; no Crossplane dependency.
 - [x] `terraform/core/` applies to any cluster; `terraform/cloud/gcp/` is the only GCP-specific path.
@@ -380,7 +380,7 @@ Already complete from previous cycle. Key generation, budget enforcement, spend 
   to `published` when `scanStatus ≠ passed`. Internal delivery (`/api/internal/bundles`) only serves
   bundles with `scanStatus = passed`. 7 tests added; build + tests pass.
 - [x] **P4A.2 Runtime-plane drift repair (operator config-slaving).** Added `RuntimePlaneDriftRepairer`
-  (`apps/operator/src/runtime-planes/drift-repairer.ts`) — 60s interval compares Obot MCP gateway and
+  (`apps/fleet-operator/src/runtime-planes/drift-repairer.ts`) — 60s interval compares Obot MCP gateway and
   skill-registry Deployment env vars against expected config, patches back in-place (preserving
   `valueFrom.secretKeyRef` refs). Wired into `operator/src/index.ts`. 3 tests added; build + tests pass.
 - [x] **P4A.3 Tenant-side contract re-pull loop.** Added `/api/internal/contract/:name` endpoint with
@@ -522,7 +522,7 @@ Already complete from previous cycle. Key generation, budget enforcement, spend 
   + `REQUIRE_WATCH_NAMESPACE` env, wired in `operator-deployment.yaml`): refuses to start with an
   empty `WATCH_NAMESPACE` when set. Tests: 4 operator config cases (operator 66/66); `helm template`
   validated for both modes + full chart. Anchors: `operator-rbac.yaml`, `_helpers.tpl`,
-  `operator-deployment.yaml`, `apps/operator/src/config.ts`, `values.yaml`.
+  `operator-deployment.yaml`, `apps/fleet-operator/src/config.ts`, `values.yaml`.
 - [x] **MI.2 Namespaced control-plane RBAC + per-instance CR-write namespace (B1, control-plane half). — LANDED 2026-06-14.** Namespaced Role/RoleBinding branch in `control-plane-rbac.yaml` (shared `opencrane.controlPlaneRbacRules` helper); cluster-scoped `clusterissuers` isolated in a minimal residual ClusterRole (folded into the per-ns Role by MI.4's namespaced issuer). Per-instance CR writes needed no code change — the control-plane Deployment already sets `NAMESPACE` from `fieldRef: metadata.namespace`. Build + 193 tests green; helm both modes.
   Mirror MI.1 for `control-plane-rbac.yaml` (Role/RoleBinding over `instanceNamespaces` when
   `multiInstance` on; reuse the MI.1 helpers) and make the control-plane write Tenant/AccessPolicy
@@ -559,12 +559,12 @@ Already complete from previous cycle. Key generation, budget enforcement, spend 
   **shared** (`litellm`/`skillRegistry`/`mcpGateway`/`externalSecrets`), with the isolation
   implication documented. Fix the concrete collisions the sweep found: the **non-templated
   `opencrane-obot` Secret name** (`obot-mcp-gateway-deployment.yaml` → release-prefix it) and the
-  `opencrane-system` service-URL defaults in `apps/operator/src/config.ts` (make them
+  `opencrane-system` service-URL defaults in `apps/fleet-operator/src/config.ts` (make them
   release-namespace-aware / required, no silent cross-instance default). **Acceptance:** no
   fixed-name object collides across two same-namespace-family installs; each component's scope is a
   documented toggle; `helm template` both modes + an operator config test. Anchors: `values.yaml`,
   `obot-mcp-gateway-deployment.yaml`, `litellm-deployment.yaml`, `skill-registry-deployment.yaml`,
-  `external-secrets.yaml`, `apps/operator/src/config.ts`. **Headless-buildable.**
+  `external-secrets.yaml`, `apps/fleet-operator/src/config.ts`. **Headless-buildable.**
 - [x] **MI.6 Cross-instance default-deny NetworkPolicy (B6). — LANDED 2026-06-14.** New opt-in `networkpolicy-multi-instance.yaml`: per-namespace default-deny (Ingress+Egress) allowing only same-instance namespaces (via the apiserver-managed `kubernetes.io/metadata.name` label — no custom label needed) + DNS egress. Renders only in multi-instance mode (verified absent by default). Original scope: Ship, as part of `multiInstance` mode,
   a **default-deny across instance namespaces** so instance-A pods can never reach instance-B
   services (today `networkpolicy.yaml`/`networkpolicy-planes.yaml` are per-tenant *within* an
@@ -720,7 +720,7 @@ Already complete from previous cycle. Key generation, budget enforcement, spend 
 
 13. **Control-Plane Admin Surface (API + CLI)**
     - Every Obot/MCP/skill admin action reachable via the published API + `oc` CLI.
-    - UI parity (if desired) is an external-consumer concern; `apps/control-plane-ui` was removed from this repo in Phase 5.
+    - UI parity (if desired) is an external-consumer concern; `apps/clustertenant-operator-ui` was removed from this repo in Phase 5.
 
 ### Current Implementation Progress
 
@@ -728,15 +728,15 @@ Already complete from previous cycle. Key generation, budget enforcement, spend 
 
 - [x] Org index schema v2 metadata fields: department/project scope, confidentiality, jurisdiction, retention class, ACL lineage, freshness markers, ingest cursor tracking.
 - [x] Slack harvesting emits lineage/freshness metadata; ingestion rejects non-conformant org index records.
-- [x] Projected-token migration: `aud=obot-gateway` and `aud=skill-registry` implemented in `apps/operator/src/tenants/deploy/3-deployment.ts`.
-- [x] Real grant compilation: `apps/control-plane/src/core/grants/grant-compiler.ts` (scope precedence: priority → deny-over-allow → newest). `GET /tenants/:name/effective-contract` compiles Awareness/McpServer/SkillBundle grants. The `mcp.servers`/`skills.entitled` fields in `2-config-map.ts` are **intentionally advisory stubs** — authoritative grant is the effective-contract endpoint.
+- [x] Projected-token migration: `aud=obot-gateway` and `aud=skill-registry` implemented in `apps/fleet-operator/src/tenants/deploy/3-deployment.ts`.
+- [x] Real grant compilation: `apps/clustertenant-operator/src/core/grants/grant-compiler.ts` (scope precedence: priority → deny-over-allow → newest). `GET /tenants/:name/effective-contract` compiles Awareness/McpServer/SkillBundle grants. The `mcp.servers`/`skills.entitled` fields in `2-config-map.ts` are **intentionally advisory stubs** — authoritative grant is the effective-contract endpoint.
 - [x] Control-plane MCP/Skills/third-party management surface: Prisma models + CRUD routes (`routes/mcp-servers.ts`, `routes/skill-catalog.ts`, `routes/third-party-sources.ts`) + `GET /tenants/:name/effective-contract` in OpenAPI spec.
 - [⛔] ~~Control-plane UI Phase 4 slice~~ — removed by Phase 5; admin surfaces are API + `oc` CLI only.
 - [ ] Connector rollout beyond Slack blocked on open Phase 4 connector-adoption and department-scope decisions.
 
 ### Phase 4 Reality Check (Current Gaps)
 
-- [x] **Obot MCP Gateway deploy is real** (verified 2026-06-10). `obot-mcp-gateway-deployment.yaml` runs `ghcr.io/obot-platform/obot` with a PostgreSQL DSN and real `OBOT_SERVER_*` env, wired to poll `/api/internal/obot-registry`. `ObotHealthChecker` in `apps/operator/src/mcp-gateway/` monitors availability. **Remaining: `aud=obot-gateway` projected-token validation + RFC 8693 downstream-credential brokering not yet proven — fold into P4A.3.**
+- [x] **Obot MCP Gateway deploy is real** (verified 2026-06-10). `obot-mcp-gateway-deployment.yaml` runs `ghcr.io/obot-platform/obot` with a PostgreSQL DSN and real `OBOT_SERVER_*` env, wired to poll `/api/internal/obot-registry`. `ObotHealthChecker` in `apps/fleet-operator/src/mcp-gateway/` monitors availability. **Remaining: `aud=obot-gateway` projected-token validation + RFC 8693 downstream-credential brokering not yet proven — fold into P4A.3.**
 - [x] **Skill Registry & Delivery service is built** (verified 2026-06-10). `apps/skill-registry/`: `aud=skill-registry` projected-token validation via Kubernetes TokenReview, get-by-digest only, existence-hiding 404s, per-read entitlement via `/api/internal/bundles/:digest/content`. **Note:** content served from control-plane DB, not yet OCI/ORAS-over-Zot. **Trivy/Grype scanning not implemented — P4A.1.**
 - [~] Operator drift repair: management/grant layer + Obot catalog sync are in place, but no path reverts manual edits to Obot or skill-registry config — detect-only, DB-projection-scoped. **P4A.2.**
 - [x] Control-plane MCP/skills CRUD and third-party ingest routes implemented; entitlement enforced at registry boundary. Residual: ingest scanning (P4A.1).
@@ -1093,7 +1093,7 @@ standing per-frame audit choke point are **not** in scope → that is the proxy
 - [ ] **CONN.8 TLS issuance for tenant ingress (wildcard, k8s-native).** *First slice landed
   2026-06-13 — see Landed/Remaining at the end of this item.* *Prerequisite
   for CONN.2 to mean anything in production* — today the operator-built tenant Ingress
-  (`apps/operator/src/tenants/deploy/5-ingress.ts`) has **no `tls:` block** and Helm has
+  (`apps/fleet-operator/src/tenants/deploy/5-ingress.ts`) has **no `tls:` block** and Helm has
   `ingress.tls.enabled: false` with an unwired `opencrane-wildcard-tls` secret slot
   (`platform/helm/values.yaml`). The browser connects `wss://<tenant>.<domain>`, so the
   ingress must present a browser-trusted cert. Kubernetes' own CA is cluster-internal and

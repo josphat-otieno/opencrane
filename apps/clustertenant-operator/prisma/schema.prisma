@@ -1,0 +1,1082 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  name               String                    @id
+  displayName        String                    @map("display_name")
+  email              String
+  team               String?
+  phase              String                    @default("Pending")
+  ingressHost        String?                   @map("ingress_host")
+  clusterTenantRef   String?                   @map("cluster_tenant_ref")
+  /// IdP-verified subject (OIDC `sub`) of the user this workspace belongs to. The
+  /// openclaw Tenant is 1:1 with a ClusterTenant user; binding the subject (not just
+  /// the contact `email`) is what lets the contract compiler inherit that user's
+  /// rights (S4). Nullable for legacy/imported tenants created before the binding.
+  subject            String?
+  configOverrides    Json?                     @map("config_overrides")
+  awarenessWave      String?                   @map("awareness_wave")
+  createdAt          DateTime                  @default(now()) @map("created_at")
+  updatedAt          DateTime                  @updatedAt @map("updated_at")
+  auditEntries       AuditEntry[]
+  litellmKeys        TenantLiteLlmKey[]
+  datasetMemberships TenantDatasetMembership[]
+  brokeredDevices    BrokeredDevice[]
+  workspaceDocs      TenantWorkspaceDoc[]
+  docMergeProposals  DocMergeProposal[]
+  participationEvents ParticipationEvent[]
+  participation      TenantParticipation?
+
+  @@map("tenants")
+}
+
+/// A connection brokered to a tenant's OpenClaw pod gateway via `/auth/pod-token`.
+///
+/// The control plane stays *connection*-stateless (Option B): it does not hold
+/// the live WebSocket. This row is the registry the per-user kill-switch
+/// (`_CutTenant`, CONN.5) reads to know which brokered identities to revoke.
+/// One row per (tenant, subject); each broker call bumps `lastBrokeredAt`.
+model BrokeredDevice {
+  /// Surrogate key.
+  id             String    @id @default(cuid())
+  /// Tenant whose pod gateway the connection was brokered to.
+  tenant         String
+  /// IdP-verified human identity the connection was brokered for (OIDC sub, else email).
+  subject        String
+  /// The `wss://` gateway URL handed to the caller at broker time.
+  gatewayUrl     String    @map("gateway_url")
+  /// OpenClaw device id (`sha256(raw pubkey).hex`), filled once the paired device
+  /// reports it; null while only the bootstrap link has been brokered.
+  deviceId       String?   @map("device_id")
+  /// When this (tenant, subject) connection was first brokered.
+  brokeredAt     DateTime  @default(now()) @map("brokered_at")
+  /// When this connection was most recently re-brokered.
+  lastBrokeredAt DateTime  @updatedAt @map("last_brokered_at")
+  /// Set by the kill-switch when the connection is cut; null while active.
+  revokedAt      DateTime? @map("revoked_at")
+  /// Owning tenant; cascades on tenant delete so stale rows never linger.
+  tenantRef      Tenant    @relation(fields: [tenant], references: [name], onDelete: Cascade)
+
+  @@unique([tenant, subject])
+  @@index([tenant])
+  @@map("brokered_devices")
+}
+
+model TenantDatasetMembership {
+  tenant    String
+  scope     DatasetScope
+  subject   String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  tenantRef Tenant   @relation(fields: [tenant], references: [name], onDelete: Cascade)
+
+  @@id([tenant, scope, subject])
+  @@index([tenant, scope])
+  @@map("tenant_dataset_memberships")
+}
+
+enum DatasetScope {
+  Org        @map("org")
+  Team       @map("team")
+  Department @map("department")
+  Project    @map("project")
+  Personal   @map("personal")
+}
+
+model TenantLiteLlmKey {
+  id               String   @id @default(cuid())
+  tenant           String
+  keyAlias         String   @map("key_alias")
+  secretName       String   @map("secret_name")
+  monthlyBudgetUsd Decimal? @db.Decimal(12, 2) @map("monthly_budget_usd")
+  issuedAt         DateTime @map("issued_at")
+  revokedAt        DateTime? @map("revoked_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  tenantRef        Tenant   @relation(fields: [tenant], references: [name])
+
+  @@index([tenant])
+  @@index([tenant, revokedAt])
+  @@map("tenant_litellm_keys")
+}
+
+model AccessPolicy {
+  name           String   @id
+  description    String?
+  tenantSelector Json?    @map("tenant_selector")
+  domains        Json?
+  egressRules    Json?    @map("egress_rules")
+  mcpServers     Json?    @map("mcp_servers")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("access_policies")
+}
+
+
+/// Role a subject holds within one organisation (ClusterTenant). `owner` is the
+/// org's root admin created transactionally with the org; `admin` is a delegated
+/// administrator; `member` is a plain participant. Owner and admin both confer
+/// org-admin authority over that org (see `_ResolveIdentityClaims`).
+enum OrgRole {
+  Owner  @map("owner")
+  Admin  @map("admin")
+  Member @map("member")
+}
+
+/// A user's billing account, the prerequisite for creating an organisation.
+///
+/// Org creation is gated on the caller HAVING a billing account, breaking the
+/// chicken-and-egg deadlock (a user becomes an org admin BY creating an org, so
+/// the create cannot itself require pre-existing org-admin). Keyed to the caller's
+/// IdP-verified subject (one account per subject, idempotent on create); the
+/// verified email is recorded for human reconciliation but is NOT the key, since a
+/// subject's email can change while its `sub` is stable.
+// NOTE: BillingAccount + ClusterTenant moved to the fleet-manager's registry DB (Stage 4) —
+// the silo no longer owns the fleet registry. OrgMembership stays here as the silo's local
+// read-model; its `clusterTenant` is now a soft string ref (no cross-DB FK to the relocated
+// ClusterTenant).
+//
+// CURRENTLY UNPOPULATED (Stage 4): the fleet-manager owns the authoritative OrgMembership; the
+// silo no longer writes this table (org create/seed moved to the fleet). Org-admin ENFORCEMENT
+// on the silo is therefore group-based — `_RequireOrgAdmin` reads the OIDC-derived
+// `session.authUser.isOrgAdmin`, NOT this table — so an empty read-model never grants access.
+// The table is read only by `/auth/me` membership enrichment (returns empty ownedOrgs until a
+// fleet→silo OrgMembership projection is wired — deferred). Because it is never written here,
+// there are no orphaned rows to reconcile when the fleet deletes an org.
+
+/// Binds a subject to an organisation (ClusterTenant) with a role. Authority is
+/// DERIVED from these rows, never from a global flag: a subject who owns/administers
+/// ≥1 org is an org admin, scoped to exactly the orgs they hold owner/admin on.
+///
+/// One membership per (clusterTenant, subject). At most ONE `owner` per org is
+/// enforced by a partial unique index — written by the fleet-manager (the authoritative
+/// registry), not the silo.
+model OrgMembership {
+  /// Surrogate key.
+  id            String        @id @default(cuid())
+  /// Organisation (ClusterTenant) this membership is in.
+  clusterTenant String        @map("cluster_tenant")
+  /// IdP-verified subject (OIDC `sub`) holding the membership.
+  subject       String
+  /// Role held within the organisation.
+  role          OrgRole
+  /// Creation timestamp.
+  createdAt     DateTime      @default(now()) @map("created_at")
+  /// Last update timestamp.
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  @@unique([clusterTenant, subject])
+  @@index([subject])
+  @@index([clusterTenant])
+  @@map("org_memberships")
+}
+
+model AuditEntry {
+  id        Int      @id @default(autoincrement())
+  timestamp DateTime @default(now())
+  tenant    String?
+  action    String
+  resource  String
+  message   String
+  metadata  Json?
+  tenantRef Tenant?  @relation(fields: [tenant], references: [name])
+
+  @@index([tenant])
+  @@index([timestamp])
+  @@map("audit_log")
+}
+
+/// Deprecated Phase 1 filesystem skill index retained only for migration seeding.
+model Skill {
+  name        String
+  scope       String
+  team        String   @default("")
+  path        String
+  author      String?
+  contentHash String?  @map("content_hash")
+  /// Model posture (Track AIR): `pinned` (use pinnedModel), `auto` (route within autoConfig), or null (inherit the scope default).
+  modelMode   SkillModelMode? @map("model_mode")
+  /// The pinned model's publicModelName, when modelMode is `pinned`.
+  pinnedModel String?  @map("pinned_model")
+  /// Per-skill AutoRoutingConfig, when modelMode is `auto`.
+  autoConfig  Json?    @map("auto_config")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@id([name, scope, team])
+  @@map("skills")
+}
+
+model Group {
+  id          String          @id @default(cuid())
+  name        String          @unique
+  scope       GrantScope
+  description String?
+  members     Json            @default("[]")
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+  grants      Grant[]
+  mcpGrants   McpServerGrant[]
+  entitlements SkillEntitlement[]
+
+  @@index([scope])
+  @@map("groups")
+}
+
+enum GrantScope {
+  Org        @map("org")
+  Department @map("department")
+  Team       @map("team")
+  Project    @map("project")
+  Personal   @map("personal")
+}
+
+enum GrantSubjectType {
+  Group  @map("group")
+  Tenant @map("tenant")
+  User   @map("user")
+}
+
+enum GrantAccess {
+  Allow @map("allow")
+  Deny  @map("deny")
+}
+
+enum GrantPayloadType {
+  Awareness  @map("awareness")
+  McpServer  @map("mcp-server")
+  SkillBundle @map("skill-bundle")
+}
+
+model Grant {
+  id           String           @id @default(cuid())
+  payloadType  GrantPayloadType @map("payload_type")
+  payloadId    String           @map("payload_id")
+  scope        GrantScope
+  subjectType  GrantSubjectType @map("subject_type")
+  subjectId    String           @map("subject_id")
+  access       GrantAccess
+  priority     Int              @default(0)
+  note         String?
+  /// IdP subject (OIDC sub) of the user who created this grant via the inter-user sharing
+  /// API (`oc share`, S4). Null for grants written by the admin entitlement paths. Lets a
+  /// sharer list + revoke ONLY the grants they themselves shared (no privilege over others').
+  sharedBy     String?          @map("shared_by")
+  groupId      String?          @map("group_id")
+  mcpServerId  String?          @map("mcp_server_id")
+  skillBundleId String?         @map("skill_bundle_id")
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+  group        Group?           @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  mcpServer    McpServer?       @relation(fields: [mcpServerId], references: [id], onDelete: Cascade)
+  skillBundle  SkillBundle?     @relation(fields: [skillBundleId], references: [id], onDelete: Cascade)
+  mcpGrant     McpServerGrant?
+  entitlement  SkillEntitlement?
+
+  @@index([payloadType, payloadId])
+  @@index([subjectType, subjectId])
+  @@index([sharedBy])
+  @@map("grants")
+}
+
+enum McpServerTransport {
+  StreamableHttp   @map("streamable-http")
+  ServerSentEvents @map("sse")
+  WebSocket        @map("websocket")
+}
+
+enum McpServerStatus {
+  Active   @map("active")
+  Degraded @map("degraded")
+  Draft    @map("draft")
+}
+
+// Consumption shape advertised to the operator API: how a caller connects a
+// downstream MCP server (single-user secret, org-wide shared key, or remote OAuth).
+enum McpServerType {
+  SingleUser  @map("single-user")
+  MultiUser   @map("multi-user")
+  RemoteOauth @map("remote-oauth")
+}
+
+// Governance lifecycle gated by org admins (P1 catalogue review). Only `published`
+// servers are visible to entitled callers in the user-facing catalogue.
+enum McpApprovalStatus {
+  PendingReview @map("pending-review")
+  Approved      @map("approved")
+  Published     @map("published")
+  Disabled      @map("disabled")
+}
+
+// Per-user install connection state surfaced by the operator API. `credentialRef`
+// custody is never serialised — this enum reports state, never secret material.
+enum McpConnectionStatus {
+  NeedsCredential  @map("needs-credential")
+  Activating       @map("activating")
+  Connected        @map("connected")
+  OauthConnected   @map("oauth-connected")
+  SharedKey        @map("shared-key")
+  ActivationFailed @map("activation-failed")
+}
+
+model McpServer {
+  id                 String                 @id @default(cuid())
+  name               String                 @unique
+  description        String                 @default("")
+  endpoint           String
+  scope              GrantScope
+  transport          McpServerTransport
+  status             McpServerStatus        @default(Draft)
+  capabilities       String[]               @default([])
+  publisher          String?
+  glyph              String?
+  serverType         McpServerType          @default(SingleUser) @map("server_type")
+  approvalStatus     McpApprovalStatus      @default(PendingReview) @map("approval_status")
+  credentialSchema   Json                   @default("[]") @map("credential_schema")
+  entitlementSummary String?                @map("entitlement_summary")
+  sourceId           String?                @map("source_id")
+  lastSyncedAt       DateTime?              @map("last_synced_at")
+  createdAt          DateTime               @default(now()) @map("created_at")
+  updatedAt          DateTime               @updatedAt @map("updated_at")
+  grants             Grant[]
+  scopedGrants       McpServerGrant[]
+  credentials        McpServerCredential[]
+  installs           McpServerInstall[]
+  accessPolicy       McpServerAccessPolicy?
+  source             ThirdPartySource?      @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+
+  @@index([scope])
+  @@index([approvalStatus])
+  @@map("mcp_servers")
+}
+
+// Per-user installation of an MCP server (operator API). Holds the caller's
+// connection state and a write-only `credentialRef` custody handle (the actual
+// secret lives in the gateway plane / Obot, never here and never serialised).
+model McpServerInstall {
+  id               String              @id @default(cuid())
+  mcpServerId      String              @map("mcp_server_id")
+  userId           String              @map("user_id")
+  connectionStatus McpConnectionStatus @default(NeedsCredential) @map("connection_status")
+  credentialRef    String?             @map("credential_ref")
+  connectedAccount String?             @map("connected_account")
+  lastUsedAt       DateTime?           @map("last_used_at")
+  createdAt        DateTime            @default(now()) @map("created_at")
+  updatedAt        DateTime            @updatedAt @map("updated_at")
+  mcpServer        McpServer           @relation(fields: [mcpServerId], references: [id], onDelete: Cascade)
+
+  @@unique([mcpServerId, userId])
+  @@index([userId])
+  @@map("mcp_server_installs")
+}
+
+// Org-admin authored access policy deciding which callers may see and install a
+// server in the user-facing catalogue. `everyoneInOrg` short-circuits the per-user
+// / per-group lists; otherwise membership in `users` or `groups` is required.
+model McpServerAccessPolicy {
+  id            String                @id @default(cuid())
+  mcpServerId   String                @unique @map("mcp_server_id")
+  everyoneInOrg Boolean               @default(false) @map("everyone_in_org")
+  groups        String[]              @default([])
+  createdAt     DateTime              @default(now()) @map("created_at")
+  updatedAt     DateTime              @updatedAt @map("updated_at")
+  mcpServer     McpServer             @relation(fields: [mcpServerId], references: [id], onDelete: Cascade)
+  users         McpServerAccessUser[]
+
+  @@map("mcp_server_access_policies")
+}
+
+// A single user entitled to a server via its access policy. Stored as a child row
+// (rather than a String[]) so entitlement can be queried per user without scanning.
+model McpServerAccessUser {
+  id             String                @id @default(cuid())
+  accessPolicyId String                @map("access_policy_id")
+  userId         String                @map("user_id")
+  createdAt      DateTime              @default(now()) @map("created_at")
+  accessPolicy   McpServerAccessPolicy @relation(fields: [accessPolicyId], references: [id], onDelete: Cascade)
+
+  @@unique([accessPolicyId, userId])
+  @@index([userId])
+  @@map("mcp_server_access_users")
+}
+
+model McpServerGrant {
+  id          String           @id @default(cuid())
+  mcpServerId String           @map("mcp_server_id")
+  grantId     String           @unique @map("grant_id")
+  scope       GrantScope
+  subjectType GrantSubjectType @map("subject_type")
+  subjectId   String           @map("subject_id")
+  access      GrantAccess
+  priority    Int              @default(0)
+  note        String?
+  groupId     String?          @map("group_id")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+  mcpServer   McpServer        @relation(fields: [mcpServerId], references: [id], onDelete: Cascade)
+  grant       Grant            @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  group       Group?           @relation(fields: [groupId], references: [id], onDelete: SetNull)
+
+  @@index([mcpServerId])
+  @@map("mcp_server_grants")
+}
+
+enum McpCredentialBrokeringMode {
+  StaticFallback @map("static_fallback")
+  PerUserObo     @map("per_user_obo")
+}
+
+model McpServerCredential {
+  id            String                     @id @default(cuid())
+  mcpServerId   String                     @map("mcp_server_id")
+  displayName   String                     @map("display_name")
+  brokeringMode McpCredentialBrokeringMode @default(StaticFallback) @map("brokering_mode")
+  secretRef     String?                    @map("secret_ref")
+  createdAt     DateTime                   @default(now()) @map("created_at")
+  updatedAt     DateTime                   @updatedAt @map("updated_at")
+  mcpServer     McpServer                  @relation(fields: [mcpServerId], references: [id], onDelete: Cascade)
+
+  @@index([mcpServerId])
+  @@map("mcp_server_credentials")
+}
+
+enum SkillBundleStatus {
+  Published @map("published")
+  Review    @map("review")
+  Draft     @map("draft")
+}
+
+enum SkillBundleScanStatus {
+  Pending  @map("pending")
+  Scanning @map("scanning")
+  Passed   @map("passed")
+  Failed   @map("failed")
+  Skipped  @map("skipped")
+}
+
+enum SkillPromotionStatus {
+  Proposed @map("proposed")
+  Approved @map("approved")
+  Rejected @map("rejected")
+}
+
+model SkillBundle {
+  id           String                  @id @default(cuid())
+  name         String
+  description  String                  @default("")
+  version      String
+  digest       String
+  content      String?                 @map("content")
+  contentType  String                  @default("text/markdown") @map("content_type")
+  scope        GrantScope
+  status       SkillBundleStatus       @default(Draft)
+  tags         String[]                @default([])
+  sourceId     String?                 @map("source_id")
+  publishedAt  DateTime?               @map("published_at")
+  scanStatus   SkillBundleScanStatus   @default(Pending) @map("scan_status")
+  scanFindings Json?                   @map("scan_findings")
+  scannedAt    DateTime?               @map("scanned_at")
+  createdAt    DateTime                @default(now()) @map("created_at")
+  updatedAt    DateTime                @updatedAt @map("updated_at")
+  grants       Grant[]
+  entitlements SkillEntitlement[]
+  promotions   SkillPromotion[]
+  source       ThirdPartySource?    @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+
+  @@unique([name, version, digest])
+  @@index([scope])
+  @@index([digest])
+  @@map("skill_bundles")
+}
+
+model SkillEntitlement {
+  id            String           @id @default(cuid())
+  skillBundleId String           @map("skill_bundle_id")
+  grantId       String           @unique @map("grant_id")
+  scope         GrantScope
+  subjectType   GrantSubjectType @map("subject_type")
+  subjectId     String           @map("subject_id")
+  access        GrantAccess
+  priority      Int              @default(0)
+  note          String?
+  groupId       String?          @map("group_id")
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+  skillBundle   SkillBundle      @relation(fields: [skillBundleId], references: [id], onDelete: Cascade)
+  grant         Grant            @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  group         Group?           @relation(fields: [groupId], references: [id], onDelete: SetNull)
+
+  @@index([skillBundleId])
+  @@map("skill_entitlements")
+}
+
+model SkillPromotion {
+  id           String               @id @default(cuid())
+  skillBundleId String              @map("skill_bundle_id")
+  fromScope    GrantScope           @map("from_scope")
+  toScope      GrantScope           @map("to_scope")
+  promotedBy   String               @map("promoted_by")
+  status       SkillPromotionStatus @default(Proposed)
+  notes        String?
+  createdAt    DateTime             @default(now()) @map("created_at")
+  updatedAt    DateTime             @updatedAt @map("updated_at")
+  skillBundle  SkillBundle          @relation(fields: [skillBundleId], references: [id], onDelete: Cascade)
+
+  @@index([skillBundleId])
+  @@map("skill_promotions")
+}
+
+enum ThirdPartySourceKind {
+  McpRegistry      @map("mcp-registry")
+  AnthropicSkills  @map("anthropic-skills")
+  GitRepository    @map("git-repository")
+  ManualUpload     @map("manual-upload")
+}
+
+enum ThirdPartySourceStatus {
+  Healthy         @map("healthy")
+  Syncing         @map("syncing")
+  Error           @map("error")
+  PendingApproval @map("pending-approval")
+}
+
+enum ThirdPartySourceItemKind {
+  McpServer   @map("mcp-server")
+  SkillBundle @map("skill-bundle")
+}
+
+model ThirdPartySource {
+  id          String                 @id @default(cuid())
+  name        String                 @unique
+  kind        ThirdPartySourceKind
+  status      ThirdPartySourceStatus @default(PendingApproval)
+  originUrl   String                 @map("origin_url")
+  syncMode    String                 @map("sync_mode")
+  lastSyncedAt DateTime?             @map("last_synced_at")
+  nextRunAt   DateTime?              @map("next_run_at")
+  notes       String?
+  createdAt   DateTime               @default(now()) @map("created_at")
+  updatedAt   DateTime               @updatedAt @map("updated_at")
+  items       ThirdPartySourceItem[]
+  mcpServers  McpServer[]
+  skillBundles SkillBundle[]
+
+  @@map("third_party_sources")
+}
+
+model ThirdPartySourceItem {
+  id          String                   @id @default(cuid())
+  sourceId    String                   @map("source_id")
+  kind        ThirdPartySourceItemKind
+  name        String
+  upstreamId  String                   @map("upstream_id")
+  version     String?
+  digest      String?
+  metadata    Json?
+  createdAt   DateTime                 @default(now()) @map("created_at")
+  updatedAt   DateTime                 @updatedAt @map("updated_at")
+  source      ThirdPartySource         @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@index([sourceId])
+  @@unique([sourceId, kind, upstreamId])
+  @@map("third_party_source_items")
+}
+
+model ServerMetricSnapshot {
+  id                Int      @id @default(autoincrement())
+  cpuPercent        Float    @map("cpu_percent")
+  memoryUsedBytes   BigInt   @map("memory_used_bytes")
+  memoryTotalBytes  BigInt   @map("memory_total_bytes")
+  storageUsedBytes  BigInt   @map("storage_used_bytes")
+  storageTotalBytes BigInt   @map("storage_total_bytes")
+  activeTenants     Int      @default(0) @map("active_tenants")
+  sampledAt         DateTime @default(now()) @map("sampled_at")
+
+  @@index([sampledAt])
+  @@map("server_metric_snapshots")
+}
+
+model TokenUsageSnapshot {
+  id           Int      @id @default(autoincrement())
+  userId       String   @map("user_id")
+  inputTokens  Int      @default(0) @map("input_tokens")
+  outputTokens Int      @default(0) @map("output_tokens")
+  totalTokens  Int      @default(0) @map("total_tokens")
+  currency     String
+  totalCost    Decimal  @db.Decimal(12, 4) @map("total_cost")
+  sampledAt    DateTime @default(now()) @map("sampled_at")
+
+  @@unique([userId, currency])
+  @@index([sampledAt])
+  @@map("token_usage_snapshots")
+}
+
+model GlobalBudgetSetting {
+  id            Int      @id @default(1)
+  currency      String
+  ceilingAmount Decimal  @db.Decimal(12, 2) @map("ceiling_amount")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("global_budget_settings")
+}
+
+model AccountBudgetSetting {
+  userId        String   @id @map("user_id")
+  currency      String
+  ceilingAmount Decimal  @db.Decimal(12, 2) @map("ceiling_amount")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("account_budget_settings")
+}
+
+model AccessToken {
+  id         String    @id @default(cuid())
+  name       String
+  owner      String
+  tokenHash  String    @unique @map("token_hash")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  expiresAt  DateTime? @map("expires_at")
+  lastUsedAt DateTime? @map("last_used_at")
+
+  @@index([owner])
+  @@map("access_tokens")
+}
+
+model ProviderApiKey {
+  provider  String   @id
+  keyValue  String   @map("key_value")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("provider_api_keys")
+}
+
+/// Scope at which a provider credential or model definition is owned (Track AIR).
+/// Provider keys are central (Global) or per-customer (ClusterTenant) — NEVER per openclaw tenant.
+enum ModelRoutingScope {
+  Global        @map("global")
+  ClusterTenant @map("clusterTenant")
+}
+
+/// A provider API credential owned at control-plane (Global) or ClusterTenant scope.
+/// OpenCrane stores only a REFERENCE to the External-Secrets-synced k8s Secret holding the key —
+/// never the raw key. `litellmCredentialName` is set only when registered via LiteLLM /credentials
+/// for the dynamic no-restart path; the baseline rides `os.environ/<KEY>` from the synced Secret.
+model ProviderCredential {
+  id                    String            @id @default(cuid())
+  scope                 ModelRoutingScope @default(Global)
+  clusterTenant         String?           @map("cluster_tenant")
+  provider              String
+  secretRef             String            @map("secret_ref")
+  litellmCredentialName String?           @map("litellm_credential_name")
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
+
+  models ModelDefinition[]
+
+  @@unique([scope, clusterTenant, provider])
+  @@index([clusterTenant])
+  @@map("provider_credentials")
+}
+
+/// A routable model registered in LiteLLM, owned at Global or ClusterTenant scope (BYOM).
+/// The control plane registers it via LiteLLM `POST /model/new` (global) and records the returned
+/// deployment id here; access is scoped per tenant via the virtual key's `models[]` allowlist.
+model ModelDefinition {
+  id                   String              @id @default(cuid())
+  scope                ModelRoutingScope   @default(Global)
+  clusterTenant        String?             @map("cluster_tenant")
+  publicModelName      String              @map("public_model_name")
+  litellmModelId       String              @unique @map("litellm_model_id")
+  upstreamModel        String              @map("upstream_model")
+  apiBase              String?             @map("api_base")
+  isDefault            Boolean             @default(false) @map("is_default")
+  providerCredentialId String?             @map("provider_credential_id")
+  createdAt            DateTime            @default(now()) @map("created_at")
+  updatedAt            DateTime            @updatedAt @map("updated_at")
+
+  providerCredential ProviderCredential? @relation(fields: [providerCredentialId], references: [id], onDelete: SetNull)
+
+  @@unique([scope, clusterTenant, publicModelName])
+  @@index([clusterTenant])
+  @@map("model_definitions")
+}
+
+/// Skill model-selection posture (Track AIR): pin a model or opt the skill into auto-routing.
+enum SkillModelMode {
+  Pinned @map("pinned")
+  Auto   @map("auto")
+}
+
+/// Default model + auto-routing config at a scope (Global platform default, or per ClusterTenant),
+/// consulted when a skill has no posture of its own. `defaultModel` is a ModelDefinition.publicModelName.
+model ModelRoutingDefault {
+  id            String            @id @default(cuid())
+  scope         ModelRoutingScope @default(Global)
+  clusterTenant String?           @map("cluster_tenant")
+  defaultModel  String?           @map("default_model")
+  autoConfig    Json?             @map("auto_config")
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+
+  @@unique([scope, clusterTenant])
+  @@map("model_routing_defaults")
+}
+
+/// Lifecycle of a routing-change proposal (AIR.7 safe-rollout spine: never auto-applied).
+enum RoutingProposalStatus {
+  Pending  @map("pending")
+  Approved @map("approved")
+  Rejected @map("rejected")
+  Applied  @map("applied")
+}
+
+/// A golden eval case for a skill — the per-skill quality-bar substrate the shadow measurement
+/// grades candidate models against (AIR.6). Keyed loosely by the skill's (name, scope, team).
+model RoutingEvalCase {
+  id         String   @id @default(cuid())
+  skillName  String   @map("skill_name")
+  skillScope String   @map("skill_scope")
+  skillTeam  String   @default("") @map("skill_team")
+  input      Json
+  expected   Json?
+  qualityBar Float    @default(0.8) @map("quality_bar")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([skillName, skillScope, skillTeam])
+  @@map("mrl_eval_cases")
+}
+
+/// A shadow-mode savings measurement for one skill (AIR.6 output): what routing WOULD save at
+/// equal quality, with a bootstrap CI, computed without changing any live routing.
+model RoutingMeasurement {
+  id                  String   @id @default(cuid())
+  skillName           String   @map("skill_name")
+  skillScope          String   @map("skill_scope")
+  skillTeam           String   @default("") @map("skill_team")
+  candidateModel      String?  @map("candidate_model")
+  sampledCalls        Int      @map("sampled_calls")
+  atBarCheapFraction  Float    @map("at_bar_cheap_fraction")
+  projectedSavingsPct Float    @map("projected_savings_pct")
+  ciLowPct            Float    @map("ci_low_pct")
+  ciHighPct           Float    @map("ci_high_pct")
+  overheadPct         Float    @default(0) @map("overhead_pct")
+  /// Skill content version coordinate: the `Skill.contentHash` of the measured skill at run time (best-effort; null if unresolved).
+  skillContentHash    String?  @map("skill_content_hash")
+  /// Skill content version coordinate: the live published `SkillBundle.digest` at run time (best-effort; null if no published bundle).
+  skillDigest         String?  @map("skill_digest")
+  /// Model deployment coordinate: the candidate's stable `ModelDefinition.litellmModelId` (best-effort; null if unresolved).
+  candidateModelId    String?  @map("candidate_model_id")
+  /// Model deployment coordinate: the candidate's `ModelDefinition.upstreamModel` (best-effort; null if unresolved).
+  candidateUpstreamModel String? @map("candidate_upstream_model")
+  runAt               DateTime @default(now()) @map("run_at")
+
+  @@index([skillName, skillScope, skillTeam])
+  @@map("mrl_measurements")
+}
+
+/// A human-gated routing-change proposal (AIR.7). Emitted only when the savings CI excludes zero;
+/// applied (write the per-skill default) ONLY after explicit approval — never auto-deployed.
+model RoutingProposal {
+  id                  String                @id @default(cuid())
+  skillName           String                @map("skill_name")
+  skillScope          String                @map("skill_scope")
+  skillTeam           String                @default("") @map("skill_team")
+  fromModel           String?               @map("from_model")
+  proposedModel       String                @map("proposed_model")
+  projectedSavingsPct Float                 @map("projected_savings_pct")
+  ciLowPct            Float                 @map("ci_low_pct")
+  ciHighPct           Float                 @map("ci_high_pct")
+  /// Skill content version coordinate: the `Skill.contentHash` at proposal time (best-effort; null if unresolved).
+  skillContentHash    String?               @map("skill_content_hash")
+  /// Skill content version coordinate: the live published `SkillBundle.digest` at proposal time (best-effort; null if none).
+  skillDigest         String?               @map("skill_digest")
+  /// Model deployment coordinate: the proposed model's stable `ModelDefinition.litellmModelId` (best-effort; null if unresolved).
+  proposedModelId     String?               @map("proposed_model_id")
+  measurementId       String?               @map("measurement_id")
+  status              RoutingProposalStatus @default(Pending)
+  decidedBy           String?               @map("decided_by")
+  decidedAt           DateTime?             @map("decided_at")
+  createdAt           DateTime              @default(now()) @map("created_at")
+
+  @@index([status])
+  @@map("routing_proposals")
+}
+
+model OrgDocument {
+  id                  String   @id @default(cuid())
+  source              String
+  sourceId            String   @map("source_id")
+  owner               String
+  teamScope           String?  @map("team_scope")
+  departmentScope     String?  @map("department_scope")
+  projectScope        String?  @map("project_scope")
+  sensitivityTags     String[] @map("sensitivity_tags")
+  title               String?
+  content             String
+  contentHash         String?  @map("content_hash")
+  confidentiality     String?
+  jurisdiction        String?
+  retentionClass      String?  @map("retention_class")
+  aclOrigin           String   @map("acl_origin")
+  sourceUpdatedAt     DateTime @map("source_updated_at")
+  freshnessRecordedAt DateTime @map("freshness_recorded_at")
+  ingestCursor        String   @map("ingest_cursor")
+  embeddingReady      Boolean  @default(false) @map("embedding_ready")
+  ingestedAt          DateTime @default(now()) @map("ingested_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@unique([source, sourceId])
+  @@index([source])
+  @@index([owner])
+  @@index([teamScope])
+  @@map("org_documents")
+}
+
+model HarvestingCursor {
+  id          String   @id @default(cuid())
+  source      String   @unique
+  cursorValue String   @map("cursor_value")
+  lastSyncAt  DateTime @map("last_sync_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("harvesting_cursors")
+}
+
+/// Fleet-wide awareness contract rollout state (P4B.3). Singleton (`id="default"`).
+///
+/// Promotes a `targetVersion` across tenant-cohort canary waves
+/// (personal→project→department→org) while un-promoted waves stay on
+/// `stableVersion` — no fleet downtime. `promotedWaves` is the advancing
+/// frontier; clearing it is the one-step rollback. A tenant's wave is
+/// `Tenant.awarenessWave` (null → the final/most-conservative wave).
+model AwarenessRollout {
+  /// Singleton key.
+  id            String   @id @default("default")
+  /// The contract version being rolled out to promoted waves.
+  targetVersion String   @map("target_version")
+  /// The contract version un-promoted waves continue to run.
+  stableVersion String   @map("stable_version")
+  /// Ordered canary waves (narrow→wide); JSON string array.
+  waves         Json
+  /// Waves promoted to `targetVersion` so far; JSON string array (the frontier).
+  promotedWaves Json     @map("promoted_waves")
+  /// When true, promoted waves compute the target but still serve stable (shadow).
+  shadowMode    Boolean  @default(false) @map("shadow_mode")
+  /// When the rollout was created.
+  createdAt     DateTime @default(now()) @map("created_at")
+  /// When the rollout was last changed (promote/rollback/redefine).
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("awareness_rollouts")
+}
+
+/// Kind of fleet participation event a claw emits over the control-plane API (P4B.5).
+enum ParticipationEventKind {
+  /// A2A-style capability advertisement (the claw's Agent Card).
+  AgentCard       @map("agent_card")
+  /// A skill execution outcome (ok or policy-violation).
+  SkillExecution  @map("skill_execution")
+  /// Liveness/participation ping carrying the running contract version.
+  Heartbeat       @map("heartbeat")
+}
+
+/// A fleet participation event from a claw (P4B.5). Transport is the control-plane
+/// API with at-least-once + idempotency keys (no new bus) — `(tenant, idempotencyKey)`
+/// is unique so a redelivered event is recorded once.
+model ParticipationEvent {
+  /// Surrogate key.
+  id             String                 @id @default(cuid())
+  /// Emitting tenant.
+  tenant         String
+  /// Event kind.
+  kind           ParticipationEventKind
+  /// Caller-supplied idempotency key for at-least-once dedup.
+  idempotencyKey String                 @map("idempotency_key")
+  /// For SkillExecution: `ok` or `policy-violation`.
+  outcome        String?
+  /// Kind-specific payload (e.g. the Agent Card manifest, skill digest/name).
+  payload        Json?
+  /// When the event occurred (claw clock).
+  occurredAt     DateTime               @map("occurred_at")
+  /// When the control plane recorded it.
+  createdAt      DateTime               @default(now()) @map("created_at")
+  /// Owning tenant; cascades on tenant delete.
+  tenantRef      Tenant                 @relation(fields: [tenant], references: [name], onDelete: Cascade)
+
+  @@unique([tenant, idempotencyKey])
+  @@index([tenant])
+  @@map("participation_events")
+}
+
+/// Per-tenant participation rollup the control plane monitors (P4B.5): liveness,
+/// the running awareness contract version (for drift detection vs the rollout),
+/// the latest Agent Card, and skill-execution / policy-violation counters.
+model TenantParticipation {
+  /// Tenant (one rollup per tenant).
+  tenant                 String   @id
+  /// Most recent event time seen from this tenant.
+  lastSeenAt             DateTime @map("last_seen_at")
+  /// The awareness contract version the tenant reports running (drift signal).
+  runningContractVersion String?  @map("running_contract_version")
+  /// The latest advertised Agent Card manifest.
+  agentCard              Json?    @map("agent_card")
+  /// Total skill executions reported.
+  skillExecutionCount    Int      @default(0) @map("skill_execution_count")
+  /// Total policy-violating skill executions reported (critical signal).
+  policyViolationCount   Int      @default(0) @map("policy_violation_count")
+  /// When the rollup was last updated.
+  updatedAt              DateTime @updatedAt @map("updated_at")
+  /// Owning tenant; cascades on tenant delete.
+  tenantRef              Tenant   @relation(fields: [tenant], references: [name], onDelete: Cascade)
+
+  @@map("tenant_participation")
+}
+
+/// Lifecycle of a per-tenant company→tenant doc reconciliation proposal (P4C.5).
+enum DocProposalStatus {
+  Pending  @map("pending")
+  Approved @map("approved")
+  Rejected @map("rejected")
+}
+
+/// An L1 *company* personalisation document (e.g. `SOUL`) — org-owned, editable
+/// via the control-plane API, versioned immutably (P4C.3). Must carry **no** L0
+/// system-mechanic directives; the publish path rejects content that does.
+model CompanyDoc {
+  /// Surrogate key.
+  id             String              @id @default(cuid())
+  /// Stable document name (the workspace file stem, e.g. `SOUL`); one row per name.
+  name           String              @unique
+  /// The highest published version number; 0 until the first version is published.
+  currentVersion Int                 @default(0) @map("current_version")
+  /// When the document record was created.
+  createdAt      DateTime            @default(now()) @map("created_at")
+  /// When the document (or its current version) was last updated.
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+  /// Immutable published versions, newest resolvable via `currentVersion`.
+  versions       CompanyDocVersion[]
+
+  @@map("company_docs")
+}
+
+/// An immutable published version of a `CompanyDoc` (P4C.3). Never updated in
+/// place — a new publish always inserts a new row with the next version number.
+model CompanyDocVersion {
+  /// Surrogate key.
+  id           String     @id @default(cuid())
+  /// Owning company document.
+  companyDocId String     @map("company_doc_id")
+  /// Monotonic version number, unique within the document.
+  version      Int
+  /// The full document content for this version.
+  content      String
+  /// Identity that published this version (OIDC sub/email), for audit.
+  createdBy    String     @map("created_by")
+  /// When this version was published (immutable thereafter).
+  createdAt    DateTime   @default(now()) @map("created_at")
+  /// Owning document; cascades so versions never outlive their doc.
+  companyDoc   CompanyDoc @relation(fields: [companyDocId], references: [id], onDelete: Cascade)
+
+  @@unique([companyDocId, version])
+  @@index([companyDocId])
+  @@map("company_doc_versions")
+}
+
+/// The control-plane's view of a tenant's effective L2 workspace doc (P4C.4/P4C.5).
+///
+/// `content` is the tenant's current doc ("theirs" in the 3-way merge) and the
+/// payload delivered into the pod workspace via the re-pull loop on approval;
+/// `lastReconciledVersion` is the company version this tenant has accepted (the
+/// merge "base"). One row per (tenant, docName).
+model TenantWorkspaceDoc {
+  /// Surrogate key.
+  id                    String   @id @default(cuid())
+  /// Tenant the doc belongs to.
+  tenant                String
+  /// Document name, matching `CompanyDoc.name` (e.g. `SOUL`).
+  docName               String   @map("doc_name")
+  /// The tenant's current effective content (delivered into the workspace).
+  content               String
+  /// The company version this content was last reconciled against (the merge base).
+  lastReconciledVersion Int      @default(0) @map("last_reconciled_version")
+  /// When this doc was last delivered/updated.
+  updatedAt             DateTime @updatedAt @map("updated_at")
+  /// Owning tenant; cascades on tenant delete.
+  tenantRef             Tenant   @relation(fields: [tenant], references: [name], onDelete: Cascade)
+
+  @@unique([tenant, docName])
+  @@index([tenant])
+  @@map("tenant_workspace_docs")
+}
+
+/// A session→scope binding that restricts an OpenClaw chat window's awareness
+/// retrieval to a specific scope set (P4B.7, anti-spill).
+///
+/// A chat window is a `sessionKey` multiplexed over one wss connection / device /
+/// pod principal, so nothing in the transport distinguishes windows. Binding scope
+/// at the `sessionKey` level is what stops one project's context from spilling into
+/// another window. `scopes` holds only the *authorised* set: the control plane
+/// intersects the client-proposed scope with the principal's compiled awareness
+/// entitlements before persisting, so a binding can never exceed what grants allow.
+/// `principal` may be a tenant or user, so there is no Tenant foreign key.
+model SessionScope {
+  /// OpenClaw chat-window session key (the binding's identity).
+  sessionKey String   @id @map("session_key")
+  /// Tenant/user that owns the session; entitlements are compiled against this.
+  principal  String
+  /// The authorised (post-intersection) scope selectors: [{ scope, payloadId }].
+  scopes     Json
+  /// When the binding was first created.
+  createdAt  DateTime @default(now()) @map("created_at")
+  /// When the binding was last updated.
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([principal])
+  @@map("session_scopes")
+}
+
+/// A pending/decided company→tenant reconciliation proposal (P4C.4/P4C.5).
+///
+/// Produced by the agent-driven 3-way merge: it holds the proposed merged
+/// content + a human-readable diff and awaits owner approval before it lands.
+/// Idempotent/resumable: re-running reconciliation for the same target version
+/// upserts the same (tenant, docName, targetVersion) row.
+model DocMergeProposal {
+  /// Surrogate key.
+  id              String            @id @default(cuid())
+  /// Tenant the proposal targets.
+  tenant          String
+  /// Document name being reconciled (e.g. `SOUL`).
+  docName         String            @map("doc_name")
+  /// The company version used as the merge base (tenant's lastReconciledVersion).
+  baseVersion     Int               @map("base_version")
+  /// The company version being reconciled toward (the new "ours").
+  targetVersion   Int               @map("target_version")
+  /// The agent-proposed merged content (L1/L2 only — never L0).
+  proposedContent String            @map("proposed_content")
+  /// A human-readable unified-style diff of the proposed change.
+  diff            String
+  /// Lifecycle status.
+  status          DocProposalStatus @default(Pending)
+  /// When the proposal was generated.
+  createdAt       DateTime          @default(now()) @map("created_at")
+  /// When the proposal was approved/rejected; null while pending.
+  decidedAt       DateTime?         @map("decided_at")
+  /// Identity that approved/rejected the proposal; null while pending.
+  decidedBy       String?           @map("decided_by")
+  /// Owning tenant; cascades on tenant delete.
+  tenantRef       Tenant            @relation(fields: [tenant], references: [name], onDelete: Cascade)
+
+  @@unique([tenant, docName, targetVersion])
+  @@index([tenant, docName])
+  @@index([status])
+  @@map("doc_merge_proposals")
+}

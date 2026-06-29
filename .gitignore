@@ -3,6 +3,18 @@ dist/
 .env
 .env.*
 !.env.example
+
+# Secrets / credentials — never commit key material (it must flow via k8s existingSecret).
+# The leaked Zitadel SA key was a *.json service-account key; block that shape + common kinds.
+*.pem
+*.key
+*-key.json
+*service-account*.json
+*serviceaccount*.json
+*credentials*.json
+kubeconfig
+*.kubeconfig
+
 coverage/
 .DS_Store
 *.tsbuildinfo
@@ -12,7 +24,7 @@ coverage/
 *.log
 
 # Dev (root-level scratch dir only; anchored so it doesn't swallow nested dirs
-# like platform/terraform/environments/dev/)
+# like libs/k8s-platform/terraform/environments/dev/)
 /dev/
 
 # Claude Code local review-gate state

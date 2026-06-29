@@ -19,22 +19,21 @@
     "ignoredBuiltDependencies": []
   },
   "scripts": {
-    "build": "pnpm --filter @opencrane/control-plane db:generate && pnpm -r build",
+    "build": "pnpm --filter @opencrane/clustertenant-operator db:generate && pnpm -r build",
     "dev": "pnpm -r --parallel dev",
     "test": "pnpm -r test",
-    "test:e2e:k3d": "./platform/tests/k3d-e2e.sh",
-    "test:phase1": "pnpm --filter @opencrane/operator test && pnpm --filter @opencrane/control-plane test && ./platform/tests/k3d-e2e.sh",
-    "install:phase1:local": "./platform/install.sh local --keep-cluster",
-    "install:phase1:gcp": "./platform/install.sh gcp",
-    "wizard": "./platform/wizard.sh",
+    "test:e2e:k3d": "./libs/k8s-platform/tests/k3d-e2e.sh",
+    "test:phase1": "pnpm --filter @opencrane/fleet-operator test && pnpm --filter @opencrane/clustertenant-operator test && ./libs/k8s-platform/tests/k3d-e2e.sh",
+    "install:phase1:local": "KEEP_CLUSTER=1 ./libs/k8s-platform/tests/k3d-local.sh",
+    "install:phase1:gcp": "./apps/fleet-platform/deploy.sh --provision gke",
     "lint": "pnpm -r lint",
     "docs:sync-openapi": "pnpm --filter @opencrane/website sync-openapi",
     "docs:dev": "pnpm --filter @opencrane/website dev",
     "docs:build": "pnpm --filter @opencrane/website build",
     "docs:preview": "pnpm --filter @opencrane/website preview",
     "docker:build:tenant": "docker build -f apps/tenant/deploy/Dockerfile -t ghcr.io/italanta/opencrane-tenant:latest .",
-    "docker:build:operator": "docker build -f apps/operator/deploy/Dockerfile -t ghcr.io/italanta/opencrane-operator:latest .",
-    "docker:build:control-plane": "docker build -f apps/control-plane/deploy/Dockerfile -t ghcr.io/italanta/opencrane-control-plane:latest .",
+    "docker:build:operator": "docker build -f apps/fleet-operator/deploy/Dockerfile -t ghcr.io/italanta/opencrane-fleet-manager:latest .",
+    "docker:build:control-plane": "docker build -f apps/clustertenant-operator/deploy/Dockerfile -t ghcr.io/italanta/opencrane-clustertenant-manager:latest .",
     "docker:build:docs": "docker build -f website/Dockerfile -t ghcr.io/italanta/docs:latest ."
   }
 }
