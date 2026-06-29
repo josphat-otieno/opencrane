@@ -46,8 +46,6 @@ export interface CreateTenantRequest
     /** Memory limit (e.g. "256Mi"). */
     memory?: string;
   };
-  /** Optional durable per-tenant skill name allowlist; only these skills are linked at startup. */
-  skillAllowlist?: string[];
   /** Optional reference to an AccessPolicy by name. */
   policyRef?: string;
 

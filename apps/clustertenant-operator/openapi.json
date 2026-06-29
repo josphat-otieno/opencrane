@@ -2819,12 +2819,6 @@
                   "resources": {
                     "type": "object"
                   },
-                  "skillAllowlist": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
                   "policyRef": {
                     "type": "string"
                   }
@@ -3010,12 +3004,6 @@
                   },
                   "resources": {
                     "type": "object"
-                  },
-                  "skillAllowlist": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
                   },
                   "policyRef": {
                     "type": "string"

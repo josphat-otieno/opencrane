@@ -235,7 +235,6 @@ describe("TenantResourceBuilder", () =>
   {
     const tenant = _makeTenant("strict", {
       policyRef: "restricted-mcp",
-      skillAllowlist: ["company-policy", "deploy-helper"],
     });
 
     const stateVolume = onPremAdapter.buildStateVolume("strict");
@@ -260,7 +259,6 @@ describe("TenantResourceBuilder", () =>
     expect(envVars.OPENCRANE_MCP_GATEWAY_TOKEN_PATH).toBe("/var/run/opencrane/tokens/obot-gateway.token");
     expect(envVars.OPENCRANE_SKILL_REGISTRY_TOKEN_PATH).toBe("/var/run/opencrane/tokens/skill-registry.token");
     expect(envVars.OPENCRANE_POLICY_REF).toBe("restricted-mcp");
-    expect(envVars.OPENCRANE_ALLOWED_SKILLS).toBeUndefined();
     expect(envVars.HOME).toBe("/tmp/opencrane-home");
     expect(envVars.NPM_CONFIG_CACHE).toBe("/tmp/npm-cache");
     // OC-2 / CONN.4: gateway auth is trusted-proxy (configured in openclaw.json,

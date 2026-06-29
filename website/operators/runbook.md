@@ -505,14 +505,6 @@ curl -X DELETE \
 
 > **Note**: Deletion removes the Kubernetes deployment and service but retains the tenant's encryption key Secret for data recovery.
 
-### Apply a skill allowlist to a tenant
-
-```bash
-kubectl patch tenant acme -n opencrane-<ct> \
-  --type merge \
-  --patch '{"spec":{"skillAllowlist":["company-policy","engineering-tools"]}}'
-```
-
 ### Apply MCP server restrictions to a tenant
 
 ```bash

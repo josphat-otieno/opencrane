@@ -31,12 +31,6 @@ export interface TenantSpec
   };
 
   /**
-   * Durable per-tenant skill name allowlist.
-   * When present, only skills in this list are linked at startup.
-   */
-  skillAllowlist?: string[];
-
-  /**
    * Per-tenant MCP server allow/deny policy applied at invocation level.
    * Complements the AccessPolicy mcpServers field with tenant-specific overrides.
    */

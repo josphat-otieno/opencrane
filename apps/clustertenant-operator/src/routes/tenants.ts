@@ -376,7 +376,6 @@ export function tenantsRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCli
         clusterTenantRef: body.clusterTenantRef,
         monthlyBudgetUsd: body.monthlyBudgetUsd,
         resources: body.resources,
-        skillAllowlist: body.skillAllowlist,
         policyRef: body.policyRef,
       },
     };
@@ -454,7 +453,6 @@ export function tenantsRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCli
         ...(clusterTenantRefProvided ? { clusterTenantRef: normalizedClusterTenantRef } : {}),
         ...(body.monthlyBudgetUsd !== undefined ? { monthlyBudgetUsd: body.monthlyBudgetUsd } : {}),
         ...(body.resources ? { resources: body.resources } : {}),
-        ...(body.skillAllowlist ? { skillAllowlist: body.skillAllowlist } : {}),
         ...(body.policyRef ? { policyRef: body.policyRef } : {}),
       },
     };
