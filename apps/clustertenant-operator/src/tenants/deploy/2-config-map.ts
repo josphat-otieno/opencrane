@@ -68,12 +68,24 @@ export function _BuildConfigMap(config: OpenClawTenantOperatorConfig, tenant: Te
       mode: "local",
       port: config.gatewayPort,
       bind: "lan",
-      // With bind:lan the gateway enforces a Control-UI Origin allowlist (since
-      // v2026.2.26): a WS whose Origin isn't allowlisted is refused with
-      // CONTROL_UI_ORIGIN_NOT_ALLOWED. The org-admin SPA reaches the gateway through the
-      // org host, so allow its `https://<host>` origin. Omitted host ⇒ leave the gateway's
-      // own localhost seeding (ref-less / pre-same-origin default).
-      ...(servingHost ? { controlUi: { allowedOrigins: [`https://${servingHost}`] } } : {}),
+      // Control-UI (org-admin SPA) policy:
+      //  - allowedOrigins: with bind:lan the gateway enforces a Control-UI Origin allowlist
+      //    (since v2026.2.26) and refuses an unlisted Origin with CONTROL_UI_ORIGIN_NOT_ALLOWED.
+      //    The SPA reaches the gateway through the org host, so allow its https origin (when known).
+      //  - dangerouslyDisableDeviceAuth: this platform is device-less by design — identity is the
+      //    OIDC session the operator proxy verifies and injects as X-Forwarded-User (CONN.4), not a
+      //    per-browser device key. Without this flag the gateway connects a trusted-proxy Control-UI
+      //    but STRIPS its operator scopes (shouldClearUnboundScopesForMissingDeviceIdentity), so
+      //    chat RPCs fail "missing scope". Disabling device auth lets the proxy be the authority and
+      //    the connect's scopes stand. SAFE ONLY IF the gateway port is reachable solely through the
+      //    proxy — enforced by the openclaw-<name>-gateway NetworkPolicy. NOTE: that requires the
+      //    cluster to actually ENFORCE NetworkPolicy (Dataplane V2 / Calico); the dev cluster does
+      //    not yet — tracked separately. The owner-pin (auth.allowUsers) is defence-in-depth, not a
+      //    substitute (a caller that asserts the owner email is trusted under trusted-proxy).
+      controlUi: {
+        dangerouslyDisableDeviceAuth: true,
+        ...(servingHost ? { allowedOrigins: [`https://${servingHost}`] } : {}),
+      },
       // OC-2 / CONN.4 — the gateway delegates auth to the control-plane: the pod
       // ingress validates the OIDC session and injects the user header, and the
       // gateway trusts it only from the configured proxy source. No shared token
