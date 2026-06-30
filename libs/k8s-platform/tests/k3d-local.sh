@@ -243,6 +243,8 @@ helm_args=(
   --set
   "fleetManager.database.existingSecret=$DB_SECRET_NAME"
   --set
+  "fleetManager.clusterTenantApi.enabled=false"
+  --set
   "litellm.existingDatabaseSecret=opencrane-litellm-db"
 )
 
@@ -290,10 +292,10 @@ helm "${silo_args[@]}"
 
 # 7. Wait for the platform workloads that depend on the database.
 _wait_for_rollout "deployment/opencrane-fleet-manager"
-_wait_for_rollout "deployment/opencrane-clustertenant-manager"
+_wait_for_rollout "deployment/opencrane-silo-clustertenant-manager"
 
-if kubectl get deployment/opencrane-litellm -n "$NAMESPACE" >/dev/null 2>&1; then
-  _wait_for_rollout "deployment/opencrane-litellm"
+if kubectl get deployment/opencrane-silo-litellm -n "$NAMESPACE" >/dev/null 2>&1; then
+  _wait_for_rollout "deployment/opencrane-silo-litellm"
 fi
 
 echo "[local] PASS: local full-stack install succeeded"
