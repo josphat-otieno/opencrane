@@ -80,17 +80,22 @@ describe("TenantResourceBuilder", () =>
     const payload = JSON.parse(configMap.data?.["openclaw.json"] ?? "{}");
 
     expect(payload.gateway.controlUi.allowedOrigins).toEqual(["https://acme.dev.opencrane.ai"]);
+    // Device-less trusted-proxy model: device auth disabled so the proxy-injected identity's
+    // scopes stand (otherwise the gateway strips them). Safe only behind the gateway NetworkPolicy.
+    expect(payload.gateway.controlUi.dangerouslyDisableDeviceAuth).toBe(true);
     // Survives the step-3b gateway re-pin (controlUi is part of the platform-owned block).
     expect(payload.gateway.auth.trustedProxy.allowUsers).toEqual(["acme-user@example.com"]);
   });
 
-  it("omits the Control-UI origin allowlist when no serving host is given (ref-less default)", () =>
+  it("disables Control-UI device auth even with no serving host, but omits the origin allowlist", () =>
   {
     const tenant = _makeTenant("plain");
     const configMap = _BuildConfigMap(defaultConfig, tenant, "default");
     const payload = JSON.parse(configMap.data?.["openclaw.json"] ?? "{}");
 
-    expect(payload.gateway).not.toHaveProperty("controlUi");
+    // Device-less model applies regardless of host; the origin allowlist is host-derived.
+    expect(payload.gateway.controlUi.dangerouslyDisableDeviceAuth).toBe(true);
+    expect(payload.gateway.controlUi).not.toHaveProperty("allowedOrigins");
   });
 
   it("renders an unambiguous trust-nothing gateway config when no proxy is configured (OC-2 / CONN.4)", () =>
@@ -305,11 +310,13 @@ describe("TenantResourceBuilder", () =>
     const netpol = _BuildGatewayNetworkPolicy(config, tenant, "default");
 
     expect(netpol.spec?.policyTypes).toEqual(["Ingress"]);
-    // Only the operator pods (which now host the identity-routing proxy) in the operator's
-    // namespace may reach the gateway port — no per-user Ingress, no other pod, can connect.
+    // Only the clustertenant-manager pod (which hosts the identity-routing proxy) in the
+    // operator's namespace may reach the gateway port — no per-user Ingress, no other pod, can
+    // connect and assert an arbitrary X-Forwarded-User. The selector MUST match the proxy pod's
+    // real label (`clustertenant-manager`); "operator" matched nothing → fail-open/closed bug.
     const rule = netpol.spec?.ingress?.[0];
     expect(rule?._from?.[0]?.namespaceSelector?.matchLabels?.["kubernetes.io/metadata.name"]).toBe("opencrane");
-    expect(rule?._from?.[0]?.podSelector?.matchLabels?.["app.kubernetes.io/component"]).toBe("operator");
+    expect(rule?._from?.[0]?.podSelector?.matchLabels?.["app.kubernetes.io/component"]).toBe("clustertenant-manager");
     expect(rule?.ports?.[0]?.port).toBe(config.gatewayPort);
   });
 });

@@ -59,11 +59,14 @@ export function _BuildGatewayNetworkPolicy(
           //
           // The rule itself: the in-operator identity-routing proxy is the sole client of
           // the gateway port now (per-user Ingresses are retired), so admit only the
-          // operator pods in the operator's namespace — no other pod can connect and assert
-          // an arbitrary X-Forwarded-User.
+          // proxy pod in the operator's namespace — no other pod can connect and assert
+          // an arbitrary X-Forwarded-User. The proxy is folded into the clustertenant-manager
+          // pod, which carries `app.kubernetes.io/component: clustertenant-manager` (NOT
+          // "operator" — that selector matched no pod, so the rule admitted nothing and, on a
+          // cluster that actually enforces NetworkPolicy, would fail closed and block the proxy).
           _from: [{
             namespaceSelector: { matchLabels: { [_NAMESPACE_NAME_LABEL]: config.operatorNamespace } },
-            podSelector: { matchLabels: { "app.kubernetes.io/component": "operator" } },
+            podSelector: { matchLabels: { "app.kubernetes.io/component": "clustertenant-manager" } },
           }],
           ports: [{ protocol: "TCP", port: config.gatewayPort }],
         },
