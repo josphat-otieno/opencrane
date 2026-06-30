@@ -2742,7 +2742,6 @@ export interface operations {
                     clusterTenantRef?: string;
                     monthlyBudgetUsd?: number;
                     resources?: Record<string, never>;
-                    skillAllowlist?: string[];
                     policyRef?: string;
                 };
             };
@@ -2874,7 +2873,6 @@ export interface operations {
                     clusterTenantRef?: string;
                     monthlyBudgetUsd?: number;
                     resources?: Record<string, never>;
-                    skillAllowlist?: string[];
                     policyRef?: string;
                 };
             };

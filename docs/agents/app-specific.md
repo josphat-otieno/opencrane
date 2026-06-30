@@ -36,5 +36,5 @@ another client of the management API, never a privileged path.
 ## Nested AGENTS.md
 
 Some subdirectories carry their own `AGENTS.md` (e.g. tenant workspace templates under
-`apps/fleet-operator/src/tenants/deploy/workspace/`). Those are scoped to that directory's generated
+`apps/clustertenant-operator/src/tenants/deploy/workspace/`). Those are scoped to that directory's generated
 artifacts and do not override this guidance for platform source.

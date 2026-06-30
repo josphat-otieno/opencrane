@@ -13,8 +13,9 @@ follows [Keep a Changelog](https://keepachangelog.com/); the project uses
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-06-29
+
 Stage 4 "strong-siloes" fleet/silo architecture split plus earlier silo-program identity work.
-All items below are unreleased and landed on the `strong-siloes` branch.
 
 ### Added (Stage 4 — fleet/silo split)
 
@@ -668,7 +669,9 @@ First tagged release — a working multi-tenant OpenClaw platform you can deploy
 - Initial scaffold of the multi-tenant OpenClaw platform (operator, control-plane, Angular app,
   launch script). Folded into the 0.2.0 tag.
 
-[Unreleased]: https://github.com/italanta/opencrane/compare/0.5.2...HEAD
+[Unreleased]: https://github.com/italanta/opencrane/compare/0.6.0...HEAD
+[0.6.0]: https://github.com/italanta/opencrane/compare/0.5.3...0.6.0
+[0.5.3]: https://github.com/italanta/opencrane/compare/0.5.2...0.5.3
 [0.5.2]: https://github.com/italanta/opencrane/compare/0.5.1...0.5.2
 [0.5.1]: https://github.com/italanta/opencrane/compare/0.5.0...0.5.1
 [0.5.0]: https://github.com/italanta/opencrane/compare/0.4.0...0.5.0

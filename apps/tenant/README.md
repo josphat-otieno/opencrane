@@ -42,7 +42,6 @@ Pod starts
 | `OPENCLAW_VERSION` | npm version to install (e.g. `latest`, `2026.3.15`). Defaults to `latest`. |
 | `OPENCRANE_RUNTIME_MODE` | Runtime mode identifier (`managed`) for OpenCrane-aware runtimes |
 | `OPENCRANE_RUNTIME_CONTRACT_PATH` | Path to the managed-runtime contract JSON (`/config/opencrane-managed-runtime.json`) |
-| `OPENCRANE_ALLOWED_SKILLS` | Optional comma-separated allowlist of shared skills derived from `Tenant.spec.skillAllowlist` |
 | `OPENCRANE_POLICY_REF` | Optional policy reference carried from `Tenant.spec.policyRef` for runtime awareness |
 | `OPENCRANE_ALLOWED_MCP_SERVERS` | Derived at startup from the managed-runtime contract and used to gate runtime features such as shared skills |
 | `OPENCRANE_DENIED_MCP_SERVERS` | Derived at startup from the managed-runtime contract and used to block runtime features such as shared skills |
@@ -76,7 +75,7 @@ The tenant entrypoint reads `opencrane-managed-runtime.json` before startup, app
 Today this means:
 - when the `skills` MCP server is denied, org and team shared skills are not linked into the tenant runtime
 - when the `skills` MCP server is allowed or no MCP policy is enforced, existing shared-skill linking behavior is preserved
-- entitled skill bundles named in the contract's `skills.entitled` (each `{ id, name, digest }`) are pulled from `OPENCRANE_SKILL_REGISTRY_URL` using the `skill-registry`-audience projected token and written to `<state>/agents/main/skills/<name>/SKILL.md`, at boot and on every contract change. The registry enforces entitlement (a non-entitled or unknown digest returns 404); `Tenant.spec.skillAllowlist` (`OPENCRANE_ALLOWED_SKILLS`) narrows further. Delivery is additive — a de-entitled skill stops being advertised in TOOLS.md and 404s at the registry, but its on-disk copy is not yet pruned.
+- entitled skill bundles named in the contract's `skills.entitled` (each `{ id, name, digest }`) are pulled from `OPENCRANE_SKILL_REGISTRY_URL` using the `skill-registry`-audience projected token and written to `<state>/agents/main/skills/<name>/SKILL.md`, at boot and on every contract change. The registry enforces entitlement (a non-entitled or unknown digest returns 404) — group-based entitlement compiled by the control-plane is the sole skill-authorization surface. Delivery is additive — a de-entitled skill stops being advertised in TOOLS.md and 404s at the registry, but its on-disk copy is not yet pruned.
 
 This is an early enforcement slice. Broader MCP tool blocking, deny/audit events, and pruning of de-entitled skills are still deferred.
 

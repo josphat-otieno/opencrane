@@ -183,7 +183,7 @@ Both roles wire the control-plane to the database the installer provisions via
 comes from the SILO deploying a dedicated CNPG cluster IN ITS OWN NAMESPACE — one Postgres per
 silo serving that silo's control-plane + runtime planes — so the silo control-plane's DB already
 holds exactly one ClusterTenant's data and never has to infer which tenant a row belongs to. The
-deploy scripts (`deploy-silo.sh` → `k8s-deploy.sh`) provision that per-namespace cluster + secret;
+deploy scripts (`apps/clustertenant-platform/deploy.sh` → `k8s-deploy.sh`) provision that per-namespace cluster + secret;
 this helper just consumes whatever secret the installer points at, identically for both roles.
 
 With no explicit DB this renders no DATABASE_URL (the control-plane stays in its no-DB mode); a

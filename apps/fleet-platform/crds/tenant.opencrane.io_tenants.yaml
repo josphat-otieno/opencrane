@@ -55,13 +55,6 @@ spec:
                       type: string
                     memory:
                       type: string
-                skillAllowlist:
-                  type: array
-                  items:
-                    type: string
-                  description: >-
-                    Durable per-tenant skill name allowlist. When present, only skills
-                    in this list are linked at startup and injected through OPENCRANE_ALLOWED_SKILLS.
                 mcpPolicy:
                   type: object
                   description: >-

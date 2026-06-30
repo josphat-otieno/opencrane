@@ -88,7 +88,7 @@ The fleet release uses the `opencrane-fleet` chart (`apps/fleet-platform`) and t
 
 ## Deploy sequence
 
-You must install the fleet release first. The fleet release installs the cluster-wide singletons (ingress-nginx, external-dns, the CloudNativePG operator, cert-manager) that every silo reuses. `deploy-silo.sh` actively enforces this: it preflights for the CloudNativePG CRD (`clusters.postgresql.cnpg.io`) and exits with a clear error if the fleet release has not been installed.
+You must install the fleet release first. The fleet release installs the cluster-wide singletons (ingress-nginx, external-dns, the CloudNativePG operator, cert-manager) that every silo reuses. `apps/clustertenant-platform/deploy.sh` actively enforces this: it preflights for the CloudNativePG CRD (`clusters.postgresql.cnpg.io`) and exits with a clear error if the fleet release has not been installed.
 
 ### Step 1 — install the fleet release
 
@@ -160,7 +160,7 @@ Source: [`apps/fleet-platform/templates/fleet-manager-deployment.yaml`](https://
 ::: warning Future work
 Two significant pieces of automation are **not yet shipped** and must be done manually for now:
 
-**Silo provisioning on ClusterTenant creation.** When a new ClusterTenant is registered via the fleet API, the corresponding silo release is not automatically installed. You must run `deploy-silo.sh` by hand for each ClusterTenant. Automating this — so the fleet stamps out a silo release on ClusterTenant creation — is tracked as future work.
+**Silo provisioning on ClusterTenant creation.** When a new ClusterTenant is registered via the fleet API, the corresponding silo release is not automatically installed. You must run `apps/clustertenant-platform/deploy.sh` by hand for each ClusterTenant. Automating this — so the fleet stamps out a silo release on ClusterTenant creation — is tracked as future work.
 
 **Data migration off the shared database.** Existing installations that used the old shared-singleton model (one Postgres for all tenants) must migrate each ClusterTenant's data into its own per-silo database. No automated migration tooling is shipped. Stage this migration carefully: provision each silo's database, copy the relevant rows, verify, then cut over the silo clustertenant-manager to its new database.
 :::

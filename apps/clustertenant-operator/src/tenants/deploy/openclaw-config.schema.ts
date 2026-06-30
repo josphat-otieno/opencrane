@@ -64,6 +64,21 @@ const _authSchema = z
   .strict();
 
 /**
+ * Control-UI (browser operator surface) block. With `bind:lan` the gateway enforces a
+ * browser Origin allowlist, and a device-less trusted-proxy session keeps its operator
+ * scopes only when device auth is explicitly disabled (the platform is device-less by
+ * design — see `_BuildConfigMap`). Both keys are optional; `allowedOrigins` is host-derived.
+ */
+const _controlUiSchema = z
+  .object({
+    /** Browser Origins allowed to open a Control-UI WS (e.g. `https://<org>.<base>`). */
+    allowedOrigins: z.array(z.string()).optional(),
+    /** Trust the proxy as the auth authority instead of per-browser device identity. */
+    dangerouslyDisableDeviceAuth: z.boolean().optional(),
+  })
+  .strict();
+
+/**
  * PLATFORM-OWNED gateway block. `.strict()` is the load-bearing guarantee: an
  * unknown key here is the exact class of bug that crashed live tenant pods on boot.
  */
@@ -75,6 +90,8 @@ const _gatewaySchema = z
     port: z.number().int().positive(),
     /** Network bind scope. */
     bind: _bindMode,
+    /** Browser operator-UI policy (origin allowlist + device-auth posture). */
+    controlUi: _controlUiSchema.optional(),
     /** Reverse-proxy source IPs/CIDRs trusted for trusted-proxy auth. */
     trustedProxies: z.array(z.string()),
     /** Delegated-auth configuration. */

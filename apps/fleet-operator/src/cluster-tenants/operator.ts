@@ -35,7 +35,10 @@ import { _BuildOrgDomainProvisioner } from "./internal/org-domain.provisioner.fa
  *   2. Resolve the isolation boundary via the shared provisioner (binds the
  *      `opencrane-<name>` namespace for in-cluster tiers; `failed` for an
  *      unsupported tier).
- *   3. Fence the bound namespace (PSA `restricted`) idempotently.
+ *   3. Fence the bound namespace (PSA `baseline`) idempotently. (`baseline`, not `restricted`:
+ *      silos run 3rd-party planes — Obot's embedded root Postgres, Cognee-as-root, Langfuse
+ *      subcharts — that can't meet `restricted`; `baseline` still blocks privileged containers,
+ *      host namespaces, hostPath, and host ports.)
  *   4. Invoke the real `OrgDomainProvisioner.provisionOrgDomain(...)` — it applies the
  *      per-org wildcard Certificate and declares the A records as an external-dns
  *      `DNSEndpoint`, runtime-gating to a recorded skip condition when cert-manager or the

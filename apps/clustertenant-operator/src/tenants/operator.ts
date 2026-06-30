@@ -7,7 +7,7 @@ import { _BuildHostingAdapter, type HostingAdapter } from "../hosting/index.js";
 import type { Tenant } from "./models/tenant.interface.js";
 import { TenantPolicyResolutionState, TenantStatusPhase } from "./models/tenant-status.interface.js";
 
-import { __K8sApplyResource } from "@opencrane/infra-api";
+import { __IsK8sForbidden, __K8sApplyResource } from "@opencrane/infra-api";
 import { _RunWatchLoop, K8sWatchEventType } from "@opencrane/infra-api";
 import { OPENCRANE_API_GROUP, OPENCRANE_API_VERSION, TENANT_CRD_PLURAL } from "@opencrane/infra-api";
 import { _BuildClusterTenantLimitRange, _BuildClusterTenantNamespace, _BuildClusterTenantResourceQuota, _BuildConfigMap, _BuildDeployment, _BuildGatewayNetworkPolicy, _BuildService, _BuildServiceAccount, _BuildSiloBaselineNetworkPolicy, _BuildSiloLinkerdIdentityPolicy, _BuildStatePvc } from "./deploy/index.js";
@@ -336,7 +336,7 @@ export class TenantOperator
 
       // 5. ConfigMap — serialises the base OpenClaw JSON config merged with any
       //    spec.configOverrides the tenant author provided.
-      await __K8sApplyResource(this.coreApi, _BuildConfigMap(this.config, effectiveTenant, namespace, policyResolution.effectivePolicy, modelSet), this.log);
+      await __K8sApplyResource(this.coreApi, _BuildConfigMap(this.config, effectiveTenant, namespace, policyResolution.effectivePolicy, modelSet, ingressDomain), this.log);
 
       // 6. State volume — adapter decides CSI mount (cloud) vs PVC (on-prem).
       //    Create the PVC only when the adapter requests it (on-prem path).
@@ -413,7 +413,26 @@ export class TenantOperator
     //    restricted enforce/warn/audit labels before any workload lands in it. When the
     //    Linkerd gate is on (S5) it is also annotated for mesh injection so workloads
     //    pick up the sidecar/identity; the annotation is inert on a Linkerd-less cluster.
-    await __K8sApplyResource(this.coreApi, _BuildClusterTenantNamespace(namespace, clusterTenantName, this.config.linkerdMeshEnabled), this.log);
+    //
+    //    In the per-silo topology the fleet-manager creates and owns this namespace, and
+    //    the silo operator's ServiceAccount has NO cluster-scoped namespace RBAC — so the
+    //    create returns 403 Forbidden (it cannot even attempt it), not the 409 AlreadyExists
+    //    that __K8sApplyResource treats as a converged no-op. Tolerate that 403: the
+    //    namespace is provisioned externally, and if it were genuinely absent the namespaced
+    //    applies that follow (baseline NetworkPolicy, quota) would themselves fail with
+    //    NotFound, surfacing the real problem rather than this one masking it.
+    try
+    {
+      await __K8sApplyResource(this.coreApi, _BuildClusterTenantNamespace(namespace, clusterTenantName, this.config.linkerdMeshEnabled), this.log);
+    }
+    catch (err)
+    {
+      if (!__IsK8sForbidden(err))
+      {
+        throw err;
+      }
+      this.log.warn({ namespace, clusterTenant: clusterTenantName }, "namespace create forbidden; assuming it is externally provisioned (fleet-manager-owned silo)");
+    }
 
     // 1b. Silo baseline NetworkPolicy — flip the namespace to default-deny (S2 /
     //     Phase 1) right after it exists and before any workload lands, so the silo

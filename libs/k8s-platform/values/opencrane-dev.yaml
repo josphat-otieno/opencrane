@@ -9,7 +9,7 @@
 # per-org hosting path entirely (see below). k8s-deploy.sh takes a single --values file,
 # so reuse-values (not a second -f) is how the prior config is preserved.
 #
-#   ./platform/deploy-multi-tenant.sh \
+#   apps/fleet-platform/deploy.sh \
 #     --base-domain dev.opencrane.ai \
 #     --ingress-ip 34.22.213.142 \
 #     --operator-tag <new-operator-image-tag> \

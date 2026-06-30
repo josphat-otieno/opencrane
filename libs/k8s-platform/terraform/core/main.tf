@@ -67,7 +67,7 @@ resource "helm_release" "opencrane"
   name       = "opencrane"
   # Chart split (Option 2): terraform provisions the cluster + the once-per-cluster FLEET chart
   # (bootstrap + fleet-manager). Per-org SILO charts (apps/clustertenant-platform) are deployed
-  # DYNAMICALLY out-of-band (deploy-silo.sh today; the fleet operator auto-stamps them in S2),
+  # DYNAMICALLY out-of-band (apps/clustertenant-platform/deploy.sh today; the fleet operator auto-stamps them in S2),
   # so they are intentionally NOT a static terraform release.
   chart      = "${path.module}/../../../../apps/fleet-platform"
   namespace  = kubernetes_namespace.opencrane.metadata[0].name

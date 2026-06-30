@@ -13,7 +13,7 @@ global:
 #    IN ITS OWN NAMESPACE, serving that silo's control-plane + runtime planes — so the silo's
 #    database holds exactly one ClusterTenant's data and the control-plane API never has to
 #    disambiguate which tenant a row belongs to (the silo IS the scope). That per-namespace
-#    cluster + its credentials Secret are provisioned by the deploy scripts (deploy-silo.sh →
+#    cluster + its credentials Secret are provisioned by the deploy scripts (apps/clustertenant-platform/deploy.sh →
 #    k8s-deploy.sh), and the control-plane consumes it via controlPlane.database.existingSecret —
 #    identically to the central release, just scoped to the silo namespace. No chart-side
 #    per-CT DB block is needed.
@@ -111,7 +111,7 @@ sharedPlatform:
 fleetManager:
   # -- Render the cluster-wide fleet-manager (the singleton operator + fleet/super-admin API +
   #    registry DB + Zitadel IAM). MUST be true in exactly ONE release per cluster (the fleet
-  #    install via deploy-multi-tenant.sh) and FALSE in every per-silo install (deploy-silo.sh) —
+  #    install via apps/fleet-platform/deploy.sh) and FALSE in every per-silo install (apps/clustertenant-platform/deploy.sh) —
   #    two fleet-managers would contend over the cluster-scoped ClusterTenant CRs + IAM ownership.
   #    Default true so a single-box `helm install` runs both managers co-located.
   enabled: true

@@ -1,0 +1,28 @@
+{{- if and .Values.ingress.enabled .Values.ingress.tls.enabled .Values.certManager.enabled }}
+{{- /*
+Per-silo TLS certificate for the clustertenant-manager host.
+
+The silo serves its control plane at the ORG host (`ingress.controlPlaneHost` =
+`<cluster-tenant>.<base>`, set by the silo deploy profile). The fleet's platform wildcard cert
+lives in the FLEET namespace, and a Kubernetes Ingress can only reference a TLS secret in its OWN
+namespace — so each silo must issue its own cert here, into the secret the clustertenant-manager
+Ingress references. It uses the cluster-wide ClusterIssuer (`certManager.issuerName`, created once
+by the fleet chart), so no per-silo Issuer is needed.
+*/ -}}
+{{- $host := .Values.ingress.controlPlaneHost | default (printf "platform.%s" .Values.ingress.domain) -}}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "opencrane.fullname" . }}-clustertenant-tls
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "opencrane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: clustertenant-manager
+spec:
+  secretName: {{ required "ingress.tls.secretName is required when ingress.tls.enabled" .Values.ingress.tls.secretName }}
+  issuerRef:
+    name: {{ required "certManager.issuerName is required when certManager.enabled" .Values.certManager.issuerName }}
+    kind: ClusterIssuer
+  dnsNames:
+    - {{ $host | quote }}
+{{- end }}

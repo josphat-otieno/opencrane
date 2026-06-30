@@ -505,14 +505,6 @@ curl -X DELETE \
 
 > **Note**: Deletion removes the Kubernetes deployment and service but retains the tenant's encryption key Secret for data recovery.
 
-### Apply a skill allowlist to a tenant
-
-```bash
-kubectl patch tenant acme -n opencrane-<ct> \
-  --type merge \
-  --patch '{"spec":{"skillAllowlist":["company-policy","engineering-tools"]}}'
-```
-
 ### Apply MCP server restrictions to a tenant
 
 ```bash
@@ -564,4 +556,4 @@ Set `OPENCRANE_DRIFT_WEBHOOK_URL` to a Slack incoming webhook or PagerDuty event
 
 ---
 
-*Last updated: 2026-05-28 — document this runbook in the same commit as any procedure change.*
+*Last updated: 2026-06-29 — document this runbook in the same commit as any procedure change.*
