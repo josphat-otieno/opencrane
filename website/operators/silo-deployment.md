@@ -5,7 +5,7 @@ OpenCrane splits a platform installation into a single **fleet release** (cluste
 > See also:
 > [Fleet and silo operating model](/operators/fleet-silo-model) — how the fleet-manager and clustertenant-manager differ, what each owns, and how to configure fleet OIDC and Zitadel management.
 > [Networking & isolation](/operators/networking) — the NetworkPolicy floor and the silo boundary.
-> [Linkerd identity substrate](/operators/linkerd-identity) — the mTLS layer that rides on top of the silo boundary.
+> [Identity & network isolation (Cilium + SPIFFE)](/operators/cilium-spiffe-identity) — the identity-keyed mTLS layer that rides on top of the silo boundary.
 > [Silo IAM: inheritance & sharing](/integrators/silo-iam) — how IAM policies, skills, and resource shares are scoped per silo.
 
 ---
@@ -138,7 +138,7 @@ Each silo's isolation rests on three independent layers:
 
 1. **Dedicated instances** — no plane is shared between silos. Data and credentials are co-resident only within a silo's own namespace.
 2. **Namespace isolation + NetworkPolicy floor** — the default-deny NetworkPolicy in each silo namespace blocks all cross-silo traffic at L3/L4. See [Networking & isolation](/operators/networking).
-3. **Linkerd mTLS identity (optional)** — when Linkerd is installed, workload identity is pinned by SPIFFE SVID, adding a second layer keyed on cryptographic identity rather than network position. See [Linkerd identity substrate](/operators/linkerd-identity).
+3. **Cilium + SPIFFE identity** — workload identity is pinned by a SPIFFE SVID and enforced by `CiliumNetworkPolicy` (plus mutual TLS), adding a layer keyed on cryptographic identity rather than network position. See [Identity & network isolation (Cilium + SPIFFE)](/operators/cilium-spiffe-identity).
 
 The operator in each silo is namespace-scoped (`requireWatchNamespace`). It owns that silo's Ingress, `DNSEndpoint`, and certificate binding — and only those. A silo operator cannot write resources in another silo's namespace.
 

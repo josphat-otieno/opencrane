@@ -13,6 +13,113 @@ follows [Keep a Changelog](https://keepachangelog.com/); the project uses
 
 ## [Unreleased]
 
+### Added
+
+- **Org admins can supply their own upstream provider key and get a full tier-structured model
+  catalog from a single credential.** Calling `PUT /api/v1/providers/byok/:provider` (org-admin
+  gated) stores one raw key in a Kubernetes Secret, registers it with the silo's LiteLLM instance
+  over the dynamic `/credentials` path without a restart, and seeds a catalog of flagship, balanced,
+  and fast model classes — all routed through that single key. From that point, the org's tenants
+  can call any of those model tiers without the platform operator having to register individual
+  models. The route is `_RequireOrgAdmin`-gated; LiteLLM-only routing is the enforcement layer.
+
+- **The gateway WebSocket is now reachable at `/gateway` so the org's SPA can own the root path.**
+  Upgrading to `wss://<org>.<base>/gateway` routes to the tenant's OpenClaw pod (the proxy strips
+  the prefix before forwarding). The SPA serves at `/`; the control-plane API remains at `/api/*`.
+  Same-origin org ingress rules that make this layout work are folded into Helm behind
+  `ingress.sameOrigin.enabled` (opt-in, default off), and the org's Control-UI origin is
+  allowlisted so the gateway WebSocket handshake passes the CSWSH origin check.
+
+- **Tenant configuration changes now propagate to the running pod without manual intervention.**
+  The operator stamps `opencrane.io/config-checksum` (a SHA-256 of the canonical `openclaw.json`)
+  on the pod template, so any config change — including a newly registered BYOK default model —
+  triggers a rolling restart automatically. Before this, a BYOK key registration had no effect
+  until the pod was manually recycled.
+
+### Changed
+
+- **The identity and mesh substrate decision has moved from Linkerd to Cilium + SPIFFE.**
+  ADR 0003 — Cilium + SPIFFE identity substrate — supersedes ADR 0001 (Linkerd). The chosen model
+  gives every silo workload a SPIFFE SVID (`spiffe://opencrane/ct/<org>/<workload>`) derived from
+  its Kubernetes ServiceAccount, and enforces the default-deny + allow-intra-silo + allow-super-admin
+  posture at L3/L4/L7 via `CiliumNetworkPolicy` keyed on cryptographic identity rather than IP
+  addresses. The portable `NetworkPolicy` floor from S2 remains as defence-in-depth underneath.
+  This is a recorded architectural decision; Cilium + SPIFFE enforcement is forward implementation
+  work (tracked in S5).
+
+### Fixed
+
+- **BYOK model calls no longer return 401 when the operator fetches the tenant model list.**
+  The `/api/internal/*` routes (`/tenant-models`, `/bundles`, `/contract`,
+  `/awareness/participation`) are now mounted before the browser-session auth middleware, so the
+  tokenless operator hot-path fetch and TokenReview pod-identity routes receive the NetworkPolicy
+  gate they are designed for rather than being blocked by the session gate. Previously, BYOK-routed
+  model calls were bricked because the operator's `/tenant-models` fetch was 401'd before it could
+  register the virtual key. A separate hardening step — serving `/api/internal` on a dedicated
+  port 8081 off the public ingress — is in progress on branch `fix/internal-api-separate-listener`
+  but is not yet merged to `main`.
+
+- **Per-org OIDC is now enforced and fully derived at deploy time.** When `OIDC_ISSUER_URL` is
+  set, the silo deploy script requires `OIDC_CLIENT_ID` and derives the correct per-org callback
+  URL (`https://<org>.<base>/api/v1/auth/callback`) when it is not provided. This closes a gap
+  where a silo could be deployed with an incomplete or mismatched OIDC configuration.
+
+- **`/auth/pod-token` now resolves correctly for all tenants.** The silo operator projects each
+  Tenant's `status.ingressHost` into the database record, so the pod-token broker can resolve the
+  target pod address from the DB without an additional CR lookup. Previously the host was absent
+  from the DB and pod-token resolution could fail for tenants that had not gone through a
+  post-split reconcile cycle.
+
+### Security
+
+- **The Control-UI can authenticate users over trusted-proxy without requiring device pairing.**
+  Setting `dangerouslyDisableDeviceAuth: true` on a gateway lets a Control-UI connection that
+  arrives over the OIDC-verifying ingress proxy retain full operator scopes — without the
+  OpenClaw device-pairing handshake that would otherwise strip them and cause chat RPCs to fail
+  with a missing-scope error. The safety argument is structural: the gateway is only reachable
+  through the trusted-proxy ingress (which has already verified the OIDC session), and the
+  `allowUsers` pin on the gateway restricts it to the tenant owner's email. Device auth is
+  redundant in this topology; the flag makes that explicit rather than leaving it as a silent
+  gap.
+
+## [0.6.1] — 2026-06-29
+
+Post-split operability fixes: fleet manager exposed, multi-silo RBAC coexistence, and chart
+housekeeping that makes a two-chart (fleet + silo) install converge cleanly.
+
+### Added
+
+- **The fleet-manager's `/auth/*` endpoints are now documented in its OpenAPI specification and
+  typed client.** `@opencrane/contracts` ships a regenerated fleet API client that covers the
+  authentication routes alongside the fleet-management paths, so integrators get compile-time
+  safety for the full fleet surface. CI now fails any PR that ships a stale generated spec or
+  client.
+
+### Changed
+
+- **The fleet-manager is now reachable over the cluster ingress.** A Service and Ingress are
+  provisioned for the fleet-manager, and `PLATFORM_BASE_DOMAIN` is wired into the deployment,
+  so the `oc` CLI can address the fleet manager at its own host without port-forwarding. The
+  fleet ingress routes `/api` and `/auth` to the fleet-manager and leaves `/` for the frontend.
+
+- **Multiple silos can now coexist on one cluster without RBAC conflicts.** Cluster-scoped RBAC
+  objects (ClusterRole, ClusterRoleBinding) are suffixed with the ClusterTenant name, so each
+  silo install creates distinct RBAC objects rather than overwriting those from a previous silo.
+
+- **Silo namespaces run under PSA `baseline` (not `restricted`).** The Pod Security Admission
+  label is corrected to the tier the silo's workloads actually satisfy, removing spurious
+  admission rejections that could prevent pods from scheduling. The control-plane is served at
+  the org host as intended.
+
+- **The `skillAllowlist` field and `OPENCRANE_ALLOWED_SKILLS` env var are removed.** The dead
+  code path was superseded by the grant-compiler skill-entitlement model; removing it eliminates
+  a stale configuration surface that had no effect on enforcement.
+
+- **Helm subchart dependencies for silo and fleet charts are now reproducible.** Dependencies
+  are resolved from `Chart.lock` via `helm dep build` (not `dep update`), versions are pinned
+  exactly, and the k8s-platform substrate lib is excluded from the chart archive via
+  `.helmignore`. Upgrades are now deliberate, not implicit.
+
 ## [0.6.0] — 2026-06-29
 
 Stage 4 "strong-siloes" fleet/silo architecture split plus earlier silo-program identity work.
@@ -669,7 +776,8 @@ First tagged release — a working multi-tenant OpenClaw platform you can deploy
 - Initial scaffold of the multi-tenant OpenClaw platform (operator, control-plane, Angular app,
   launch script). Folded into the 0.2.0 tag.
 
-[Unreleased]: https://github.com/italanta/opencrane/compare/0.6.0...HEAD
+[Unreleased]: https://github.com/italanta/opencrane/compare/0.6.1...HEAD
+[0.6.1]: https://github.com/italanta/opencrane/compare/0.6.0...0.6.1
 [0.6.0]: https://github.com/italanta/opencrane/compare/0.5.3...0.6.0
 [0.5.3]: https://github.com/italanta/opencrane/compare/0.5.2...0.5.3
 [0.5.2]: https://github.com/italanta/opencrane/compare/0.5.1...0.5.2

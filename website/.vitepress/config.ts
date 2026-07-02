@@ -109,7 +109,7 @@ export default defineConfig({
           { text: 'Silo deployment model', link: '/operators/silo-deployment' },
           { text: 'DNS configuration', link: '/operators/dns-config' },
           { text: 'Networking & isolation', link: '/operators/networking' },
-          { text: 'Linkerd identity substrate', link: '/operators/linkerd-identity' },
+          { text: 'Identity & network isolation (Cilium + SPIFFE)', link: '/operators/cilium-spiffe-identity' },
           { text: 'ClusterTenant members', link: '/operators/cluster-tenant-members' },
           { text: 'Identity & connection auth', link: '/security/identity' },
           { text: 'Connection security', link: '/security/connection-security' },

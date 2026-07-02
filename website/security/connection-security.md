@@ -62,7 +62,7 @@ Build slices: frontend repo `plan.md` — **S5** (Option B) and **S6** (proxy vi
 
 **How a connection is authorised today:**
 
-1. The browser opens its org's gateway WebSocket (`wss://<org>.<base>`). It holds
+1. The browser opens its org's gateway WebSocket (`wss://<org>.<base>/gateway`). It holds
    **no pod credential** — only its OIDC **session cookie**.
 2. The **identity-routing gateway proxy** (§0.1, folded into the operator) authorises
    the upgrade by calling the control plane (`GET /api/v1/auth/gateway-resolve`,
@@ -111,8 +111,8 @@ routing layer and the pod are two independent cross-tenant guards.
 ### 0.1 Identity-routing gateway proxy — single per-org host (DOMAIN.T4)
 
 There are **no per-user subdomains**. Each org is served at **one host**
-(`<org>.<base>`): the app UI, `/api/*`, and the gateway WebSocket are all served
-**same-origin** under that host. An **identity-routing proxy — folded in-process into
+(`<org>.<base>`): the app UI (`/`), `/api/*`, and the gateway WebSocket (`/gateway`)
+are all served **same-origin** under that host. An **identity-routing proxy — folded in-process into
 the ClusterTenant operator** (interim; it can be split into its own pod later without
 a contract change) — forwards each user's gateway socket to their own pod. It is a
 thin, logic-free choke point holding **no session store and no secrets**, delegating
@@ -166,8 +166,8 @@ See [§0](#_0-adopted-model-trusted-proxy-gateway-auth-per-pod-owner-pinning-con
 for the authoritative description. In brief:
 
 ```
-browser ──wss://<org>.<base> + OIDC cookie──▶ wildcard Ingress (*.<base>)
-   │                                              └─ "/" ▶ gateway proxy (in the operator)
+browser ──wss://<org>.<base>/gateway + OIDC cookie──▶ wildcard Ingress (*.<base>)
+   │                                        "/gateway" ▶ gateway proxy (in the operator)
    │                                                        ├─ Origin allowlist (CSWSH)
    │                                                        ├─ GET /auth/gateway-resolve (cookie only)
    │                                                        └─ inject X-Forwarded-User, reverse-proxy
@@ -175,7 +175,7 @@ browser ──wss://<org>.<base> + OIDC cookie──▶ wildcard Ingress (*.<bas
 ```
 
 1. The browser holds **no pod credential** — only its OIDC **session cookie**. It
-   opens its org's gateway WebSocket (`wss://<org>.<base>`).
+   opens its org's gateway WebSocket (`wss://<org>.<base>/gateway`).
 2. The identity-routing proxy (in the operator) authorises the upgrade via
    `GET /auth/gateway-resolve` (cookie replayed): a live session resolves the verified
    email → tenant → pod and the proxy injects `X-Forwarded-User`; no session (or

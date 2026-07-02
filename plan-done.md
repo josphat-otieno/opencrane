@@ -476,7 +476,7 @@ Already complete from previous cycle. Key generation, budget enforcement, spend 
 
 ### Track MI — Native multi-instance (single-cluster) support
 
-> Scoped 2026-06-14 from `opencrane-multi-instance-brief.md` (WeOwnAI/Elewa). Goal: run **N
+> Scoped 2026-06-14 from `docs/briefs/opencrane-multi-instance-brief.md` (WeOwnAI/Elewa). Goal: run **N
 > strictly-isolated OpenCrane instances in one cluster** (one per customer org, each its own
 > namespace, no shared data / no cross-namespace reconcile / no shared cloud creds) as a
 > first-class **opt-in** mode. **Decision (2026-06-14):** keep the legacy single-install path as
@@ -628,7 +628,7 @@ Already complete from previous cycle. Key generation, budget enforcement, spend 
    - Skill substrate = build thin over OCI/ORAS + Cognee (confirmed); not a ClawHub fork.
    - Two clocks: revocation effective on next gateway call / next pull (fail-closed); new grants usable after next contract re-pull (eventually-consistent).
    - Remove legacy wiring — no duplicate failover paths, single clean architecture.
-   - Full specification in `mcp-skills-platform-brief.md`.
+   - Full specification in `docs/briefs/mcp-skills-platform-brief.md`.
 
 6. **Skills Sharing and Participation Protocol**
    - Define a fleet-wide skills-sharing model with explicit hierarchy: org, department, project, personal.
@@ -1182,3 +1182,76 @@ standing per-frame audit choke point are **not** in scope → that is the proxy
     DNS — cannot be unit-validated; the runtime ClusterIssuer apply is code-tested with mocked K8s,
     but cert-manager actually issuing the wildcard is the unverified seam). Optional `mkcert` root
     for warning-free dev browser trust.
+
+## Realised since the silo split — archived 2026-07-02 (moved from plan.md + root plans)
+
+> This section closes out the work that shipped after the S-series/Stage-4/5 silo split and the
+> BYOK track, none of which was reflected in `plan.md`'s written state. Three realised root-level
+> plans/designs were moved into `docs/` and are recorded here as done; the loose research/spec/brief
+> reviews were relocated under `docs/` (see [`docs/README.md`](docs/README.md)) but remain live
+> reference, not completed plans.
+
+### Realised root plans (moved out of the repo root)
+
+- [x] **Stage-4 read-model projection — Option A shipped.** Design in
+  [`docs/design/silo-readmodel-projection-design.md`](docs/design/silo-readmodel-projection-design.md).
+  The fleet projects public Zitadel ids onto the ClusterTenant CR status; the silo resolves per-org
+  login from the CR (the separate silo read-model table was dropped); a projection-repair loop
+  keeps the DB and CR in sync, and the fleet seeds a default Tenant. Commits `28177a6` (project
+  ids onto CR), `bd17a37` (silo resolves per-org login from CR), `6ef42f5` (projection-repair
+  loop), `d3b2d88` (default-Tenant seed), plus `9838555` (project `status.ingressHost` into the DB
+  so `/auth/pod-token` resolves without reading the CR).
+- [x] **Stage-5 silo-autonomous controllers — executed.** Plan in
+  [`docs/design/stage5-silo-autonomous-controllers-plan.md`](docs/design/stage5-silo-autonomous-controllers-plan.md).
+  `fleet-manager` now stops at ClusterTenant lifecycle; each `clustertenant-manager` runs its own
+  in-silo controllers over its own namespace. App rename (`fleet-manager`→`fleet-platform`,
+  `clustertenant-manager`→`clustertenant-platform`), controller relocation fleet→silo, namespaced
+  RBAC + per-role Helm split. Commits `e1a314c`, `7dba32c`, `64e6a00`, `9b2e84b`.
+- [x] **Multi-instance RFC — realised.** Brief in
+  [`docs/briefs/opencrane-multi-instance-brief.md`](docs/briefs/opencrane-multi-instance-brief.md)
+  (already tracked in the README Realization + MI archive above). All six blockers are closed:
+  namespaced RBAC, fail-closed `WATCH_NAMESPACE`, CRD decoupling, namespaced issuer/secret-store,
+  per-component scope, and cross-instance default-deny, plus the `multiInstance` opt-in mode.
+
+### Shipped capabilities not previously in this log
+
+- [x] **Per-silo BYOK provider keys with LiteLLM-only routing.** An org-admin sets ONE raw upstream
+  provider key per silo; it is persisted to a k8s Secret, pushed to LiteLLM's `/credentials`
+  dynamic path (no restart), and recorded as a `ProviderCredential` row. Route
+  `PUT /api/v1/providers/byok/:provider` is `_RequireOrgAdmin`-gated
+  (`apps/clustertenant-operator/src/routes/provider-byok.ts`);
+  provisioning in `core/model-routing/provision-byok-key.ts` + `litellm-credential-registration.ts`.
+  Commits `dc5cdd4`, `fc335aa`.
+- [x] **Multi-class model catalog per provider (provider → one key → many models).** One key seeds a
+  catalog of model classes (flagship / balanced / fast) all bound to the single credential so
+  LiteLLM can switch tiers on one key (`core/model-routing/byok-default-models.ts`). Commit
+  `fc335aa`.
+- [x] **Same-origin org ingress + gateway WS at `/gateway`.** The org SPA owns `/`, the control-plane
+  API owns `/api/*`, and the gateway WebSocket is routed at `/gateway` (proxy strips the prefix
+  before forwarding to the OpenClaw pod). Ingress rules are folded into Helm behind
+  `ingress.sameOrigin.enabled` (default off). Commits `6235b35`, `fa2de47`, `54aeb6d`, `070404b`;
+  `apps/clustertenant-operator/src/gateway-proxy/proxy.ts` (`_GATEWAY_PATH_PREFIX`).
+- [x] **Device-less Control-UI operator scopes over trusted-proxy.** `dangerouslyDisableDeviceAuth`
+  lets a trusted-proxy Control-UI connection retain operator scopes (otherwise the gateway strips
+  them and chat RPCs fail "missing scope"); identity is the OIDC session injected as
+  `X-Forwarded-User`, pinned to the owner via `allowUsers`. The gateway is only reachable through
+  the OIDC-verifying proxy, so device auth is redundant there. Commit `e8e9839`
+  (`apps/clustertenant-operator/src/tenants/deploy/2-config-map.ts`).
+- [x] **`/api/internal/*` mounted before session auth (unbrick tokenless operator + pod routes).**
+  The internal routes (`/tenant-models`, `/bundles`, `/contract`, `/awareness/participation`) are
+  mounted **before** `___AuthMiddleware` so the tokenless operator hot-path fetch and the
+  TokenReview pod routes aren't 401'd by the browser-session gate; their only gate is the
+  NetworkPolicy in `networkpolicy-planes.yaml` (plus per-route TokenReview on the pod-identity
+  routes). This fixed BYOK models being bricked by a 401 on `/tenant-models`. Live commit `6923c80`
+  (`apps/clustertenant-operator/src/index.ts`, `routes.ts`).
+  **In flight (not merged):** branch `fix/internal-api-separate-listener` (`c88f968`) splits these
+  onto a dedicated port 8081 (`createInternalApp`, `config.internalPort`, a second `internal`
+  Service port) so the internet-facing org `/api` prefix can never reach `/api/internal` — the
+  next hardening step, proposed but not yet on `main`.
+- [x] **`config-checksum` annotation rolls the openclaw pod on config change.** `opencrane.io/config-checksum`
+  (sha256 of the canonical config) is stamped on the pod template so a config change — e.g. a newly
+  registered BYOK default model — triggers a rollout; the pod reads `openclaw.json` only at startup.
+  Commit `8c6122a` (`2-config-map.ts` sha256, `3-deployment.ts` annotation stamp).
+- [x] **Per-org OIDC hardened at deploy time.** When `OIDC_ISSUER_URL` is set, deploy requires this
+  org's `OIDC_CLIENT_ID` and derives the per-org callback `https://<org>.<base>/api/v1/auth/callback`
+  when unset. Commit `54e80a7` (`apps/clustertenant-platform/deploy.sh`).

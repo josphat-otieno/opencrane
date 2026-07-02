@@ -5,6 +5,72 @@
 > S1–S7, then the independent leftovers as S8–S12. The dated *Current State* + lettered tracks
 > below are kept as reference/history.
 
+## Status reconciliation (2026-07-02)
+
+> This block supersedes the dated *Current State* below, which is kept as history. It reconciles
+> the plan with what actually shipped after the silo split + BYOK track, and **flags everything
+> not yet done**. Full landed detail for the realised items is in
+> `plan-done.md` → *"Realised since the silo split — archived 2026-07-02"*.
+
+**Real current state:** default branch `main` at `3219173` (PR #114). The repo is well past this
+plan's written state — the Stage-4/5 fleet/silo split and the BYOK track shipped and were never
+folded in here.
+
+**DONE since this plan was last written (now archived in plan-done.md):**
+- **S3** Zitadel as PDP system-of-record · **S4a / S4c.1 / S4c.2 / S4d** inheritance + scope-aware
+  memory + inter-user sharing · **S6** per-CT operator + per-CT planes (ADR 0002) · Stage-4 read-model
+  projection (Option A) · Stage-5 silo-autonomous controllers · multi-instance RFC.
+- **BYOK provider keys** (per-silo, provider→one key→many model classes, LiteLLM-only routing) ·
+  **same-origin org ingress + gateway WS at `/gateway`** · **device-less Control-UI scopes over
+  trusted-proxy** · **`/api/internal` mounted before session auth** (unbrick BYOK models) ·
+  **config-checksum pod roll** · **per-org OIDC deploy hardening** · **`status.ingressHost` DB projection**.
+
+**Substrate decision changed:** **ADR 0003 (Cilium + SPIFFE identity substrate)** supersedes ADR 0001
+(Linkerd). Identity is now keyed on SPIFFE SVIDs + `CiliumNetworkPolicy` (L3/L4/L7 + mTLS), and the
+website documents this as the operating model. **Implementation + Linkerd removal are tracked in
+[#117](https://github.com/italanta/opencrane/issues/117), not in this plan.**
+
+### ⛔ NOT DONE — open, flagged by theme
+
+**Network enforcement & identity substrate → [#117](https://github.com/italanta/opencrane/issues/117)**
+- The Cilium + SPIFFE substrate (ADR 0003) is decided and documented but **not built**: install the
+  Cilium CNI, deploy SPIRE + SVID issuance, generate per-silo `CiliumNetworkPolicy`, and **remove the
+  gated Linkerd slice** (`LINKERD_MESH_ENABLED`, `silo-linkerd-identity.ts`). The L3/L4 `NetworkPolicy`
+  floor is authored but inert on dev (no enforcing CNI — see [#105](https://github.com/italanta/opencrane/issues/105)),
+  and the `mainNetworkDefaultDeny` baseline is gated off. All of this folds into #117 — see that issue
+  for the full todo checklist.
+
+**Live gateway seams**
+- CONN.4/5 live seams (CP-held operator device, gateway per-device revoke); CONN.8 live ACME e2e
+  (needs a real cluster + DNS). SPIFFE SVID issuance + super-admin identity rotation/audit moved to
+  [#117](https://github.com/italanta/opencrane/issues/117).
+
+**Cutovers blocked on external deps**
+- **S10 / AIR.0c-cutover [BLOCKED]** — `org-shared-secrets` `envFrom` broadcast + orphaned
+  `ProviderApiKey` model still present; blocked on the OpenClaw translator-backend image + WeOwnAI.
+- **S9** destructive `SkillBundle.content` drop (registry-only cutover) — parked pending a verified
+  live Zot backfill.
+- **S8** live Obot OBO round-trip (RFC-8693 push) — parked pending live Obot.
+
+**Memory / retrieval**
+- **S4b [BLOCKED]** mirror Zitadel groups → `Group.members` (Zitadel has no native group primitive —
+  needs a mapping decision).
+- **S4e / P4B.7.2 / .3** scope-aware Cognee retrieval plugin + per-scope memory partitioning.
+
+**Tiers, cost & future**
+- **S7** dedicated-compute tiers (`dedicatedNodes` / `dedicatedCluster` via vcluster/Kamaji) + cost
+  model — deferred (`future-work.md`).
+- **S11** fixed-model savings WeOwnAI view · **S12** guardrail stream (no service exists — design only).
+
+**Cluster optimisation (`docs/optimalisation-plan.md`)**
+- **D4** plane pooling (shared tier shares stateless planes + pooled Postgres) · **D5** scale-to-zero
+  + wake-on-access for agent pods · node consolidation (Phase 2).
+
+**Ops verification**
+- GCP installer smoke not revalidated; live DNS/TLS verification pending.
+- Deploy hygiene: skill-registry env still patched out-of-band; suspend self-loop
+  `observedGeneration` guard; operator auto-reconcile on config change.
+
 ## Current State (2026-06-10)
 
 - **Phases 1–3**: complete and validated.
@@ -14,7 +80,7 @@
 - **Track P4-C** (agent identity & personalisation via OpenClaw workspace files): **P4C.1–P4C.5 landed** (2026-06-13). Workspace bootstrap/seeding, contract-derived TOOLS.md, company-doc API + immutable versioning + L0 guard, agent-driven reconciliation (deterministic merger; LiteLLM agent merge is the seam) producing approve/reject proposals, and version-gated delivery into the pod via the re-pull loop. Whole track testable spine complete; live LiteLLM merge quality is the remaining upgrade.
 - **Track CONN** (OpenClaw connection auth & session security): pairing-broker endpoint implemented (2026-06-13); connection-security posture **decided = Option B** (short-lived re-brokered credentials + per-user kill-switch; control plane stays connection-stateless). Full trade-off in `website/security/connection-security.md`. Transport hardening landed 2026-06-13 (CONN.2); `website/security/identity.md` rewritten for the pairing broker (CONN.6); **CONN.8 wildcard TLS** landed (operator Ingress `tls:` + cert-manager ClusterIssuer/Certificate Helm scaffold, dev selfSigned + prod ACME DNS-01; **onboarding CLI/API `oc platform dns set` + dev sslip.io hosts landed 2026-06-13**) with cross-namespace + live-ACME-e2e as the remaining (cluster-bound) follow-ups. **Kill-switch chain landed 2026-06-13 (CONN.3 persistence+decode, CONN.4 device registry, CONN.5 cut + RBAC)** — testable spine complete; the gateway per-device revoke + CP-held operator device + in-pod mint exec are the remaining live-infra seams. **Trusted-proxy connection model pinned fail-closed (CONN.9, 2026-06-22):** `GATEWAY_TRUSTED_PROXIES` empty ⇒ trust-nothing, malformed ⇒ crash, Helm-values-driven with the weownai-dev pod CIDR as the dev default. Proxy (Option C) deferred as a contingent vision.
 - **Track P4-D** (MCP & Skills platform completion — the two 🔶 gaps): scoped + decisions locked 2026-06-13. P4D.2 OCI/Zot **foundation slice landed** (`OciBundleStore` + gated Zot Helm; runtime cutover deferred to a live-Zot slice). P4D.1 **brokering-model slice landed** (credential brokering-mode + custody validation + API/CLI + gated encryption-at-rest Helm; live OBO push/exchange parked). See Open Backlog → Track P4-D.
-- **Track AIR** (AI model routing, selection & cost optimization): **scoped 2026-06-18** from the LiteLLM BYOK/BYOM + autonomous-router research (`litellm-byok-byom-research.md`, `litellm-router-autonomous-improvement-research.md`). Explicit / skill-pinned / opt-in-`auto` model selection, the BYOM model registry, and the shadow-mode measurement + nightly improvement loop that lowers token cost at equal quality. Locked: full AGPL (OpenRouter = inspiration only), no fee (meter only), no Enterprise license, BYOK at control-plane/ClusterTenant level (not per-openclaw-tenant), k8s-native secrets (GCP-SM + ESO + CMEK-by-default). GuardLLM verified **not** implemented (design-only). See Open Backlog → Track AIR.
+- **Track AIR** (AI model routing, selection & cost optimization): **scoped 2026-06-18** from the LiteLLM BYOK/BYOM + autonomous-router research (`docs/research/litellm-byok-byom-research.md`, `docs/research/litellm-router-autonomous-improvement-research.md`). Explicit / skill-pinned / opt-in-`auto` model selection, the BYOM model registry, and the shadow-mode measurement + nightly improvement loop that lowers token cost at equal quality. Locked: full AGPL (OpenRouter = inspiration only), no fee (meter only), no Enterprise license, BYOK at control-plane/ClusterTenant level (not per-openclaw-tenant), k8s-native secrets (GCP-SM + ESO + CMEK-by-default). GuardLLM verified **not** implemented (design-only). See Open Backlog → Track AIR.
 - **Review discipline** (2026-06-13): the `review` agent (`.claude/agents/review.md`) now has a mandatory **"verify every finding before reporting"** step — re-trace the cited code and construct a concrete repro before asserting; unconfirmed concerns go under *Open questions*, not *Findings*. Added after a review surfaced a finding that did not survive verification.
 - **Branch**: `phase-4-5-fixes`, 6 commits ahead of `main`.
 
@@ -749,7 +815,7 @@ With one agent per lane, wall-clock ≈ 4 sequential slices instead of 7.
 ### Track AIR — AI model routing, selection & cost optimization
 
 > Scoped 2026-06-18 from the LiteLLM BYOK/BYOM + autonomous-router research (this session). Two
-> reports at repo root: `litellm-byok-byom-research.md`, `litellm-router-autonomous-improvement-research.md`.
+> reports under `docs/research/`: `litellm-byok-byom-research.md`, `litellm-router-autonomous-improvement-research.md`.
 > Goal: give every caller **explicit model choice**, let **skills pin (or `auto`) their own model**,
 > add an **opt-in "auto" routing mode**, and stand up the **shadow-mode measurement + nightly
 > improvement loop** that lowers token cost at equal quality — all OSS/AGPL, API-first, IAM-gated.
@@ -946,12 +1012,12 @@ With one agent per lane, wall-clock ≈ 4 sequential slices instead of 7.
   `oc routing recommendation list`. The "save up to N%" feed behind the console differentiator. _(Original:)_ Aggregate the latest
   `RoutingMeasurement` + open `RoutingProposal` per skill/tenant into a "save up to N%" feed — the API
   behind the console's headline differentiator (the inline savings-recommendation + one-click human-gated
-  apply, market whitespace; see `litellm-router-autonomous-improvement-research.md` §14). Pure read over
+  apply, market whitespace; see `docs/research/litellm-router-autonomous-improvement-research.md` §14). Pure read over
   data the AIR.6/7 loop already produces.
 
 > **Frontend (WeOwnAI, separate proprietary repo — out of this AGPL tree):** the management *views* live
 > there as just-another-API-client (`/auth/me` claims hide UI; the API enforces). Prioritized capability
-> catalogue + Langfuse embed/link/native guidance in `litellm-router-autonomous-improvement-research.md`
+> catalogue + Langfuse embed/link/native guidance in `docs/research/litellm-router-autonomous-improvement-research.md`
 > §14. **Eval refinement:** AIR.6's judge should be a thin layer over **Langfuse managed evaluators +
 > trace-curated datasets** (all MIT/free on OSS self-host) rather than a fully bespoke judge — §13.
 

@@ -154,24 +154,30 @@ pnpm test
 pnpm build
 ```
 
-### Cognee Health Check
+### Cognee health check
+
+Cognee is a per-silo component deployed in each silo's namespace. Replace `<ct>` with
+the ClusterTenant name.
 
 ```bash
-kubectl port-forward -n opencrane service/cognee 8000:8000 &
+kubectl port-forward -n opencrane-<ct> service/opencrane-cognee 8000:8000 &
 curl http://localhost:8000/health
 
 # Expected: HTTP 200 and a healthy status payload
 ```
 
-### Harvesting Agent Status
+### Harvesting agent status
+
+The harvesting agent is a per-silo component deployed in the silo namespace. Replace
+`<ct>` with the ClusterTenant name.
 
 ```bash
 # Check harvesting-agent metrics
-kubectl port-forward -n opencrane deployment/harvesting-agent 9090:9090 &
+kubectl port-forward -n opencrane-<ct> deployment/harvesting-agent 9090:9090 &
 curl http://localhost:9090/metrics
 
 # Check harvesting-agent logs
-kubectl logs -n opencrane deployment/harvesting-agent --tail 50
+kubectl logs -n opencrane-<ct> deployment/harvesting-agent --tail 50
 ```
 
 ---

@@ -17,14 +17,15 @@ OpenCrane organises all cluster traffic into **two distinct planes**: a narrow p
 ┌─────────────────────────────────────────────────────────────────────┐
 │  PLANE 1 — PUBLIC EDGE                                              │
 │                                                                     │
-│  Internet ──► single LoadBalancer IP (ingress-nginx)               │
+│  Internet ──► single LoadBalancer IP (ingress-nginx)                │
 │                │                                                    │
 │                ├── platform host  (dev.opencrane.ai / apex)         │
 │                │     └── /  ──► control-plane Service :8080         │
 │                │                                                    │
 │                └── org wildcard  (*.dev.opencrane.ai)               │
-│                      ├── /api/* ──► control-plane Service :8080     │
-│                      └── /      ──► gateway-proxy Service :8090     │
+│                      ├── /api/*   ──► control-plane Service :8080   │
+│                      ├── /gateway ──► gateway-proxy Service :8090   │
+│                      └── /        ──► org control-UI (SPA)          │
 │                                                                     │
 │  TLS: *.<base> wildcard cert (DNS-01)  +  per-org vanity cert       │
 │  DNS: platform records (manual/Terraform) + per-org A records       │
@@ -35,7 +36,7 @@ OpenCrane organises all cluster traffic into **two distinct planes**: a narrow p
                    (identity-routing seam)
                               │
 ┌─────────────────────────────────────────────────────────────────────┐
-│  PLANE 2 — INTERNAL CLUSTER NETWORK (ClusterIP only)               │
+│  PLANE 2 — INTERNAL CLUSTER NETWORK (ClusterIP only)                │
 │                                                                     │
 │  control-plane :8080    mcp-gateway :8080    skill-registry :5000   │
 │  litellm :4000          cognee :8000         postgres (CNPG) :5432  │
@@ -43,7 +44,7 @@ OpenCrane organises all cluster traffic into **two distinct planes**: a narrow p
 │  per-org namespaces (opencrane-<org>):                              │
 │    openclaw-<tenant> :18789  (no Ingress, no public DNS)            │
 │                                                                     │
-│  Protected by NetworkPolicy + projected-identity tokens             │
+│  Isolated by Cilium identity policy + SPIFFE mTLS (per silo)        │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -58,11 +59,11 @@ Exactly two host classes ever receive external traffic. Everything else is Clust
 | Host | Example (dev) | Resolves to | Routes to |
 |------|--------------|-------------|-----------|
 | Control-plane host | `dev.opencrane.ai` | LoadBalancer IP | control-plane Service :8080 |
-| Per-org host | `acme.dev.opencrane.ai` | LoadBalancer IP | gateway-proxy :8090 (WebSocket) + control-plane :8080 (`/api/*`) |
+| Per-org host | `acme.dev.opencrane.ai` | LoadBalancer IP | org control-UI SPA (`/`) + gateway-proxy :8090 (`/gateway` WebSocket) + control-plane :8080 (`/api/*`) |
 
 The control-plane host is either the apex (`<base>`) or a dedicated `platform.<base>`, controlled by the chart value `ingress.controlPlaneHost`. The dev cluster uses the apex directly (`dev.opencrane.ai`). The wildcard Ingress is rendered only when both `ingress.enabled` and `gatewayProxy.enabled` are true (see [`apps/clustertenant-platform/templates/gateway-ingress.yaml`](https://github.com/italanta/opencrane/blob/main/apps/clustertenant-platform/templates/gateway-ingress.yaml)).
 
-There are **no per-user subdomains**. Every user in an org connects through one org host; the identity-routing proxy resolves each session to its own pod.
+There are **no per-user subdomains**. Every user in an org connects through one org host; the identity-routing proxy resolves each session to its own pod. All three surfaces are served **same-origin** under that one host: the org control-UI owns `/`, the control-plane API owns `/api/*`, and the gateway WebSocket is routed at `/gateway`.
 
 ### How an org host resolves
 
@@ -113,7 +114,7 @@ Tenant (openclaw) pods run in per-org namespaces (`opencrane-<org>`), one pod pe
 The only path from the public internet into a tenant pod passes through three independent enforcement layers. All three must pass; any one failing closes the connection.
 
 ```
-browser ─── wss://<org>.<base> + OIDC cookie ───► wildcard Ingress (*.<base>)
+browser ── wss://<org>.<base>/gateway + OIDC cookie ──► wildcard Ingress (*.<base>)
                                                        │
                                                gateway-proxy (in operator pod)
                                                        │
@@ -185,11 +186,13 @@ This **replaces the retired `opencrane-tenant-default` policy**, which sat in th
 This baseline is an **L3/L4** floor — a namespace-scoped, port-keyed allow-list. It only takes effect on a `NetworkPolicy`-enforcing CNI: GKE Dataplane V2 (and Autopilot) enforce it inherently; Calico/Cilium do elsewhere. On a CNI that does not enforce `NetworkPolicy`, the floor is inert.
 :::
 
-### Linkerd identity substrate (S5, gated off by default)
+### Identity-keyed enforcement (Cilium + SPIFFE)
 
-The baseline above is keyed on namespaces and ports, not on **workload identity**, and it cannot express L7 (per-route) authorisation. The Linkerd identity substrate adds a second, additive isolation layer on top of this floor: when `LINKERD_MESH_ENABLED=true`, the operator annotates each silo namespace `linkerd.io/inject: enabled` (giving every silo workload an mTLS identity bound to its ServiceAccount) and emits a Linkerd `Server` + `MeshTLSAuthentication` + `AuthorizationPolicy` per silo expressing the same default-deny + allow-intra-silo + allow-super-admin posture at the identity layer. The rollout is **additive** — the `NetworkPolicy` floor stays in place as defence-in-depth; enabling the Linkerd layer never relaxes it. The feature is off by default and fails closed if the Linkerd CRDs are absent. See [Linkerd identity substrate](/operators/linkerd-identity) for the full mechanism, the env var, and the fail-closed behaviour. See [ADR 0001 — ClusterTenant-as-virtual-network strict isolation](https://github.com/italanta/opencrane/blob/main/docs/adr/0001-cluster-tenant-virtual-network-isolation.md) for the substrate decision and why Linkerd (portable, no cloud lock-in) was chosen.
+The baseline above is keyed on namespaces and ports. On top of it, the platform enforces isolation on **workload identity** and at **L7**, using Cilium + SPIFFE. Every silo workload is issued a SPIFFE SVID (`spiffe://opencrane/ct/<org>/<workload>`) derived from its Kubernetes ServiceAccount, and every silo-to-silo call is mutually authenticated (mTLS). `CiliumNetworkPolicy` then expresses the same default-deny + allow-intra-silo + allow-super-admin posture — but keyed on that cryptographic identity rather than on an IP, and extended to per-route (L7) authorisation. The `NetworkPolicy` floor stays in place underneath (Cilium enforces it too), so the two compose as defence in depth.
 
-For fine-grained egress FQDN filtering (e.g. allowing only `api.openai.com`), an operator can additionally bind an `AccessPolicy` with `egressRules`, or apply a `CiliumNetworkPolicy` with `spec.domains.allow` on a Cilium-enabled cluster.
+See [Identity & network isolation (Cilium + SPIFFE)](/operators/cilium-spiffe-identity) for the full model — the two kinds of identity, the who-can-talk-to-whom rules, and how a workload gets its identity. See [ADR 0003 — Cilium + SPIFFE identity substrate](https://github.com/italanta/opencrane/blob/main/docs/adr/0003-cilium-spiffe-identity-substrate.md) for the substrate decision (it supersedes the earlier Linkerd choice in ADR 0001).
+
+Egress is bounded the same way: `CiliumNetworkPolicy` `toFQDN` rules give each silo a per-hostname allow-list (e.g. only `api.openai.com`), so a silo reaches DNS and its approved provider/tool endpoints and nothing else. An `AccessPolicy` with `egressRules` narrows this further per tenant.
 
 ---
 
@@ -201,16 +204,16 @@ The following gaps are honest assessments verified against the live codebase. Th
 
 **Plane ingress rules use tenant podSelectors without a namespaceSelector.** The rules admitting tenant pods to the control plane and plane services select by `app.kubernetes.io/component=tenant` without scoping to the correct namespace. In a multi-instance cluster, a tenant pod from a different instance's namespace could match. This is a multi-instance hygiene gap; the fix is to also add a `namespaceSelector` that constrains to the instance's own org namespaces.
 
-**Identity-aware L7 enforcement is gated off by default.** Until `LINKERD_MESH_ENABLED=true` is set and Linkerd is installed, cross-silo isolation rests on the L3/L4 baseline alone — robust against routing position but not yet expressing per-workload identity or per-route authorisation. The super-admin namespace is trusted as a whole at L3/L4; the Linkerd layer narrows that to the super-admin *identity*. See [Linkerd identity substrate](/operators/linkerd-identity) for how to enable it.
+**The L3/L4 floor is the safety net beneath the identity layer.** Identity-keyed enforcement (Cilium + SPIFFE, above) is the primary cross-silo control; the portable `NetworkPolicy` floor stays underneath as defence in depth. The floor takes effect on a `NetworkPolicy`-enforcing CNI — with Cilium as the CNI it is enforced natively alongside the `CiliumNetworkPolicy` identity rules. On any CNI that does not enforce `NetworkPolicy`, the floor is inert and isolation rests on the identity layer alone.
 
 ---
 
 ## See also
 
-- [Linkerd identity substrate](/operators/linkerd-identity) — the S5 mTLS-identity layer that sits additively on top of this L3/4 baseline; includes the env var, fail-closed behaviour, and what the operator emits per silo
+- [Identity & network isolation (Cilium + SPIFFE)](/operators/cilium-spiffe-identity) — the identity-keyed layer on top of this L3/4 baseline: the principals, the who-can-talk-to-whom rules, SPIFFE SVIDs, and FQDN egress
 - [ClusterTenant members](/operators/cluster-tenant-members) — managing who can administrate an org (Owner/Admin/Member roles) and the last-owner guardrail
 - [Identity & connection auth](/security/identity) — credential types, OIDC session, projected-identity tokens, and the identity-routing proxy flow
 - [Connection security](/security/connection-security) — the full CONN.9/CONN.10 threat model, the trusted-proxy auth decision record, and the transport hardening posture
 - [DNS configuration](/operators/dns-config) — external-dns setup, cert-manager issuers, and the zone-write identity model
 - [Hosting & deployment](/operators/hosting) — ingress class, TLS cert modes, cloud hosting adapters
-- [ADR 0001 — ClusterTenant-as-virtual-network strict isolation](https://github.com/italanta/opencrane/blob/main/docs/adr/0001-cluster-tenant-virtual-network-isolation.md) — the substrate decision behind the per-silo baseline and the Linkerd identity layer
+- [ADR 0003 — Cilium + SPIFFE identity substrate](https://github.com/italanta/opencrane/blob/main/docs/adr/0003-cilium-spiffe-identity-substrate.md) — the substrate decision behind identity-keyed enforcement (supersedes ADR 0001, which chose Linkerd)

@@ -31,7 +31,7 @@ Authorization: Bearer <token>
 - **Bearer token** — set `OPENCRANE_TOKEN` or pass `--token` to the CLI. This is the automation and break-glass path.
 - **OIDC** — human operators authenticate via `GET /api/v1/auth/login` → callback → session cookie. See the [Auth](#auth) section below.
 
-Projected ServiceAccount tokens will replace static bearer tokens once Kubernetes workload identity support lands.
+Projected ServiceAccount tokens are the current in-cluster authentication mechanism for pod-to-control-plane calls. Each tenant pod presents an audience-bound projected token that is validated via the Kubernetes TokenReview API (`/api/internal/contract`, `/api/internal/awareness/participation`). Static bearer tokens remain the automation and break-glass path for operators outside the cluster.
 
 ---
 
@@ -127,6 +127,111 @@ All API routes are prefixed with `/api/v1`. Infrastructure routes (`/healthz`, `
 | `GET` | `/providers/keys` | List configured provider API keys |
 | `PUT` | `/providers/keys` | Set a provider API key |
 | `DELETE` | `/providers/keys/{provider}` | Remove a provider key |
+
+### BYOK provider keys
+
+Org-admin–gated raw upstream provider key management. The key is stored in a Kubernetes Secret and registered with LiteLLM; the raw value is never returned by read endpoints.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/providers/byok` | List BYOK provider status (presence + timestamps; no key material) |
+| `PUT` | `/providers/byok/{provider}` | Set or refresh a raw provider key (org-admin only) |
+| `DELETE` | `/providers/byok/{provider}` | Remove a provider key (org-admin only) |
+
+### Provider credentials
+
+Named references to External-Secrets-synced k8s Secrets. Use these to bind a model definition to a specific key without embedding raw credentials.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/providers/credentials` | List provider credentials |
+| `GET` | `/providers/credentials/{id}` | Get a provider credential |
+| `POST` | `/providers/credentials` | Register a provider credential |
+| `PUT` | `/providers/credentials/{id}` | Update a provider credential |
+| `DELETE` | `/providers/credentials/{id}` | Remove a provider credential |
+
+### Model registry
+
+Routable model definitions registered with LiteLLM (BYOM path).
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/models` | List model definitions (optional `?clusterTenant=` filter) |
+| `GET` | `/models/{id}` | Get a model definition |
+| `POST` | `/models` | Register a model definition |
+| `PUT` | `/models/{id}` | Update a model definition |
+| `DELETE` | `/models/{id}` | Delete a model definition |
+
+### Skill model posture
+
+Per-skill model routing posture (pinned vs. auto selection).
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/skills/posture` | List all skill postures |
+| `GET` | `/skills/posture/skill` | Get a skill's posture by compound key (`?name=&scope=&team=`) |
+| `PUT` | `/skills/posture/skill` | Set a skill's posture |
+
+### Model routing
+
+Shadow-savings measurement pipeline: eval cases, measurements, proposals, recommendations, and metrics.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/model-routing/eval-cases` | List routing eval cases |
+| `GET` | `/model-routing/eval-cases/{id}` | Get an eval case |
+| `POST` | `/model-routing/eval-cases` | Create an eval case |
+| `PUT` | `/model-routing/eval-cases/{id}` | Update an eval case |
+| `DELETE` | `/model-routing/eval-cases/{id}` | Delete an eval case |
+| `GET` | `/model-routing/measurements` | List shadow-savings measurements |
+| `GET` | `/model-routing/measurements/{id}` | Get a measurement |
+| `POST` | `/model-routing/measurements/run` | Trigger a shadow-savings measurement |
+| `GET` | `/model-routing/proposals` | List routing-change proposals |
+| `GET` | `/model-routing/proposals/{id}` | Get a proposal |
+| `POST` | `/model-routing/proposals/{id}/approve` | Approve a proposal |
+| `POST` | `/model-routing/proposals/{id}/reject` | Reject a proposal |
+| `GET` | `/model-routing/recommendations` | List ranked savings recommendations |
+| `GET` | `/model-routing/metrics` | Fetch Langfuse routing metrics (loosely typed) |
+| `GET` | `/model-routing/defaults` | Get default model routing settings |
+| `PUT` | `/model-routing/defaults` | Update default model routing settings |
+
+### Sharing
+
+Inter-user entitlement sharing (MCP servers, skill bundles) and direct resource sharing (files, chats, datasets).
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/shares` | List shares created by the caller |
+| `POST` | `/shares` | Grant an entitlement you hold to another user or group |
+| `DELETE` | `/shares/{id}` | Revoke a share you created |
+| `GET` | `/resource-shares` | List file/chat resource shares the caller is a member of |
+| `POST` | `/resource-shares` | Share a file, chat, or dataset with a user |
+| `DELETE` | `/resource-shares/{groupId}/recipients/{subject}` | Revoke a recipient from a resource share |
+
+### Awareness
+
+Contract rollout canary control and fleet participation monitoring.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/awareness/rollout` | Show rollout state |
+| `PUT` | `/awareness/rollout` | Set the rollout target version |
+| `POST` | `/awareness/rollout/promote` | Advance the promotion frontier |
+| `POST` | `/awareness/rollout/rollback` | Roll all waves back to stable |
+| `GET` | `/awareness/rollout/resolve/{tenant}` | Resolve the contract version for a tenant |
+| `GET` | `/awareness/participation` | Fleet participation health (optional `?severity=critical\|warning`) |
+
+### Sessions
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/sessions` | List active assistant sessions |
+
+### Spend
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/spend` | Query spend records |
 
 ### AI Budget
 

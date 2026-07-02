@@ -67,7 +67,8 @@ The operator injects a **projected ServiceAccount token with audience
 ([3-deployment.ts](https://github.com/italanta/opencrane/blob/main/apps/fleet-operator/src/tenants/deploy/3-deployment.ts)). The pod
 (OpenClaw) calls Obot server-side with that token. This token is **workload
 identity** — it is never handed to a browser. (The browser's path to the pod is the
-separate pairing-link broker; see [auth.md](/security/identity).)
+identity-routing proxy, which replays the OIDC session and holds no browser token; see
+[Identity & connection auth](/security/identity).)
 
 ## MCP policy: three enforcement points, one decision
 

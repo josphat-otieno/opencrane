@@ -44,10 +44,11 @@ OpenCrane is a **control plane for organizational AI**. It sits on top of agent 
 
 **Your organization stays in control:**
 - **Personal assistants at scale**: Deploy a private AI assistant for every employee in minutes—each one isolated, secure, and acting on behalf of that employee.
-- **Vendor independence**: Choose your LLM provider—Claude, GPT, open-source models—without lock-in. Manage your organization's own skills repository, build proprietary workflows, and share best practices on your own terms.
-- **Model routing and cost control**: Register any model from any provider (credentials stored as Kubernetes Secret references — a raw API key is never written to the database), pin a model per skill or let the platform choose, enforce a per-tenant allowlist, and run an eval-driven, human-gated optimisation loop that surfaces "switch this skill's model to save N% at equal quality" — all through the API and `oc` CLI.
+- **One dedicated silo per organisation**: Every customer org runs its own isolated stack—dedicated operator, control plane, LLM proxy, MCP gateway, knowledge base, skill registry, and database—provisioned and managed by a central fleet. There is no shared singleton that mixes org data.
+- **Vendor independence and BYOK**: Choose your LLM provider—Claude, GPT, open-source models—without lock-in. Each org sets its own provider keys (Bring Your Own Key); keys are stored as Kubernetes Secrets and routed only through the org's LiteLLM proxy, never written to the database.
+- **Model routing and cost control**: Pin a model per skill or let the platform choose, enforce a per-tenant allowlist, and run an eval-driven, human-gated optimisation loop that surfaces "switch this skill's model to save N% at equal quality"—all through the API and `oc` CLI.
 - **Self-hosted, data-sovereign**: Deploy OpenCrane on your infrastructure. Your organizational data—documents, conversations, collected information—stays on your network, never sent to external vendors. Shared skills are stored and versioned in your repository.
-- **Security and governance**: One control plane manages identity, access control, skill deployment, network policies, cost tracking, audit, and RBAC-filtered access to organizational knowledge across all assistants.
+- **Security and governance**: Identity-keyed network isolation (Cilium + SPIFFE) gives every workload a cryptographic identity; each silo is default-deny. One fleet release manages identity, access control, skill deployment, cost tracking, audit, and RBAC-filtered access to organizational knowledge across all silos.
 - **Organizational intelligence**: Company-wide information gathering agents harvest knowledge from your platforms (Slack, Teams, email, tickets) and make it available to assistants through retrieval plugins, with automatic role-based filtering.
 - **Scale from day one**: From 10 employees to 10,000—the same Kubernetes-native architecture scales seamlessly.
 
@@ -77,74 +78,63 @@ See [`CHANGELOG.md`](CHANGELOG.md) for the capabilities shipped so far and [`pla
 
 ## Architecture
 
-OpenCrane is **Kubernetes-native** and **API-first**. At its center is a headless
-**control plane** — a versioned REST API plus the `oc` CLI. From there, the platform:
+OpenCrane is **Kubernetes-native** and **API-first**. A central **fleet** manages
+organisation lifecycle (ClusterTenant provisioning, CRDs, platform DNS, and identity
+brokering). Each customer organisation runs its own **silo**: a dedicated operator,
+control-plane API, LiteLLM proxy, MCP gateway (Obot), knowledge base (Cognee), skill
+registry, and database — all in an isolated namespace, with no shared data between orgs.
 
-- runs **one isolated OpenClaw pod per employee**, each with its own encrypted storage;
-- configures the shared in-cluster planes those assistants draw on — **skills**,
-  **tools (MCP)**, and **organizational knowledge**;
-- compiles your access policies into per-assistant grants; and
-- runs an **operator** that keeps every assistant and plane reconciled.
+Within each silo:
 
-An employee signs in once to reach their assistant, and assistants reach the shared
-planes only with short-lived, scoped credentials. Conversations stay inside the pod —
-OpenCrane governs access, budgets, and networking, but never inspects them.
+- every employee gets **one isolated OpenClaw pod**, with its own encrypted storage;
+- the silo's planes — LLM routing, MCP tools, and organizational knowledge — are
+  accessed only with short-lived, scoped credentials; and
+- the org host (`acme.opencrane.ai`) routes each signed-in user to their own pod
+  internally — there are no per-user public subdomains.
 
-📐 See the illustrated **[architecture overview](https://opencrane.ai/advanced/architecture)** — diagrams of the control plane, the sign-in flow, and the deny-by-default access model.
+The super-admin is the only identity that can reach across silos. Conversations stay
+inside the pod — OpenCrane governs access, budgets, and networking, but never inspects
+them.
+
+A single **ClusterTenant** (one organisation, no fleet) — the manager is the whole control plane, and each employee gets an isolated pod that reaches tools through one Obot MCP gateway:
 
 ```
-┌──────────────────────────────────────────────────┐      ┌──────────────────────────────┐
-│                  Control Plane                   │◄────►│  Cloud SQL + Skills Repo     │
-│                admin.opencrane.ai                │      │  org / dept / team /         │
-│     Express + Prisma + absorbed Obot admin UI    │      │  tenant / individual / state │
-│  • MCP install + in-cluster registry (desired)   │      └──────────────────────────────┘
-│  • Obot control & config authority               │
-│  • Control-plane UI manages Obot + skills        │
-│  • Permission compiler · effective-contract API  │
-└──────────────────────┬───────────────────────────┘
-                       │  (0) config   (1) grants   (2) contract
-                       ▼
-┌────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                Kubernetes Cluster (OpenCrane)                                  │
-│                                                                                                │
-│  Platform / Control            Tenant Runtime Pillar               MCP & Egress Plane          │
-│                                                                                                │
-│  ┌────────────────────────┐    ┌────────────────────────┐    ┌──────────────────────────────┐  │
-│  │ Operator Control       │    │       jente.oc         │    │ Obot MCP Gateway            ▒▒▒▒▒▒ NETWORKPOLICY TO WEB
-│  │ - tenant/policy        │    │       OpenClaw         │    │ (headless · control-plane     │  │
-│  │   reconcile            │    │      (isolated)        │    │ - native admin disabled      │  │
-│  │ - token + contract     │    ├───────────┬────────────┤    │ - validate identity token    │  │
-│  │   injection            │    │ Personal  │    IAM     │    │ - per-call scope check       │  │
-│  │ - reconciles Obot      │    │   Drive   │ + Workload │    │ - credential broker/shim     │  │
-│  │   config + registry    │    │           │  Identity  │    ├──────────────────────────────┤  │
-│  │ - drift detect/repair  │    │           |            |    │ In-cluster MCP servers       │  │
-│  └────────────────────────┘    │           |            |    │ (registry-pulled, run        │  │
-│                                └──────┬────┬────────────┘    │  locally)                    │  │
-│  ┌────────────────────────┐           |    │  (3) JWT        ├──────────────────────────────┤  │
-│  │ Cognee Brain           │◄──────┬────────┴────────────────►│ Obot token store             │  │
-│  │ - retrieval / memory   │       |   |                      │ - per-user downstream creds  │  │
-│  └──────────▲─────────────┘       |   |                      │ - encrypted; pod-unreachable │  │
-│             │                     |   |                      └──────────────────────────────┘  │
-│  ┌──────────┴─────┬───────────┐   |   |                                                        │
-│  │ Skill Registry │Skills     │   |   |                      ┌──────────────────────────────┐  │
-│  │ & Delivery     │ Access    │◄──┘   └ ─(jente.oc)─ ─ ─ ───►│ Egress Control Plane         ▒▒▒▒▒▒
-│  │ - OCI/ORAS     │ Permission│                              │ - allowlists / DLP / audit   │  │
-│  │ - scan/ingest  │ Gate      │                              │ - network egress authority   │  │
-│  └────────────────┴───────────┘                              └──────────────────────────────┘  │
-│                                ┌────────────────────────┐                                      │
-│                                │  jane.oc (isolated)    │    ┌──────────────────────────────┐  │
-│                                └────────────────────────┘    │ Harvesting Agents            ▒▒▒▒▒▒
-│                                ┌────────────────────────┐    │ - ingest -> Cognee           │  │
-│                                │  niels.oc (isolated)   │    └──────────────────────────────┘  │
-│                                └────────────────────────┘                                      │
-└────────────────────────────────────────────────────────────────────────────────────────────────┘
+Legend:   [live] live today      [partial] partial / gated      [desired] desired → issue #117
 
-Legend
-(0) config — control plane owns Obot's registry, IdP/gateway/auth, lifecycle; operator reconciles + drift-repairs.
-(1) grants — per-tenant compiled scope, pushed live; revocation effective next call.
-(2) contract — versioned effective-contract the pod re-pulls at loop boundaries.
-(3) token — short-lived, audience-bound identity token; the gateway injects downstream credentials server-side, never exposing them to the pod.
+                           ┌──────────────────────────────────────────────────────────┐    ┌────────────────────────────────┐
+                           │ clustertenant-manager — THE control plane      [live]    │◄──►│ CNPG Postgres           [live] │
+                           │ API + operator + gateway-proxy · one deployment          │    └────────────────────────────────┘
+                           │ Obot config authority · MCP registry · contract API      │    ┌────────────────────────────────┐
+                           └──────────────────────────────────────────────────────────┘    │ Skill OCI store (Zot) [partial]│
+                                             │                                             └────────────────────────────────┘
+                                             │  (0) config · (1) grants · (2) effective-contract → pods
+                                             ▼
+┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ Kubernetes silo namespace · opencrane-<org>                                                                                │
+│                                                                                                                            │
+│ Tenant runtime        (3) JWT    Obot MCP gateway                                                                          │
+│ ┌───────────────────────────┐    ┌────────────────────────────────────────────────────┐                                    │
+│ │ jente.oc · jane.oc        │───►│ gateway / proxy · per-call scope check    [live]   │ ──► web egress   [live]            │
+│ │ niels.oc          [live]  │    │                                                    │                                    │
+│ │                           │    ├────────────────────────────────────────────────────┤     NetworkPolicy egress;          │
+│ │ each pod:                 │    │ hosted MCP servers (registry-pulled)   [desired]   │     Cilium FQDN [desired]          │
+│ │   personal drive (PVC)    │    │   remote streamable-http today ·                   │                                    │
+│ │   workload identity:      │    │   in-cluster local-run = desired                   │                                    │
+│ │    SA-JWT [live]  →       │    │                                                    │                                    │
+│ │    SPIFFE  [desired]      │    ├────────────────────────────────────────────────────┤                                    │
+│ │                           │    │ per-user token store                   [partial]   │                                    │
+│ │                           │    │   downstream creds · encrypted · pod-unreachable   │                                    │
+│ └───────────────────────────┘    └────────────────────────────────────────────────────┘                                    │
+│                                                                                                                            │
+│                                                                                                                            │
+│ Shared planes:   Cognee brain [live] · Skill registry + gate [live] ·                                                      │
+│                  LiteLLM router (BYOK) [live] · Harvesting agents [live]                                                   │
+│                                                                                                                            │
+│ No fleet manager: for one ClusterTenant the manager IS the whole control plane.                                            │
+└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+📐 See the illustrated **[architecture overview](https://opencrane.ai/advanced/architecture)** — diagrams of the fleet/silo model, the sign-in flow, and the deny-by-default access model.
 
 ## Components
 
@@ -252,7 +242,7 @@ spec:
 EOF
 ```
 
-The operator provisions everything the tenant needs — storage, identity, an encryption key, and its own ingress. With `--domain opencrane.ai`, the `jente` assistant is reachable at `https://jente.opencrane.ai`. See [Set up your domain](https://opencrane.ai/guide/dns) for DNS and TLS.
+The operator provisions everything the tenant needs — storage, identity, an encryption key, and access through the org's ingress. Employees sign in at the org host (e.g. `https://acme.opencrane.ai`); the platform routes each session to their own pod internally. See [Set up your domain](https://opencrane.ai/guide/dns) for DNS and TLS.
 
 ### CLI Quick Reference
 
