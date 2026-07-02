@@ -79,9 +79,10 @@ spec:
             - name: PORT
               value: {{ .Values.skillRegistry.service.port | quote }}
             {{- include "opencrane.observabilityEnv" (dict "ctx" $ "component" "skill-registry") | nindent 12 }}
-            # In-cluster control-plane URL for internal entitlement + content calls.
+            # In-cluster control-plane URL for internal entitlement + content calls
+            # (/api/internal/bundles) — targets the INTERNAL listener port, not the public one.
             - name: CONTROL_PLANE_URL
-              value: "http://{{ include "opencrane.fullname" . }}-clustertenant-manager.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.clustertenantManager.service.port }}"
+              value: "http://{{ include "opencrane.fullname" . }}-clustertenant-manager.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.clustertenantManager.service.internalPort }}"
           livenessProbe:
             httpGet:
               path: /healthz

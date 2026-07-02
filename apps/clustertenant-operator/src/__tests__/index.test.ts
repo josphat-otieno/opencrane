@@ -152,14 +152,13 @@ describe("Control Plane", () =>
       expect(res.body.status).toBe("ok");
     });
 
-    it("mounts internal routes BEFORE the auth gate, so tokenless calls reach them", async () =>
+    it("serves /api/internal tokenless on the internal listener, and never mounts a session gate there", async () =>
     {
-      // Regression: `/api/internal/*` was registered AFTER ___AuthMiddleware, so the
-      // operator's tokenless reconcile fetch of tenant-models 401'd → empty model set →
-      // replace-mode pods bricked. `_RegisterInternalRoutes` must run first. We assert the
-      // ORDERING invariant directly with a stand-in "deny-all" gate (deterministic — no
-      // dependency on the auth lib's env/module-init timing): anything mounted AFTER the
-      // internal routes cannot see requests the internal routes already handled.
+      // The internal API lives on its OWN listener (createInternalApp) with NO session/token
+      // auth — the NetworkPolicy-only routes authenticate at the network layer, kept off the
+      // public ingress-facing listener so they can't be reached from the internet. We mirror
+      // createInternalApp's wiring here (importing ../index.js would boot the real servers) and
+      // assert /api/internal is reachable tokenless AND that a would-be auth gate never runs.
       const { _RegisterInternalRoutes } = await import("../routes.js");
 
       const prisma = {
@@ -168,20 +167,18 @@ describe("Control Plane", () =>
         modelRoutingDefault: { findFirst: vi.fn().mockResolvedValue(null) },
       } as unknown as PrismaClient;
 
+      let gateRan = false;
       const app = express();
       app.use(express.json());
-      // Production order: internal routes first …
       _RegisterInternalRoutes(app, prisma, {} as never);
-      // … then the auth gate (stand-in for ___AuthMiddleware) that blocks everything reaching it.
-      app.use(function _denyAll(req, res) { res.status(401).json({ error: "blocked by auth gate" }); });
-      app.get("/api/test", function _test(req, res) { res.json({ ok: true }); });
+      // A stand-in for any auth middleware: on the internal listener it must NEVER run for
+      // /api/internal (those routes handle the request first and end it).
+      app.use(function _wouldBeGate(req, res, next) { gateRan = true; next(); });
 
-      // A route mounted after the gate is unreachable → 401 …
-      expect((await request(app).get("/api/test")).status).toBe(401);
-      // … but the NetworkPolicy-only internal models route is handled before the gate.
       const internal = await request(app).get("/api/internal/tenant-models/some-tenant");
       expect(internal.status).toBe(200);
       expect(internal.body).toEqual({ models: [], defaultModel: null });
+      expect(gateRan).toBe(false);
     });
   });
 });

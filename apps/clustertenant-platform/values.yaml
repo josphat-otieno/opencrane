@@ -219,7 +219,14 @@ clustertenantManager:
     pullPolicy: IfNotPresent
   replicas: 1
   service:
+    # -- Public API port (ingress-facing): /api/v1/*, /auth. Session-authed.
     port: 8080
+    # -- Internal API port: a SEPARATE listener serving ONLY the tokenless /api/internal/*
+    #    routes (tenant-models, contract, bundles, participation). The public ingress never
+    #    routes to this port; NetworkPolicy (networkpolicy-planes.yaml) restricts it to platform
+    #    pods. Splitting the internal API onto its own port keeps it off the internet-facing
+    #    surface — the org ingress's `/api` path can only reach the public port.
+    internalPort: 8081
   resources:
     requests:
       cpu: 100m
