@@ -151,5 +151,37 @@ describe("Control Plane", () =>
       expect(res.status).toBe(200);
       expect(res.body.status).toBe("ok");
     });
+
+    it("mounts internal routes BEFORE the auth gate, so tokenless calls reach them", async () =>
+    {
+      // Regression: `/api/internal/*` was registered AFTER ___AuthMiddleware, so the
+      // operator's tokenless reconcile fetch of tenant-models 401'd → empty model set →
+      // replace-mode pods bricked. `_RegisterInternalRoutes` must run first. We assert the
+      // ORDERING invariant directly with a stand-in "deny-all" gate (deterministic — no
+      // dependency on the auth lib's env/module-init timing): anything mounted AFTER the
+      // internal routes cannot see requests the internal routes already handled.
+      const { _RegisterInternalRoutes } = await import("../routes.js");
+
+      const prisma = {
+        tenant: { findUnique: vi.fn().mockResolvedValue(null) },
+        modelDefinition: { findMany: vi.fn().mockResolvedValue([]) },
+        modelRoutingDefault: { findFirst: vi.fn().mockResolvedValue(null) },
+      } as unknown as PrismaClient;
+
+      const app = express();
+      app.use(express.json());
+      // Production order: internal routes first …
+      _RegisterInternalRoutes(app, prisma, {} as never);
+      // … then the auth gate (stand-in for ___AuthMiddleware) that blocks everything reaching it.
+      app.use(function _denyAll(req, res) { res.status(401).json({ error: "blocked by auth gate" }); });
+      app.get("/api/test", function _test(req, res) { res.json({ ok: true }); });
+
+      // A route mounted after the gate is unreachable → 401 …
+      expect((await request(app).get("/api/test")).status).toBe(401);
+      // … but the NetworkPolicy-only internal models route is handled before the gate.
+      const internal = await request(app).get("/api/internal/tenant-models/some-tenant");
+      expect(internal.status).toBe(200);
+      expect(internal.body).toEqual({ models: [], defaultModel: null });
+    });
   });
 });
