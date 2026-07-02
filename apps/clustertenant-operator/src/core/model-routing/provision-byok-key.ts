@@ -20,6 +20,13 @@ import type { ByokProviderCatalog } from "./byok-default-models.js";
  * default model bound to it. A key is Global-scoped (silo-wide), never per openclaw tenant.
  */
 
+/**
+ * Public model name of the stable "auto" selection. Backed by the cheapest catalogued model
+ * today (LiteLLM has no capability-aware routing); the AIR router can re-point it later without
+ * callers/skills re-selecting. See `_ensureProviderModels` step 3.
+ */
+const _AUTO_MODEL_NAME = "auto";
+
 /** Outcome of {@link _ProvisionByokKey}. */
 export interface ProvisionByokKeyResult
 {
@@ -280,6 +287,34 @@ async function _ensureProviderModels(prisma: PrismaClient, catalog: ByokProvider
     if (!hasDefault)
     {
       await prisma.modelDefinition.update({ where: { id: defaultModelId }, data: { isDefault: true } });
+    }
+  }
+
+  // 3. Register the "auto" model — a STABLE selection id, so a caller/skill can pick "auto" once
+  //    and its backing model can improve later without re-selecting. Backed today by the provider's
+  //    CHEAPEST (`fast`-class) model: LiteLLM has no capability-aware routing (it is static/reactive
+  //    — cost/latency/shuffle only), so native "auto" deterministically resolves to the cheapest
+  //    deployment. The intelligent cost/quality router (RouteLLM + measurement, AIR track) can later
+  //    re-point this same "auto" id without any caller change. Registered ONCE (first provider wins).
+  //    @todo - Do smart via RouteLLM & LangFuse
+  const cheapest = catalog.models.find((m) => m.className === "fast") ?? catalog.models[catalog.models.length - 1];
+  if (cheapest)
+  {
+    const existingAuto = await prisma.modelDefinition.findFirst({ where: { scope: "Global", clusterTenant: null, publicModelName: _AUTO_MODEL_NAME } });
+    if (!existingAuto)
+    {
+      const litellmModelId = await _RegisterLiteLlmModel({
+        publicModelName: _AUTO_MODEL_NAME,
+        upstreamModel: cheapest.slug,
+        scope: ModelRoutingScope.Global,
+        clusterTenant: null,
+        apiBase: null,
+        apiKeyEnvRef: null,
+        litellmCredentialName,
+      });
+      await prisma.modelDefinition.create({
+        data: { scope: "Global", clusterTenant: null, publicModelName: _AUTO_MODEL_NAME, litellmModelId, upstreamModel: cheapest.slug, apiBase: null, isDefault: false, providerCredentialId },
+      });
     }
   }
 }

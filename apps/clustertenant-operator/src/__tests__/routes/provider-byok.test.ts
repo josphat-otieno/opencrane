@@ -174,11 +174,13 @@ describe("providerByokRouter", function _suite()
     const app = _buildApp(store, new Map(), { isOrgAdmin: true }, models);
     await request(app).put("/api/v1/providers/byok/openai").send({ apiKey: "sk-live-123" });
 
-    // All of OpenAI's model classes are seeded (one credential, many models); flagship is default.
+    // All of OpenAI's model classes are seeded PLUS the stable "auto" model; flagship is default.
     const seeded = Array.from(models.values());
-    expect(seeded).toHaveLength(3);
+    expect(seeded).toHaveLength(4);
     const flagship = seeded.find(function f(m) { return m.publicModelName === "openai/gpt-5.5"; });
     expect(flagship).toMatchObject({ scope: "Global", clusterTenant: null, isDefault: true });
+    // "auto" is backed by the cheapest (fast) model and is a selectable option, not the default.
+    expect(seeded.find(function a(m) { return m.publicModelName === "auto"; })).toMatchObject({ upstreamModel: "openai/gpt-5.4-nano", isDefault: false });
     expect(seeded.filter(function d(m) { return m.isDefault; })).toHaveLength(1);
     // Every class is bound to the one upserted credential row.
     const cred = Array.from(store.values())[0];
@@ -193,12 +195,15 @@ describe("providerByokRouter", function _suite()
     await request(app).put("/api/v1/providers/byok/openai").send({ apiKey: "k1" });
     await request(app).put("/api/v1/providers/byok/anthropic").send({ apiKey: "k2" });
 
-    // Both providers' full catalogs are registered (3 + 3), but only OpenAI's flagship is default.
+    // Both providers' full catalogs are registered (3 + 3) plus a single shared "auto" (first
+    // provider wins), but only OpenAI's flagship is default.
     const byName = new Map(Array.from(models.values()).map(function _n(m) { return [m.publicModelName, m]; }));
     expect(byName.get("openai/gpt-5.5")).toMatchObject({ isDefault: true });
     expect(byName.get("anthropic/claude-opus-4-8")).toMatchObject({ isDefault: false });
+    // "auto" is registered once (by the first provider, OpenAI) and backed by its cheapest model.
+    expect(byName.get("auto")).toMatchObject({ upstreamModel: "openai/gpt-5.4-nano", isDefault: false });
     expect(Array.from(models.values()).filter(function d(m) { return m.isDefault; })).toHaveLength(1);
-    expect(models.size).toBe(6);
+    expect(models.size).toBe(7);
   });
 
   it("never echoes the raw key back in the response body", async function _noEcho()
