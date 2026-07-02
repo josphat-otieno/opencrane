@@ -68,7 +68,9 @@ describe("TenantResourceBuilder", () =>
     expect(withModels.models.mode).toBe("replace");
     // The default lives at agents.defaults.model — OpenClaw's models block has no `default` key.
     expect(withModels.models.default).toBeUndefined();
-    expect(withModels.agents.defaults.model).toBe("openai/gpt-4o");
+    // Prefixed with the provider id so OpenClaw routes the reference through litellm-proxy rather
+    // than parsing `openai/` as the built-in openai provider (→ "No API key found for provider openai").
+    expect(withModels.agents.defaults.model).toBe("litellm-proxy/openai/gpt-4o");
     expect(Object.keys(withModels.models.providers)).toEqual(["litellm-proxy"]);
     // OpenClaw@2026.6.9 requires each model to be an { id, name } object, not a bare string.
     expect(withModels.models.providers["litellm-proxy"].models).toEqual([
@@ -153,9 +155,10 @@ describe("TenantResourceBuilder", () =>
       { id: "gpt-4o", name: "gpt-4o" },
       { id: "claude-opus-4-8", name: "claude-opus-4-8" },
     ]);
-    // Default is at agents.defaults.model (OpenClaw's models block has no `default`).
+    // Default is at agents.defaults.model (OpenClaw's models block has no `default`), prefixed
+    // with the provider id so the reference routes through litellm-proxy (not the built-in provider).
     expect(payload.models.default).toBeUndefined();
-    expect(payload.agents.defaults.model).toBe("gpt-4o");
+    expect(payload.agents.defaults.model).toBe("litellm-proxy/gpt-4o");
   });
 
   it("keeps litellm-proxy models[] empty when the model set is empty or null", () =>

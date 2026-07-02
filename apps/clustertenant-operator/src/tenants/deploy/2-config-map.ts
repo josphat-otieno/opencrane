@@ -17,6 +17,30 @@ const _WORKSPACE_TEMPLATES_DIR = join(dirname(fileURLToPath(import.meta.url)), "
 const _WORKSPACE_PATH = "/data/openclaw/workspace";
 
 /**
+ * The OpenClaw provider id the LiteLLM proxy is registered under (in `models.providers`).
+ *
+ * This id is ALSO the mandatory prefix on any model reference that must route through the proxy
+ * (see `_toModelRef`). OpenClaw resolves a model reference by splitting on the FIRST `/`: the head
+ * is the provider, the tail is the model. So a bare LiteLLM public name like `openai/gpt-5.5`
+ * resolves to OpenClaw's BUILT-IN `openai` provider — which then demands a real OpenAI key in the
+ * per-agent auth store and fails the first turn with `No API key found for provider "openai"`,
+ * NEVER touching our `litellm-proxy` provider. Prefixing the reference (`litellm-proxy/openai/gpt-5.5`)
+ * pins provider resolution to this proxy; OpenClaw strips the head and sends the tail (`openai/gpt-5.5`,
+ * the LiteLLM public model name) upstream. The provider's own `models[].id` catalog stays BARE (the
+ * name is relative to the provider), so only the *reference* — `agents.defaults.model` — is prefixed.
+ */
+const _LITELLM_PROVIDER_ID = "litellm-proxy";
+
+/**
+ * Turn a LiteLLM public model name into an OpenClaw model REFERENCE that routes through the proxy.
+ * See {@link _LITELLM_PROVIDER_ID} for why the provider prefix is mandatory.
+ */
+function _toModelRef(publicModelName: string): string
+{
+  return `${_LITELLM_PROVIDER_ID}/${publicModelName}`;
+}
+
+/**
  * Build the tenant ConfigMap that carries both OpenClaw runtime configuration
  * and the OpenCrane managed-runtime contract.
  *
@@ -137,7 +161,7 @@ export function _BuildConfigMap(config: OpenClawTenantOperatorConfig, tenant: Te
               // fails startup with "models: Invalid input". The effective default lives at
               // `agents.defaults.model` (set in step 4 below).
               providers: {
-                "litellm-proxy": {
+                [_LITELLM_PROVIDER_ID]: {
                   baseUrl: config.liteLlmEndpoint,
                   apiKey: "${LITELLM_API_KEY}",
                   api: "openai-completions",
@@ -226,7 +250,12 @@ export function _BuildConfigMap(config: OpenClawTenantOperatorConfig, tenant: Te
         // from `agents.defaults.model`, NOT `models.default`. Applied platform-side so it
         // can't be dropped by a tenant `configOverrides.agents` override. Omitted when no
         // default resolves (then OpenClaw falls back to its own model selection).
-        ...(defaultModel ? { model: defaultModel } : {}),
+        //
+        // MUST be prefixed with the litellm-proxy provider id (`_toModelRef`): OpenClaw resolves
+        // the provider from the reference's leading segment, so a bare `openai/gpt-5.5` would bind
+        // to the built-in `openai` provider (→ "No API key found for provider openai") instead of
+        // routing through the proxy. The prefix pins it to `litellm-proxy`; the tail is sent upstream.
+        ...(defaultModel ? { model: _toModelRef(defaultModel) } : {}),
       },
     },
   };
