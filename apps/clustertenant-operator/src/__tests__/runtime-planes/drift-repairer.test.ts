@@ -43,7 +43,9 @@ function _buildConfig(overrides: Partial<OpenClawTenantOperatorConfig> = {}): Op
     liteLlmDefaultRpmLimit: 0,
     mcpGatewayUrl: "http://obot:8080",
     skillRegistryUrl: "http://skill-registry:5000",
-    controlPlaneInternalUrl: "http://control-plane:3000",
+    internalPort: 8081,
+    controlPlaneInternalUrl: "http://localhost:8081",
+    controlPlaneInternalServiceUrl: "http://control-plane:8081",
     obotDeploymentName: "opencrane-mcp-gateway",
     skillRegistryDeploymentName: "opencrane-skill-registry",
     projectedTokenTtlSeconds: 600,
@@ -82,7 +84,7 @@ describe("RuntimePlaneDriftRepairer", () =>
         { name: "OBOT_SERVER_MCPRUNTIME_BACKEND", value: "kubernetes" },
       ],
       "opencrane-skill-registry": [
-        { name: "CONTROL_PLANE_URL", value: "http://control-plane:3000" },
+        { name: "CONTROL_PLANE_URL", value: "http://control-plane:8081" },
       ],
     });
     const repairer = new RuntimePlaneDriftRepairer(appsApi, _buildConfig(), _log);
@@ -100,7 +102,7 @@ describe("RuntimePlaneDriftRepairer", () =>
         { name: "OBOT_SERVER_MCPRUNTIME_BACKEND", value: "docker" },
       ],
       "opencrane-skill-registry": [
-        { name: "CONTROL_PLANE_URL", value: "http://control-plane:3000" },
+        { name: "CONTROL_PLANE_URL", value: "http://control-plane:8081" },
       ],
     });
     const repairer = new RuntimePlaneDriftRepairer(appsApi, _buildConfig(), _log);
@@ -124,7 +126,7 @@ describe("RuntimePlaneDriftRepairer", () =>
         { name: "OBOT_SERVER_MCPRUNTIME_BACKEND", value: "kubernetes" },
       ],
       "opencrane-skill-registry": [
-        { name: "CONTROL_PLANE_URL", value: "http://control-plane:3000" },
+        { name: "CONTROL_PLANE_URL", value: "http://control-plane:8081" },
       ],
     });
     const repairer = new RuntimePlaneDriftRepairer(appsApi, _buildConfig(), _log);

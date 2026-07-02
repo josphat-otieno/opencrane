@@ -1,18 +1,22 @@
 {{- if .Values.networkPolicy.enabled }}
 # Ingress policy for the control-plane service.
 #
-# The /api/internal/* routes have no auth middleware — they rely exclusively on
-# this policy to prevent arbitrary pods from calling them.  Permitted sources:
-#   - Ingress controller: external API traffic routed through the cluster ingress.
-#   - Obot / mcp-gateway pod: polls /api/internal/obot-registry to sync the MCP catalog.
-#   - Skill-registry pod: calls /api/internal/bundles to deliver skill content.
-#   - Operator pod: reconciliation calls to /api/v1/* for tenant and policy state,
-#     and /api/internal/tenant-models/:tenant to restrict tenant keys/config to the
-#     tenant's registered model set (best-effort; covered by the same port rule).
+# Two listeners, two ports:
+#   - PUBLIC port (service.port): /api/v1/* + /auth, session-authed. Reachable from the
+#     cluster ingress controller (external API traffic) and the fleet-manager.
+#   - INTERNAL port (service.internalPort): /api/internal/* only, NO auth middleware — it
+#     relies EXCLUSIVELY on this policy. Crucially the ingress controller is NOT permitted
+#     to this port, so the internal routes are unreachable from the internet even though the
+#     org ingress forwards `/api`. Permitted to the internal port:
+#       - Obot / mcp-gateway pod: /api/internal/obot-registry (MCP catalogue sync).
+#       - Skill-registry pod: /api/internal/bundles (skill content delivery).
+#       - Tenant pods: /api/internal/contract/:name (runtime-contract re-pull; TokenReview
+#         inside the handler is the identity check, this is defence-in-depth).
+#   The operator's own /api/internal/tenant-models fetch is a localhost call within the
+#   control-plane pod, so it is not subject to this NetworkPolicy at all.
 #
-# NetworkPolicy cannot filter by URL path, so this policy covers all control-plane
-# ingress on a single port.  The per-route security boundary is the network layer
-# (only known pods reach the pod) rather than the application layer.
+# NetworkPolicy cannot filter by URL path — the path/port split IS the boundary: internal
+# routes only exist on the internal port, and only known platform pods may reach it.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -36,7 +40,7 @@ spec:
       ports:
         - protocol: TCP
           port: {{ .Values.clustertenantManager.service.port }}
-    # Allow Obot (mcp-gateway) to poll /api/internal/obot-registry.
+    # Allow Obot (mcp-gateway) to poll /api/internal/obot-registry on the INTERNAL port.
     - from:
         - podSelector:
             matchLabels:
@@ -44,8 +48,8 @@ spec:
               app.kubernetes.io/component: mcp-gateway
       ports:
         - protocol: TCP
-          port: {{ .Values.clustertenantManager.service.port }}
-    # Allow the skill-registry to call /api/internal/bundles.
+          port: {{ .Values.clustertenantManager.service.internalPort }}
+    # Allow the skill-registry to call /api/internal/bundles on the INTERNAL port.
     - from:
         - podSelector:
             matchLabels:
@@ -53,9 +57,8 @@ spec:
               app.kubernetes.io/component: skill-registry
       ports:
         - protocol: TCP
-          port: {{ .Values.clustertenantManager.service.port }}
-    # Allow the operator to reach /api/v1/* for reconciliation and
-    # /api/internal/tenant-models/:tenant for the per-tenant model allowlist.
+          port: {{ .Values.clustertenantManager.service.internalPort }}
+    # Allow the fleet-manager to reach the PUBLIC /api/v1/* API for cross-silo operations.
     - from:
         - podSelector:
             matchLabels:
@@ -64,16 +67,16 @@ spec:
       ports:
         - protocol: TCP
           port: {{ .Values.clustertenantManager.service.port }}
-    # Allow tenant pods to poll /api/internal/contract/:name for runtime contract
-    # re-pull (P4A.3).  Identity is enforced by TokenReview inside the handler;
-    # this policy provides defence-in-depth at the network layer.
+    # Allow tenant pods to poll /api/internal/contract/:name on the INTERNAL port for
+    # runtime-contract re-pull (P4A.3). Identity is enforced by TokenReview inside the
+    # handler; this policy is defence-in-depth at the network layer.
     - from:
         - podSelector:
             matchLabels:
               app.kubernetes.io/component: tenant
       ports:
         - protocol: TCP
-          port: {{ .Values.clustertenantManager.service.port }}
+          port: {{ .Values.clustertenantManager.service.internalPort }}
 ---
 {{- end }}
 {{- if and .Values.networkPolicy.enabled .Values.mcpGateway.enabled }}

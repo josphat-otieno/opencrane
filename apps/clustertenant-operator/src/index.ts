@@ -79,12 +79,11 @@ export function createApp(prisma: PrismaClient, customApi: k8s.CustomObjectsApi,
   // session check internally.
   app.use("/api/v1/auth", ___AuthRouter(authService, prisma, coreApi, _BuildGatewayAdmin()));
 
-  // Internal routes (`/api/internal/*`) MUST be mounted BEFORE the session auth
-  // middleware: the NetworkPolicy-only routes take no token (the operator fetches
-  // `tenant-models` on its reconcile hot path with no credential) and the pod-identity
-  // routes run their own TokenReview — neither can pass browser-session auth, so gating
-  // them behind it 401s the operator's own fetch and every pod poll.
-  _RegisterInternalRoutes(app, prisma, authApi);
+  // NOTE: `/api/internal/*` is NOT on this public listener — it is served by the
+  // separate internal app (see `createInternalApp`) on its own port, which the public
+  // ingress never routes to. Keeping the tokenless internal routes off the public
+  // listener is what stops them being reachable from the internet under the org
+  // ingress's `/api` path (they take no auth by design — NetworkPolicy is their gate).
 
   // Pass prisma so DB-issued access tokens (from `oc auth login` and
   // POST /access-tokens) are validated in addition to the env-var token.
@@ -96,6 +95,29 @@ export function createApp(prisma: PrismaClient, customApi: k8s.CustomObjectsApi,
   // Global error handler — must be registered after all routes.
   app.use(_ErrorHandler(log));
 
+  return app;
+}
+
+/**
+ * Build the INTERNAL Express app — a second listener serving ONLY the tokenless
+ * `/api/internal/*` routes on {@link OpenClawTenantOperatorConfig.internalPort}.
+ *
+ * This listener is bound to its own port and exposed by a Service port the public
+ * ingress never routes to; NetworkPolicy restricts it to platform pods. There is NO
+ * session/token auth middleware here by design — the NetworkPolicy-only routes
+ * (bundles, tenant-models) authenticate at the network layer and the pod-identity
+ * routes (contract, participation) run their own TokenReview. Splitting them onto a
+ * separate listener is what keeps them off the internet-facing `/api` surface.
+ */
+export function createInternalApp(prisma: PrismaClient, authApi: k8s.AuthenticationV1Api): Express
+{
+  const app = express();
+  app.set("trust proxy", 1);
+  app.use(express.json());
+  app.use(___RequestContext());
+  app.use(pinoHttp({ logger: log, genReqId: function _genReqId() { return ___GetContext()?.requestId ?? randomUUID(); } }));
+  _RegisterInternalRoutes(app, prisma, authApi);
+  app.use(_ErrorHandler(log));
   return app;
 }
 
@@ -119,7 +141,7 @@ const coreApi = kc.makeApiClient(k8s.CoreV1Api);
 /** Kubernetes Authentication API client — used for tenant contract TokenReview validation. */
 const authApi = kc.makeApiClient(k8s.AuthenticationV1Api);
 
-// Build and start app
+// Build and start the PUBLIC app (ingress-facing: /api/v1/*, /auth — session-authed).
 const app = createApp(prisma, customApi, coreApi, authApi);
 
 log.info({ port }, "starting opencrane control plane");
@@ -127,6 +149,17 @@ log.info({ port }, "starting opencrane control plane");
 const server = app.listen(port, function _onListen()
 {
   log.info({ port }, "control plane listening");
+});
+
+// Build and start the INTERNAL app on a SEPARATE port (/api/internal/* — tokenless,
+// NetworkPolicy-gated). Kept off the public listener so the org ingress's `/api` path
+// can never reach it from the internet. Same process, distinct socket.
+/** Port for the internal-only listener (see config.internalPort). */
+const internalPort = Number(process.env.INTERNAL_PORT ?? "8081");
+const internalApp = createInternalApp(prisma, authApi);
+const internalServer = internalApp.listen(internalPort, function _onInternalListen()
+{
+  log.info({ internalPort }, "control plane internal API listening");
 });
 
 // NOTE: the single-tenant ClusterTenant boot-seed moved to the fleet-manager (Stage 4) — the
@@ -270,7 +303,9 @@ async function _startInSiloControllers(): Promise<void>
     {
       const gatewayProxy = new GatewayProxyServer({
         port: config.gatewayProxyPort,
-        controlPlaneUrl: config.controlPlaneInternalUrl,
+        // The proxy calls GET /api/v1/auth/gateway-resolve — a PUBLIC route on the public
+        // listener (same pod), so it targets localhost:<public port>, NOT the internal listener.
+        controlPlaneUrl: `http://localhost:${port}`,
         gatewayPort: config.gatewayPort,
         clusterDomain: config.clusterDomain,
         userHeader: config.gatewayTrustedProxyUserHeader,
@@ -320,8 +355,11 @@ async function _shutdown(signal: string): Promise<void>
 
   try
   {
-    // 2. Stop accepting new connections and let in-flight requests finish.
-    await new Promise<void>(function _close(resolve) { server.close(function _done() { resolve(); }); });
+    // 2. Stop accepting new connections and let in-flight requests finish — both listeners.
+    await Promise.all([
+      new Promise<void>(function _close(resolve) { server.close(function _done() { resolve(); }); }),
+      new Promise<void>(function _closeInternal(resolve) { internalServer.close(function _done() { resolve(); }); }),
+    ]);
     // 3. Release the DB pool so Postgres connections aren't leaked.
     await prisma.$disconnect();
     // 4. Flush any buffered spans to the collector before the process dies.

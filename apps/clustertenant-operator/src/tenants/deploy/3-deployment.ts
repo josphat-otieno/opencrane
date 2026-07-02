@@ -61,7 +61,10 @@ export function _BuildDeployment(config: OpenClawTenantOperatorConfig, stateVolu
     { name: "OPENCRANE_SKILL_REGISTRY_URL", value: config.skillRegistryUrl },
     { name: "OPENCRANE_MCP_GATEWAY_TOKEN_PATH", value: "/var/run/opencrane/tokens/obot-gateway.token" },
     { name: "OPENCRANE_SKILL_REGISTRY_TOKEN_PATH", value: "/var/run/opencrane/tokens/skill-registry.token" },
-    { name: "OPENCRANE_CONTROL_PLANE_URL", value: config.controlPlaneInternalUrl },
+    // The tenant pod reaches /api/internal/contract on the control-plane's INTERNAL listener
+    // via the Service DNS (a pod's own localhost is itself — controlPlaneInternalUrl is the
+    // operator's self-call and must NOT be injected here).
+    { name: "OPENCRANE_CONTROL_PLANE_URL", value: config.controlPlaneInternalServiceUrl },
     { name: "OPENCRANE_CONTRACT_TOKEN_PATH", value: "/var/run/opencrane/tokens/control-plane.token" },
     { name: "HOME", value: "/tmp/opencrane-home" },
     { name: "TMPDIR", value: "/tmp" },

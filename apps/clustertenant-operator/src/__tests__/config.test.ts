@@ -69,7 +69,10 @@ describe("_LoadOperatorConfig multi-instance fail-closed guard (MI.1 / brief B2)
 		const config = _LoadOperatorConfig();
 		expect(config.mcpGatewayUrl).toBe("http://opencrane-mcp-gateway.oc-acme.svc:8080");
 		expect(config.skillRegistryUrl).toBe("http://opencrane-skill-registry.oc-acme.svc:5000");
-		expect(config.controlPlaneInternalUrl).toBe("http://opencrane-clustertenant-manager.oc-acme.svc:3000");
+		// The pod-facing internal URL is namespace-derived (Service DNS on the internal port).
+		expect(config.controlPlaneInternalServiceUrl).toBe("http://opencrane-clustertenant-manager.oc-acme.svc:8081");
+		// The operator's OWN internal call is a localhost self-call — not namespace-derived.
+		expect(config.controlPlaneInternalUrl).toBe("http://localhost:8081");
 	});
 
 	it("falls back to the `default` namespace when POD_NAMESPACE is unset", function _defaultNamespaceFallback()
@@ -78,7 +81,7 @@ describe("_LoadOperatorConfig multi-instance fail-closed guard (MI.1 / brief B2)
 		// POD_NAMESPACE unset → fallback host is `default`, never `opencrane-system`.
 		const config = _LoadOperatorConfig();
 		expect(config.mcpGatewayUrl).toBe("http://opencrane-mcp-gateway.default.svc:8080");
-		expect(config.controlPlaneInternalUrl).toContain(".default.svc:");
+		expect(config.controlPlaneInternalServiceUrl).toContain(".default.svc:");
 	});
 });
 

@@ -89,7 +89,9 @@ export class RuntimePlaneDriftRepairer
     this._log = log.child({ component: "runtime-plane-drift-repairer" });
     this._intervalMs = intervalMs;
 
-    const controlPlaneBaseUrl = config.controlPlaneInternalUrl;
+    // The skill-registry pod reaches /api/internal/* over the network, so it must use the
+    // internal SERVICE URL (Service DNS : internal port), NOT the operator's localhost self-URL.
+    const controlPlaneBaseUrl = config.controlPlaneInternalServiceUrl;
 
     this._planes = [
       {

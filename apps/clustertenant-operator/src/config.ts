@@ -151,8 +151,28 @@ export interface OpenClawTenantOperatorConfig
   /** In-cluster skill registry delivery URL exposed to tenant runtimes. */
   skillRegistryUrl: string;
 
-  /** In-cluster control-plane base URL used by tenant pods to re-pull the effective contract. */
+  /**
+   * The operator's OWN in-pod internal API base — the second (internal) listener. Used by the
+   * operator's reconcile fetches (tenant-models). Defaults to `http://localhost:<internalPort>`;
+   * the internal routes are NOT on the public listener, so this must target the internal port.
+   */
   controlPlaneInternalUrl: string;
+
+  /**
+   * In-cluster SERVICE URL of the internal listener (`http://<svc>.<ns>.svc:<internalPort>`),
+   * injected into TENANT pods (and used by other planes) to reach `/api/internal/*` from another
+   * pod. Distinct from {@link controlPlaneInternalUrl} (localhost, operator-self) — a tenant pod's
+   * localhost is itself, so pods MUST use the Service DNS.
+   */
+  controlPlaneInternalServiceUrl: string;
+
+  /**
+   * Port of the SECOND HTTP listener that serves ONLY the tokenless `/api/internal/*` routes.
+   * Split from the public port so the internal API is never on the ingress-facing listener
+   * (the public ingress routes `/api` to the public port only). NetworkPolicy locks this port
+   * to platform pods. Default 8081.
+   */
+  internalPort: number;
 
   /** Kubernetes Deployment name for the Obot MCP Gateway managed by this operator. */
   obotDeploymentName: string;
@@ -245,7 +265,9 @@ export function _LoadOperatorConfig(): OpenClawTenantOperatorConfig
     defaultTenantPolicyRef: _readEnvValue<string>("DEFAULT_TENANT_POLICY_REF", "string", false, ""),
     mcpGatewayUrl: _readEnvValue<string>("MCP_GATEWAY_URL", "string", false, `http://opencrane-mcp-gateway.${ownNamespace}.svc:8080`),
     skillRegistryUrl: _readEnvValue<string>("SKILL_REGISTRY_URL", "string", false, `http://opencrane-skill-registry.${ownNamespace}.svc:5000`),
-    controlPlaneInternalUrl: _readEnvValue<string>("CLUSTERTENANT_MANAGER_INTERNAL_URL", "string", false, `http://opencrane-clustertenant-manager.${ownNamespace}.svc:3000`),
+    internalPort: _readEnvValue<number>("INTERNAL_PORT", "number", false, 8081),
+    controlPlaneInternalUrl: _readEnvValue<string>("CLUSTERTENANT_MANAGER_INTERNAL_URL", "string", false, "http://localhost:8081"),
+    controlPlaneInternalServiceUrl: _readEnvValue<string>("CLUSTERTENANT_MANAGER_INTERNAL_SERVICE_URL", "string", false, `http://opencrane-clustertenant-manager.${ownNamespace}.svc:8081`),
     obotDeploymentName: _readEnvValue<string>("OBOT_DEPLOYMENT_NAME", "string", false, "opencrane-mcp-gateway"),
     skillRegistryDeploymentName: _readEnvValue<string>("SKILL_REGISTRY_DEPLOYMENT_NAME", "string", false, "opencrane-skill-registry"),
     projectedTokenTtlSeconds: _readEnvValue<number>("PROJECTED_TOKEN_TTL_SECONDS", "number", false, 600),
