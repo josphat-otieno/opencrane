@@ -111,21 +111,29 @@ const _modelProviderSchema = z
     apiKey: z.string().optional(),
     /** Wire protocol the provider speaks (e.g. `openai-completions`). */
     api: z.string().optional(),
-    /** Allowed model ids; `[]` keeps the proxy default. */
-    models: z.array(z.string()).optional(),
+    /**
+     * Allowed models. OpenClaw@2026.6.9 requires each entry to be an OBJECT with
+     * `id` + `name` (both required) — a bare string array fails gateway startup
+     * ("models.providers.*.models.N: Invalid input"). `[]` keeps the proxy default.
+     * `passthrough` tolerates the extra optional per-model fields OpenClaw accepts
+     * (api/baseUrl/cost/contextWindow/…) without pinning them here.
+     */
+    models: z
+      .array(z.object({ id: z.string(), name: z.string() }).passthrough())
+      .optional(),
   })
   .strict();
 
 /**
- * Models block emitted only when LiteLLM is enabled. `mode` ∈ {merge,replace}
- * (PINNED from docs); `default` is the optional default model id.
+ * Models block emitted only when LiteLLM is enabled. `mode` ∈ {merge,replace}.
+ * NOTE: OpenClaw's `models` block is strict and has NO `default` key — the effective
+ * default model lives at `agents.defaults.model` (see `_agentsDefaultsSchema`). Emitting
+ * `models.default` fails gateway startup with "models: Invalid input".
  */
 const _modelsSchema = z
   .object({
     /** How the provider map merges with built-in providers. */
     mode: z.enum(["merge", "replace"]),
-    /** Default model id, surfaced when the control-plane returned one. */
-    default: z.string().optional(),
     /** Provider id → provider config map. */
     providers: z.record(z.string(), _modelProviderSchema),
   })
@@ -143,6 +151,8 @@ const _agentsDefaultsSchema = z
     workspace: z.string(),
     /** Skip the interactive bootstrap ritual in the headless pod. */
     skipBootstrap: z.boolean(),
+    /** Effective default model id (OpenClaw reads the default from here, not models.default). */
+    model: z.string().optional(),
   })
   .passthrough();
 

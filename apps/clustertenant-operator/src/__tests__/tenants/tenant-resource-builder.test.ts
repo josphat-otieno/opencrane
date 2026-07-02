@@ -66,9 +66,15 @@ describe("TenantResourceBuilder", () =>
     // Non-empty modelSet → replace, default surfaced, allowlist restricted to the set.
     const withModels = JSON.parse(_BuildConfigMap(liteLlmConfig, tenant, "default", undefined, { models: ["openai/gpt-4o", "anthropic/claude-sonnet-4-5"], defaultModel: "openai/gpt-4o" }).data?.["openclaw.json"] ?? "{}");
     expect(withModels.models.mode).toBe("replace");
-    expect(withModels.models.default).toBe("openai/gpt-4o");
+    // The default lives at agents.defaults.model — OpenClaw's models block has no `default` key.
+    expect(withModels.models.default).toBeUndefined();
+    expect(withModels.agents.defaults.model).toBe("openai/gpt-4o");
     expect(Object.keys(withModels.models.providers)).toEqual(["litellm-proxy"]);
-    expect(withModels.models.providers["litellm-proxy"].models).toEqual(["openai/gpt-4o", "anthropic/claude-sonnet-4-5"]);
+    // OpenClaw@2026.6.9 requires each model to be an { id, name } object, not a bare string.
+    expect(withModels.models.providers["litellm-proxy"].models).toEqual([
+      { id: "openai/gpt-4o", name: "openai/gpt-4o" },
+      { id: "anthropic/claude-sonnet-4-5", name: "anthropic/claude-sonnet-4-5" },
+    ]);
 
     // Empty/null modelSet → still replace (no built-in fallback); empty allowlist, no default.
     // This bricked-pod window is what cluster onboarding's ≥1-model requirement prevents.
@@ -143,8 +149,13 @@ describe("TenantResourceBuilder", () =>
     const configMap = _BuildConfigMap(litellmConfig, tenant, "default", undefined, { models: ["gpt-4o", "claude-opus-4-8"], defaultModel: "gpt-4o" });
     const payload = JSON.parse(configMap.data?.["openclaw.json"] ?? "{}");
 
-    expect(payload.models.providers["litellm-proxy"].models).toEqual(["gpt-4o", "claude-opus-4-8"]);
-    expect(payload.models.default).toBe("gpt-4o");
+    expect(payload.models.providers["litellm-proxy"].models).toEqual([
+      { id: "gpt-4o", name: "gpt-4o" },
+      { id: "claude-opus-4-8", name: "claude-opus-4-8" },
+    ]);
+    // Default is at agents.defaults.model (OpenClaw's models block has no `default`).
+    expect(payload.models.default).toBeUndefined();
+    expect(payload.agents.defaults.model).toBe("gpt-4o");
   });
 
   it("keeps litellm-proxy models[] empty when the model set is empty or null", () =>

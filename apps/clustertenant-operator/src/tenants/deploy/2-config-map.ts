@@ -132,13 +132,21 @@ export function _BuildConfigMap(config: OpenClawTenantOperatorConfig, tenant: Te
               // is provisioned (see fleet-operator ClusterTenant readiness). The BYOK key flow also
               // auto-seeds a default model, so a key-configured silo always satisfies this.
               mode: "replace",
-              ...(defaultModel ? { default: defaultModel } : {}),
+              // NOTE: the default model is NOT set here. OpenClaw's `models` block is strict
+              // and has no `default` key (only `mode` + `providers`) — a `models.default`
+              // fails startup with "models: Invalid input". The effective default lives at
+              // `agents.defaults.model` (set in step 4 below).
               providers: {
                 "litellm-proxy": {
                   baseUrl: config.liteLlmEndpoint,
                   apiKey: "${LITELLM_API_KEY}",
                   api: "openai-completions",
-                  models: allowedModels,
+                  // OpenClaw's config schema (verified against openclaw@2026.6.9
+                  // plugin-sdk/config-schema) requires each provider model to be an OBJECT
+                  // with `id` + `name` (both required) — NOT a bare string. Rendering strings
+                  // makes the gateway fail startup with "models.providers.*.models.N: Invalid
+                  // input". We use the LiteLLM public model name for both id and name.
+                  models: allowedModels.map((model) => ({ id: model, name: model })),
                 },
               },
             },
@@ -214,6 +222,11 @@ export function _BuildConfigMap(config: OpenClawTenantOperatorConfig, tenant: Te
         ...existingDefaults,
         workspace: _WORKSPACE_PATH,
         skipBootstrap: true,
+        // Effective default model (from the tenant's model set). OpenClaw reads the default
+        // from `agents.defaults.model`, NOT `models.default`. Applied platform-side so it
+        // can't be dropped by a tenant `configOverrides.agents` override. Omitted when no
+        // default resolves (then OpenClaw falls back to its own model selection).
+        ...(defaultModel ? { model: defaultModel } : {}),
       },
     },
   };
