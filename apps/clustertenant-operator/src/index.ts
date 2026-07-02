@@ -21,7 +21,7 @@ import { ___CreateOidcAuthService } from "./infra/auth/oidc.service.js";
 import { ___CreatePrismaClient } from "./infra/db/db.js";
 import { _TransportSecurity } from "./infra/middleware/transport-security.middleware.js";
 import { _log as log } from "./log.js";
-import { _RegisterRoutes } from "./routes.js";
+import { _RegisterInternalRoutes, _RegisterRoutes } from "./routes.js";
 import { TenantProjectionRepairer } from "./infra/tenant-projection-repairer.js";
 
 // In-silo controllers (Stage 5). The silo runs every in-silo reconcile loop over its OWN
@@ -78,6 +78,13 @@ export function createApp(prisma: PrismaClient, customApi: k8s.CustomObjectsApi,
   // inherently public — the device-flow activate handler enforces its own
   // session check internally.
   app.use("/api/v1/auth", ___AuthRouter(authService, prisma, coreApi, _BuildGatewayAdmin()));
+
+  // Internal routes (`/api/internal/*`) MUST be mounted BEFORE the session auth
+  // middleware: the NetworkPolicy-only routes take no token (the operator fetches
+  // `tenant-models` on its reconcile hot path with no credential) and the pod-identity
+  // routes run their own TokenReview — neither can pass browser-session auth, so gating
+  // them behind it 401s the operator's own fetch and every pod poll.
+  _RegisterInternalRoutes(app, prisma, authApi);
 
   // Pass prisma so DB-issued access tokens (from `oc auth login` and
   // POST /access-tokens) are validated in addition to the env-var token.
