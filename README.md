@@ -96,6 +96,44 @@ The super-admin is the only identity that can reach across silos. Conversations 
 inside the pod — OpenCrane governs access, budgets, and networking, but never inspects
 them.
 
+A single **ClusterTenant** (one organisation, no fleet) — the manager is the whole control plane, and each employee gets an isolated pod that reaches tools through one Obot MCP gateway:
+
+```
+Legend:   [live] live today      [partial] partial / gated      [desired] desired → issue #117
+
+                           ┌──────────────────────────────────────────────────────────┐    ┌────────────────────────────────┐
+                           │ clustertenant-manager — THE control plane      [live]    │◄──►│ CNPG Postgres           [live] │
+                           │ API + operator + gateway-proxy · one deployment          │    └────────────────────────────────┘
+                           │ Obot config authority · MCP registry · contract API      │    ┌────────────────────────────────┐
+                           └──────────────────────────────────────────────────────────┘    │ Skill OCI store (Zot) [partial]│
+                                             │                                             └────────────────────────────────┘
+                                             │  (0) config · (1) grants · (2) effective-contract → pods
+                                             ▼
+┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ Kubernetes silo namespace · opencrane-<org>                                                                                │
+│                                                                                                                            │
+│ Tenant runtime        (3) JWT    Obot MCP gateway                                                                          │
+│ ┌───────────────────────────┐    ┌────────────────────────────────────────────────────┐                                    │
+│ │ jente.oc · jane.oc        │───►│ gateway / proxy · per-call scope check    [live]   │ ──► web egress   [live]            │
+│ │ niels.oc          [live]  │    │                                                    │                                    │
+│ │                           │    ├────────────────────────────────────────────────────┤     NetworkPolicy egress;          │
+│ │ each pod:                 │    │ hosted MCP servers (registry-pulled)   [desired]   │     Cilium FQDN [desired]          │
+│ │   personal drive (PVC)    │    │   remote streamable-http today ·                   │                                    │
+│ │   workload identity:      │    │   in-cluster local-run = desired                   │                                    │
+│ │    SA-JWT [live]  →       │    │                                                    │                                    │
+│ │    SPIFFE  [desired]      │    ├────────────────────────────────────────────────────┤                                    │
+│ │                           │    │ per-user token store                   [partial]   │                                    │
+│ │                           │    │   downstream creds · encrypted · pod-unreachable   │                                    │
+│ └───────────────────────────┘    └────────────────────────────────────────────────────┘                                    │
+│                                                                                                                            │
+│                                                                                                                            │
+│ Shared planes:   Cognee brain [live] · Skill registry + gate [live] ·                                                      │
+│                  LiteLLM router (BYOK) [live] · Harvesting agents [live]                                                   │
+│                                                                                                                            │
+│ No fleet manager: for one ClusterTenant the manager IS the whole control plane.                                            │
+└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
 📐 See the illustrated **[architecture overview](https://opencrane.ai/advanced/architecture)** — diagrams of the fleet/silo model, the sign-in flow, and the deny-by-default access model.
 
 ## Components
