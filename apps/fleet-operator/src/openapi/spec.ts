@@ -1037,6 +1037,7 @@ export const spec = {
         security: [],
         parameters: [
           { name: "returnTo", in: "query", schema: { type: "string" }, description: "Path to redirect back to after a successful login." },
+          { name: "prompt", in: "query", schema: { type: "string" }, description: "OIDC prompt value. Pass \"create\" to show the Zitadel registration form instead of login." },
         ],
         responses: {
           302: { description: "Redirect to identity provider." },

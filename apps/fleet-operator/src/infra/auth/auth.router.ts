@@ -42,7 +42,8 @@ export function ___FleetAuthRouter(authService: FleetOidcAuthService): Router
       }
 
       const returnTo = typeof req.query.returnTo === "string" ? req.query.returnTo : "/";
-      const loginUrl = await authService.buildLoginUrl(req, returnTo);
+      const prompt = typeof req.query.prompt === "string" ? req.query.prompt : undefined;
+      const loginUrl = await authService.buildLoginUrl(req, returnTo, { prompt });
       res.redirect(302, loginUrl);
     }
     catch (err)
