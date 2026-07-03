@@ -129,3 +129,40 @@ describe("configOverrides cannot clobber the platform gateway (C1)", function _c
     expect(trustedProxy.allowUsers).toEqual(["contract@example.com"]);
   });
 });
+
+/**
+ * Reasoning visibility — `agents.defaults.reasoningDefault`/`thinkingDefault` make
+ * the model's thinking stream live AND persist into `chat.history` (rendered as a
+ * collapsible "Thinking" card in the org-admin SPA). They are DEFAULTS a tenant
+ * can override, not platform-pinned like the gateway block.
+ */
+describe("reasoning visibility defaults", function _reasoningSuite()
+{
+  function _render(overrides?: Record<string, unknown>): Record<string, unknown>
+  {
+    const tenant = _makeTenant("contract", overrides ? { configOverrides: overrides } : undefined);
+    return JSON.parse(_BuildConfigMap(defaultConfig, tenant, "default").data?.["openclaw.json"] ?? "{}") as Record<string, unknown>;
+  }
+
+  function _defaults(config: Record<string, unknown>): Record<string, unknown>
+  {
+    return (config["agents"] as Record<string, unknown>)["defaults"] as Record<string, unknown>;
+  }
+
+  it("enables reasoning by default so it lands in history", function _default()
+  {
+    const defaults = _defaults(_render());
+    expect(defaults["reasoningDefault"]).toBe("stream");
+    expect(defaults["thinkingDefault"]).toBe("medium");
+    expect(_OpenclawConfigSchema.safeParse(_render()).success).toBe(true);
+  });
+
+  it("lets a tenant override reasoning off to save tokens", function _override()
+  {
+    const config = _render({ agents: { defaults: { reasoningDefault: "off" } } });
+    const defaults = _defaults(config);
+    expect(defaults["reasoningDefault"]).toBe("off"); // tenant wins over the platform default
+    expect(defaults["workspace"]).toBe("/data/openclaw/workspace"); // platform-pinned keys still applied
+    expect(_OpenclawConfigSchema.safeParse(config).success).toBe(true);
+  });
+});

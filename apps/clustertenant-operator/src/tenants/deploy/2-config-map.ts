@@ -17,6 +17,28 @@ const _WORKSPACE_TEMPLATES_DIR = join(dirname(fileURLToPath(import.meta.url)), "
 const _WORKSPACE_PATH = "/data/openclaw/workspace";
 
 /**
+ * Default agent reasoning posture — makes the model's thinking a first-class part
+ * of the transcript so it streams live AND is returned by `chat.history` (the
+ * org-admin SPA renders reasoning as a collapsible "Thinking" card).
+ *
+ * Verified against openclaw@2026.6.9 `AgentDefaultsConfig` (both keys are valid;
+ * the operator's `agents.defaults` block is `.passthrough`, and OpenClaw accepts
+ * them):
+ *  - `reasoningDefault: "stream"` — deliver reasoning as it happens (as reasoning
+ *    content parts on the assistant turn), so it persists into history rather than
+ *    being dropped by the visible-history projection.
+ *  - `thinkingDefault: "medium"` — a middle thinking level so reasoning-capable
+ *    models actually produce a trace (with `"off"` there is nothing to show).
+ *
+ * These are DEFAULTS, not platform-pinned: they are spread BEFORE the tenant's
+ * merged `agents.defaults`, so a tenant can dial either down via
+ * `spec.configOverrides.agents.defaults` (e.g. `reasoningDefault: "off"` to save
+ * tokens/latency). NOTE: enabling reasoning has a real token-cost/latency cost.
+ */
+const _REASONING_DEFAULT = "stream";
+const _THINKING_DEFAULT = "medium";
+
+/**
  * The OpenClaw provider id the LiteLLM proxy is registered under (in `models.providers`).
  *
  * This id is ALSO the mandatory prefix on any model reference that must route through the proxy
@@ -243,6 +265,11 @@ export function _BuildConfigMap(config: OpenClawTenantOperatorConfig, tenant: Te
     agents: {
       ...(existingAgents ?? {}),
       defaults: {
+        // Reasoning-visibility DEFAULTS (overridable) — spread first so a tenant's
+        // `configOverrides.agents.defaults` wins. Makes the model's thinking stream
+        // live and persist into `chat.history` (see _REASONING_DEFAULT).
+        reasoningDefault: _REASONING_DEFAULT,
+        thinkingDefault: _THINKING_DEFAULT,
         ...existingDefaults,
         workspace: _WORKSPACE_PATH,
         skipBootstrap: true,

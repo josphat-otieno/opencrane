@@ -153,6 +153,10 @@ const _agentsDefaultsSchema = z
     skipBootstrap: z.boolean(),
     /** Effective default model id (OpenClaw reads the default from here, not models.default). */
     model: z.string().optional(),
+    /** Reasoning visibility default (openclaw AgentDefaultsConfig); "stream" persists the trace into history. */
+    reasoningDefault: z.enum(["off", "on", "stream"]).optional(),
+    /** Default thinking level (openclaw AgentDefaultsConfig) so reasoning-capable models produce a trace. */
+    thinkingDefault: z.enum(["off", "minimal", "low", "medium", "high", "xhigh", "adaptive", "max"]).optional(),
   })
   .passthrough();
 
