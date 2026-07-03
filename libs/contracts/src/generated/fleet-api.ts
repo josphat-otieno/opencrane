@@ -1241,6 +1241,8 @@ export interface operations {
             query?: {
                 /** @description Path to redirect back to after a successful login. */
                 returnTo?: string;
+                /** @description OIDC prompt value. Pass "create" to show the Zitadel registration form instead of login. */
+                prompt?: string;
             };
             header?: never;
             path?: never;
