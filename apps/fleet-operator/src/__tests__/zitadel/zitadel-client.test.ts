@@ -55,6 +55,7 @@ describe("_HttpZitadelManagementClient — live provisioning lifecycle (injected
       "/management/v1/projects/proj-9/roles/_bulk",
       "/management/v1/projects/proj-9/apps/oidc",
       "/management/v1/users/u-master/grants",
+      "/management/v1/orgs/me/members",
     ]);
     // Every in-org call carries the new org's context header.
     expect(calls.filter(c => c.path.startsWith("/management")).every(c => c.orgId === "org-9")).toBe(true);
