@@ -32,7 +32,6 @@ import type { OpenClawTenantOperatorConfig } from "./config.js";
 import { _ProvisionByokKey } from "./core/model-routing/provision-byok-key.js";
 import { _CreateTenantOperator, IdleChecker } from "./tenants/index.js";
 import { PolicyOperator } from "./policies/operator.js";
-import { RuntimePlaneDriftRepairer } from "./runtime-planes/drift-repairer.js";
 import { _ReadTenantRolloutConfig, TenantUpdateWithCanaryStrategyController } from "./tenant-rollout/tenant-update-with-canary-strategy.controller.js";
 import { GatewayProxyServer } from "./gateway-proxy/server.js";
 import { ObotHealthChecker } from "./mcp-gateway/obot-health-checker.js";
@@ -179,9 +178,6 @@ tenantProjectionRepairer.start();
 /** Idle-checker handle, set during controller bootstrap for shutdown access. */
 let _idleCheckerRef: IdleChecker | null = null;
 
-/** Runtime-plane drift repairer handle, for graceful shutdown. */
-let _driftRepairerRef: RuntimePlaneDriftRepairer | null = null;
-
 /** In-process gateway proxy server handle, for graceful shutdown. */
 let _gatewayProxyRef: GatewayProxyServer | null = null;
 
@@ -258,9 +254,6 @@ async function _startInSiloControllers(): Promise<void>
     idleChecker.start();
 
     const appsApi = kc.makeApiClient(k8s.AppsV1Api);
-    const driftRepairer = new RuntimePlaneDriftRepairer(appsApi, config, log);
-    _driftRepairerRef = driftRepairer;
-    driftRepairer.start();
 
     // Tenant rollout canary release polling (only when auto-update is enabled).
     const tenantRolloutConfig = _ReadTenantRolloutConfig();
@@ -350,7 +343,6 @@ async function _shutdown(signal: string): Promise<void>
   // Stop the projection-repair loop + in-silo controllers so no sweep races the disconnect below.
   tenantProjectionRepairer.stop();
   _idleCheckerRef?.stop();
-  _driftRepairerRef?.stop();
   await _gatewayProxyRef?.stop();
 
   try
