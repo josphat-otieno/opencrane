@@ -28,6 +28,13 @@
 #                            [--dns01-provider clouddns] [--dns01-credentials FILE]
 #                            [--dns01-project PROJECT_ID] [--dns-writer-gsa EMAIL]
 #                            [--values FILE] [--set k=v ...]
+#                            [--reuse-values | --reset-values]
+#
+# Value preservation: on an UPGRADE (release already exists) this engine defaults to Helm's
+# --reset-then-reuse-values, so prior --set/-f overrides are NOT silently dropped when a run
+# restates fewer values (a component-tag bump preserves the rest). Pass --reuse-values to
+# inherit the last release verbatim without refreshing chart defaults, or --reset-values to
+# intentionally drop prior overrides and start from chart defaults + this run's flags.
 #
 # TLS / cert-manager (Step 2.5) has THREE modes:
 #   off (default)  — no cert-manager install; the chart renders no issuer/cert.
@@ -117,7 +124,8 @@ TENANT_TAG=""           # empty → falls back to IMAGE_TAG
 BASE_DOMAIN="${OPENCRANE_BASE_DOMAIN:-}"
 STORAGE_CLASS=""        # empty → cluster default StorageClass
 VALUES_FILE=""
-REUSE_VALUES=""      # "--reuse-values" mode: inherit current helm values; add only overrides
+REUSE_VALUES=""      # explicit "--reuse-values": inherit last release's values verbatim; add only overrides
+RESET_VALUES=""      # explicit "--reset-values": DROP prior values, start from chart defaults + this run's --set
 EXTRA_SET=()
 
 # OIDC + per-cluster operator bootstrap. All default empty (OIDC stays disabled and the
@@ -254,6 +262,7 @@ while [[ $# -gt 0 ]]; do
     --dns01-project)     DNS01_PROJECT="$2"; shift 2 ;;
     --values)        VALUES_FILE="$2"; shift 2 ;;
     --reuse-values)  REUSE_VALUES="1"; shift ;;
+    --reset-values)  RESET_VALUES="1"; shift ;;
     --set)           EXTRA_SET+=(--set "$2"); shift 2 ;;
     -h|--help)       grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *)               err "Unknown flag: $1"; exit 1 ;;
@@ -945,9 +954,25 @@ _DB_CKSUM="$(printf '%s' "$DB_PASSWORD" | sha256sum | cut -c1-8)"
 helm_args+=(--set "litellm.podAnnotations.db-checksum=$_DB_CKSUM")
 helm_args+=(--set "mcpGateway.podAnnotations.db-checksum=$_DB_CKSUM")
 helm_args+=("${EXTRA_SET[@]}")
-# When --reuse-values is set, inherit all previously-supplied values from the live release
-# and apply only the overrides passed on this invocation (e.g. a pure image-tag rollout).
-[[ -n "$REUSE_VALUES" ]] && helm_args+=(--reuse-values)
+# Value-preservation mode. Helm's DEFAULT on upgrade drops any value a prior release set
+# via --set/-f that this invocation does not restate, silently reverting it to the chart
+# default — a footgun that broke a live silo once (a pure `--control-plane-tag` bump reverted
+# ingress.sameOrigin/tls.secretName/gatewayProxy/tenant.gateway.trustedProxies/resource limits;
+# see the field-manager warning above). So for an UPGRADE (the release already exists) we
+# default to `--reset-then-reuse-values`: reset to the chart's built-in values (picking up any
+# new chart defaults), re-apply the last release's values, then merge this run's --set/-f on top.
+# That preserves prior overrides without staling on chart defaults. Explicit flags win:
+#   --reuse-values  → inherit last release verbatim (do NOT refresh chart defaults)
+#   --reset-values  → intentionally DROP prior overrides (start from chart defaults + this run)
+# A fresh install has nothing to reuse, so none of these apply.
+if [[ -n "$REUSE_VALUES" ]]; then
+  helm_args+=(--reuse-values)
+elif [[ -n "$RESET_VALUES" ]]; then
+  helm_args+=(--reset-values)
+elif helm status "$RELEASE" -n "$NAMESPACE" >/dev/null 2>&1; then
+  log "Existing release '$RELEASE' — using --reset-then-reuse-values so prior overrides are not silently dropped (pass --reset-values to start from chart defaults instead)."
+  helm_args+=(--reset-then-reuse-values)
+fi
 helm "${helm_args[@]}"
 
 # 4. Wait for the core workloads.
