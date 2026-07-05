@@ -162,6 +162,10 @@ website documents this as the operating model. **Implementation + Linkerd remova
   done; per-CT-scoped. Low silo impact (data source shifts only if LiteLLM/Langfuse go per-silo).
 - **S12 — Safety / guardrail stream. (FUTURE)** *(AIR.9)* Adopt an OSS guardrail service when needed;
   placement (per-silo vs main-network egress) follows the S6 substrate. No such service exists today.
+- **S13 — Cluster-based devops agents. (FUTURE, research spike)** Always-on in-cluster counterpart
+  to the `/deploy-loop` deploy fleet (PR #139): drift detection, error detection + auto-fix PRs,
+  pre-upgrade config review, data-plane/security-posture checks — read-only in the cluster, all
+  remediation via PRs/issues. Scope + guardrails + spike checklist → #141.
 
 ---
 
