@@ -46,23 +46,16 @@ the audit findings — into the key issues below.
 |-------|-------|
 | [#131](https://github.com/italanta/opencrane/issues/131) — **CLI & docs polish** (low prio) | `oc providers byok` · README component-table `docker/` fix · budget-enforcement seam wording |
 
-## Parked / not scheduled
+## Backlog — tracked, unscheduled
 
-Kept visible so nothing silently drops; none are roadmapped for the launch push.
+Everything below is issue-tracked so nothing silently drops; none are roadmapped for the launch push.
 
-- **S9 — Zot registry-only cutover** (drop `SkillBundle.content`): parked pending a verified live
-  Zot backfill (tooling ready: `oc skills backfill`).
-- **S10 — provider-secret cutover** (remove the `org-shared-secrets` `envFrom` broadcast + retire
-  `ProviderApiKey`): **BLOCKED external** — needs the OpenClaw translator-backend image change +
-  WeOwnAI off the legacy endpoint.
-- **S7 — dedicated-compute tiers & cost model** (`dedicatedNodes`/`dedicatedCluster`): deferred,
-  see `future-work.md`.
-- **S11 — fixed-model savings WeOwnAI view** (in-repo enablers done) · **S12 — guardrail stream**
-  (no OSS service adopted; design-only): future.
-- **D4/D5 — plane pooling + scale-to-zero/wake-on-access** (`docs/optimalisation-plan.md`).
-- **CONN.4/5 live gateway seams** (CP-held operator device + gateway per-device revoke): pod-delete
-  cut works today; the device-less trusted-proxy model may supersede parts — revisit with #117's
-  identity work.
-- **Ops hygiene trio:** skill-registry env still patched out-of-band on deploy · suspend self-loop
-  `observedGeneration` guard · operator auto-reconcile on config change.
-- **P4B live seams** (SDK↔live Cognee `/v1/search` verification) — exercised incrementally by #129/#130.
+| Issue | Scope | Status |
+|-------|-------|--------|
+| [#133](https://github.com/italanta/opencrane/issues/133) — **Skill-bundle registry-only cutover (S9)** | Live Zot backfill run → drop `SkillBundle.content` | Needs live infra; tooling ready (`oc skills backfill`). |
+| [#134](https://github.com/italanta/opencrane/issues/134) — **Operator & deploy ops hygiene** | Skill-registry env wiring · suspend self-loop `observedGeneration` guard · reconcile on config change | Small, anytime. |
+| [#135](https://github.com/italanta/opencrane/issues/135) — **Provider-secret cutover (S10)** | Remove `org-shared-secrets` broadcast · retire `ProviderApiKey` | **BLOCKED external** (OpenClaw translator image + WeOwnAI). |
+| [#136](https://github.com/italanta/opencrane/issues/136) — **Deferred capabilities (S7 · S12 · D4/D5)** | Dedicated-compute tiers & cost model · guardrail stream · plane pooling + scale-to-zero | Future; S11's remaining view belongs to the WeOwnAI backlog. |
+
+Folded elsewhere: CONN.4/5 device-seam kill-or-keep → **#117** · live Cognee `/v1/search`
+verification → **#130**.
