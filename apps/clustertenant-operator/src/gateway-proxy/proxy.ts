@@ -1,4 +1,4 @@
-import type { IncomingMessage } from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
 
 import type { Logger } from "pino";
@@ -31,6 +31,15 @@ export interface WsProxy
   ws(req: IncomingMessage, socket: Duplex, head: Buffer, options: { target: string; headers?: Record<string, string> }, callback: (err: Error) => void): void;
 }
 
+/** Minimal HTTP reverse-proxy surface for serving the Control UI (satisfied by `http-proxy`). */
+export interface WebProxy
+{
+  web(req: IncomingMessage, res: ServerResponse, options: { target: string }, callback: (err: Error) => void): void;
+}
+
+/** Delegated-auth resolver signature; defaults to the live control-plane call. */
+type ResolveFn = (controlPlaneUrl: string, cookie: string | undefined, host: string | undefined, signal: AbortSignal) => Promise<ResolveOutcome>;
+
 /** Dependencies for {@link _HandleUpgrade}; injectable so the handler is unit-testable. */
 export interface UpgradeDeps
 {
@@ -39,7 +48,17 @@ export interface UpgradeDeps
   limiter: FixedWindowRateLimiter;
   log: Logger;
   /** Delegated-auth resolver; defaults to the live control-plane call. */
-  resolve?: (controlPlaneUrl: string, cookie: string | undefined, host: string | undefined, signal: AbortSignal) => Promise<ResolveOutcome>;
+  resolve?: ResolveFn;
+}
+
+/** Dependencies for {@link _HandleControlUiRequest}; injectable so the handler is unit-testable. */
+export interface ControlUiDeps
+{
+  config: GatewayProxyRuntime;
+  proxy: WebProxy;
+  log: Logger;
+  /** Delegated-auth resolver; defaults to the live control-plane call. */
+  resolve?: ResolveFn;
 }
 
 /** Bound on the delegated-auth call so a slow control plane can't pin a socket open. */
@@ -182,6 +201,90 @@ export async function _HandleUpgrade(deps: UpgradeDeps, req: IncomingMessage, so
     if (!socket.destroyed)
     {
       socket.destroy();
+    }
+  });
+}
+
+/** External path prefix the Control UI static bundle is served under on the org host. */
+const _CONTROL_UI_PATH_PREFIX = "/control-ui";
+
+/**
+ * Whether an HTTP request targets the Control UI static bundle (`/control-ui/…`).
+ *
+ * Exact prefix match on the `/control-ui` segment so a sibling path (`/control-uix`)
+ * is not captured; the gateway serves the bundle under this same base path, so the
+ * URL is forwarded unchanged (no prefix strip, unlike the `/gateway` WS route).
+ *
+ * @param url - The raw request URL (path + optional query).
+ * @returns True when the request should be served by {@link _HandleControlUiRequest}.
+ */
+export function _IsControlUiRequest(url: string | undefined): boolean
+{
+  const u = url ?? "";
+  return u === _CONTROL_UI_PATH_PREFIX || u.startsWith(`${_CONTROL_UI_PATH_PREFIX}/`) || u.startsWith(`${_CONTROL_UI_PATH_PREFIX}?`);
+}
+
+/**
+ * Serve OpenClaw's Control UI static bundle by reverse-proxying `/control-ui/…` to the
+ * caller's own pod gateway (which serves the bundle under the same base path).
+ *
+ * Unlike the WS upgrade this injects NO identity/scope headers: the bundle is static
+ * and the gateway serves it without auth (auth happens on the WS the loaded app opens
+ * at `/gateway`). We still resolve the caller→pod via the control plane, so a request
+ * is only ever forwarded to that user's silo pod; and the whole org host already sits
+ * behind the ingress OIDC gate, so an unauthenticated request never reaches here.
+ *
+ * The path is forwarded unchanged (the gateway's `controlUi.basePath` is `/control-ui`).
+ * NOTE: the caller→pod resolution runs per request; the Control UI's service worker +
+ * browser cache mean this is essentially a first-load cost. A cookie→pod cache is a
+ * cheap future optimisation if that proves hot.
+ *
+ * @param deps - Injected config, HTTP proxy, logger, and (optionally) resolver.
+ * @param req  - The HTTP request.
+ * @param res  - The HTTP response.
+ */
+export async function _HandleControlUiRequest(deps: ControlUiDeps, req: IncomingMessage, res: ServerResponse): Promise<void>
+{
+  const { config, proxy, log } = deps;
+  const resolve = deps.resolve ?? _ResolveTarget;
+  const reqLog = log.child({ component: "gateway-proxy", url: req.url });
+
+  const forwardedHost = typeof req.headers["x-forwarded-host"] === "string" ? req.headers["x-forwarded-host"].split(",")[0].trim() : undefined;
+  const host = forwardedHost ?? (typeof req.headers.host === "string" ? req.headers.host : undefined);
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), _RESOLVE_TIMEOUT_MS);
+  let outcome: ResolveOutcome;
+  try
+  {
+    outcome = await resolve(config.controlPlaneUrl, req.headers.cookie, host, ac.signal);
+  }
+  finally
+  {
+    clearTimeout(timer);
+  }
+
+  if (!outcome.ok)
+  {
+    reqLog.warn({ status: outcome.status, reason: outcome.reason }, "control-ui request refused by control plane");
+    res.writeHead(outcome.status, { "content-type": "text/plain" });
+    res.end(_REASONS[outcome.status] ?? "Bad Gateway");
+    return;
+  }
+
+  const { podService } = outcome.target;
+  const target = `http://${podService.name}.${podService.namespace}.${config.clusterDomain}:${config.gatewayPort}`;
+  reqLog.info({ tenant: outcome.target.tenant.name, target }, "control-ui request authorised; proxying");
+  proxy.web(req, res, { target }, function _onProxyError(err: Error)
+  {
+    reqLog.error({ err, target }, "control-ui proxy transport error");
+    if (!res.headersSent)
+    {
+      res.writeHead(502, { "content-type": "text/plain" });
+      res.end("Bad Gateway");
+    }
+    else if (!res.writableEnded)
+    {
+      res.end();
     }
   });
 }

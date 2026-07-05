@@ -1,10 +1,10 @@
-import type { IncomingMessage } from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
 import pino from "pino";
 import { describe, expect, it, vi } from "vitest";
 
-import { _HandleUpgrade, _StripGatewayPrefix } from "../../gateway-proxy/proxy.js";
-import type { UpgradeDeps, WsProxy, GatewayProxyRuntime } from "../../gateway-proxy/proxy.js";
+import { _HandleControlUiRequest, _HandleUpgrade, _IsControlUiRequest, _StripGatewayPrefix } from "../../gateway-proxy/proxy.js";
+import type { ControlUiDeps, UpgradeDeps, WebProxy, WsProxy, GatewayProxyRuntime } from "../../gateway-proxy/proxy.js";
 import type { ResolveOutcome } from "../../gateway-proxy/auth-client.js";
 import { FixedWindowRateLimiter } from "../../gateway-proxy/rate-limit.js";
 
@@ -169,5 +169,87 @@ describe("_StripGatewayPrefix", () =>
     expect(_StripGatewayPrefix("/api")).toBe("/api");
     expect(_StripGatewayPrefix("/gateways")).toBe("/gateways"); // not the /gateway segment
     expect(_StripGatewayPrefix(undefined)).toBe("/");
+  });
+});
+
+describe("_IsControlUiRequest", () =>
+{
+  it("matches the /control-ui segment and its descendants/query", () =>
+  {
+    expect(_IsControlUiRequest("/control-ui")).toBe(true);
+    expect(_IsControlUiRequest("/control-ui/")).toBe(true);
+    expect(_IsControlUiRequest("/control-ui/assets/index-a1.js")).toBe(true);
+    expect(_IsControlUiRequest("/control-ui?x=1")).toBe(true);
+  });
+
+  it("does not match a sibling path, the WS route, or health probes", () =>
+  {
+    expect(_IsControlUiRequest("/control-uix")).toBe(false);
+    expect(_IsControlUiRequest("/gateway")).toBe(false);
+    expect(_IsControlUiRequest("/api")).toBe(false);
+    expect(_IsControlUiRequest("/healthz")).toBe(false);
+    expect(_IsControlUiRequest(undefined)).toBe(false);
+  });
+});
+
+/** A fake HTTP proxy recording forward targets + injected options. */
+function _fakeWebProxy(): WebProxy & { targets: string[]; options: Array<{ target: string; headers?: Record<string, string> }> }
+{
+  const targets: string[] = [];
+  const options: Array<{ target: string; headers?: Record<string, string> }> = [];
+  return {
+    targets,
+    options,
+    web(_req, _res, opts) { targets.push(opts.target); options.push(opts as { target: string; headers?: Record<string, string> }); }
+  };
+}
+
+/** A fake ServerResponse recording status + headersSent. */
+function _fakeRes(): ServerResponse & { status: number | null; headersSent: boolean; ended: boolean }
+{
+  const res = {
+    status: null as number | null,
+    headersSent: false,
+    ended: false,
+    writeHead(status: number) { (res as { status: number | null }).status = status; (res as { headersSent: boolean }).headersSent = true; return res; },
+    end() { (res as { ended: boolean }).ended = true; return res; }
+  };
+  return res as unknown as ServerResponse & { status: number | null; headersSent: boolean; ended: boolean };
+}
+
+describe("_HandleControlUiRequest (Control UI static bundle)", () =>
+{
+  function _controlUiDeps(resolve: ControlUiDeps["resolve"]): { deps: ControlUiDeps; proxy: ReturnType<typeof _fakeWebProxy> }
+  {
+    const proxy = _fakeWebProxy();
+    return { deps: { config: baseConfig, proxy, log, resolve }, proxy };
+  }
+
+  function _httpReq(url: string, headers: Record<string, string | undefined> = {}): IncomingMessage
+  {
+    return { headers: { host: "acme.opencrane.ai", cookie: "sid=x", ...headers }, url, socket: { remoteAddress: "10.0.0.1" } } as unknown as IncomingMessage;
+  }
+
+  it("proxies to the caller's pod gateway over HTTP with NO identity/scope injection", async () =>
+  {
+    const resolve = vi.fn().mockResolvedValue(okTarget);
+    const { deps, proxy } = _controlUiDeps(resolve);
+
+    await _HandleControlUiRequest(deps, _httpReq("/control-ui/assets/index-a1.js"), _fakeRes());
+
+    expect(proxy.targets).toEqual(["http://openclaw-alice.opencrane-acme.svc.cluster.local:18789"]);
+    // Static bundle: no X-Forwarded-User / x-openclaw-scopes on the forward.
+    expect(proxy.options[0]?.headers).toBeUndefined();
+  });
+
+  it("refuses with the control plane's status when resolution fails", async () =>
+  {
+    const { deps, proxy } = _controlUiDeps(vi.fn().mockResolvedValue({ ok: false, status: 403, reason: "no tenant" } as ResolveOutcome));
+    const res = _fakeRes();
+
+    await _HandleControlUiRequest(deps, _httpReq("/control-ui/"), res);
+
+    expect(res.status).toBe(403);
+    expect(proxy.targets).toEqual([]);
   });
 });

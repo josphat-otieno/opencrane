@@ -5,8 +5,8 @@ import type { Duplex } from "node:stream";
 import httpProxy from "http-proxy";
 import type { Logger } from "pino";
 
-import { _HandleUpgrade } from "./proxy.js";
-import type { GatewayProxyRuntime, WsProxy } from "./proxy.js";
+import { _HandleControlUiRequest, _HandleUpgrade, _IsControlUiRequest } from "./proxy.js";
+import type { ControlUiDeps, GatewayProxyRuntime, WebProxy, WsProxy } from "./proxy.js";
 import { FixedWindowRateLimiter } from "./rate-limit.js";
 
 /** Everything the in-operator proxy server needs, derived from the operator config. */
@@ -59,6 +59,7 @@ export class GatewayProxyServer
 
     const limiter = new FixedWindowRateLimiter(this.config.rateLimitPerMinute);
     const deps = { config: this.config, proxy: proxy as unknown as WsProxy, limiter, log: this.log };
+    const controlUiDeps: ControlUiDeps = { config: this.config, proxy: proxy as unknown as WebProxy, log: this.log };
 
     const server = createServer((req: IncomingMessage, res: ServerResponse) =>
     {
@@ -66,6 +67,21 @@ export class GatewayProxyServer
       {
         res.writeHead(200, { "content-type": "text/plain" });
         res.end("ok");
+        return;
+      }
+      // Serve the Control UI static bundle (so the org SPA can embed it) by proxying
+      // to the caller's pod gateway; static assets, so no identity/scope injection.
+      if (_IsControlUiRequest(req.url))
+      {
+        void _HandleControlUiRequest(controlUiDeps, req, res).catch((err: unknown) =>
+        {
+          this.log.error({ err }, "unhandled error in control-ui request handler");
+          if (!res.headersSent)
+          {
+            res.writeHead(502, { "content-type": "text/plain" });
+            res.end("Bad Gateway");
+          }
+        });
         return;
       }
       res.writeHead(404, { "content-type": "text/plain" });
