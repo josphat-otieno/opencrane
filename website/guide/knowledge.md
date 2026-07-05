@@ -21,25 +21,14 @@ with citations**, instead of guessing.
 So every assistant behaves the same way when it looks things up — same rules for
 which sources to use, when to cite, and how fresh information must be — OpenCrane
 applies a shared set of rules across the fleet. You roll changes out gradually (to a
-few assistants first, then everyone) and can undo in one step:
-
-```bash
-oc awareness rollout show
-oc awareness rollout set <version> --waves engineering,sales
-oc awareness rollout promote
-oc awareness rollout rollback
-```
+few assistants first, then everyone) and can undo in one step. Manage this from the
+command line — see [CLI reference → `oc awareness`](/reference/cli#oc-awareness).
 
 ## Keep contexts from bleeding together
 
 To stop one project's context from leaking into an unrelated chat, you can pin a
-conversation to a scope:
-
-```bash
-oc sessions scope set <session> --principal alice --scope project:acme
-oc sessions scope show <session>
-oc sessions scope clear <session>
-```
+conversation to a scope. Manage this from the command line — see
+[CLI reference → `oc sessions`](/reference/cli#oc-sessions).
 
 ## Going deeper
 

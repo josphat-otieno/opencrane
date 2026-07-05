@@ -10,31 +10,18 @@ see "an MCP server," read it as "one connected tool."
 
 ## Connect a tool
 
-Register the tool once, by name and address:
-
-```bash
-oc mcp create --name slack --endpoint https://slack-mcp.internal
-oc mcp list
-oc mcp get <id>
-```
+Register the tool once, by name and address. Manage this from the command line —
+see [CLI reference → `oc mcp`](/reference/cli#oc-mcp).
 
 ## Give it credentials (safely)
 
 A tool usually needs to authenticate to the system it talks to. OpenCrane stores and
 brokers those credentials **for** the assistant — they're never handed to the
-assistant or the browser:
+assistant or the browser. Two modes are available:
 
-```bash
-# Per-user sign-in (each person authorizes with their own account):
-oc mcp cred add <id> --display-name "Slack (per user)" --mode obo
-
-# Or a single shared credential:
-oc mcp cred add <id> --display-name "Shared key" --mode static --secret-ref my-secret
-```
-
-- **`obo`** ("on behalf of") — each person connects with their own account, so the
+- **Per-user sign-in** — each person authorises with their own account, so the
   assistant acts as *them*.
-- **`static`** — one shared credential for everyone.
+- **Shared credential** — one credential used on behalf of everyone.
 
 ## Decide who can use it
 

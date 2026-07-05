@@ -46,18 +46,11 @@ oc platform dns set \
   --token-file ./cloudflare-token.txt
 ```
 
-- `--provider` — your DNS host (`cloudflare`, `route53`, `digitalocean`, …)
-- `--zone` — the domain being secured
-- `--email` — where Let's Encrypt sends renewal notices
-- `--token-file` — a file holding an API token scoped to edit that zone
-
-Check it anytime:
-
-```bash
-oc platform dns show
-```
-
-Certificates renew automatically from here on.
+Point `--provider` at your DNS host, `--zone` at the domain being secured, `--email`
+at where Let's Encrypt should send renewal notices, and `--token-file` at a file
+holding an API token scoped to edit that zone. Certificates renew automatically from
+here on; check the configuration anytime with `oc platform dns show`. Full flag
+reference: [CLI reference → `oc platform dns`](/reference/cli#oc-platform-dns).
 
 ::: tip Just testing locally?
 On a laptop install you can skip all of this — local mode doesn't need real DNS or

@@ -18,28 +18,15 @@ oc tenants create \
 That's it — Alice's assistant is now live. She can [sign in and use](/guide/connect) it
 at your organisation's address (e.g. `https://acme.<your-domain>`).
 
-You can set a few things up front:
-
-```bash
-oc tenants create \
-  --name alice \
-  --display-name "Alice Smith" \
-  --email alice@example.com \
-  --team engineering \      # the team she belongs to
-  --budget 50               # monthly spend cap, in USD
-```
-
-The `--team` label is how you group people — see [Organize your company](/guide/organize).
+You can also set a few things up front — which team she belongs to (see
+[Organize your company](/guide/organize)) and a monthly spend cap (see
+[Manage cost](/guide/budgets)).
 
 ## Manage assistants
 
-```bash
-oc tenants list             # everyone's assistants
-oc tenants get alice        # details for one
-oc tenants suspend alice    # pause it (frees resources)
-oc tenants resume alice     # bring it back
-oc tenants delete alice     # remove it
-```
+Once created, you can list everyone's assistants, look up one person's details, pause
+an assistant to free resources, bring it back, or remove it altogether. Manage this
+from the command line — see [CLI reference → `oc tenants`](/reference/cli#oc-tenants).
 
 ## What's next
 
