@@ -94,7 +94,12 @@ runtime contract governs whether the skill mechanism is active at all — see
 - ✅ Catalog CRUD, scan (Grype/Trivy) + promote gate, entitlement grants, audit.
 - ✅ Skill Registry delivery app: TokenReview + proxy, scan/entitlement gates,
   existence-hiding, per-read delivery.
-- 🔶 OCI/ORAS (Zot) digest-pinned bundle storage is the longer-term design; today
-  bundle `content` is served from the control-plane DB through the registry, not an OCI
-  registry. The `digest` field already pins identity, so the storage backend can change
-  without altering the delivery contract.
+- 🔶 OCI/ORAS (Zot) digest-pinned bundle storage: **built, gated; cutover in
+  progress.** The store, dual-write on publish, digest-verified delivery, and a
+  backfill tool for existing bundles all exist behind
+  `skillRegistry.ociStore.enabled` (default `false` — see
+  [skill-oci-store.yaml](https://github.com/italanta/opencrane/blob/main/apps/clustertenant-platform/templates/skill-oci-store.yaml)),
+  so today bundle `content` is still served from the control-plane DB through the
+  registry. The `digest` field already pins identity, so flipping the flag changes
+  only the storage backend, not the delivery contract. Tracked in
+  [issue #133](https://github.com/italanta/opencrane/issues/133).

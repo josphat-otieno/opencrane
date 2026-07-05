@@ -9,25 +9,13 @@ once, then share it with whoever should have it.
 Skills live in your own catalog. OpenCrane keeps each one **versioned** and
 **security-scanned**, and only delivers it to assistants you've allowed.
 
-## See the catalog
+## See the catalog and add a skill
 
-```bash
-oc skills list
-oc skills get <id>
-```
-
-## Add a skill
-
-```bash
-oc skills create \
-  --name sales-follow-up \
-  --version 1.0.0 \
-  --digest sha256:… \
-  --scope personal
-```
-
+Browse what's already there, or add a new one by name, version, and starting scope.
 A skill is added in **draft** and must pass a **security scan** before it can go live —
 so an unsafe skill never reaches an assistant.
+
+Manage this from the command line — see [CLI reference → `oc skills`](/reference/cli#oc-skills).
 
 ## Share it more widely (promotion)
 

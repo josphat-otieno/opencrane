@@ -195,6 +195,40 @@ Shadow-savings measurement pipeline: eval cases, measurements, proposals, recomm
 | `GET` | `/model-routing/defaults` | Get default model routing settings |
 | `PUT` | `/model-routing/defaults` | Update default model routing settings |
 
+:::: details How the effective model is resolved
+At call time the control plane walks this precedence and writes the winner into the
+tenant's effective contract — no pod restart:
+
+```
+explicit request override
+  → skill-pinned model
+    → skill auto-config
+      → ClusterTenant default
+        → Global default
+```
+
+Each tenant's LiteLLM virtual key carries a `models[]` allowlist, populated from the
+registry at key-mint time and kept in sync by the operator's reconcile loop. A call to
+a model outside the allowlist is rejected at the gateway.
+
+**How measurement estimates savings.** A run replays every eval case through both the
+baseline and the candidate model, grades each output with an independent judge model,
+reads the real per-call USD cost from LiteLLM, and estimates the saving with a
+bootstrap 95% confidence interval. A proposal is emitted only when that interval
+excludes zero.
+
+The measurement seams are **live** — they require a deployed LiteLLM, provider keys,
+and a `ROUTING_JUDGE_MODEL`. With any unset, a run is a safe no-op. Full operator
+recipe: [`docs/operators/routing-measurement.md`](https://github.com/italanta/opencrane/blob/main/docs/operators/routing-measurement.md).
+
+::: warning Trust the judge, but verify it
+Keep the judge model independent of the candidate's family — a model graded by a
+sibling of itself scores too highly. LLM-as-judge grading also carries position and
+verbosity bias, so calibrate against a small human-graded slice before trusting the
+absolute savings figure.
+:::
+::::
+
 ### Sharing
 
 Inter-user entitlement sharing (MCP servers, skill bundles) and direct resource sharing (files, chats, datasets).

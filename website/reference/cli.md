@@ -123,13 +123,23 @@ These commands manage resources in a silo's clustertenant-manager. Set `OPENCRAN
 
 ### `oc tenants`
 
-Manage tenant lifecycle.
+Manage tenant lifecycle — a tenant is one person's employee assistant.
 
 ```
 oc tenants list                         List all tenants
+  --cluster-tenant <name>               Only list tenants attached to this parent ClusterTenant (customer)
+
 oc tenants get <name>                   Get a tenant by name
-oc tenants create                       Create a tenant (reads JSON from stdin)
-oc tenants update <name>                Update a tenant (reads JSON from stdin)
+oc tenants create                       Create a new tenant
+  --name <name>                         Tenant name (must be a valid DNS label)
+  --display-name <displayName>          Human-readable display name
+  --email <email>                       Contact email for the tenant
+  --team <team>                         Team name
+  --cluster-tenant <name>               Parent ClusterTenant (customer) to attach this tenant to
+  --budget <usd>                        Monthly budget ceiling in USD
+  --policy-ref <policyRef>              AccessPolicy name to attach
+
+oc tenants update <name>                Update a tenant (same flags as create, all optional)
 oc tenants delete <name>                Delete a tenant
 oc tenants suspend <name>               Suspend a tenant pod
 oc tenants resume <name>                Resume a suspended tenant
@@ -142,14 +152,31 @@ oc tenants contract <name>              Print the compiled effective runtime con
 
 ### `oc policies`
 
-Manage AccessPolicy resources.
+Manage AccessPolicy resources — network/tool egress guardrails.
 
 ```
 oc policies list                        List all access policies
 oc policies get <name>                  Get a policy by name
-oc policies create                      Create a policy (reads JSON from stdin)
-oc policies update <name>               Update a policy (reads JSON from stdin)
+oc policies create                      Create a policy
+  --body <json>                         JSON payload for the policy spec
+
+oc policies update <name>               Update a policy
+  --body <json>                         JSON payload for the policy spec update
+
 oc policies delete <name>               Delete a policy
+oc policies drift                       Report drift between policy CRDs and PostgreSQL projections
+oc policies repair                      Repair drifted policy projections (dry-run unless --apply)
+```
+
+Example payload — `defaultDeny: true` means "block everything except what's listed",
+the safest starting point:
+
+```bash
+oc policies create --body '{
+  "name": "default-egress",
+  "domains": { "allow": ["*.example.com", "api.openai.com"], "defaultDeny": true },
+  "mcpServers": { "deny": ["risky-tool"] }
+}'
 ```
 
 ---
@@ -161,10 +188,30 @@ Manage MCP server registrations.
 ```
 oc mcp list                             List MCP servers
 oc mcp get <id>                         Get an MCP server
-oc mcp create                           Register an MCP server (reads JSON from stdin)
-oc mcp update <id>                      Update an MCP server (reads JSON from stdin)
-oc mcp delete <id>                      Delete an MCP server
+oc mcp create                           Register an MCP server
+  --name <name>                         Display name
+  --endpoint <endpoint>                 Server endpoint URL
+  --transport <transport>               Transport: streamable-http|sse|websocket (default: streamable-http)
+  --body <json>                         Full JSON payload (overrides individual flags)
+
+oc mcp update <id>                      Update an MCP server (pass --body JSON or individual flags)
+oc mcp delete <id>                      Delete an MCP server and its linked grants
 ```
+
+Brokered downstream credentials — how the server authenticates to the system it talks to:
+
+```
+oc mcp cred list <serverId>             List the brokered credentials of an MCP server
+oc mcp cred add <serverId>              Add a brokered credential
+  --display-name <name>                 Operator-facing credential label
+  --mode <mode>                         Brokering mode: static|obo (default: static)
+  --secret-ref <ref>                    Secret reference (required for --mode static, omit for obo)
+
+oc mcp cred rm <serverId> <credentialId>   Remove a brokered credential from an MCP server
+```
+
+`static` uses one shared credential for everyone; `obo` ("on behalf of") has each
+person authorise with their own account, so the assistant acts as *them*.
 
 ---
 
@@ -232,7 +279,8 @@ oc tokens delete <id>                   Revoke an access token
 
 ### `oc providers`
 
-Manage provider API keys (e.g. OpenAI, Anthropic).
+Manage provider API keys (e.g. OpenAI, Anthropic). Backed by `/api/v1/providers/keys`,
+a database-backed credential store (`ProviderApiKey`).
 
 ```
 oc providers list                       List configured provider keys (status only — key is never returned)
@@ -240,9 +288,20 @@ oc providers set <provider> <key>       Set a provider key by name and value
 oc providers delete <provider>          Remove a provider key
 ```
 
-::: info BYOK (raw upstream keys)
-Setting a raw upstream provider key for the whole silo is an org-admin API action — use
-`PUT /api/v1/providers/byok/:provider`. See [Manage cost](/guide/budgets#bring-your-own-provider-key-byok) for details.
+::: info BYOK is a separate, API-only path
+BYOK (bring your own key) provisions one **raw upstream key per provider for the whole
+silo**, written into a Kubernetes Secret and registered with LiteLLM — a different
+mechanism from `oc providers` above, and not (yet) wrapped by an `oc` sub-command:
+
+```
+PUT    /api/v1/providers/byok/:provider   Set or refresh the raw provider key
+GET    /api/v1/providers/byok             List configured BYOK providers (presence + timestamps, no key material)
+DELETE /api/v1/providers/byok/:provider   Remove a provider key
+```
+
+Supported provider values are defined in the `ByokProvider` contract enum (e.g.
+`openai`, `anthropic`). The mutation requires an IdP-verified org-admin identity.
+See [Manage cost](/guide/budgets#bring-your-own-provider-key-byok) for when to use it.
 :::
 
 ---
@@ -416,6 +475,22 @@ oc awareness rollout resolve <tenant>   Resolve the contract version a tenant ru
 
 oc awareness participation              Fleet participation health
   --severity <severity>                 Filter: critical|warning
+```
+
+---
+
+### `oc sessions`
+
+Bind, inspect, or clear a chat session's awareness scope, so one project's context
+can't spill into an unrelated chat.
+
+```
+oc sessions scope set <sessionKey>      Bind a session's scope (control plane intersects it with the principal's entitlements)
+  --principal <principal>               Tenant/user that owns the session
+  --scope <level:payloadId...>          Scope selector(s), repeatable: org|department|project|personal:<payloadId>
+
+oc sessions scope show <sessionKey>     Inspect a session's current scope binding
+oc sessions scope clear <sessionKey>    Clear a session's scope binding
 ```
 
 ---
