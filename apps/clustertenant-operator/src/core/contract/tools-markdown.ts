@@ -47,15 +47,43 @@ function _renderSection(title: string, entries: ToolEntry[], emptyNote: string):
 }
 
 /**
+ * The org-memory section, emitted when Cognee is wired for the fleet. Describes the
+ * always-available local `memory_search` tool so the contract-derived TOOLS.md keeps
+ * the agent aware of its org memory — otherwise the poll loop's regenerated doc would
+ * silently drop the section the static L0 template carries.
+ */
+const _ORG_MEMORY_SECTION = [
+  "## Org memory (Cognee)",
+  "",
+  "- **memory_search** — retrieve organisational memory (company documents, prior decisions, " +
+    "project facts) from the Cognee knowledge graph. A local, in-pod tool that queries Cognee " +
+    "directly (not via the Obot gateway), so it is always available. Results are scope-aware, " +
+    "permission-filtered, and every one carries a citation. Prefer it over personal MEMORY.md " +
+    "for org-wide facts.",
+  "- **memory_remember** — persist a generalizable learning back to org memory (`content`, " +
+    "`title`, `scope`, optional `subject`/`sensitivityTags`). Use for durable org/domain facts " +
+    "other agents would want — NOT personal style, this user's preferences, or transient task " +
+    "state (those stay in MEMORY.md). Remembered facts are attributed to you.",
+].join("\n");
+
+/** Options controlling optional sections of the generated `TOOLS.md`. */
+export interface RenderToolsOptions
+{
+  /** Emit the org-memory (`memory_search`) section — set when Cognee is wired for the fleet. */
+  orgMemory?: boolean;
+}
+
+/**
  * Render the tenant's `TOOLS.md` workspace doc from its entitled MCP servers and
  * skills. Pure and deterministic: identical inputs always produce identical output
  * so the in-pod content diff only fires on a real entitlement change.
  *
  * @param servers - Entitled MCP servers (allow-decided by the grant compiler).
  * @param skills  - Entitled skill bundles (allow-decided by the grant compiler).
+ * @param options - Optional sections (e.g. org memory when Cognee is wired).
  * @returns The full `TOOLS.md` markdown document.
  */
-export function _RenderToolsMarkdown(servers: ToolEntry[], skills: ToolEntry[]): string
+export function _RenderToolsMarkdown(servers: ToolEntry[], skills: ToolEntry[], options: RenderToolsOptions = {}): string
 {
   // 1. MCP servers the agent may reach through the Obot gateway (allow-decided).
   const mcpSection = _renderSection("MCP servers", servers, "No MCP servers are currently entitled.");
@@ -63,6 +91,9 @@ export function _RenderToolsMarkdown(servers: ToolEntry[], skills: ToolEntry[]):
   // 2. Skills mounted into the agent workspace.
   const skillsSection = _renderSection("Skills", skills, "No skills are currently entitled.");
 
-  // 3. Assemble with a trailing newline so POSIX tools (and git) treat it as a text file.
-  return `${_PREAMBLE}\n\n${mcpSection}\n\n${skillsSection}\n`;
+  // 3. Org memory (local memory_search tool) — only when Cognee is wired for the fleet.
+  const orgMemorySection = options.orgMemory ? `\n\n${_ORG_MEMORY_SECTION}` : "";
+
+  // 4. Assemble with a trailing newline so POSIX tools (and git) treat it as a text file.
+  return `${_PREAMBLE}\n\n${mcpSection}\n\n${skillsSection}${orgMemorySection}\n`;
 }

@@ -70,6 +70,18 @@ export function _BuildDeployment(config: OpenClawTenantOperatorConfig, stateVolu
     { name: "TMPDIR", value: "/tmp" },
     { name: "NPM_CONFIG_CACHE", value: "/tmp/npm-cache" },
     ...(config.liteLlmEnabled ? [{ name: "LITELLM_ENDPOINT", value: config.liteLlmEndpoint }] : []),
+    // Org-memory backend. When Cognee is wired at the cluster level, the pod's `@opencrane/awareness`
+    // client retrieves org context DIRECTLY from its per-tenant Cognee (no control-plane mediation in
+    // the hot path — see libs/awareness). `OPENCRANE_MEMORY_BACKEND=cognee` is the explicit signal the
+    // runtime/workspace docs key off; both are injected only when configured so a Cognee-less
+    // deployment renders byte-for-byte unchanged and the runtime cleanly falls back to workspace-file
+    // memory (the docs treat an unset backend as `workspace`).
+    ...(config.cogneeEndpoint
+      ? [
+          { name: "OPENCRANE_MEMORY_BACKEND", value: "cognee" },
+          { name: "COGNEE_ENDPOINT", value: config.cogneeEndpoint },
+        ]
+      : []),
     ...(tenant.spec.team ? [{ name: "OPENCRANE_TEAM", value: tenant.spec.team }] : []),
     ...(tenant.spec.policyRef ? [{ name: "OPENCRANE_POLICY_REF", value: tenant.spec.policyRef }] : []),
     // Gateway auth is trusted-proxy (OC-2 / CONN.4), configured in openclaw.json

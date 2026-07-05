@@ -45,6 +45,15 @@ describe("openclaw.json render contract — zod schema (task_d611ab4d)", functio
     expect(parsed.success, parsed.success ? "" : JSON.stringify(parsed.error?.issues, null, 2)).toBe(true);
   });
 
+  it("validates the Cognee-wired config (mcp.servers block) against the schema", function _mcpOk()
+  {
+    // Exercise the optional `mcp` branch so the local org-memory stdio server shape is covered.
+    const cogneeConfig = { ...defaultConfig, cogneeEndpoint: "http://cognee:8000" };
+    const configMap = _BuildConfigMap(cogneeConfig, _makeTenant("contract"), "default");
+    const parsed = _OpenclawConfigSchema.safeParse(JSON.parse(configMap.data?.["openclaw.json"] ?? "{}"));
+    expect(parsed.success, parsed.success ? "" : JSON.stringify(parsed.error?.issues, null, 2)).toBe(true);
+  });
+
   it("never leaks the internal trustNothing flag into the gateway block", function _noTrustNothing()
   {
     // The exact f6afafd regression: trustNothing is operator-internal, not an

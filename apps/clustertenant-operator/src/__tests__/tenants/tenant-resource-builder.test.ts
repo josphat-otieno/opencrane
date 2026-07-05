@@ -220,6 +220,11 @@ describe("TenantResourceBuilder", () =>
     expect(data["TOOLS.md"]).toContain("OPENCRANE_MCP_GATEWAY_URL");
     expect(data["TOOLS.md"]).toContain("OPENCRANE_SKILL_REGISTRY_URL");
 
+    // Both platform docs must make the agent AWARE of the Cognee org-memory layer.
+    expect(data["AGENTS.md"]).toContain("OPENCRANE_MEMORY_BACKEND");
+    expect(data["AGENTS.md"]).toContain("Cognee");
+    expect(data["TOOLS.md"]).toContain("Org Memory (Cognee)");
+
     // L2 seed files must have non-empty content.
     expect(data["SOUL.md.seed"]!.length).toBeGreaterThan(0);
     expect(data["IDENTITY.md.seed"]!.length).toBeGreaterThan(0);
@@ -241,6 +246,75 @@ describe("TenantResourceBuilder", () =>
     expect(runtimeContract.policy.mcpServers).toBeUndefined();
     expect(runtimeContract.mcp.servers).toEqual([]);
     expect(runtimeContract.skills.entitled).toEqual([]);
+  });
+
+  it("advertises workspace-only org memory when Cognee is not configured", () =>
+  {
+    const tenant = _makeTenant("no-cognee");
+    const configMap = _BuildConfigMap(defaultConfig, tenant, "default");
+    const runtimeContract = JSON.parse(configMap.data?.["opencrane-managed-runtime.json"] ?? "{}");
+
+    // Cognee-less deployment: the contract must declare the workspace fallback and carry no endpoint.
+    expect(runtimeContract.memory).toEqual({ backend: "workspace" });
+  });
+
+  it("advertises the Cognee org-memory backend when configured", () =>
+  {
+    const cogneeConfig = { ...defaultConfig, cogneeEndpoint: "http://cognee:8000" };
+    const tenant = _makeTenant("with-cognee");
+    const configMap = _BuildConfigMap(cogneeConfig, tenant, "default");
+    const runtimeContract = JSON.parse(configMap.data?.["opencrane-managed-runtime.json"] ?? "{}");
+
+    expect(runtimeContract.memory.backend).toBe("cognee");
+    expect(runtimeContract.memory.endpoint).toBe("http://cognee:8000");
+    // Stamped so the pod's awareness client can reason about contract skew.
+    expect(typeof runtimeContract.memory.contractVersion).toBe("string");
+  });
+
+  it("registers the local org-memory MCP server only when Cognee is configured", () =>
+  {
+    const tenant = _makeTenant("mcp-mem");
+
+    // Unset ⇒ no mcp block leaks into openclaw.json (byte-for-byte unchanged path).
+    const bare = JSON.parse(_BuildConfigMap(defaultConfig, tenant, "default").data?.["openclaw.json"] ?? "{}");
+    expect(bare.mcp).toBeUndefined();
+
+    // Configured ⇒ OpenClaw is told to spawn the local org-memory server over stdio.
+    const cogneeConfig = { ...defaultConfig, cogneeEndpoint: "http://cognee:8000" };
+    const wired = JSON.parse(_BuildConfigMap(cogneeConfig, tenant, "default").data?.["openclaw.json"] ?? "{}");
+    expect(wired.mcp.servers["org-memory"]).toEqual({ command: "node", args: ["/opt/org-memory-mcp/dist/index.js"] });
+  });
+
+  it("preserves a tenant's own mcp.servers while forcing org-memory in", () =>
+  {
+    const cogneeConfig = { ...defaultConfig, cogneeEndpoint: "http://cognee:8000" };
+    const tenant = _makeTenant("mcp-merge", {
+      configOverrides: { mcp: { servers: { custom: { command: "true", args: [] } } } },
+    });
+    const cfg = JSON.parse(_BuildConfigMap(cogneeConfig, tenant, "default").data?.["openclaw.json"] ?? "{}");
+
+    // Tenant server survives, and the platform org-memory server is merged in on top.
+    expect(cfg.mcp.servers.custom).toEqual({ command: "true", args: [] });
+    expect(cfg.mcp.servers["org-memory"].args).toEqual(["/opt/org-memory-mcp/dist/index.js"]);
+  });
+
+  it("injects the Cognee org-memory env only when configured", () =>
+  {
+    const cogneeConfig = { ...defaultConfig, cogneeEndpoint: "http://cognee:8000" };
+    const tenant = _makeTenant("cognee-env");
+    const stateVolume = onPremAdapter.buildStateVolume("cognee-env");
+
+    // Unset ⇒ no Cognee env leaks into the pod (byte-for-byte unchanged path).
+    const bare = _BuildDeployment(defaultConfig, stateVolume, tenant, "default");
+    const bareEnv = Object.fromEntries((bare.spec?.template?.spec?.containers?.[0]?.env ?? []).map((e) => [e.name ?? "", e.value ?? ""]));
+    expect(bareEnv.COGNEE_ENDPOINT).toBeUndefined();
+    expect(bareEnv.OPENCRANE_MEMORY_BACKEND).toBeUndefined();
+
+    // Configured ⇒ both the endpoint and the explicit backend signal are injected.
+    const wired = _BuildDeployment(cogneeConfig, stateVolume, tenant, "default");
+    const wiredEnv = Object.fromEntries((wired.spec?.template?.spec?.containers?.[0]?.env ?? []).map((e) => [e.name ?? "", e.value ?? ""]));
+    expect(wiredEnv.COGNEE_ENDPOINT).toBe("http://cognee:8000");
+    expect(wiredEnv.OPENCRANE_MEMORY_BACKEND).toBe("cognee");
   });
 
   it("builds Deployment with PVC volume on-prem", () =>

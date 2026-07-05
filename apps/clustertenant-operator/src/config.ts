@@ -152,6 +152,16 @@ export interface OpenClawTenantOperatorConfig
   skillRegistryUrl: string;
 
   /**
+   * In-cluster per-tenant Cognee base URL (e.g. `http://cognee:8000`), injected into tenant
+   * pods as `COGNEE_ENDPOINT` so the OpenClaw runtime's `@opencrane/awareness` org-memory client
+   * can retrieve org context directly (no control-plane mediation in the hot path — see
+   * `libs/awareness`). Empty string ⇒ Cognee is not wired into the pod and the runtime falls back
+   * to workspace-file memory only; this mirrors the control-plane's "skip when unset" grant-sync
+   * behaviour so a Cognee-less deployment stays byte-for-byte unchanged.
+   */
+  cogneeEndpoint: string;
+
+  /**
    * The operator's OWN in-pod internal API base — the second (internal) listener. Used by the
    * operator's reconcile fetches (tenant-models). Defaults to `http://localhost:<internalPort>`;
    * the internal routes are NOT on the public listener, so this must target the internal port.
@@ -265,6 +275,7 @@ export function _LoadOperatorConfig(): OpenClawTenantOperatorConfig
     defaultTenantPolicyRef: _readEnvValue<string>("DEFAULT_TENANT_POLICY_REF", "string", false, ""),
     mcpGatewayUrl: _readEnvValue<string>("MCP_GATEWAY_URL", "string", false, `http://opencrane-mcp-gateway.${ownNamespace}.svc:8080`),
     skillRegistryUrl: _readEnvValue<string>("SKILL_REGISTRY_URL", "string", false, `http://opencrane-skill-registry.${ownNamespace}.svc:5000`),
+    cogneeEndpoint: _readEnvValue<string>("COGNEE_ENDPOINT", "string", false, ""),
     internalPort: _readEnvValue<number>("INTERNAL_PORT", "number", false, 8081),
     controlPlaneInternalUrl: _readEnvValue<string>("CLUSTERTENANT_MANAGER_INTERNAL_URL", "string", false, "http://localhost:8081"),
     controlPlaneInternalServiceUrl: _readEnvValue<string>("CLUSTERTENANT_MANAGER_INTERNAL_SERVICE_URL", "string", false, `http://opencrane-clustertenant-manager.${ownNamespace}.svc:8081`),

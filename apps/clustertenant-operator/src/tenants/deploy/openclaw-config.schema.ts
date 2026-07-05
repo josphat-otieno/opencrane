@@ -172,6 +172,38 @@ const _agentsSchema = z
   .passthrough();
 
 /**
+ * A single `mcp.servers` entry. INFERRED shape (docs: configuration-reference): a LOCAL
+ * server uses `command` + `args` (stdio transport); a REMOTE server uses `url` + `transport`
+ * ("streamable-http"/"sse"). Common optional fields (headers, toolFilter, timeouts) are tolerated
+ * via `.passthrough()` rather than pinned. The operator only emits the local `command`/`args` form
+ * (the org-memory server OpenClaw spawns over stdio — see 2-config-map.ts).
+ */
+const _mcpServerSchema = z
+  .object({
+    /** Executable to spawn for a local stdio server (e.g. `node`). */
+    command: z.string().optional(),
+    /** Arguments for the spawned local server. */
+    args: z.array(z.string()).optional(),
+    /** Endpoint URL for a remote server. */
+    url: z.string().optional(),
+    /** Remote transport kind. */
+    transport: z.enum(["streamable-http", "sse"]).optional(),
+  })
+  .passthrough();
+
+/**
+ * MCP block. Optional (present only when the operator wires a local server such as org-memory).
+ * `.passthrough()` at the block level tolerates any sibling MCP keys OpenClaw accepts; the server
+ * map is `id → entry`.
+ */
+const _mcpSchema = z
+  .object({
+    /** Server id → server config map. */
+    servers: z.record(z.string(), _mcpServerSchema),
+  })
+  .passthrough();
+
+/**
  * Top-level `openclaw.json` schema for the operator-emitted config. `.passthrough()`
  * at the root tolerates tenant `configOverrides` adding non-platform top-level keys
  * (which is supported), while the nested `gateway` block stays `.strict()` — exactly
@@ -185,5 +217,7 @@ export const _OpenclawConfigSchema = z
     models: _modelsSchema.optional(),
     /** Agents block carrying the platform-pinned defaults. */
     agents: _agentsSchema,
+    /** Optional MCP block (present only when a local server such as org-memory is wired). */
+    mcp: _mcpSchema.optional(),
   })
   .passthrough();

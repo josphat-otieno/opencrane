@@ -33,6 +33,13 @@ OPENCRANE_TENANT_MCP_DENY="${OPENCRANE_TENANT_MCP_DENY:-}"
 # skill-registry, authenticating with the audience-bound projected SA token.
 OPENCRANE_SKILL_REGISTRY_URL="${OPENCRANE_SKILL_REGISTRY_URL:-}"
 OPENCRANE_SKILL_REGISTRY_TOKEN_PATH="${OPENCRANE_SKILL_REGISTRY_TOKEN_PATH:-/var/run/opencrane/tokens/skill-registry.token}"
+# Mandatory platform backends (decided, not optional). Org memory is Cognee; model routing is the
+# LiteLLM proxy. The workspace docs state these as facts, so a pod that boots without them is
+# MISCONFIGURED — the preflight below surfaces that loudly instead of letting the runtime silently
+# degrade to workspace-only memory or a keyless model fallback.
+OPENCRANE_MEMORY_BACKEND="${OPENCRANE_MEMORY_BACKEND:-}"
+COGNEE_ENDPOINT="${COGNEE_ENDPOINT:-}"
+LITELLM_ENDPOINT="${LITELLM_ENDPOINT:-}"
 
 function _csv_contains()
 {
@@ -378,8 +385,28 @@ function _contract_poll_loop()
   done
 }
 
+# Warn loudly when a mandatory platform backend is missing. These are settled platform
+# decisions (org memory = Cognee, model routing = LiteLLM), so their absence is a
+# misconfiguration, not a supported mode. Warn rather than hard-exit so a partially-provisioned
+# pod can still boot for diagnosis, but make the gap impossible to miss in the logs.
+function _preflight_platform_deps()
+{
+  if [ "$OPENCRANE_MEMORY_BACKEND" != "cognee" ] || [ -z "$COGNEE_ENDPOINT" ]; then
+    echo "[opencrane] WARNING: org memory is not wired — expected OPENCRANE_MEMORY_BACKEND=cognee and COGNEE_ENDPOINT set (got backend='${OPENCRANE_MEMORY_BACKEND:-unset}', endpoint='${COGNEE_ENDPOINT:-unset}'). Cognee is the platform memory engine; the agent will have no org memory until this is fixed." >&2
+  else
+    echo "[opencrane] Org memory backend: Cognee at ${COGNEE_ENDPOINT}" >&2
+  fi
+
+  if [ -z "$LITELLM_ENDPOINT" ]; then
+    echo "[opencrane] WARNING: model routing is not wired — LITELLM_ENDPOINT is unset. LiteLLM is the platform model proxy; model calls will fail until this is fixed." >&2
+  else
+    echo "[opencrane] Model routing: LiteLLM proxy at ${LITELLM_ENDPOINT}" >&2
+  fi
+}
+
 function _main()
 {
+  _preflight_platform_deps
   _load_mcp_policy
 
   # Ensure GCS-backed directory structure

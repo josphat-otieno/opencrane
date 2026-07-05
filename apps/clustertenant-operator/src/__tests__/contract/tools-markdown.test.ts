@@ -30,6 +30,19 @@ describe("_RenderToolsMarkdown", function _suite()
 		expect(md).toContain("No skills are currently entitled.");
 	});
 
+	it("omits the org-memory section by default and includes it when Cognee is wired", function _orgMemory()
+	{
+		const without = _RenderToolsMarkdown([], []);
+		expect(without).not.toContain("Org memory (Cognee)");
+		expect(without).not.toContain("memory_search");
+
+		const withMemory = _RenderToolsMarkdown([], [], { orgMemory: true });
+		expect(withMemory).toContain("## Org memory (Cognee)");
+		expect(withMemory).toContain("**memory_search**");
+		expect(withMemory).toContain("**memory_remember**");
+		expect(withMemory.endsWith("\n")).toBe(true);
+	});
+
 	it("is deterministic and ends with a trailing newline", function _deterministic()
 	{
 		const a = _RenderToolsMarkdown([{ id: "1", name: "B", description: "x" }, { id: "2", name: "A", description: "y" }], []);

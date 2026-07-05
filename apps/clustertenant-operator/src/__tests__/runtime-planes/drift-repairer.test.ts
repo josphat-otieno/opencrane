@@ -43,6 +43,7 @@ function _buildConfig(overrides: Partial<OpenClawTenantOperatorConfig> = {}): Op
     liteLlmDefaultRpmLimit: 0,
     mcpGatewayUrl: "http://obot:8080",
     skillRegistryUrl: "http://skill-registry:5000",
+    cogneeEndpoint: "",
     internalPort: 8081,
     controlPlaneInternalUrl: "http://localhost:8081",
     controlPlaneInternalServiceUrl: "http://control-plane:8081",

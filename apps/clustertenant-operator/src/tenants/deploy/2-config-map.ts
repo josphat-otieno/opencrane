@@ -8,6 +8,7 @@ import type { OpenClawTenantOperatorConfig } from "../../config.js";
 import type { AccessPolicy } from "../../policies/types.js";
 import type { Tenant } from "../models/tenant.interface.js";
 import type { TenantModelSet } from "@opencrane/contracts";
+import { AWARENESS_CONTRACT_VERSION } from "@opencrane/awareness";
 import { _BuildTenantLabels } from "./tenant-labels.js";
 
 /** Directory containing the workspace template files shipped with the operator. */
@@ -52,6 +53,21 @@ const _THINKING_DEFAULT = "medium";
  * name is relative to the provider), so only the *reference* — `agents.defaults.model` — is prefixed.
  */
 const _LITELLM_PROVIDER_ID = "litellm-proxy";
+
+/**
+ * The `mcp.servers` key OpenClaw registers the org-memory tool under. Mirrors
+ * `ORG_MEMORY_SERVER_NAME` in `@opencrane/org-memory-mcp` (duplicated as a plain
+ * string rather than imported, to avoid pulling the MCP SDK into the operator).
+ */
+const _ORG_MEMORY_SERVER_NAME = "org-memory";
+
+/**
+ * Absolute path to the org-memory MCP server baked into the tenant image
+ * (see `apps/tenant/deploy/Dockerfile`). OpenClaw spawns it over stdio and the
+ * process inherits the pod env — including `COGNEE_ENDPOINT` — so no per-server
+ * env block is needed.
+ */
+const _ORG_MEMORY_MCP_ENTRYPOINT = "/opt/org-memory-mcp/dist/index.js";
 
 /**
  * Turn a LiteLLM public model name into an OpenClaw model REFERENCE that routes through the proxy.
@@ -229,6 +245,26 @@ export function _BuildConfigMap(config: OpenClawTenantOperatorConfig, tenant: Te
       // Actual entitled skill index is fetched from effective-contract at runtime.
       entitled: [],
     },
+    // Org-memory backend advertised to the runtime. Cognee IS the platform memory engine — a
+    // settled dependency, not an option. When it is wired (COGNEE_ENDPOINT injected into the pod —
+    // see 3-deployment.ts), the OpenClaw runtime's `@opencrane/awareness` client retrieves org
+    // context DIRECTLY from its per-tenant Cognee knowledge graph — a first-class in-pod capability,
+    // NOT an MCP server, so it is deliberately outside the Obot-gateway "no direct MCP" boundary
+    // (retrieval has no control-plane mediation in the hot path by design). A `backend: "workspace"`
+    // value is NOT a supported mode — it marks a MISCONFIGURED pod (no Cognee wired), which the pod
+    // entrypoint surfaces as a startup warning; org memory is unavailable until an operator fixes it.
+    memory: config.cogneeEndpoint
+      ? {
+          backend: "cognee",
+          // Per-tenant Cognee base URL the awareness client retrieves from (also injected as
+          // the COGNEE_ENDPOINT env var). Datasets are scope-derived (`org`, `team/<subject>`, …)
+          // and access is enforced by the awareness grants the control-plane syncs to Cognee.
+          endpoint: config.cogneeEndpoint,
+          contractVersion: AWARENESS_CONTRACT_VERSION,
+        }
+      : {
+          backend: "workspace",
+        },
     capabilities: {
       liteLlmProxy: config.liteLlmEnabled,
       hostingProvider: config.hostingProvider,
@@ -286,6 +322,29 @@ export function _BuildConfigMap(config: OpenClawTenantOperatorConfig, tenant: Te
       },
     },
   };
+
+  // 5. Platform-owned org-memory tool — applied after the tenant merge so it cannot be
+  //    dropped by a `spec.configOverrides.mcp` override. When Cognee is wired, register the
+  //    LOCAL org-memory MCP server OpenClaw spawns over stdio (the binary is baked into the
+  //    tenant image at `_ORG_MEMORY_MCP_ENTRYPOINT`). This is a first-class in-pod capability,
+  //    NOT an Obot-gateway server — it talks directly to the per-tenant Cognee, so it lives in
+  //    `mcp.servers` here rather than in the effective-contract grant set. Any tenant-declared
+  //    mcp.servers are preserved; the org-memory entry is merged in on top so it is always present.
+  if (config.cogneeEndpoint)
+  {
+    const existingMcp = (merged["mcp"] as Record<string, unknown> | undefined) ?? {};
+    const existingServers = (existingMcp["servers"] as Record<string, unknown> | undefined) ?? {};
+    merged["mcp"] = {
+      ...existingMcp,
+      servers: {
+        ...existingServers,
+        [_ORG_MEMORY_SERVER_NAME]: {
+          command: "node",
+          args: [_ORG_MEMORY_MCP_ENTRYPOINT],
+        },
+      },
+    };
+  }
 
   return {
     apiVersion: "v1",
