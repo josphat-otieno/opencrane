@@ -37,6 +37,7 @@ message) wherever the work has no dependency between them.
 | `changelog` | Sonnet | Maintain `CHANGELOG.md` in functional, capability-first terms when a phase/track completes or a tag is cut. Reads `plan.md`/`plan-done.md` + git range; writes capability, not commit history. |
 | `readme` | Sonnet | Maintain `README.md` as the project front door — the problem, the vision, and what the repo does. Keeps design decisions, phase history, threat models, and deep mechanism OUT (those go to `CHANGELOG.md`/`plan-done.md`/the docs site). |
 | `observability` | Sonnet | Telemetry + logging in one (they share the `@opencrane/observability` lib and trace-wrap seam). Audits or wires a slice so external-I/O paths are traced (`___DoWithTrace` spans) and output is structured (no raw `console.*`, secrets redacted, errors under `err`), plus per-app `instrument.ts`/shutdown-flush/Helm env. Reads the lib barrel each run for current API names. |
+| `deploy` | Sonnet | Deploy executor + diagnostician for dev/staging clusters. Mutates the cluster ONLY via the deploy scripts (`apps/*/deploy.sh` → `libs/k8s-platform/k8s-deploy.sh`); reads freely for diagnosis (kubectl read verbs, helm status, read-only SQL through the cnpg primary). Reads `docs/agents/deploy-ledger.md` before every run; returns a structured run report (findings classed `chart`/`script`/`config`/`codebase`/`data`/`infra`/`flake`) for `/deploy-loop` to triage. Never edits code. |
 
 **Roadmap execution** is the `/execute-plan` **skill** (`.claude/commands/execute-plan.md`), not an
 agent — it runs in the main session, parallelises via a dependency DAG + waves (one `general-purpose`
@@ -46,6 +47,14 @@ subagent per lane), commits at each gate, and delegates the review gate to the `
 style script → parallel single-dimension `review` finders → a `review-verifier` per candidate
 finding → one merged severity-first report. Use it for multi-file or risky diffs; a direct `review`
 delegation stays right for small ones.
+
+**Deploy fleet** is the `/deploy-loop` **skill** (`.claude/commands/deploy-loop.md`): preflight →
+one `deploy` agent run (script-only mutations) → triage every finding into a fix PR (chart/script/
+config, defended with run evidence and conceded quickly when disputed), a GitHub issue (codebase/
+data), or a design question to the user → friction mined into configuration simplifications (2
+sightings = fix it) → a docs-coverage pass (`scripts/config-docs-coverage.sh` finds undocumented
+values keys; the `website` agent documents one batch per run) → ledger append
+(`docs/agents/deploy-ledger.md`, the fleet's cross-run memory).
 
 **Built-in platform agent types** (available via the Agent tool, not repo-defined): `Explore`
 (read-only broad search — locating code across many files), `Plan` (design an implementation plan),

@@ -57,6 +57,7 @@ Everything below is issue-tracked so nothing silently drops; none are roadmapped
 | [#134](https://github.com/italanta/opencrane/issues/134) — **Operator & deploy ops hygiene** | Skill-registry env wiring · suspend self-loop `observedGeneration` guard · reconcile on config change | Small, anytime. |
 | [#135](https://github.com/italanta/opencrane/issues/135) — **Provider-secret cutover (S10)** | Remove `org-shared-secrets` broadcast · retire `ProviderApiKey` | **BLOCKED external** (OpenClaw translator image + WeOwnAI). |
 | [#136](https://github.com/italanta/opencrane/issues/136) — **Deferred capabilities (S7 · S12 · D4/D5)** | Dedicated-compute tiers & cost model · guardrail stream · plane pooling + scale-to-zero | Future; S11's remaining view belongs to the WeOwnAI backlog. |
+| [#141](https://github.com/italanta/opencrane/issues/141) — **Cluster-based devops agents (research spike)** | Always-on in-cluster counterpart to the `/deploy-loop` fleet (PR #139): drift/error detection, pre-upgrade config review — read-only in-cluster, remediation via PRs/issues | Future; scope + guardrails in the issue. |
 
 Folded elsewhere: CONN.4/5 device-seam kill-or-keep → **#117** · live Cognee `/v1/search`
 verification → **#130**.
