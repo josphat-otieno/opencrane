@@ -39,6 +39,7 @@ describe("_RenderToolsMarkdown", function _suite()
 		const withMemory = _RenderToolsMarkdown([], [], { orgMemory: true });
 		expect(withMemory).toContain("## Org memory (Cognee)");
 		expect(withMemory).toContain("**memory_search**");
+		expect(withMemory).toContain("**memory_remember**");
 		expect(withMemory.endsWith("\n")).toBe(true);
 	});
 

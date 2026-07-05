@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
-import { _BuildAwarenessClientFromEnv } from "./memory-tools.js";
+import { _BuildAwarenessClientFromEnv, _BuildMemoryWriterFromEnv } from "./memory-tools.js";
 import { _BuildOrgMemoryServer, ORG_MEMORY_SERVER_NAME } from "./server.js";
 
 /**
@@ -15,10 +15,12 @@ import { _BuildOrgMemoryServer, ORG_MEMORY_SERVER_NAME } from "./server.js";
 async function _main(): Promise<void>
 {
   const client = _BuildAwarenessClientFromEnv(process.env);
-  const server = _BuildOrgMemoryServer(client);
+  const writer = _BuildMemoryWriterFromEnv(process.env);
+  const server = _BuildOrgMemoryServer({ client, writer });
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  process.stderr.write(`[${ORG_MEMORY_SERVER_NAME}] connected over stdio; retrieving from ${process.env.COGNEE_ENDPOINT}\n`);
+  const tools = writer ? "memory_search + memory_remember" : "memory_search (read-only)";
+  process.stderr.write(`[${ORG_MEMORY_SERVER_NAME}] connected over stdio; ${tools}; Cognee ${process.env.COGNEE_ENDPOINT}\n`);
 }
 
 _main().catch(function _fatal(error: unknown)

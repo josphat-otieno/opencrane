@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { AwarenessClient } from "@opencrane/awareness";
 
 import { _FormatAwarenessResult } from "./format.js";
+import type { MemoryWriter } from "./memory-write.js";
 
 /**
  * The MCP server name OpenClaw registers this local memory tool under. Kept in one
@@ -22,16 +23,19 @@ const _MAX_LIMIT = 50;
  * MCP gateway — org-memory retrieval is a first-class platform capability that talks
  * directly to the per-tenant Cognee (no control-plane mediation in the hot path).
  *
- * The single `memory_search` tool wraps {@link AwarenessClient}, so every result the
- * agent sees inherits the SDK's guarantees: enforced citations, dropped-uncitable
- * accounting, and contract-version stamping. The client is injected so the server is
- * unit-testable against a fake Cognee transport with no live backend.
+ * The `memory_search` tool wraps {@link AwarenessClient}, so every result the agent
+ * sees inherits the SDK's guarantees: enforced citations, dropped-uncitable accounting,
+ * and contract-version stamping. When a {@link MemoryWriter} is supplied, a
+ * `memory_remember` tool is also registered so the agent can PROMOTE a generalizable
+ * learning up into the shared graph (omit the writer — or disable it via env — to run
+ * read-only). Both deps are injected so the server is unit-testable with no live backend.
  *
- * @param client - The awareness client the tool retrieves through.
+ * @param deps - The awareness client (read) and optional memory writer (remember).
  * @returns A configured (not yet connected) MCP server; the caller attaches a transport.
  */
-export function _BuildOrgMemoryServer(client: AwarenessClient): McpServer
+export function _BuildOrgMemoryServer(deps: { client: AwarenessClient; writer?: MemoryWriter | null }): McpServer
 {
+  const { client, writer } = deps;
   const server = new McpServer({ name: ORG_MEMORY_SERVER_NAME, version: _SERVER_VERSION });
 
   server.registerTool(
@@ -73,6 +77,49 @@ export function _BuildOrgMemoryServer(client: AwarenessClient): McpServer
       }
     },
   );
+
+  // Write path — registered only when a writer is provided (env kill-switch off ⇒ read-only pod).
+  if (writer)
+  {
+    server.registerTool(
+      "memory_remember",
+      {
+        title: "Remember to organisational memory",
+        description:
+          "Persist a GENERALIZABLE, reusable fact to shared org memory (Cognee) so OTHER agents can " +
+          "retrieve it later. Use for durable org/domain knowledge and decisions. Do NOT use it for " +
+          "your personal style, this user's preferences, or transient task state — those belong in your " +
+          "personal MEMORY.md. Give a clear title and the correct scope; the fact is attributed to you.",
+        inputSchema: {
+          content: z.string().min(1).describe("The fact/learning to persist, self-contained enough to be useful out of context."),
+          title: z.string().min(1).describe("A short title so the fact is citable when later retrieved."),
+          scope: z
+            .enum(["org", "team", "department", "project", "personal"])
+            .describe("Which shared scope this belongs to. Use the narrowest scope that fits."),
+          subject: z
+            .string()
+            .optional()
+            .describe("Subject for scoped datasets (e.g. the team/department/project name). Required for team, department, and project."),
+          sensitivityTags: z.array(z.string()).optional().describe("Optional sensitivity tags to carry into org memory."),
+        },
+      },
+      async function _handleMemoryRemember({ content, title, scope, subject, sensitivityTags })
+      {
+        try
+        {
+          const { dataset } = await writer.remember({ content, title, scope, ...(subject ? { subject } : {}), ...(sensitivityTags ? { sensitivityTags } : {}) });
+          return { content: [{ type: "text" as const, text: `Remembered to org memory (dataset: ${dataset}).` }] };
+        }
+        catch (error)
+        {
+          // Validation errors (e.g. missing subject) and backend/ACL rejections both land here as a
+          // tool error, so the agent gets an actionable message instead of the turn crashing.
+          const message = error instanceof Error ? error.message : String(error);
+          return { content: [{ type: "text" as const, text: `Org-memory remember failed: ${message}` }], isError: true };
+        }
+      },
+    );
+  }
 
   return server;
 }

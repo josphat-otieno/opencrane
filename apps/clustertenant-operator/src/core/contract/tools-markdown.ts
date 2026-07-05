@@ -60,6 +60,10 @@ const _ORG_MEMORY_SECTION = [
     "directly (not via the Obot gateway), so it is always available. Results are scope-aware, " +
     "permission-filtered, and every one carries a citation. Prefer it over personal MEMORY.md " +
     "for org-wide facts.",
+  "- **memory_remember** — persist a generalizable learning back to org memory (`content`, " +
+    "`title`, `scope`, optional `subject`/`sensitivityTags`). Use for durable org/domain facts " +
+    "other agents would want — NOT personal style, this user's preferences, or transient task " +
+    "state (those stay in MEMORY.md). Remembered facts are attributed to you.",
 ].join("\n");
 
 /** Options controlling optional sections of the generated `TOOLS.md`. */
