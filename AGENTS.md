@@ -32,7 +32,8 @@ message) wherever the work has no dependency between them.
 
 | Agent | Model | Use it for |
 |-------|-------|-----------|
-| `review` | Haiku | Independent, fresh-context code review of a changed slice — correctness bugs, regressions, security/IAM-policy drift, missing tests, AGENTS.md style. Read-only; reports findings severity-first. **Required by the review gate before a turn ends** (see [Mandatory Independent Review](docs/agents/workflow.md#mandatory-independent-review-policy-driven-gate)). |
+| `review` | Haiku | Independent, fresh-context code review of a changed slice — correctness bugs, regressions, security/IAM-policy drift, missing tests. Accepts `DIMENSION: correctness\|security\|residue` for a single-concern pass; mechanical style comes from `scripts/agent-style-check.sh`, never from eyeballing. Read-only; severity-first. **Required by the review gate before a turn ends** (see [Mandatory Independent Review](docs/agents/workflow.md#mandatory-independent-review-policy-driven-gate)); for larger diffs prefer the `/review-loop` skill, which satisfies the same gate. |
+| `review-verifier` | Haiku | Adversarially verifies ONE candidate review finding — default stance: refute it. Returns `CONFIRMED / REFUTED / UNCERTAIN` with a concrete evidence walk. Spawned per-candidate by `/review-loop` (sonnet override for Critical/High candidates); also useful standalone before acting on any single risky claim. |
 | `changelog` | Sonnet | Maintain `CHANGELOG.md` in functional, capability-first terms when a phase/track completes or a tag is cut. Reads `plan.md`/`plan-done.md` + git range; writes capability, not commit history. |
 | `readme` | Sonnet | Maintain `README.md` as the project front door — the problem, the vision, and what the repo does. Keeps design decisions, phase history, threat models, and deep mechanism OUT (those go to `CHANGELOG.md`/`plan-done.md`/the docs site). |
 | `observability` | Sonnet | Telemetry + logging in one (they share the `@opencrane/observability` lib and trace-wrap seam). Audits or wires a slice so external-I/O paths are traced (`___DoWithTrace` spans) and output is structured (no raw `console.*`, secrets redacted, errors under `err`), plus per-app `instrument.ts`/shutdown-flush/Helm env. Reads the lib barrel each run for current API names. |
@@ -40,6 +41,11 @@ message) wherever the work has no dependency between them.
 **Roadmap execution** is the `/execute-plan` **skill** (`.claude/commands/execute-plan.md`), not an
 agent — it runs in the main session, parallelises via a dependency DAG + waves (one `general-purpose`
 subagent per lane), commits at each gate, and delegates the review gate to the `review` subagent above.
+
+**Cost-tiered review** is the `/review-loop` **skill** (`.claude/commands/review-loop.md`): free
+style script → parallel single-dimension `review` finders → a `review-verifier` per candidate
+finding → one merged severity-first report. Use it for multi-file or risky diffs; a direct `review`
+delegation stays right for small ones.
 
 **Built-in platform agent types** (available via the Agent tool, not repo-defined): `Explore`
 (read-only broad search — locating code across many files), `Plan` (design an implementation plan),
