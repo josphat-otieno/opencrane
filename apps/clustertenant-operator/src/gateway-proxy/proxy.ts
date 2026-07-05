@@ -57,6 +57,21 @@ const _RESOLVE_TIMEOUT_MS = 5_000;
  */
 const _GATEWAY_PATH_PREFIX = "/gateway";
 
+/** Header the gateway reads to CAP a Control-UI session's scopes (intersection, not a grant). */
+const _SCOPES_HEADER = "x-openclaw-scopes";
+
+/**
+ * Scopes the proxy caps every gateway WS session to (chat-only).
+ *
+ * OpenClaw intersects the session's requested scopes with `x-openclaw-scopes` when the
+ * proxy sends it (see docs/gateway/trusted-proxy-auth). Capping to `operator.read` +
+ * `operator.write` grants exactly what chat needs (read history + send) while denying
+ * `operator.admin` — so the Control UI's config/nodes/admin surfaces are refused at the
+ * gateway, not merely hidden. The proxy is the trust boundary, so a client cannot widen
+ * this by self-declaring the header (we strip any inbound copy before injecting ours).
+ */
+const _CHAT_SCOPES = "operator.read operator.write";
+
 /**
  * Strip a leading `/gateway` segment from the upgrade request path so the upstream
  * OpenClaw pod (whose gateway listens at `/`) sees the path it expects, regardless of
@@ -151,15 +166,17 @@ export async function _HandleUpgrade(deps: UpgradeDeps, req: IncomingMessage, so
     return;
   }
 
-  // 4. Strip any client-supplied identity header, inject the verified one, forward.
+  // 4. Strip any client-supplied identity/scope headers, inject the verified identity
+  //    and the chat-only scope cap, forward.
   delete req.headers[config.userHeader.toLowerCase()];
+  delete req.headers[_SCOPES_HEADER];
   // The gateway WS is exposed at `/gateway` on the org host (the SPA owns `/`); the pod
   // gateway listens at `/`, so drop the prefix before forwarding. Backward-compatible: a
   // bare `/` upgrade is left untouched.
   req.url = _StripGatewayPrefix(req.url);
   const target = `ws://${podService.name}.${podService.namespace}.${config.clusterDomain}:${config.gatewayPort}`;
   reqLog.info({ email: user.email, tenant: tenant.name, target }, "gateway upgrade authorised; proxying");
-  proxy.ws(req, socket, head, { target, headers: { [config.userHeader]: user.email } }, function _onProxyError(err: Error)
+  proxy.ws(req, socket, head, { target, headers: { [config.userHeader]: user.email, [_SCOPES_HEADER]: _CHAT_SCOPES } }, function _onProxyError(err: Error)
   {
     reqLog.error({ err, target }, "gateway proxy transport error");
     if (!socket.destroyed)

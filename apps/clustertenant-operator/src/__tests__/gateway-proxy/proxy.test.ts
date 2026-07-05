@@ -84,6 +84,21 @@ describe("_HandleUpgrade (in-operator gateway proxy)", () =>
     expect(resolve).toHaveBeenCalledWith("http://cp:3000", "sid=x", "acme.opencrane.ai", expect.any(AbortSignal));
   });
 
+  it("caps the session to chat-only scopes and strips a client-supplied scopes header", async () =>
+  {
+    const resolve = vi.fn().mockResolvedValue(okTarget);
+    const { deps, proxy } = _deps(resolve);
+    // A client tries to self-declare admin scopes on the upgrade.
+    const req = _req({ origin: "https://acme.opencrane.ai", host: "acme.opencrane.ai", cookie: "sid=x", "x-openclaw-scopes": "operator.admin" });
+
+    await _HandleUpgrade(deps, req, _fakeSocket(), Buffer.alloc(0));
+
+    // The proxy injects the chat-only cap (operator.read/write, no admin)…
+    expect(proxy.headers[0]?.["x-openclaw-scopes"]).toBe("operator.read operator.write");
+    // …and the client's self-declared header never reaches the pod.
+    expect(req.headers["x-openclaw-scopes"]).toBeUndefined();
+  });
+
   it("forwards x-forwarded-host (first value) over the Host header when both are present", async () =>
   {
     const resolve = vi.fn().mockResolvedValue(okTarget);
