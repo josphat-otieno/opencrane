@@ -49,8 +49,6 @@ export const defaultConfig: OpenClawTenantOperatorConfig = {
   internalPort: 8081,
   controlPlaneInternalUrl: "http://localhost:8081",
   controlPlaneInternalServiceUrl: "http://opencrane-clustertenant-manager.default.svc:8081",
-  obotDeploymentName: "opencrane-mcp-gateway",
-  skillRegistryDeploymentName: "opencrane-skill-registry",
   projectedTokenTtlSeconds: 600,
   linkerdMeshEnabled: false,
 };

@@ -342,11 +342,6 @@ spec:
             #    the Service DNS on the internal port.
             - name: CLUSTERTENANT_MANAGER_INTERNAL_SERVICE_URL
               value: {{ printf "http://%s-clustertenant-manager.%s.svc:%v" (include "opencrane.fullname" .) .Release.Namespace .Values.clustertenantManager.service.internalPort | quote }}
-            # -- Kubernetes Deployment names for the runtime-plane drift repairer (P4A.2).
-            - name: OBOT_DEPLOYMENT_NAME
-              value: {{ printf "%s-mcp-gateway" (include "opencrane.fullname" .) | quote }}
-            - name: SKILL_REGISTRY_DEPLOYMENT_NAME
-              value: {{ printf "%s-skill-registry" (include "opencrane.fullname" .) | quote }}
             - name: LITELLM_ENABLED
               value: {{ .Values.litellm.enabled | quote }}
             - name: LITELLM_DEFAULT_MONTHLY_BUDGET_USD

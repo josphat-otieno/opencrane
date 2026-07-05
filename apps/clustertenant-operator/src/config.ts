@@ -184,12 +184,6 @@ export interface OpenClawTenantOperatorConfig
    */
   internalPort: number;
 
-  /** Kubernetes Deployment name for the Obot MCP Gateway managed by this operator. */
-  obotDeploymentName: string;
-
-  /** Kubernetes Deployment name for the Skill Registry managed by this operator. */
-  skillRegistryDeploymentName: string;
-
   /** Projected ServiceAccount token TTL in seconds for ingress-plane audiences. */
   projectedTokenTtlSeconds: number;
 
@@ -279,8 +273,6 @@ export function _LoadOperatorConfig(): OpenClawTenantOperatorConfig
     internalPort: _readEnvValue<number>("INTERNAL_PORT", "number", false, 8081),
     controlPlaneInternalUrl: _readEnvValue<string>("CLUSTERTENANT_MANAGER_INTERNAL_URL", "string", false, "http://localhost:8081"),
     controlPlaneInternalServiceUrl: _readEnvValue<string>("CLUSTERTENANT_MANAGER_INTERNAL_SERVICE_URL", "string", false, `http://opencrane-clustertenant-manager.${ownNamespace}.svc:8081`),
-    obotDeploymentName: _readEnvValue<string>("OBOT_DEPLOYMENT_NAME", "string", false, "opencrane-mcp-gateway"),
-    skillRegistryDeploymentName: _readEnvValue<string>("SKILL_REGISTRY_DEPLOYMENT_NAME", "string", false, "opencrane-skill-registry"),
     projectedTokenTtlSeconds: _readEnvValue<number>("PROJECTED_TOKEN_TTL_SECONDS", "number", false, 600),
     linkerdMeshEnabled: _readEnvValue<boolean>("LINKERD_MESH_ENABLED", "boolean", false, false),
   };
