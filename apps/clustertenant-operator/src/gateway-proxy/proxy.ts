@@ -88,8 +88,13 @@ const _SCOPES_HEADER = "x-openclaw-scopes";
  * `operator.admin` — so the Control UI's config/nodes/admin surfaces are refused at the
  * gateway, not merely hidden. The proxy is the trust boundary, so a client cannot widen
  * this by self-declaring the header (we strip any inbound copy before injecting ours).
+ *
+ * COMMA-separated: openclaw's `resolveTrustedProxyControlUiScopes` parses this header
+ * with `split(",")` (verified against openclaw@2026.6.9 dist). A space-separated value
+ * reads as ONE unknown scope, the intersection goes empty, and the session gets NO
+ * scopes ("this connection is missing operator.read").
  */
-const _CHAT_SCOPES = "operator.read operator.write";
+const _CHAT_SCOPES = "operator.read,operator.write";
 
 /**
  * Strip a leading `/gateway` segment from the upgrade request path so the upstream
