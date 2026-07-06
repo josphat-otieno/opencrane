@@ -46,9 +46,10 @@ person, and you configure the shared platform planes those assistants draw on.
 
 ## One login, then a private connection
 
-A person **signs in once**. The control plane is a *broker*: it hands the browser a
-short-lived pairing link to that person's own assistant, then steps out of the way —
-it never sits in the middle of the conversation.
+A person **signs in once**. From then on, the control plane's **identity-routing
+proxy** connects them to their own assistant: it checks the session and forwards the
+connection to that person's pod. There's no second login, no link to copy, and nothing
+for the browser to hold — revoke the session and the next connection stops.
 
 <figure class="oc-diagram">
 <svg viewBox="0 0 760 250" role="img" aria-label="Sign-in and connection flow" xmlns="http://www.w3.org/2000/svg">
@@ -57,17 +58,17 @@ it never sits in the middle of the conversation.
 <text x="121" y="118" text-anchor="middle" class="f-l">Your browser</text>
 <text x="121" y="140" text-anchor="middle" class="f-s">sign in once (OIDC)</text>
 <rect class="f-cp" x="287" y="78" width="186" height="92" rx="12"/>
-<text x="380" y="118" text-anchor="middle" style="font:700 15px ui-sans-serif,system-ui;fill:#fff">Control plane</text>
-<text x="380" y="140" text-anchor="middle" style="font:400 11.5px ui-sans-serif,system-ui;fill:#e7fbff">pure broker</text>
+<text x="380" y="114" text-anchor="middle" style="font:700 15px ui-sans-serif,system-ui;fill:#fff">Control plane</text>
+<text x="380" y="136" text-anchor="middle" style="font:400 11.5px ui-sans-serif,system-ui;fill:#e7fbff">identity-routing proxy</text>
 <rect class="f-box" x="546" y="78" width="186" height="92" rx="12"/>
 <text x="639" y="118" text-anchor="middle" class="f-l">Your assistant</text>
 <text x="639" y="140" text-anchor="middle" class="f-s">OpenClaw</text>
 <path class="f-arr" d="M214,112 H285"/>
-<text x="249" y="100" text-anchor="middle" class="f-al">1. login</text>
-<path class="f-arr" d="M473,134 H544"/>
-<text x="509" y="160" text-anchor="middle" class="f-al">2. pairing link</text>
-<path class="f-arr" d="M380,170 C380,212 639,212 639,172"/>
-<text x="509" y="232" text-anchor="middle" class="f-s">3. browser connects straight to the assistant — chat never flows through the control plane</text>
+<text x="249" y="100" text-anchor="middle" class="f-al">1. sign in</text>
+<path class="f-arr" d="M473,124 H544"/>
+<text x="509" y="112" text-anchor="middle" class="f-al">2. routed in</text>
+<text x="380" y="210" text-anchor="middle" class="f-s">You hold only a session cookie. The proxy checks it and forwards you to your own pod —</text>
+<text x="380" y="230" text-anchor="middle" class="f-s">no pairing link, no token in the browser, no second login.</text>
 </svg>
 </figure>
 
@@ -115,6 +116,9 @@ injected server-side and never reach an assistant or a browser. That's what make
 ## Isolation
 
 Each assistant is walled off from every other — separate storage, separate identity,
-default-deny networking. If you ever need to run **completely separate OpenCrane
-instances** in one cluster (say, several customers side by side), see
+and **default-deny networking keyed on cryptographic identity** (Cilium + SPIFFE), so
+one customer's silo can never reach another's. See
+[Identity & network isolation](/operators/cilium-spiffe-identity) for the who-can-talk-to-whom
+rules. If you ever need to run **completely separate OpenCrane instances** in one
+cluster (say, several customers side by side), see
 [Running multiple instances](/advanced/multi-instance) — most deployments never need it.

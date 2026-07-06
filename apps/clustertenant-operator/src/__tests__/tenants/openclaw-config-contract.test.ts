@@ -36,11 +36,31 @@ describe("openclaw.json render contract — zod schema (task_d611ab4d)", functio
     expect(parsed.success, parsed.success ? "" : JSON.stringify(parsed.error.issues, null, 2)).toBe(true);
   });
 
+  it("serves + configures the Control UI for embedding (enabled, basePath, chatMessageMaxWidth)", function _controlUi()
+  {
+    const config = _renderConfig();
+    const controlUi = ((config["gateway"] as Record<string, unknown>)["controlUi"]) as Record<string, unknown>;
+    expect(controlUi["enabled"]).toBe(true);
+    expect(controlUi["basePath"]).toBe("/control-ui");
+    expect(typeof controlUi["chatMessageMaxWidth"]).toBe("string");
+    expect(controlUi["dangerouslyDisableDeviceAuth"]).toBe(true); // device-less trusted-proxy preserved
+    expect(_OpenclawConfigSchema.safeParse(config).success).toBe(true);
+  });
+
   it("validates the LiteLLM-enabled config (models block) against the schema", function _modelsOk()
   {
     // Exercise the optional `models` branch so the provider/mode shape is covered.
     const liteLlmConfig = { ...defaultConfig, liteLlmEnabled: true };
     const configMap = _BuildConfigMap(liteLlmConfig, _makeTenant("contract"), "default");
+    const parsed = _OpenclawConfigSchema.safeParse(JSON.parse(configMap.data?.["openclaw.json"] ?? "{}"));
+    expect(parsed.success, parsed.success ? "" : JSON.stringify(parsed.error?.issues, null, 2)).toBe(true);
+  });
+
+  it("validates the Cognee-wired config (mcp.servers block) against the schema", function _mcpOk()
+  {
+    // Exercise the optional `mcp` branch so the local org-memory stdio server shape is covered.
+    const cogneeConfig = { ...defaultConfig, cogneeEndpoint: "http://cognee:8000" };
+    const configMap = _BuildConfigMap(cogneeConfig, _makeTenant("contract"), "default");
     const parsed = _OpenclawConfigSchema.safeParse(JSON.parse(configMap.data?.["openclaw.json"] ?? "{}"));
     expect(parsed.success, parsed.success ? "" : JSON.stringify(parsed.error?.issues, null, 2)).toBe(true);
   });
@@ -127,5 +147,42 @@ describe("configOverrides cannot clobber the platform gateway (C1)", function _c
     const auth = (config["gateway"] as Record<string, unknown>)["auth"] as Record<string, unknown>;
     const trustedProxy = auth["trustedProxy"] as { allowUsers: string[] };
     expect(trustedProxy.allowUsers).toEqual(["contract@example.com"]);
+  });
+});
+
+/**
+ * Reasoning visibility — `agents.defaults.reasoningDefault`/`thinkingDefault` make
+ * the model's thinking stream live AND persist into `chat.history` (rendered as a
+ * collapsible "Thinking" card in the org-admin SPA). They are DEFAULTS a tenant
+ * can override, not platform-pinned like the gateway block.
+ */
+describe("reasoning visibility defaults", function _reasoningSuite()
+{
+  function _render(overrides?: Record<string, unknown>): Record<string, unknown>
+  {
+    const tenant = _makeTenant("contract", overrides ? { configOverrides: overrides } : undefined);
+    return JSON.parse(_BuildConfigMap(defaultConfig, tenant, "default").data?.["openclaw.json"] ?? "{}") as Record<string, unknown>;
+  }
+
+  function _defaults(config: Record<string, unknown>): Record<string, unknown>
+  {
+    return (config["agents"] as Record<string, unknown>)["defaults"] as Record<string, unknown>;
+  }
+
+  it("enables reasoning by default so it lands in history", function _default()
+  {
+    const defaults = _defaults(_render());
+    expect(defaults["reasoningDefault"]).toBe("stream");
+    expect(defaults["thinkingDefault"]).toBe("medium");
+    expect(_OpenclawConfigSchema.safeParse(_render()).success).toBe(true);
+  });
+
+  it("lets a tenant override reasoning off to save tokens", function _override()
+  {
+    const config = _render({ agents: { defaults: { reasoningDefault: "off" } } });
+    const defaults = _defaults(config);
+    expect(defaults["reasoningDefault"]).toBe("off"); // tenant wins over the platform default
+    expect(defaults["workspace"]).toBe("/data/openclaw/workspace"); // platform-pinned keys still applied
+    expect(_OpenclawConfigSchema.safeParse(config).success).toBe(true);
   });
 });

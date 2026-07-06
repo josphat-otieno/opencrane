@@ -1,9 +1,9 @@
 # ADR 0001 — ClusterTenant-as-virtual-network strict isolation
 
-- **Status:** Accepted
+- **Status:** Superseded by [ADR 0003](0003-cilium-spiffe-identity-substrate.md) (2026-07-02)
 - **Date:** 2026-06-25
 - **Task:** `task_5164276f` (Phase 3 / S6 of the strict-multi-tenancy program)
-- **Supersedes / superseded by:** none
+- **Supersedes / superseded by:** superseded by [ADR 0003 — Cilium + SPIFFE identity substrate](0003-cilium-spiffe-identity-substrate.md). The reserve trigger this ADR named ("we need full CiliumNetworkPolicy + SPIFFE, willing to run our own CNI") fired on 2026-07-02; the substrate is now Cilium + SPIFFE, not Linkerd. The L3/L4 default-deny reasoning below still holds — only the identity/L7 substrate choice changed.
 - **Related:** [`silo-multi-tenant-plan.md`](../../silo-multi-tenant-plan.md) (§2 identity loop, §4 phases) · [`website/operators/networking.md`](../../website/operators/networking.md) (the north-south edge + the L3/4 floor this layers on)
 
 ## Context

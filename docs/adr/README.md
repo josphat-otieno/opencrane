@@ -12,8 +12,9 @@ is not itself published.
 
 | ADR | Title | Status |
 |-----|-------|--------|
-| [0001](0001-cluster-tenant-virtual-network-isolation.md) | ClusterTenant-as-virtual-network strict isolation (substrate) | Accepted |
+| [0001](0001-cluster-tenant-virtual-network-isolation.md) | ClusterTenant-as-virtual-network strict isolation (substrate) | Superseded by 0003 |
 | [0002](0002-per-clustertenant-silo-architecture.md) | Per-ClusterTenant silo architecture (dedicated operator, planes, API/DB per tenant) | Accepted |
+| [0003](0003-cilium-spiffe-identity-substrate.md) | Cilium + SPIFFE identity substrate (identity-keyed L3/L4/L7 + SVID mTLS) | Accepted |
 
 ## Writing a new ADR
 

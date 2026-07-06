@@ -34,7 +34,7 @@ These options apply to every command and can be set via environment variables.
 Commands that manage ClusterTenants, Zitadel admin, or platform DNS target the **fleet-manager** via `--fleet-url` / `OPENCRANE_FLEET_URL`. All other commands (tenants, policies, skills, budgets, etc.) target the per-silo **clustertenant-manager** via `--url` / `OPENCRANE_URL`. When no `--fleet-url` is configured the CLI falls back to `--url` — this works for co-located dev installations where both managers are accessible at the same host.
 :::
 
-**Authentication note:** Bearer token is the current automation path. OIDC is the planned human-operator path; see the `oc auth` commands. Projected ServiceAccount tokens will replace static bearer tokens once Kubernetes workload identity support lands.
+**Authentication note:** Bearer token is the automation and break-glass path for operators outside the cluster. OIDC is the human-operator path; see the `oc auth` commands. Inside the cluster, tenant pods authenticate using projected ServiceAccount tokens validated via the Kubernetes TokenReview API — this is the current in-cluster mechanism, not a future one.
 
 ---
 
@@ -123,13 +123,23 @@ These commands manage resources in a silo's clustertenant-manager. Set `OPENCRAN
 
 ### `oc tenants`
 
-Manage tenant lifecycle.
+Manage tenant lifecycle — a tenant is one person's employee assistant.
 
 ```
 oc tenants list                         List all tenants
+  --cluster-tenant <name>               Only list tenants attached to this parent ClusterTenant (customer)
+
 oc tenants get <name>                   Get a tenant by name
-oc tenants create                       Create a tenant (reads JSON from stdin)
-oc tenants update <name>                Update a tenant (reads JSON from stdin)
+oc tenants create                       Create a new tenant
+  --name <name>                         Tenant name (must be a valid DNS label)
+  --display-name <displayName>          Human-readable display name
+  --email <email>                       Contact email for the tenant
+  --team <team>                         Team name
+  --cluster-tenant <name>               Parent ClusterTenant (customer) to attach this tenant to
+  --budget <usd>                        Monthly budget ceiling in USD
+  --policy-ref <policyRef>              AccessPolicy name to attach
+
+oc tenants update <name>                Update a tenant (same flags as create, all optional)
 oc tenants delete <name>                Delete a tenant
 oc tenants suspend <name>               Suspend a tenant pod
 oc tenants resume <name>                Resume a suspended tenant
@@ -142,14 +152,31 @@ oc tenants contract <name>              Print the compiled effective runtime con
 
 ### `oc policies`
 
-Manage AccessPolicy resources.
+Manage AccessPolicy resources — network/tool egress guardrails.
 
 ```
 oc policies list                        List all access policies
 oc policies get <name>                  Get a policy by name
-oc policies create                      Create a policy (reads JSON from stdin)
-oc policies update <name>               Update a policy (reads JSON from stdin)
+oc policies create                      Create a policy
+  --body <json>                         JSON payload for the policy spec
+
+oc policies update <name>               Update a policy
+  --body <json>                         JSON payload for the policy spec update
+
 oc policies delete <name>               Delete a policy
+oc policies drift                       Report drift between policy CRDs and PostgreSQL projections
+oc policies repair                      Repair drifted policy projections (dry-run unless --apply)
+```
+
+Example payload — `defaultDeny: true` means "block everything except what's listed",
+the safest starting point:
+
+```bash
+oc policies create --body '{
+  "name": "default-egress",
+  "domains": { "allow": ["*.example.com", "api.openai.com"], "defaultDeny": true },
+  "mcpServers": { "deny": ["risky-tool"] }
+}'
 ```
 
 ---
@@ -161,10 +188,30 @@ Manage MCP server registrations.
 ```
 oc mcp list                             List MCP servers
 oc mcp get <id>                         Get an MCP server
-oc mcp create                           Register an MCP server (reads JSON from stdin)
-oc mcp update <id>                      Update an MCP server (reads JSON from stdin)
-oc mcp delete <id>                      Delete an MCP server
+oc mcp create                           Register an MCP server
+  --name <name>                         Display name
+  --endpoint <endpoint>                 Server endpoint URL
+  --transport <transport>               Transport: streamable-http|sse|websocket (default: streamable-http)
+  --body <json>                         Full JSON payload (overrides individual flags)
+
+oc mcp update <id>                      Update an MCP server (pass --body JSON or individual flags)
+oc mcp delete <id>                      Delete an MCP server and its linked grants
 ```
+
+Brokered downstream credentials — how the server authenticates to the system it talks to:
+
+```
+oc mcp cred list <serverId>             List the brokered credentials of an MCP server
+oc mcp cred add <serverId>              Add a brokered credential
+  --display-name <name>                 Operator-facing credential label
+  --mode <mode>                         Brokering mode: static|obo (default: static)
+  --secret-ref <ref>                    Secret reference (required for --mode static, omit for obo)
+
+oc mcp cred rm <serverId> <credentialId>   Remove a brokered credential from an MCP server
+```
+
+`static` uses one shared credential for everyone; `obo` ("on behalf of") has each
+person authorise with their own account, so the assistant acts as *them*.
 
 ---
 
@@ -232,12 +279,218 @@ oc tokens delete <id>                   Revoke an access token
 
 ### `oc providers`
 
-Manage provider API keys (e.g. OpenAI, Anthropic).
+Manage provider API keys (e.g. OpenAI, Anthropic). Backed by `/api/v1/providers/keys`,
+a database-backed credential store (`ProviderApiKey`).
 
 ```
-oc providers list                       List configured provider keys
-oc providers set                        Set a provider key (reads JSON from stdin)
+oc providers list                       List configured provider keys (status only — key is never returned)
+oc providers set <provider> <key>       Set a provider key by name and value
 oc providers delete <provider>          Remove a provider key
+```
+
+::: info BYOK is a separate, API-only path
+BYOK (bring your own key) provisions one **raw upstream key per provider for the whole
+silo**, written into a Kubernetes Secret and registered with LiteLLM — a different
+mechanism from `oc providers` above, and not (yet) wrapped by an `oc` sub-command:
+
+```
+PUT    /api/v1/providers/byok/:provider   Set or refresh the raw provider key
+GET    /api/v1/providers/byok             List configured BYOK providers (presence + timestamps, no key material)
+DELETE /api/v1/providers/byok/:provider   Remove a provider key
+```
+
+Supported provider values are defined in the `ByokProvider` contract enum (e.g.
+`openai`, `anthropic`). The mutation requires an IdP-verified org-admin identity.
+See [Manage cost](/guide/budgets#bring-your-own-provider-key-byok) for when to use it.
+:::
+
+---
+
+### `oc share`
+
+Share entitlements (MCP servers, skill bundles) and resources (files, chats, datasets) with other users or groups.
+
+```
+oc share grant                          Grant an entitlement you hold to a user or group
+  --type <type>                         Entitlement family: mcp-server|skill-bundle
+  --id <payloadId>                      Id of the MCP server or skill bundle to share
+  --with-user <subject>                 Recipient user's IdP subject
+  --with-group <groupId>                Recipient group id (mutually exclusive with --with-user)
+  --scope <scope>                       Visibility scope: org|department|project|personal (default: personal)
+  --note <text>                         Optional note recorded on the share
+
+oc share list                           List shares you have created
+oc share revoke <id>                    Revoke a share you created
+
+oc share resource                       Share a file, chat, or dataset with a user
+  --type <type>                         Resource kind: file|chat|dataset
+  --id <resourceId>                     Id of the resource to share
+  --with-user <subject>                 Recipient user's IdP subject
+
+oc share resources                      List file/chat resource shares you are a member of
+oc share unshare-resource <groupId> <subject>   Revoke a recipient from a resource share
+```
+
+---
+
+### `oc model`
+
+Manage the model registry — routable model definitions registered with LiteLLM (BYOM path).
+
+```
+oc model list                           List model definitions
+  --cluster-tenant <id>                 Filter to one cluster tenant's models
+
+oc model show <id>                      Show a model definition by id
+oc model add                            Register a new model definition
+  --name <publicModelName>              Routable public slug, e.g. openai/gpt-4o
+  --upstream <upstreamModel>            Upstream model the deployment targets
+  --api-base <url>                      Non-default API base for self-hosted/proxied endpoints
+  --scope <scope>                       global|clusterTenant (default: global)
+  --cluster-tenant <id>                 Owning cluster tenant (required when --scope clusterTenant)
+  --credential <providerCredentialId>   Provider credential backing this model
+  --default                             Mark as the default model at its scope
+
+oc model update <id>                    Update a model definition
+  --upstream <upstreamModel>            New upstream model
+  --api-base <url>                      New API base
+  --default                             Mark as the default model at its scope
+
+oc model remove <id>                    Delete a model definition
+```
+
+---
+
+### `oc credential`
+
+Manage provider credentials — named references to External-Secrets-synced k8s Secrets. Use these to bind model definitions to keys without embedding raw values.
+
+```
+oc credential list                      List provider credentials (references only)
+  --cluster-tenant <id>                 Filter to one cluster tenant's credentials
+
+oc credential show <id>                 Show a provider credential by id
+oc credential add                       Register a provider credential
+  --provider <name>                     Provider key, e.g. openai, anthropic
+  --secret-ref <k8sSecretName>          Name of the External-Secrets-synced k8s Secret holding the key
+  --scope <scope>                       global|clusterTenant
+  --cluster-tenant <id>                 Owning cluster tenant (required when --scope clusterTenant)
+  --litellm-credential-name <name>      LiteLLM /credentials name for the dynamic no-restart path
+
+oc credential update <id>               Update a provider credential
+  --secret-ref <k8sSecretName>          New Secret name
+  --litellm-credential-name <name>      New LiteLLM /credentials name
+
+oc credential remove <id>               Delete a provider credential
+```
+
+---
+
+### `oc skill-posture`
+
+Manage per-skill model posture — whether a skill uses a pinned model or autonomous model selection.
+
+```
+oc skill-posture list                   List all skills with their model posture
+oc skill-posture show                   Show a skill's posture by compound key
+  --name <name>                         Skill name
+  --scope <scope>                       Skill scope, e.g. org|team|personal
+  --team <team>                         Owning team (empty string when not team-scoped)
+
+oc skill-posture set                    Set a skill's model posture
+  --name <name>                         Skill name
+  --scope <scope>                       Skill scope
+  --team <team>                         Owning team
+  --mode <mode>                         Posture mode: pinned|auto
+  --pinned-model <publicModelName>      Pinned model's public slug (required when --mode pinned)
+  --auto-config <json>                  Auto-routing config as a JSON object string (when --mode auto)
+```
+
+---
+
+### `oc routing`
+
+Manage the model-routing pipeline: golden eval cases, shadow-savings measurements, human-gated proposals, ranked recommendations, and routing metrics.
+
+```
+oc routing eval-case list               List routing eval cases
+  --skill-name <name>                   Filter to one skill
+  --skill-scope <scope>                 Filter to one scope
+  --skill-team <team>                   Filter to one team
+
+oc routing eval-case show <id>          Show an eval case by id
+oc routing eval-case add                Create a routing eval case
+  --skill-name <name>                   Owning skill name
+  --skill-scope <scope>                 Owning skill scope
+  --skill-team <team>                   Owning skill team
+  --input <json>                        Prompt/inputs as a JSON value
+  --expected <json>                     Golden answer or grader rubric as a JSON value
+  --quality-bar <score>                 Minimum judge score 0..1 (default: 0.8)
+
+oc routing eval-case update <id>        Update an eval case (same flags as add)
+oc routing eval-case remove <id>        Delete an eval case
+
+oc routing measurement list             List shadow-savings measurements
+oc routing measurement show <id>        Show a measurement by id
+oc routing measurement run              Trigger a shadow-savings measurement
+  --skill-name <name>                   Owning skill name
+  --skill-scope <scope>                 Owning skill scope
+  --candidate-model <publicModelName>   Cheaper candidate model to evaluate
+  --current-model <publicModelName>     Baseline model (resolved from skill pin when omitted)
+
+oc routing proposal list                List routing-change proposals
+  --status <status>                     Filter: pending|approved|rejected|applied
+
+oc routing proposal show <id>           Show a proposal by id
+oc routing proposal approve <id>        Approve — pin the skill to the proposed model
+oc routing proposal reject <id>         Reject — leave the skill posture untouched
+
+oc routing recommendation list          List ranked savings recommendations
+  --cluster-tenant <id>                 Filter to one cluster tenant's skills
+  --skill-scope <scope>                 Filter to one scope
+  --only-open                           Return only skills with an open pending proposal
+
+oc routing metrics                      Fetch Langfuse routing metrics (loosely typed)
+  --query <json>                        Langfuse v1 query as a JSON object string
+```
+
+---
+
+### `oc awareness`
+
+Manage the fleet awareness contract canary rollout and inspect fleet participation health.
+
+```
+oc awareness rollout show               Show the current rollout state
+oc awareness rollout set <targetVersion>   Define the rollout target (resets the promotion frontier)
+  --stable <version>                    Stable version for un-promoted waves
+  --waves <csv>                         Comma-separated canary waves (narrow→wide)
+  --shadow                              Promoted waves compute target but serve stable
+
+oc awareness rollout promote            Advance the rollout frontier by one wave
+  --wave <wave>                         Promote up to and including a named wave
+
+oc awareness rollout rollback           Return all waves to the stable version
+oc awareness rollout resolve <tenant>   Resolve the contract version a tenant runs
+
+oc awareness participation              Fleet participation health
+  --severity <severity>                 Filter: critical|warning
+```
+
+---
+
+### `oc sessions`
+
+Bind, inspect, or clear a chat session's awareness scope, so one project's context
+can't spill into an unrelated chat.
+
+```
+oc sessions scope set <sessionKey>      Bind a session's scope (control plane intersects it with the principal's entitlements)
+  --principal <principal>               Tenant/user that owns the session
+  --scope <level:payloadId...>          Scope selector(s), repeatable: org|department|project|personal:<payloadId>
+
+oc sessions scope show <sessionKey>     Inspect a session's current scope binding
+oc sessions scope clear <sessionKey>    Clear a session's scope binding
 ```
 
 ---

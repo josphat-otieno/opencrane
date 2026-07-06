@@ -5,7 +5,7 @@ OpenCrane splits a platform installation into a single **fleet release** (cluste
 > See also:
 > [Fleet and silo operating model](/operators/fleet-silo-model) — how the fleet-manager and clustertenant-manager differ, what each owns, and how to configure fleet OIDC and Zitadel management.
 > [Networking & isolation](/operators/networking) — the NetworkPolicy floor and the silo boundary.
-> [Linkerd identity substrate](/operators/linkerd-identity) — the mTLS layer that rides on top of the silo boundary.
+> [Identity & network isolation (Cilium + SPIFFE)](/operators/cilium-spiffe-identity) — the identity-keyed mTLS layer that rides on top of the silo boundary.
 > [Silo IAM: inheritance & sharing](/integrators/silo-iam) — how IAM policies, skills, and resource shares are scoped per silo.
 
 ---
@@ -88,7 +88,7 @@ The fleet release uses the `opencrane-fleet` chart (`apps/fleet-platform`) and t
 
 ## Deploy sequence
 
-You must install the fleet release first. The fleet release installs the cluster-wide singletons (ingress-nginx, external-dns, the CloudNativePG operator, cert-manager) that every silo reuses. `deploy-silo.sh` actively enforces this: it preflights for the CloudNativePG CRD (`clusters.postgresql.cnpg.io`) and exits with a clear error if the fleet release has not been installed.
+You must install the fleet release first. The fleet release installs the cluster-wide singletons (ingress-nginx, external-dns, the CloudNativePG operator, cert-manager) that every silo reuses. `apps/clustertenant-platform/deploy.sh` actively enforces this: it preflights for the CloudNativePG CRD (`clusters.postgresql.cnpg.io`) and exits with a clear error if the fleet release has not been installed.
 
 ### Step 1 — install the fleet release
 
@@ -138,7 +138,7 @@ Each silo's isolation rests on three independent layers:
 
 1. **Dedicated instances** — no plane is shared between silos. Data and credentials are co-resident only within a silo's own namespace.
 2. **Namespace isolation + NetworkPolicy floor** — the default-deny NetworkPolicy in each silo namespace blocks all cross-silo traffic at L3/L4. See [Networking & isolation](/operators/networking).
-3. **Linkerd mTLS identity (optional)** — when Linkerd is installed, workload identity is pinned by SPIFFE SVID, adding a second layer keyed on cryptographic identity rather than network position. See [Linkerd identity substrate](/operators/linkerd-identity).
+3. **Cilium + SPIFFE identity** — workload identity is pinned by a SPIFFE SVID and enforced by `CiliumNetworkPolicy` (plus mutual TLS), adding a layer keyed on cryptographic identity rather than network position. See [Identity & network isolation (Cilium + SPIFFE)](/operators/cilium-spiffe-identity).
 
 The operator in each silo is namespace-scoped (`requireWatchNamespace`). It owns that silo's Ingress, `DNSEndpoint`, and certificate binding — and only those. A silo operator cannot write resources in another silo's namespace.
 
@@ -160,7 +160,7 @@ Source: [`apps/fleet-platform/templates/fleet-manager-deployment.yaml`](https://
 ::: warning Future work
 Two significant pieces of automation are **not yet shipped** and must be done manually for now:
 
-**Silo provisioning on ClusterTenant creation.** When a new ClusterTenant is registered via the fleet API, the corresponding silo release is not automatically installed. You must run `deploy-silo.sh` by hand for each ClusterTenant. Automating this — so the fleet stamps out a silo release on ClusterTenant creation — is tracked as future work.
+**Silo provisioning on ClusterTenant creation.** When a new ClusterTenant is registered via the fleet API, the corresponding silo release is not automatically installed. You must run `apps/clustertenant-platform/deploy.sh` by hand for each ClusterTenant. Automating this — so the fleet stamps out a silo release on ClusterTenant creation — is tracked as future work.
 
 **Data migration off the shared database.** Existing installations that used the old shared-singleton model (one Postgres for all tenants) must migrate each ClusterTenant's data into its own per-silo database. No automated migration tooling is shipped. Stage this migration carefully: provision each silo's database, copy the relevant rows, verify, then cut over the silo clustertenant-manager to its new database.
 :::

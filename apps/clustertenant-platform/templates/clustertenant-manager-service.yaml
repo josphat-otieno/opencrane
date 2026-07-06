@@ -12,6 +12,12 @@ spec:
       targetPort: http
       protocol: TCP
       name: http
+    # Internal-only API listener (/api/internal/*). Reached by platform pods over the
+    # cluster network (NetworkPolicy-gated); the public ingress never routes here.
+    - port: {{ .Values.clustertenantManager.service.internalPort }}
+      targetPort: internal
+      protocol: TCP
+      name: internal
   selector:
     {{- include "opencrane.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: clustertenant-manager

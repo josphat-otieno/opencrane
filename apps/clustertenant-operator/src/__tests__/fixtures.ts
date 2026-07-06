@@ -45,9 +45,10 @@ export const defaultConfig: OpenClawTenantOperatorConfig = {
   liteLlmDefaultRpmLimit: 0,
   mcpGatewayUrl: "http://opencrane-mcp-gateway.default.svc:8080",
   skillRegistryUrl: "http://opencrane-skill-registry.default.svc:5000",
-  controlPlaneInternalUrl: "http://opencrane-clustertenant-manager.default.svc:3000",
-  obotDeploymentName: "opencrane-mcp-gateway",
-  skillRegistryDeploymentName: "opencrane-skill-registry",
+  cogneeEndpoint: "",
+  internalPort: 8081,
+  controlPlaneInternalUrl: "http://localhost:8081",
+  controlPlaneInternalServiceUrl: "http://opencrane-clustertenant-manager.default.svc:8081",
   projectedTokenTtlSeconds: 600,
   linkerdMeshEnabled: false,
 };

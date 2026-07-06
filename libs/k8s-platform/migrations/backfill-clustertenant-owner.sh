@@ -18,11 +18,11 @@
 # Idempotent: merge-patches spec.owner; re-running on a converged CR is a no-op.
 #
 # Usage:
-#   ./platform/migrations/backfill-clustertenant-owner.sh --email owner@example.com
-#   ./platform/migrations/backfill-clustertenant-owner.sh \
+#   libs/k8s-platform/migrations/backfill-clustertenant-owner.sh --email owner@example.com
+#   libs/k8s-platform/migrations/backfill-clustertenant-owner.sh \
 #       --email-for elewa=jente@elewa.ke --email-for elewa-be=jente@elewa.ke
 #   # optional: restrict to specific orgs, point at the DB pod/namespace
-#   ./platform/migrations/backfill-clustertenant-owner.sh --email x@y.z --only elewa,northwind \
+#   libs/k8s-platform/migrations/backfill-clustertenant-owner.sh --email x@y.z --only elewa,northwind \
 #       --db-namespace opencrane-system --db-pod opencrane-db-1 --db-user postgres --db-name opencrane
 #
 # Prereqs: kubectl (pointed at the target cluster). Apply the updated CRD first

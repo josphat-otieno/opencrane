@@ -226,7 +226,7 @@ export abstract class OidcAuthServiceBase
   }
 
   /** Build the provider redirect URL and persist PKCE state in the local session. */
-  async buildLoginUrl(req: Request, returnTo: string): Promise<string>
+  async buildLoginUrl(req: Request, returnTo: string, options?: { prompt?: string }): Promise<string>
   {
     // 1. Resolve which OIDC client + scope to authorize against (base = masters client).
     const login = await this.resolveLoginClient(req);
@@ -256,6 +256,7 @@ export abstract class OidcAuthServiceBase
       code_challenge_method: "S256",
       state,
       nonce,
+      ...(options?.prompt ? { prompt: options.prompt } : {}),
     });
 
     return loginUrl.href;

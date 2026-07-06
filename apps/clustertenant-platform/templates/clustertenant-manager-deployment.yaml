@@ -40,6 +40,9 @@ spec:
           ports:
             - name: http
               containerPort: {{ .Values.clustertenantManager.service.port }}
+            # Internal-only API listener (/api/internal/*) — separate socket, off the ingress.
+            - name: internal
+              containerPort: {{ .Values.clustertenantManager.service.internalPort }}
             {{- if .Values.gatewayProxy.enabled }}
             # -- In-process identity-routing gateway proxy (DOMAIN.T4), now silo-local (Stage 5):
             #    the wildcard Ingress routes the gateway WS upgrade here.
@@ -53,6 +56,9 @@ spec:
                   fieldPath: metadata.namespace
             - name: PORT
               value: {{ .Values.clustertenantManager.service.port | quote }}
+            # Second (internal-only) listener for /api/internal/*.
+            - name: INTERNAL_PORT
+              value: {{ .Values.clustertenantManager.service.internalPort | quote }}
             {{- include "opencrane.observabilityEnv" (dict "ctx" $ "component" "clustertenant-manager") | nindent 12 }}
             - name: INGRESS_DOMAIN
               value: {{ .Values.ingress.domain | quote }}
@@ -178,6 +184,20 @@ spec:
                   name: {{ include "opencrane.fullname" . }}-litellm
                   {{- end }}
                   key: {{ .Values.litellm.secretKey }}
+            {{- end }}
+            {{- /* Optional, short-lived TEST bootstrap: when bootstrap.providerKey.existingSecret is
+                   set, the operator self-provisions this silo's OpenAI BYOK key on boot (writes the
+                   encrypted Secret + LiteLLM credential + seeds a default model). OFF by default;
+                   the raw key lives only in the named Secret, never in this chart. Delete the Secret
+                   (or clear existingSecret) to stop re-applying. Not for production — one shared key
+                   per silo, no per-tenant spend isolation. */ -}}
+            {{- if .Values.bootstrap.providerKey.existingSecret }}
+            - name: OPENCRANE_BOOTSTRAP_OPENAI_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.bootstrap.providerKey.existingSecret }}
+                  key: {{ .Values.bootstrap.providerKey.secretKey }}
+                  optional: true
             {{- end }}
             {{- include "opencrane.clustertenantManagerDatabaseEnv" . | nindent 12 }}
             {{- if .Values.clusterTenant.provisionerWebhook.url }}
@@ -312,14 +332,16 @@ spec:
               value: {{ include "opencrane.skillRegistryUrl" . | quote }}
             - name: PROJECTED_TOKEN_TTL_SECONDS
               value: {{ .Values.projectedIdentity.ttlSeconds | quote }}
-            # -- Internal API base the DB-less operator calls: its OWN in-pod API server.
+            # -- Internal API base the DB-less operator calls on ITS OWN in-pod internal
+            #    listener (localhost : internalPort). The internal routes are no longer on the
+            #    public port, so this must target the internal port.
             - name: CLUSTERTENANT_MANAGER_INTERNAL_URL
-              value: {{ printf "http://localhost:%v" .Values.clustertenantManager.service.port | quote }}
-            # -- Kubernetes Deployment names for the runtime-plane drift repairer (P4A.2).
-            - name: OBOT_DEPLOYMENT_NAME
-              value: {{ printf "%s-mcp-gateway" (include "opencrane.fullname" .) | quote }}
-            - name: SKILL_REGISTRY_DEPLOYMENT_NAME
-              value: {{ printf "%s-skill-registry" (include "opencrane.fullname" .) | quote }}
+              value: {{ printf "http://localhost:%v" .Values.clustertenantManager.service.internalPort | quote }}
+            # -- Internal API SERVICE URL injected into tenant pods (and other planes) to reach
+            #    /api/internal/* from a DIFFERENT pod — a pod's localhost is itself, so it uses
+            #    the Service DNS on the internal port.
+            - name: CLUSTERTENANT_MANAGER_INTERNAL_SERVICE_URL
+              value: {{ printf "http://%s-clustertenant-manager.%s.svc:%v" (include "opencrane.fullname" .) .Release.Namespace .Values.clustertenantManager.service.internalPort | quote }}
             - name: LITELLM_ENABLED
               value: {{ .Values.litellm.enabled | quote }}
             - name: LITELLM_DEFAULT_MONTHLY_BUDGET_USD

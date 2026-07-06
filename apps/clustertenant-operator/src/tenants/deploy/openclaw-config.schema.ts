@@ -64,6 +64,27 @@ const _authSchema = z
   .strict();
 
 /**
+ * Control-UI (browser operator surface) block. With `bind:lan` the gateway enforces a
+ * browser Origin allowlist, and a device-less trusted-proxy session keeps its operator
+ * scopes only when device auth is explicitly disabled (the platform is device-less by
+ * design — see `_BuildConfigMap`). Both keys are optional; `allowedOrigins` is host-derived.
+ */
+const _controlUiSchema = z
+  .object({
+    /** Serve the gateway's built-in Control UI (so the org SPA can embed it for chat). */
+    enabled: z.boolean().optional(),
+    /** Base path the Control UI is served under (e.g. `/control-ui`). */
+    basePath: z.string().optional(),
+    /** Reading-measure cap for grouped chat messages (e.g. `min(820px, 100%)`). */
+    chatMessageMaxWidth: z.string().optional(),
+    /** Browser Origins allowed to open a Control-UI WS (e.g. `https://<org>.<base>`). */
+    allowedOrigins: z.array(z.string()).optional(),
+    /** Trust the proxy as the auth authority instead of per-browser device identity. */
+    dangerouslyDisableDeviceAuth: z.boolean().optional(),
+  })
+  .strict();
+
+/**
  * PLATFORM-OWNED gateway block. `.strict()` is the load-bearing guarantee: an
  * unknown key here is the exact class of bug that crashed live tenant pods on boot.
  */
@@ -75,6 +96,8 @@ const _gatewaySchema = z
     port: z.number().int().positive(),
     /** Network bind scope. */
     bind: _bindMode,
+    /** Browser operator-UI policy (origin allowlist + device-auth posture). */
+    controlUi: _controlUiSchema.optional(),
     /** Reverse-proxy source IPs/CIDRs trusted for trusted-proxy auth. */
     trustedProxies: z.array(z.string()),
     /** Delegated-auth configuration. */
@@ -94,21 +117,29 @@ const _modelProviderSchema = z
     apiKey: z.string().optional(),
     /** Wire protocol the provider speaks (e.g. `openai-completions`). */
     api: z.string().optional(),
-    /** Allowed model ids; `[]` keeps the proxy default. */
-    models: z.array(z.string()).optional(),
+    /**
+     * Allowed models. OpenClaw@2026.6.9 requires each entry to be an OBJECT with
+     * `id` + `name` (both required) — a bare string array fails gateway startup
+     * ("models.providers.*.models.N: Invalid input"). `[]` keeps the proxy default.
+     * `passthrough` tolerates the extra optional per-model fields OpenClaw accepts
+     * (api/baseUrl/cost/contextWindow/…) without pinning them here.
+     */
+    models: z
+      .array(z.object({ id: z.string(), name: z.string() }).passthrough())
+      .optional(),
   })
   .strict();
 
 /**
- * Models block emitted only when LiteLLM is enabled. `mode` ∈ {merge,replace}
- * (PINNED from docs); `default` is the optional default model id.
+ * Models block emitted only when LiteLLM is enabled. `mode` ∈ {merge,replace}.
+ * NOTE: OpenClaw's `models` block is strict and has NO `default` key — the effective
+ * default model lives at `agents.defaults.model` (see `_agentsDefaultsSchema`). Emitting
+ * `models.default` fails gateway startup with "models: Invalid input".
  */
 const _modelsSchema = z
   .object({
     /** How the provider map merges with built-in providers. */
     mode: z.enum(["merge", "replace"]),
-    /** Default model id, surfaced when the control-plane returned one. */
-    default: z.string().optional(),
     /** Provider id → provider config map. */
     providers: z.record(z.string(), _modelProviderSchema),
   })
@@ -126,6 +157,12 @@ const _agentsDefaultsSchema = z
     workspace: z.string(),
     /** Skip the interactive bootstrap ritual in the headless pod. */
     skipBootstrap: z.boolean(),
+    /** Effective default model id (OpenClaw reads the default from here, not models.default). */
+    model: z.string().optional(),
+    /** Reasoning visibility default (openclaw AgentDefaultsConfig); "stream" persists the trace into history. */
+    reasoningDefault: z.enum(["off", "on", "stream"]).optional(),
+    /** Default thinking level (openclaw AgentDefaultsConfig) so reasoning-capable models produce a trace. */
+    thinkingDefault: z.enum(["off", "minimal", "low", "medium", "high", "xhigh", "adaptive", "max"]).optional(),
   })
   .passthrough();
 
@@ -137,6 +174,38 @@ const _agentsSchema = z
   .object({
     /** Default agent settings applied to every agent in the pod. */
     defaults: _agentsDefaultsSchema,
+  })
+  .passthrough();
+
+/**
+ * A single `mcp.servers` entry. INFERRED shape (docs: configuration-reference): a LOCAL
+ * server uses `command` + `args` (stdio transport); a REMOTE server uses `url` + `transport`
+ * ("streamable-http"/"sse"). Common optional fields (headers, toolFilter, timeouts) are tolerated
+ * via `.passthrough()` rather than pinned. The operator only emits the local `command`/`args` form
+ * (the org-memory server OpenClaw spawns over stdio — see 2-config-map.ts).
+ */
+const _mcpServerSchema = z
+  .object({
+    /** Executable to spawn for a local stdio server (e.g. `node`). */
+    command: z.string().optional(),
+    /** Arguments for the spawned local server. */
+    args: z.array(z.string()).optional(),
+    /** Endpoint URL for a remote server. */
+    url: z.string().optional(),
+    /** Remote transport kind. */
+    transport: z.enum(["streamable-http", "sse"]).optional(),
+  })
+  .passthrough();
+
+/**
+ * MCP block. Optional (present only when the operator wires a local server such as org-memory).
+ * `.passthrough()` at the block level tolerates any sibling MCP keys OpenClaw accepts; the server
+ * map is `id → entry`.
+ */
+const _mcpSchema = z
+  .object({
+    /** Server id → server config map. */
+    servers: z.record(z.string(), _mcpServerSchema),
   })
   .passthrough();
 
@@ -154,5 +223,7 @@ export const _OpenclawConfigSchema = z
     models: _modelsSchema.optional(),
     /** Agents block carrying the platform-pinned defaults. */
     agents: _agentsSchema,
+    /** Optional MCP block (present only when a local server such as org-memory is wired). */
+    mcp: _mcpSchema.optional(),
   })
   .passthrough();

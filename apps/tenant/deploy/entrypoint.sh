@@ -33,6 +33,13 @@ OPENCRANE_TENANT_MCP_DENY="${OPENCRANE_TENANT_MCP_DENY:-}"
 # skill-registry, authenticating with the audience-bound projected SA token.
 OPENCRANE_SKILL_REGISTRY_URL="${OPENCRANE_SKILL_REGISTRY_URL:-}"
 OPENCRANE_SKILL_REGISTRY_TOKEN_PATH="${OPENCRANE_SKILL_REGISTRY_TOKEN_PATH:-/var/run/opencrane/tokens/skill-registry.token}"
+# Mandatory platform backends (decided, not optional). Org memory is Cognee; model routing is the
+# LiteLLM proxy. The workspace docs state these as facts, so a pod that boots without them is
+# MISCONFIGURED — the preflight below surfaces that loudly instead of letting the runtime silently
+# degrade to workspace-only memory or a keyless model fallback.
+OPENCRANE_MEMORY_BACKEND="${OPENCRANE_MEMORY_BACKEND:-}"
+COGNEE_ENDPOINT="${COGNEE_ENDPOINT:-}"
+LITELLM_ENDPOINT="${LITELLM_ENDPOINT:-}"
 
 function _csv_contains()
 {
@@ -161,13 +168,12 @@ function _pull_entitled_skills()
 
   # Node owns the fetch+write so JSON parsing, the Bearer call, and the exact bytes
   # stay in one place. Entitlement is already enforced by the registry + control-plane
-  # (a non-entitled digest 404s); OPENCRANE_ALLOWED_SKILLS is the optional tenant-level
-  # (Tenant.spec.skillAllowlist) narrowing applied on top.
-  node - "$contract_file" "$OPENCRANE_SKILL_REGISTRY_URL" "$OPENCRANE_SKILL_REGISTRY_TOKEN_PATH" "$SKILLS_DIR" "${OPENCRANE_ALLOWED_SKILLS:-}" <<'EOF' || true
+  # (a non-entitled digest 404s) — group-based entitlement is the sole skill-authorization surface.
+  node - "$contract_file" "$OPENCRANE_SKILL_REGISTRY_URL" "$OPENCRANE_SKILL_REGISTRY_TOKEN_PATH" "$SKILLS_DIR" <<'EOF' || true
 const fs = require("node:fs");
 const path = require("node:path");
 
-const [, , contractPath, registryUrl, tokenPath, skillsDir, allowedCsv] = process.argv;
+const [, , contractPath, registryUrl, tokenPath, skillsDir] = process.argv;
 
 let contract;
 try { contract = JSON.parse(fs.readFileSync(contractPath, "utf8")); } catch { process.exit(0); }
@@ -179,8 +185,6 @@ let token;
 try { token = fs.readFileSync(tokenPath, "utf8").trim(); } catch { process.exit(0); }
 if (!token) { process.exit(0); }
 
-// Optional tenant-level allowlist; empty/unset => deliver everything the contract entitles.
-const allowed = (allowedCsv || "").split(",").map((s) => s.trim()).filter(Boolean);
 const base = registryUrl.replace(/\/+$/, "");
 
 async function _pull()
@@ -193,7 +197,6 @@ async function _pull()
     if (!name || !digest) { continue; }
     // Keep the on-disk name a single safe path segment so a write can never escape the skills dir.
     if (name.includes("/") || name.includes("..")) { continue; }
-    if (allowed.length > 0 && !allowed.includes(name)) { continue; }
 
     let res;
     try
@@ -272,20 +275,6 @@ function _mcp_server_is_enabled()
   return 0
 }
 
-function _skill_is_enabled()
-{
-  local skill_name="$1"
-
-  if [ "${OPENCRANE_ALLOWED_SKILLS+set}" != "set" ]; then
-    return 0
-  fi
-
-  case ",${OPENCRANE_ALLOWED_SKILLS}," in
-    *",${skill_name},"*) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
 function _link_shared_skills()
 {
   local source_dir="$1"
@@ -306,9 +295,6 @@ function _link_shared_skills()
 
   for skill_dir in "$source_dir"/*/; do
     skill_name=$(basename "$skill_dir")
-    if ! _skill_is_enabled "$skill_name"; then
-      continue
-    fi
     target="$SKILLS_DIR/$skill_name"
     if [ ! -e "$target" ]; then
       ln -sf "$skill_dir" "$target"
@@ -399,8 +385,28 @@ function _contract_poll_loop()
   done
 }
 
+# Warn loudly when a mandatory platform backend is missing. These are settled platform
+# decisions (org memory = Cognee, model routing = LiteLLM), so their absence is a
+# misconfiguration, not a supported mode. Warn rather than hard-exit so a partially-provisioned
+# pod can still boot for diagnosis, but make the gap impossible to miss in the logs.
+function _preflight_platform_deps()
+{
+  if [ "$OPENCRANE_MEMORY_BACKEND" != "cognee" ] || [ -z "$COGNEE_ENDPOINT" ]; then
+    echo "[opencrane] WARNING: org memory is not wired — expected OPENCRANE_MEMORY_BACKEND=cognee and COGNEE_ENDPOINT set (got backend='${OPENCRANE_MEMORY_BACKEND:-unset}', endpoint='${COGNEE_ENDPOINT:-unset}'). Cognee is the platform memory engine; the agent will have no org memory until this is fixed." >&2
+  else
+    echo "[opencrane] Org memory backend: Cognee at ${COGNEE_ENDPOINT}" >&2
+  fi
+
+  if [ -z "$LITELLM_ENDPOINT" ]; then
+    echo "[opencrane] WARNING: model routing is not wired — LITELLM_ENDPOINT is unset. LiteLLM is the platform model proxy; model calls will fail until this is fixed." >&2
+  else
+    echo "[opencrane] Model routing: LiteLLM proxy at ${LITELLM_ENDPOINT}" >&2
+  fi
+}
+
 function _main()
 {
+  _preflight_platform_deps
   _load_mcp_policy
 
   # Ensure GCS-backed directory structure

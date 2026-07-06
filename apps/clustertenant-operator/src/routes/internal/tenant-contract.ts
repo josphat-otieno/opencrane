@@ -181,7 +181,9 @@ export function _RegisterInternalTenantContract(prisma: PrismaClient, authApi: k
       // 7. Render the contract-derived TOOLS.md (L1 workspace doc). The entrypoint
       //    poll loop writes this over the workspace file and SIGHUPs OpenClaw, so a
       //    grant/deny reflects in the agent's tool list within one poll interval.
-      const toolsMarkdown = _RenderToolsMarkdown(mcpServers, skillBundles);
+      //    The org-memory section is included when Cognee is wired for the fleet, so the
+      //    regenerated doc keeps the agent aware of its always-available `memory_search` tool.
+      const toolsMarkdown = _RenderToolsMarkdown(mcpServers, skillBundles, { orgMemory: Boolean(process.env.COGNEE_ENDPOINT?.trim()) });
 
       // 7b. Resolve approved L2 personalisation docs (P4C.5). Unlike TOOLS.md
       //     (platform-owned, re-applied every poll), these are tenant-editable, so

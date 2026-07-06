@@ -21,21 +21,10 @@ team. Widen or revoke at any time, and changes take effect almost immediately.
 
 An **access policy** draws a boundary around what an assistant may reach on the
 network — which external sites it can call, and which connected tools are off-limits.
-It's your safety net.
+It's your safety net, and its safest starting point is "block everything except what's
+explicitly listed."
 
-```bash
-oc policies list
-oc policies create --body '{
-  "name": "default-egress",
-  "domains": { "allow": ["*.example.com", "api.openai.com"], "defaultDeny": true },
-  "mcpServers": { "deny": ["risky-tool"] }
-}'
-oc policies get <name>
-oc policies delete <name>
-```
-
-`defaultDeny: true` means "block everything except what's listed" — the safest
-starting point.
+Manage this from the command line — see [CLI reference → `oc policies`](/reference/cli#oc-policies).
 
 ## Putting it together
 

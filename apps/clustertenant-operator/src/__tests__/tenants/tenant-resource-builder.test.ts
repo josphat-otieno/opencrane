@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { defaultConfig, gcpConfig, gcpAdapter, onPremAdapter, _makeAccessPolicy, _makeTenant } from "../fixtures.js";
-import { _BuildClusterTenantLimitRange, _BuildClusterTenantNamespace, _BuildClusterTenantResourceQuota, _BuildClusterTenantScheduling, _BuildConfigMap, _BuildDeployment, _BuildGatewayNetworkPolicy, _BuildServiceAccount, _BuildSiloBaselineNetworkPolicy, _BuildSiloLinkerdIdentityPolicy, _BuildStatePvc } from "../../tenants/deploy/index.js";
+import { _BuildClusterTenantLimitRange, _BuildClusterTenantNamespace, _BuildClusterTenantResourceQuota, _BuildClusterTenantScheduling, _BuildConfigMap, _BuildDeployment, _BuildGatewayNetworkPolicy, _BuildServiceAccount, _BuildSiloBaselineNetworkPolicy, _BuildSiloLinkerdIdentityPolicy, _BuildStatePvc, _ConfigChecksum } from "../../tenants/deploy/index.js";
 
 describe("TenantResourceBuilder", () =>
 {
@@ -58,6 +58,34 @@ describe("TenantResourceBuilder", () =>
     expect(runtimeContract.skills.registry).toBe(defaultConfig.skillRegistryUrl);
   });
 
+  it("emits litellm-proxy in replace mode (LiteLLM is the only provider — no bare-provider bypass)", () =>
+  {
+    const liteLlmConfig = { ...defaultConfig, liteLlmEnabled: true };
+    const tenant = _makeTenant("ll");
+
+    // Non-empty modelSet → replace, default surfaced, allowlist restricted to the set.
+    const withModels = JSON.parse(_BuildConfigMap(liteLlmConfig, tenant, "default", undefined, { models: ["openai/gpt-4o", "anthropic/claude-sonnet-4-5"], defaultModel: "openai/gpt-4o" }).data?.["openclaw.json"] ?? "{}");
+    expect(withModels.models.mode).toBe("replace");
+    // The default lives at agents.defaults.model — OpenClaw's models block has no `default` key.
+    expect(withModels.models.default).toBeUndefined();
+    // Prefixed with the provider id so OpenClaw routes the reference through litellm-proxy rather
+    // than parsing `openai/` as the built-in openai provider (→ "No API key found for provider openai").
+    expect(withModels.agents.defaults.model).toBe("litellm-proxy/openai/gpt-4o");
+    expect(Object.keys(withModels.models.providers)).toEqual(["litellm-proxy"]);
+    // OpenClaw@2026.6.9 requires each model to be an { id, name } object, not a bare string.
+    expect(withModels.models.providers["litellm-proxy"].models).toEqual([
+      { id: "openai/gpt-4o", name: "openai/gpt-4o" },
+      { id: "anthropic/claude-sonnet-4-5", name: "anthropic/claude-sonnet-4-5" },
+    ]);
+
+    // Empty/null modelSet → still replace (no built-in fallback); empty allowlist, no default.
+    // This bricked-pod window is what cluster onboarding's ≥1-model requirement prevents.
+    const noModels = JSON.parse(_BuildConfigMap(liteLlmConfig, tenant, "default", undefined, null).data?.["openclaw.json"] ?? "{}");
+    expect(noModels.models.mode).toBe("replace");
+    expect(noModels.models.default).toBeUndefined();
+    expect(noModels.models.providers["litellm-proxy"].models).toEqual([]);
+  });
+
   it("normalises the gateway owner allowlist (trim + lowercase) to match gateway-verify", () =>
   {
     // gateway-verify injects email.trim().toLowerCase(); a mixed-case / padded owner
@@ -69,6 +97,33 @@ describe("TenantResourceBuilder", () =>
     const payload = JSON.parse(configMap.data?.["openclaw.json"] ?? "{}");
 
     expect(payload.gateway.auth.trustedProxy.allowUsers).toEqual(["mike.owner@example.com"]);
+  });
+
+  it("allowlists the org Control-UI origin when a serving host is given (CONTROL_UI_ORIGIN_NOT_ALLOWED)", () =>
+  {
+    // With bind:lan the gateway refuses a Control-UI WS whose Origin isn't allowlisted.
+    // The org-admin SPA connects through the org host, so its https origin must be allowed.
+    const tenant = _makeTenant("acme-user");
+    const configMap = _BuildConfigMap(defaultConfig, tenant, "default", undefined, undefined, "acme.dev.opencrane.ai");
+    const payload = JSON.parse(configMap.data?.["openclaw.json"] ?? "{}");
+
+    expect(payload.gateway.controlUi.allowedOrigins).toEqual(["https://acme.dev.opencrane.ai"]);
+    // Device-less trusted-proxy model: device auth disabled so the proxy-injected identity's
+    // scopes stand (otherwise the gateway strips them). Safe only behind the gateway NetworkPolicy.
+    expect(payload.gateway.controlUi.dangerouslyDisableDeviceAuth).toBe(true);
+    // Survives the step-3b gateway re-pin (controlUi is part of the platform-owned block).
+    expect(payload.gateway.auth.trustedProxy.allowUsers).toEqual(["acme-user@example.com"]);
+  });
+
+  it("disables Control-UI device auth even with no serving host, but omits the origin allowlist", () =>
+  {
+    const tenant = _makeTenant("plain");
+    const configMap = _BuildConfigMap(defaultConfig, tenant, "default");
+    const payload = JSON.parse(configMap.data?.["openclaw.json"] ?? "{}");
+
+    // Device-less model applies regardless of host; the origin allowlist is host-derived.
+    expect(payload.gateway.controlUi.dangerouslyDisableDeviceAuth).toBe(true);
+    expect(payload.gateway.controlUi).not.toHaveProperty("allowedOrigins");
   });
 
   it("renders an unambiguous trust-nothing gateway config when no proxy is configured (OC-2 / CONN.4)", () =>
@@ -96,8 +151,14 @@ describe("TenantResourceBuilder", () =>
     const configMap = _BuildConfigMap(litellmConfig, tenant, "default", undefined, { models: ["gpt-4o", "claude-opus-4-8"], defaultModel: "gpt-4o" });
     const payload = JSON.parse(configMap.data?.["openclaw.json"] ?? "{}");
 
-    expect(payload.models.providers["litellm-proxy"].models).toEqual(["gpt-4o", "claude-opus-4-8"]);
-    expect(payload.models.default).toBe("gpt-4o");
+    expect(payload.models.providers["litellm-proxy"].models).toEqual([
+      { id: "gpt-4o", name: "gpt-4o" },
+      { id: "claude-opus-4-8", name: "claude-opus-4-8" },
+    ]);
+    // Default is at agents.defaults.model (OpenClaw's models block has no `default`), prefixed
+    // with the provider id so the reference routes through litellm-proxy (not the built-in provider).
+    expect(payload.models.default).toBeUndefined();
+    expect(payload.agents.defaults.model).toBe("litellm-proxy/gpt-4o");
   });
 
   it("keeps litellm-proxy models[] empty when the model set is empty or null", () =>
@@ -159,6 +220,11 @@ describe("TenantResourceBuilder", () =>
     expect(data["TOOLS.md"]).toContain("OPENCRANE_MCP_GATEWAY_URL");
     expect(data["TOOLS.md"]).toContain("OPENCRANE_SKILL_REGISTRY_URL");
 
+    // Both platform docs must make the agent AWARE of the Cognee org-memory layer.
+    expect(data["AGENTS.md"]).toContain("OPENCRANE_MEMORY_BACKEND");
+    expect(data["AGENTS.md"]).toContain("Cognee");
+    expect(data["TOOLS.md"]).toContain("Org Memory (Cognee)");
+
     // L2 seed files must have non-empty content.
     expect(data["SOUL.md.seed"]!.length).toBeGreaterThan(0);
     expect(data["IDENTITY.md.seed"]!.length).toBeGreaterThan(0);
@@ -180,6 +246,75 @@ describe("TenantResourceBuilder", () =>
     expect(runtimeContract.policy.mcpServers).toBeUndefined();
     expect(runtimeContract.mcp.servers).toEqual([]);
     expect(runtimeContract.skills.entitled).toEqual([]);
+  });
+
+  it("advertises workspace-only org memory when Cognee is not configured", () =>
+  {
+    const tenant = _makeTenant("no-cognee");
+    const configMap = _BuildConfigMap(defaultConfig, tenant, "default");
+    const runtimeContract = JSON.parse(configMap.data?.["opencrane-managed-runtime.json"] ?? "{}");
+
+    // Cognee-less deployment: the contract must declare the workspace fallback and carry no endpoint.
+    expect(runtimeContract.memory).toEqual({ backend: "workspace" });
+  });
+
+  it("advertises the Cognee org-memory backend when configured", () =>
+  {
+    const cogneeConfig = { ...defaultConfig, cogneeEndpoint: "http://cognee:8000" };
+    const tenant = _makeTenant("with-cognee");
+    const configMap = _BuildConfigMap(cogneeConfig, tenant, "default");
+    const runtimeContract = JSON.parse(configMap.data?.["opencrane-managed-runtime.json"] ?? "{}");
+
+    expect(runtimeContract.memory.backend).toBe("cognee");
+    expect(runtimeContract.memory.endpoint).toBe("http://cognee:8000");
+    // Stamped so the pod's awareness client can reason about contract skew.
+    expect(typeof runtimeContract.memory.contractVersion).toBe("string");
+  });
+
+  it("registers the local org-memory MCP server only when Cognee is configured", () =>
+  {
+    const tenant = _makeTenant("mcp-mem");
+
+    // Unset ⇒ no mcp block leaks into openclaw.json (byte-for-byte unchanged path).
+    const bare = JSON.parse(_BuildConfigMap(defaultConfig, tenant, "default").data?.["openclaw.json"] ?? "{}");
+    expect(bare.mcp).toBeUndefined();
+
+    // Configured ⇒ OpenClaw is told to spawn the local org-memory server over stdio.
+    const cogneeConfig = { ...defaultConfig, cogneeEndpoint: "http://cognee:8000" };
+    const wired = JSON.parse(_BuildConfigMap(cogneeConfig, tenant, "default").data?.["openclaw.json"] ?? "{}");
+    expect(wired.mcp.servers["org-memory"]).toEqual({ command: "node", args: ["/opt/org-memory-mcp/dist/index.js"] });
+  });
+
+  it("preserves a tenant's own mcp.servers while forcing org-memory in", () =>
+  {
+    const cogneeConfig = { ...defaultConfig, cogneeEndpoint: "http://cognee:8000" };
+    const tenant = _makeTenant("mcp-merge", {
+      configOverrides: { mcp: { servers: { custom: { command: "true", args: [] } } } },
+    });
+    const cfg = JSON.parse(_BuildConfigMap(cogneeConfig, tenant, "default").data?.["openclaw.json"] ?? "{}");
+
+    // Tenant server survives, and the platform org-memory server is merged in on top.
+    expect(cfg.mcp.servers.custom).toEqual({ command: "true", args: [] });
+    expect(cfg.mcp.servers["org-memory"].args).toEqual(["/opt/org-memory-mcp/dist/index.js"]);
+  });
+
+  it("injects the Cognee org-memory env only when configured", () =>
+  {
+    const cogneeConfig = { ...defaultConfig, cogneeEndpoint: "http://cognee:8000" };
+    const tenant = _makeTenant("cognee-env");
+    const stateVolume = onPremAdapter.buildStateVolume("cognee-env");
+
+    // Unset ⇒ no Cognee env leaks into the pod (byte-for-byte unchanged path).
+    const bare = _BuildDeployment(defaultConfig, stateVolume, tenant, "default");
+    const bareEnv = Object.fromEntries((bare.spec?.template?.spec?.containers?.[0]?.env ?? []).map((e) => [e.name ?? "", e.value ?? ""]));
+    expect(bareEnv.COGNEE_ENDPOINT).toBeUndefined();
+    expect(bareEnv.OPENCRANE_MEMORY_BACKEND).toBeUndefined();
+
+    // Configured ⇒ both the endpoint and the explicit backend signal are injected.
+    const wired = _BuildDeployment(cogneeConfig, stateVolume, tenant, "default");
+    const wiredEnv = Object.fromEntries((wired.spec?.template?.spec?.containers?.[0]?.env ?? []).map((e) => [e.name ?? "", e.value ?? ""]));
+    expect(wiredEnv.COGNEE_ENDPOINT).toBe("http://cognee:8000");
+    expect(wiredEnv.OPENCRANE_MEMORY_BACKEND).toBe("cognee");
   });
 
   it("builds Deployment with PVC volume on-prem", () =>
@@ -235,7 +370,6 @@ describe("TenantResourceBuilder", () =>
   {
     const tenant = _makeTenant("strict", {
       policyRef: "restricted-mcp",
-      skillAllowlist: ["company-policy", "deploy-helper"],
     });
 
     const stateVolume = onPremAdapter.buildStateVolume("strict");
@@ -260,7 +394,6 @@ describe("TenantResourceBuilder", () =>
     expect(envVars.OPENCRANE_MCP_GATEWAY_TOKEN_PATH).toBe("/var/run/opencrane/tokens/obot-gateway.token");
     expect(envVars.OPENCRANE_SKILL_REGISTRY_TOKEN_PATH).toBe("/var/run/opencrane/tokens/skill-registry.token");
     expect(envVars.OPENCRANE_POLICY_REF).toBe("restricted-mcp");
-    expect(envVars.OPENCRANE_ALLOWED_SKILLS).toBeUndefined();
     expect(envVars.HOME).toBe("/tmp/opencrane-home");
     expect(envVars.NPM_CONFIG_CACHE).toBe("/tmp/npm-cache");
     // OC-2 / CONN.4: gateway auth is trusted-proxy (configured in openclaw.json,
@@ -283,11 +416,13 @@ describe("TenantResourceBuilder", () =>
     const netpol = _BuildGatewayNetworkPolicy(config, tenant, "default");
 
     expect(netpol.spec?.policyTypes).toEqual(["Ingress"]);
-    // Only the operator pods (which now host the identity-routing proxy) in the operator's
-    // namespace may reach the gateway port — no per-user Ingress, no other pod, can connect.
+    // Only the clustertenant-manager pod (which hosts the identity-routing proxy) in the
+    // operator's namespace may reach the gateway port — no per-user Ingress, no other pod, can
+    // connect and assert an arbitrary X-Forwarded-User. The selector MUST match the proxy pod's
+    // real label (`clustertenant-manager`); "operator" matched nothing → fail-open/closed bug.
     const rule = netpol.spec?.ingress?.[0];
     expect(rule?._from?.[0]?.namespaceSelector?.matchLabels?.["kubernetes.io/metadata.name"]).toBe("opencrane");
-    expect(rule?._from?.[0]?.podSelector?.matchLabels?.["app.kubernetes.io/component"]).toBe("operator");
+    expect(rule?._from?.[0]?.podSelector?.matchLabels?.["app.kubernetes.io/component"]).toBe("clustertenant-manager");
     expect(rule?.ports?.[0]?.port).toBe(config.gatewayPort);
   });
 });
@@ -507,5 +642,34 @@ describe("ClusterTenant isolation builders (CT.5)", () =>
 
     expect(podSpec?.nodeSelector).toBeUndefined();
     expect(podSpec?.tolerations).toBeUndefined();
+  });
+});
+
+describe("config checksum → pod roll", () =>
+{
+  const _annotations = (config: string | undefined) =>
+    _BuildDeployment(defaultConfig, onPremAdapter.buildStateVolume("jente"), _makeTenant("jente"), "default", undefined, config)
+      .spec?.template?.metadata?.annotations;
+
+  it("computes a deterministic, config-sensitive digest", () =>
+  {
+    const cmA = _BuildConfigMap(defaultConfig, _makeTenant("jente"), "default");
+    const cmAAgain = _BuildConfigMap(defaultConfig, _makeTenant("jente"), "default");
+    const cmB = _BuildConfigMap(defaultConfig, _makeTenant("other"), "default");
+
+    // Stable across identical renders (no spurious rolls), and changes with the config.
+    expect(_ConfigChecksum(cmA)).toBe(_ConfigChecksum(cmAAgain));
+    expect(_ConfigChecksum(cmA)).not.toBe(_ConfigChecksum(cmB));
+    expect(_ConfigChecksum(cmA)).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("stamps the checksum on the pod template so a config change rolls the pod", () =>
+  {
+    expect(_annotations("abc123")).toEqual({ "opencrane.io/config-checksum": "abc123" });
+  });
+
+  it("omits the annotation when no checksum is supplied (suspend path unchanged)", () =>
+  {
+    expect(_annotations(undefined)).toBeUndefined();
   });
 });

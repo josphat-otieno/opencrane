@@ -63,10 +63,15 @@ The [self-review compliance table](./typescript.md#self-review-before-finishing)
 is not sufficient on its own. A policy-driven `Stop` gate decides — per change — whether an
 independent review is required before the turn can end. When the gate asks for review you must:
 
-1. Delegate to the **`@review` subagent** against the changed files.
+1. Delegate to the **`@review` subagent** against the changed files — or, for a
+   multi-file or risky diff, run the **`/review-loop` skill** (parallel single-dimension
+   finders + a `review-verifier` per candidate finding); either satisfies the gate.
 2. Resolve every **Critical** and **High** finding it returns — fix it, or justify in
    your response why it is not applicable.
 3. Only then finish the turn.
+
+Run `scripts/agent-style-check.sh` before delegating — mechanical style violations are
+cheaper to fix pre-review than to have the reviewer report back.
 
 **How the gate decides** (two `Stop` hooks run in parallel):
 

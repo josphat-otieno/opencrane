@@ -95,11 +95,13 @@ Determine scope first: `git diff --stat HEAD` / `git diff HEAD`, or the files/PR
 - **Never log or span a secret.** If unsure whether a field is sensitive, treat it as
   sensitive and redact.
 - **Match the existing API names from the barrel**, not names from memory or this document.
-- Editing `.ts` binds you to AGENTS.md: Allman braces, JSDoc on every declaration, no
-  standalone arrow declarations (arrows only in HOF callbacks / where `this` must bind),
-  single-line top imports, `*.types.ts` separation, the `_`/`___` naming convention.
+- Editing `.ts` binds you to AGENTS.md style — but do not self-police it from memory:
+  run `scripts/agent-style-check.sh` after editing and fix every ERROR it reports.
+  (Arrows passed inline as trace-wrapper callbacks are fine; the script only flags
+  standalone arrow declarations.)
 
 ## Verify after applying (mandatory when you edit)
+- Run `scripts/agent-style-check.sh` — zero ERROR lines before you report done.
 - Typecheck/build the touched package(s): e.g. `pnpm --filter @opencrane/observability build`,
   `pnpm --filter @opencrane/clustertenant-operator exec tsc --noEmit`.
 - Run the relevant tests: `pnpm --filter <pkg> test`. If you added a lib capability

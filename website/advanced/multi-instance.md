@@ -300,7 +300,10 @@ customer by creating a `ClusterTenant` and pointing UserTenants at it with `spec
 | `dedicatedCluster` | The customer's own kube-apiserver. | **External provisioner only** — see §5.4. Rejected `422 TIER_UNAVAILABLE` unless a backend advertises it. |
 
 When a customer is opted in, the operator ensures the per-`ClusterTenant` namespace
-(labelled `pod-security.kubernetes.io/enforce: restricted`), derives a `ResourceQuota` +
+(labelled `pod-security.kubernetes.io/enforce: baseline` — `restricted` was relaxed because
+silo planes such as Obot ship an embedded root Postgres with no `USER`, Cognee runs as root,
+and Langfuse subcharts share the same constraint; `baseline` still blocks privileged containers,
+host namespaces, `hostPath`, and host ports), derives a `ResourceQuota` +
 `LimitRange` from `spec.resources.quota` ({cpu, memory, pods, storage, gpu}), and stamps
 scheduling from `spec.compute`. The operator is the sole pod-creator, so no admission webhook
 is needed to enforce this.

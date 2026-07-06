@@ -25,19 +25,20 @@ OpenCrane has two backends a user touches, and they must not require two logins:
 | Plane | What it serves | How it is reached |
 |-------|----------------|-------------------|
 | **Control plane** | management + metadata: tenants, policies, groups, budgets, skills, audit, auth | the versioned control-plane API (OIDC session) |
-| **UserTenant pod (OpenClaw)** | the live agent session: chat, Cognee retrieval, canvas | the org's gateway WebSocket at `wss://<org>.<base>`, routed to the user's pod by the identity-routing proxy, via the OpenClaw Gateway v4 protocol |
+| **UserTenant pod (OpenClaw)** | the live agent session: chat, Cognee retrieval, canvas | the org's gateway WebSocket at `wss://<org>.<base>/gateway`, routed to the user's pod by the identity-routing proxy, via the OpenClaw Gateway v4 protocol |
 
 The principle is **one identity, brokered access**: the human signs in once via
-OIDC; the control plane then **brokers** the connection to the user's own pod by
-handing back that pod's **pairing link** — it never requires a second interactive
-login. OpenClaw's native auth is a pairing link, so OpenCrane uses that mechanism
-directly rather than minting a parallel bearer token.
+OIDC; when the browser opens the gateway WebSocket, the **identity-routing proxy**
+replays that OIDC session cookie to the control plane, resolves the caller to their
+own pod, and reverse-proxies the connection. The browser is **never** handed a pod
+credential and never logs in a second time — there is no pairing link and no bearer
+token to steal. Revoking the OIDC session stops the next connection immediately.
 
 ## End-to-end flow (single sign-on)
 
 ```
 1. Browser → /api/v1/auth/login (OIDC) → IdP → /api/v1/auth/callback → session cookie   ← the ONLY login
-2. Browser opens  wss://<org>.<base>  (the org's gateway WebSocket)
+2. Browser opens  wss://<org>.<base>/gateway  (the org's gateway WebSocket; the SPA owns /)
 3. Identity-routing proxy (in the operator):
      - checks Origin against CSWSH allowlist (exact vanity hosts + any https://<org>.<base>)
      - calls GET /api/v1/auth/gateway-resolve (replaying only the session cookie)
@@ -81,6 +82,12 @@ browser**. It is how the pod calls *outward* — e.g. OpenClaw → Obot MCP Gate
 (`aud=obot-gateway`), and the contract re-pull loop → control plane
 (`aud=control-plane`). The browser never holds an `obot-gateway` token and never talks
 to Obot directly.
+
+The pod's Kubernetes ServiceAccount is also what SPIRE mints its **SPIFFE SVID** from
+(`spiffe://opencrane/ct/<org>/<workload>`), so a workload's *network* identity and its
+*outward-call* identity are the same principal. That SVID is what the silo's
+`CiliumNetworkPolicy` rules and mutual TLS are keyed on — see
+[Identity & network isolation (Cilium + SPIFFE)](/operators/cilium-spiffe-identity).
 
 ## Two OIDC registrations: fleet and silo
 
@@ -222,8 +229,9 @@ standard OpenID Connect discovery.
 ## UserTenant pod access (identity-routing proxy)
 
 To reach a user's OpenClaw, the browser opens the org's gateway WebSocket at
-`wss://<org>.<base>`. The **identity-routing proxy** (folded into the ClusterTenant
-operator) authorises and routes the connection — the browser holds no pod credential.
+`wss://<org>.<base>/gateway` (the org control-UI SPA owns `/`, the API owns `/api/*`).
+The **identity-routing proxy** (folded into the ClusterTenant operator) authorises and
+routes the connection — the browser holds no pod credential.
 
 The routing authority is **`GET /api/v1/auth/gateway-resolve`** ✅. On each WebSocket
 upgrade the proxy:
@@ -288,6 +296,7 @@ Authentication establishes *who*; authorization is split across the two planes:
 
 ## See also
 
+- [Identity & network isolation (Cilium + SPIFFE)](/operators/cilium-spiffe-identity) — the workload-identity side: SPIFFE SVIDs, the who-can-talk-to-whom rules, and how they compose with human OIDC identity
 - [Networking & isolation](/operators/networking) — the two-plane model, NetworkPolicy enforcement, the three-layer gateway seam, and known egress gaps
 - [Connection security](/security/connection-security) — CONN.9/CONN.10 threat model and transport hardening posture
 - [Zitadel key rotation](/security/zitadel-key-rotation) — how to rotate the fleet-manager's Zitadel SA key that provisions ClusterTenant Zitadel Orgs

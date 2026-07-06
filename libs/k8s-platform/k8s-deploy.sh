@@ -10,8 +10,9 @@
 # This is the shared core. the deploy scripts' --provision (provision.sh) provisions a cluster
 # and then call this script.
 #
-# Usage:
-#   ./platform/k8s-deploy.sh [--base-domain DOMAIN] [--namespace NS] [--release NAME]
+# Usage (normally invoked via a profile — apps/fleet-platform/deploy.sh or
+# apps/clustertenant-platform/deploy.sh — which preset the value flags and exec this core):
+#   libs/k8s-platform/k8s-deploy.sh [--base-domain DOMAIN] [--namespace NS] [--release NAME]
 #                            [--image-tag TAG] [--storage-class SC]
 #                            [--control-plane-tag TAG] [--operator-tag TAG]
 #                            [--tenant-tag TAG]
@@ -19,6 +20,7 @@
 #                            [--oidc-redirect-uri URI] [--oidc-client-secret SECRET]
 #                            [--oidc-session-secret SECRET]
 #                            [--platform-operator-seed-email EMAIL]
+#                            [--platform-operator-groups CSV]
 #                            [--preflight]
 #                            [--no-ingress-nginx]
 #                            [--no-external-dns]
@@ -26,6 +28,13 @@
 #                            [--dns01-provider clouddns] [--dns01-credentials FILE]
 #                            [--dns01-project PROJECT_ID] [--dns-writer-gsa EMAIL]
 #                            [--values FILE] [--set k=v ...]
+#                            [--reuse-values | --reset-values]
+#
+# Value preservation: on an UPGRADE (release already exists) this engine defaults to Helm's
+# --reset-then-reuse-values, so prior --set/-f overrides are NOT silently dropped when a run
+# restates fewer values (a component-tag bump preserves the rest). Pass --reuse-values to
+# inherit the last release verbatim without refreshing chart defaults, or --reset-values to
+# intentionally drop prior overrides and start from chart defaults + this run's flags.
 #
 # TLS / cert-manager (Step 2.5) has THREE modes:
 #   off (default)  — no cert-manager install; the chart renders no issuer/cert.
@@ -115,7 +124,8 @@ TENANT_TAG=""           # empty → falls back to IMAGE_TAG
 BASE_DOMAIN="${OPENCRANE_BASE_DOMAIN:-}"
 STORAGE_CLASS=""        # empty → cluster default StorageClass
 VALUES_FILE=""
-REUSE_VALUES=""      # "--reuse-values" mode: inherit current helm values; add only overrides
+REUSE_VALUES=""      # explicit "--reuse-values": inherit last release's values verbatim; add only overrides
+RESET_VALUES=""      # explicit "--reset-values": DROP prior values, start from chart defaults + this run's --set
 EXTRA_SET=()
 
 # OIDC + per-cluster operator bootstrap. All default empty (OIDC stays disabled and the
@@ -134,6 +144,9 @@ OIDC_CLIENT_SECRET="${OPENCRANE_OIDC_CLIENT_SECRET:-${OIDC_CLIENT_SECRET:-}}"
 OIDC_SESSION_SECRET="${OPENCRANE_OIDC_SESSION_SECRET:-${OIDC_SESSION_SECRET:-}}"
 OIDC_SECRET_NAME="opencrane-oidc"
 PLATFORM_OPERATOR_SEED_EMAIL="${OPENCRANE_PLATFORM_OPERATOR_SEED_EMAIL:-}"
+# Platform-operator GROUP mapping (CSV of IdP groups). OR-ed with the seed email; the
+# durable bootstrap once an IdP group exists. Empty → unset (fail-closed).
+PLATFORM_OPERATOR_GROUPS="${OPENCRANE_PLATFORM_OPERATOR_GROUPS:-}"
 
 # cert-manager / TLS (Step 2.5). CERT_MANAGER stays off unless --cert-manager is given;
 # the mode is then selfSigned UNLESS an --acme-email + --dns01-provider promote it to
@@ -176,7 +189,7 @@ INGRESS_NGINX_NAMESPACE="ingress-nginx"
 INSTALL_EXTERNAL_DNS="${OPENCRANE_INSTALL_EXTERNAL_DNS:-1}"
 EXTERNAL_DNS_NAMESPACE="external-dns"
 # The CloudNativePG operator is a CLUSTER-WIDE singleton (one deployment watches every
-# namespace). The central install brings it up once; a per-silo install (deploy-silo.sh) must
+# namespace). The central install brings it up once; a per-silo install (apps/clustertenant-platform/deploy.sh) must
 # NOT re-install it — a second cluster-wide operator would fight the first over the same CRs.
 # `--no-db-operator` (or OPENCRANE_INSTALL_DB_OPERATOR=0) skips the operator install while STILL
 # applying this release's own per-namespace CNPG `Cluster` CR + secrets (reconciled by the
@@ -234,6 +247,7 @@ while [[ $# -gt 0 ]]; do
     --oidc-client-secret)  OIDC_CLIENT_SECRET="$2"; shift 2 ;;
     --oidc-session-secret) OIDC_SESSION_SECRET="$2"; shift 2 ;;
     --platform-operator-seed-email) PLATFORM_OPERATOR_SEED_EMAIL="$2"; shift 2 ;;
+    --platform-operator-groups)     PLATFORM_OPERATOR_GROUPS="$2"; shift 2 ;;
     --preflight)        PREFLIGHT="1"; shift ;;
     --auto-ingress-ip)  AUTO_INGRESS_IP="1"; shift ;;
     --verify)           VERIFY="1"; shift ;;
@@ -248,6 +262,7 @@ while [[ $# -gt 0 ]]; do
     --dns01-project)     DNS01_PROJECT="$2"; shift 2 ;;
     --values)        VALUES_FILE="$2"; shift 2 ;;
     --reuse-values)  REUSE_VALUES="1"; shift ;;
+    --reset-values)  RESET_VALUES="1"; shift ;;
     --set)           EXTRA_SET+=(--set "$2"); shift 2 ;;
     -h|--help)       grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *)               err "Unknown flag: $1"; exit 1 ;;
@@ -472,7 +487,7 @@ if [[ "$INSTALL_DB_OPERATOR" == "1" ]]; then
     --namespace "$NAMESPACE" --create-namespace --wait \
     --set-string monitoring.podMonitor.enabled=false
 else
-  log "CloudNativePG operator: install skipped (--no-db-operator) — ASSUMING a cluster-wide operator is already running (installed by the central release). This release's per-namespace Cluster CR is applied and only reconciles if that operator exists; deploy-silo.sh preflights for it."
+  log "CloudNativePG operator: install skipped (--no-db-operator) — ASSUMING a cluster-wide operator is already running (installed by the central release). This release's per-namespace Cluster CR is applied and only reconciles if that operator exists; apps/clustertenant-platform/deploy.sh preflights for it."
 fi
 
 log "Creating database credentials…"
@@ -839,20 +854,33 @@ if [[ "$CERT_MODE" == "acme" ]] && { [[ "$INSTALL_EXTERNAL_DNS" == "1" ]] || _ex
 fi
 
 # 3. The OpenCrane chart.
-# Fetch subchart dependencies (Langfuse, and any others declared in Chart.yaml).
-# --skip-refresh avoids a network fetch when the chart is already cached; we force
-# an update for langfuse so the version constraint is always satisfied.
+# Fetch subchart dependencies (Langfuse, and any others declared in Chart.yaml) — from Chart.lock,
+# NOT by re-resolving the version constraints. `helm dep build` rebuilds charts/ to exactly the
+# versions the committed Chart.lock pins, so a deploy ships the SAME subcharts CI validated and never
+# silently drifts to a newer langfuse (the dependency is pinned to an exact version in Chart.yaml).
+# It also won't rewrite the vendored Chart.lock/.tgz on every run the way `dep update` does. Bumping a
+# dependency is a deliberate edit (change Chart.yaml + run `helm dep update` once + commit the lock).
 log "Adding Langfuse Helm repository…"
 helm repo add langfuse https://langfuse.github.io/langfuse-k8s --force-update >/dev/null
-log "Fetching chart dependencies…"
-helm dep update "$CHART_DIR"
+log "Fetching chart dependencies (from Chart.lock)…"
+helm dep build "$CHART_DIR"
 
 log "Installing the OpenCrane Helm release '$RELEASE'…"
 # LiteLLM is wired to its own `litellm` database (DATABASE_URL via opencrane-litellm-db) with
 # STORE_MODEL_IN_DB on, so models/keys are stored and seeded at runtime via the admin API. The
 # Prisma query-engine crash on the Chainguard/wolfi base is fixed by the non_root image variant
 # (pre-baked engine binaries), set in the chart — see values.yaml litellm.image.
+# --force-conflicts: Helm 4 applies server-side, so any out-of-band actor that has
+# claimed field ownership of a chart-rendered field (e.g. a `kubectl patch`/`kubectl set
+# image` leaving a `kubectl-*` manager, or a now-removed operator drift-repairer whose
+# stale `node-fetch` ownership persists on the live object — see the warning above and
+# issue #146) makes `helm upgrade` fail with a field-ownership conflict. This engine's
+# contract is that Helm is the SOLE owner of chart-rendered fields, so on conflict Helm
+# should always reclaim them. Idempotent: a no-op when there is no conflicting manager,
+# and it only forces fields the chart actually applies (foreign managers of OTHER fields
+# are untouched). Without it a single stray imperative patch wedges every future upgrade.
 helm_args=(upgrade --install "$RELEASE" "$CHART_DIR" --namespace "$NAMESPACE" --create-namespace
+  --force-conflicts
   --set "clustertenantManager.database.existingSecret=$DB_SECRET"
   --set "fleetManager.database.existingSecret=$DB_SECRET"
   --set "litellm.existingDatabaseSecret=opencrane-litellm-db"
@@ -887,19 +915,29 @@ helm_args+=(--set "langfuse.clickhouse.auth.password=$LANGFUSE_CH_PASSWORD")
 # a stale true from a previous in-cluster install.
 helm_args+=(--set "langfuse.inCluster.enabled=false")
 [[ -n "$BASE_DOMAIN" ]] && helm_args+=(--set-string "langfuse.langfuse.nextauth.url=https://langfuse.${BASE_DOMAIN}")
-# OIDC human-login (control-plane only). Rendered iff an issuer URL is given; otherwise
+# OIDC human-login (control-plane silo). Rendered iff an issuer URL is given; otherwise
 # the chart emits no OIDC env and the control-plane stays in token/development mode.
-[[ -n "$OIDC_ISSUER_URL" ]]   && helm_args+=(--set "clustertenantManager.oidc.issuerUrl=$OIDC_ISSUER_URL")
-[[ -n "$OIDC_CLIENT_ID" ]]    && helm_args+=(--set "clustertenantManager.oidc.clientId=$OIDC_CLIENT_ID")
-[[ -n "$OIDC_REDIRECT_URI" ]] && helm_args+=(--set "clustertenantManager.oidc.redirectUri=$OIDC_REDIRECT_URI")
+# --set-string (NOT --set): a large numeric Zitadel clientId passed via --set is YAML-parsed
+# as a float and rendered in scientific notation (e.g. 3.78…e+17) → Zitadel App.NotFound and
+# all login breaks. Strings stay strings (issue #100).
+[[ -n "$OIDC_ISSUER_URL" ]]   && helm_args+=(--set-string "clustertenantManager.oidc.issuerUrl=$OIDC_ISSUER_URL")
+[[ -n "$OIDC_CLIENT_ID" ]]    && helm_args+=(--set-string "clustertenantManager.oidc.clientId=$OIDC_CLIENT_ID")
+[[ -n "$OIDC_REDIRECT_URI" ]] && helm_args+=(--set-string "clustertenantManager.oidc.redirectUri=$OIDC_REDIRECT_URI")
 # Point the chart at the Secret created above (client + session secret) instead of leaving
 # its inline values empty — keeps secrets out of Helm values + the rendered manifest.
 [[ -n "$OIDC_ISSUER_URL" ]]   && helm_args+=(--set-string "clustertenantManager.oidc.existingSecret=$OIDC_SECRET_NAME")
-# Per-cluster platform-operator SEED. Set ONLY when a non-empty value is supplied; an
-# empty seed is never passed, so the chart grants operator to nobody (fail-closed).
+# Platform-operator bootstrap (seed email AND/OR IdP group mapping). The operator identity
+# is PLANE-AGNOSTIC, so forward it to BOTH the fleet plane and the control-plane silo —
+# previously only the silo received it, so the fleet (super-admin) UI was inaccessible to
+# everyone even with a seed set (issue #100). Set ONLY when non-empty; empty → fail-closed.
 if [[ -n "$PLATFORM_OPERATOR_SEED_EMAIL" ]]; then
+  helm_args+=(--set-string "fleetManager.oidc.platformOperatorSeedEmail=$PLATFORM_OPERATOR_SEED_EMAIL")
   helm_args+=(--set-string "clustertenantManager.oidc.platformOperatorSeedEmail=$PLATFORM_OPERATOR_SEED_EMAIL")
   warn "Seeding platform operator for the cluster (verified OIDC email match). Remove the seed once a group mapping is in place."
+fi
+if [[ -n "$PLATFORM_OPERATOR_GROUPS" ]]; then
+  helm_args+=(--set-string "fleetManager.oidc.platformOperatorGroups=$PLATFORM_OPERATOR_GROUPS")
+  helm_args+=(--set-string "clustertenantManager.oidc.platformOperatorGroups=$PLATFORM_OPERATOR_GROUPS")
 fi
 [[ -n "$VALUES_FILE" ]] && helm_args+=(--values "$VALUES_FILE")
 # cert-manager flags resolved in Step 2.5 (empty in mode=off). Placed before --set
@@ -916,9 +954,25 @@ _DB_CKSUM="$(printf '%s' "$DB_PASSWORD" | sha256sum | cut -c1-8)"
 helm_args+=(--set "litellm.podAnnotations.db-checksum=$_DB_CKSUM")
 helm_args+=(--set "mcpGateway.podAnnotations.db-checksum=$_DB_CKSUM")
 helm_args+=("${EXTRA_SET[@]}")
-# When --reuse-values is set, inherit all previously-supplied values from the live release
-# and apply only the overrides passed on this invocation (e.g. a pure image-tag rollout).
-[[ -n "$REUSE_VALUES" ]] && helm_args+=(--reuse-values)
+# Value-preservation mode. Helm's DEFAULT on upgrade drops any value a prior release set
+# via --set/-f that this invocation does not restate, silently reverting it to the chart
+# default — a footgun that broke a live silo once (a pure `--control-plane-tag` bump reverted
+# ingress.sameOrigin/tls.secretName/gatewayProxy/tenant.gateway.trustedProxies/resource limits;
+# see the field-manager warning above). So for an UPGRADE (the release already exists) we
+# default to `--reset-then-reuse-values`: reset to the chart's built-in values (picking up any
+# new chart defaults), re-apply the last release's values, then merge this run's --set/-f on top.
+# That preserves prior overrides without staling on chart defaults. Explicit flags win:
+#   --reuse-values  → inherit last release verbatim (do NOT refresh chart defaults)
+#   --reset-values  → intentionally DROP prior overrides (start from chart defaults + this run)
+# A fresh install has nothing to reuse, so none of these apply.
+if [[ -n "$REUSE_VALUES" ]]; then
+  helm_args+=(--reuse-values)
+elif [[ -n "$RESET_VALUES" ]]; then
+  helm_args+=(--reset-values)
+elif helm status "$RELEASE" -n "$NAMESPACE" >/dev/null 2>&1; then
+  log "Existing release '$RELEASE' — using --reset-then-reuse-values so prior overrides are not silently dropped (pass --reset-values to start from chart defaults instead)."
+  helm_args+=(--reset-then-reuse-values)
+fi
 helm "${helm_args[@]}"
 
 # 4. Wait for the core workloads.
@@ -938,6 +992,22 @@ for _comp in fleet-manager clustertenant-manager; do
     kubectl rollout status "deployment/${RELEASE}-${_comp}" -n "$NAMESPACE" --timeout="${TIMEOUT}s"
   fi
 done
+
+# Read the ACTUAL control-plane host(s) off the deployed ingress(es). Never assume platform.<base>:
+# the fleet may serve the apex (controlPlaneHost=<base>), a silo serves <org>.<base>, and only the
+# unset default is platform.<base>. Ask the cluster what was rendered; fall back to platform.<base>
+# when no ingress exposes a host (e.g. ingress disabled) so callers still get a sensible hint.
+_control_plane_hosts() {
+  local hosts
+  hosts="$(kubectl get ingress -n "$NAMESPACE" \
+    -o jsonpath='{range .items[*]}{range .spec.rules[*]}{.host}{"\n"}{end}{end}' 2>/dev/null \
+    | grep -v '^$' | sort -u)"
+  if [[ -n "$hosts" ]]; then
+    echo "$hosts"
+  elif [[ -n "$BASE_DOMAIN" ]]; then
+    echo "platform.$BASE_DOMAIN"
+  fi
+}
 
 # 5. Post-deploy verify (opt-in, --verify). Advisory only — surfaces the failure modes that
 # leave a "green" install unreachable (pods not Running, no DNSEndpoints, external-dns auth
@@ -975,19 +1045,26 @@ _post_deploy_verify() {
     fi
   fi
 
-  # 4. Control-plane host resolves to the ingress — the end of the chain a user hits first.
-  if [[ -n "$BASE_DOMAIN" ]] && command -v dig >/dev/null 2>&1; then
-    local host="platform.$BASE_DOMAIN" resolved
-    resolved="$(dig +short "$host" 2>/dev/null | tail -1)"
-    if [[ -n "$resolved" ]]; then
-      log "  ✓ $host resolves to $resolved"
-    else
-      warn "  ✗ $host does not resolve yet (DNS propagation lag or a missing record)."
-    fi
+  # 4. Control-plane host(s) resolve to the ingress — the end of the chain a user hits first.
+  #    Read the rendered host(s) off the ingress so the apex / org host is checked, not platform.<base>.
+  if command -v dig >/dev/null 2>&1; then
+    local host resolved
+    for host in $(_control_plane_hosts); do
+      resolved="$(dig +short "$host" 2>/dev/null | tail -1)"
+      if [[ -n "$resolved" ]]; then
+        log "  ✓ $host resolves to $resolved"
+      else
+        warn "  ✗ $host does not resolve yet (DNS propagation lag or a missing record)."
+      fi
+    done
   fi
 }
 _post_deploy_verify
 
 log "Done. OpenCrane is installed in namespace '$NAMESPACE'."
-[[ -n "$BASE_DOMAIN" ]] && log "Point your DNS at the ingress, then visit https://platform.${BASE_DOMAIN}"
+_cp_hosts="$(_control_plane_hosts)"
+if [[ -n "$_cp_hosts" ]]; then
+  log "Point your DNS at the ingress, then visit:"
+  while IFS= read -r _h; do [[ -n "$_h" ]] && log "  https://$_h"; done <<< "$_cp_hosts"
+fi
 log "Ingress: kubectl get ingress -n $NAMESPACE"

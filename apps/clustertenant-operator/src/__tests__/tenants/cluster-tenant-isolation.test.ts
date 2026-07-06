@@ -53,6 +53,43 @@ function _makeRecordingClient(): RecordingClient
   );
 }
 
+/**
+ * Like {@link _makeRecordingClient}, but `createNamespace` rejects with the given
+ * HTTP status — simulating a per-silo operator whose ServiceAccount has no
+ * cluster-scoped namespace RBAC (403), or a genuine API failure (e.g. 500). All
+ * other (namespaced) creates record and succeed as usual.
+ */
+function _makeForbiddenNamespaceClient(statusCode: number): RecordingClient
+{
+  const created: k8s.KubernetesObject[] = [];
+  return new Proxy(
+    { created } as RecordingClient,
+    {
+      get(target, prop: string): unknown
+      {
+        if (prop === "created") return target.created;
+        if (prop === "create" || prop === "read" || prop === "replace") return undefined;
+        if (prop === "createNamespace")
+        {
+          return async function reject(): Promise<never>
+          {
+            throw Object.assign(new Error("namespaces is forbidden"), { statusCode });
+          };
+        }
+        if (typeof prop === "string" && (prop.startsWith("create") || prop.startsWith("replace")))
+        {
+          return async function record(args: { body?: k8s.KubernetesObject }): Promise<k8s.KubernetesObject | undefined>
+          {
+            if (args?.body) target.created.push(args.body);
+            return args?.body;
+          };
+        }
+        return undefined;
+      },
+    },
+  );
+}
+
 /** Build a customApi stub: getClusterCustomObject returns the supplied parent; patchStatus-style calls are no-ops. */
 function _makeCustomApi(clusterTenant?: ClusterTenantResource): k8s.CustomObjectsApi
 {
@@ -225,5 +262,40 @@ describe("ClusterTenant isolation enforcement (CT.5 reconcile flow)", () =>
     const podSpec = deployment?.spec?.template?.spec;
     expect(podSpec?.nodeSelector).toBeUndefined();
     expect(podSpec?.tolerations).toBeUndefined();
+  });
+
+  it("tolerates a forbidden (403) namespace create — fleet-manager owns the silo namespace — and still deploys the pod", async () =>
+  {
+    const clusterTenant = _makeClusterTenant("acme", "ct-acme");
+    const tenant = _makeTenant("mike", { clusterTenantRef: "acme" });
+
+    // The silo operator's SA cannot create cluster-scoped namespaces (403), but the
+    // namespace already exists (fleet-manager made it), so reconcile must converge.
+    const forbiddenCore = _makeForbiddenNamespaceClient(403);
+    const statuses: Record<string, unknown>[] = [];
+    const operator = _makeOperator(forbiddenCore, apps, networking, clusterTenant, statuses);
+
+    await expect(operator.reconcileTenant(tenant)).resolves.toBeUndefined();
+
+    // The rejected namespace create records nothing, yet the workload still lands and
+    // the Tenant reaches Running with its org host stamped (so the DB projection can read it).
+    expect(forbiddenCore.created.some((r) => r.kind === "Namespace")).toBe(false);
+    expect(apps.created.some((r) => r.kind === "Deployment")).toBe(true);
+    expect(statuses.at(-1)?.phase).toBe("Running");
+    expect(statuses.at(-1)?.ingressHost).toBe("acme.opencrane.local");
+  });
+
+  it("still fails closed on a non-403 namespace create error (a genuine API failure is not masked)", async () =>
+  {
+    const clusterTenant = _makeClusterTenant("acme", "ct-acme");
+    const tenant = _makeTenant("mike", { clusterTenantRef: "acme" });
+
+    const erroringCore = _makeForbiddenNamespaceClient(500);
+    const statuses: Record<string, unknown>[] = [];
+    const operator = _makeOperator(erroringCore, apps, networking, clusterTenant, statuses);
+
+    await expect(operator.reconcileTenant(tenant)).rejects.toThrow();
+    // The failure is surfaced as an Error status, not silently converged.
+    expect(statuses.at(-1)?.phase).toBe("Error");
   });
 });

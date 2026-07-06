@@ -17,6 +17,7 @@ import { policiesRouter } from "./routes/policies.js";
 import { prometheusMetricsRouter } from "./routes/prometheus-metrics.js";
 import { providerKeysRouter } from "./routes/provider-keys.js";
 import { providerCredentialsRouter } from "./routes/provider-credentials.js";
+import { providerByokRouter } from "./routes/provider-byok.js";
 import { modelRegistryRouter } from "./routes/model-registry.js";
 import { modelRoutingDefaultsRouter } from "./routes/model-routing-defaults.js";
 import { modelRoutingRecommendationsRouter } from "./routes/model-routing-recommendations.js";
@@ -72,20 +73,21 @@ function _BuildOciBundleStore(): OciBundleStore | null
  * @param authApi   - Kubernetes Authentication API for tenant contract TokenReview validation.
  * @returns The Express application instance with registered routes.
  */
-export function _RegisterRoutes(app: Express, prisma: PrismaClient, customApi: k8s.CustomObjectsApi, coreApi: k8s.CoreV1Api, authApi: k8s.AuthenticationV1Api): Express
+/**
+ * Mount the internal (`/api/internal/*`) routers. These MUST be registered BEFORE the
+ * session `___AuthMiddleware` (see index.ts) — mounting them after it 401s every caller:
+ *   - NetworkPolicy-only routes (`bundles`, `tenant-models`) take NO token; access is
+ *     enforced at the network layer. The operator fetches `tenant-models` on its own
+ *     reconcile hot path with no credential, so behind session auth it 401s → the model
+ *     set is always null → replace-mode pods brick with an empty allowlist.
+ *   - pod-identity routes (`contract`, `participation`) run their OWN TokenReview over a
+ *     projected pod token, which the browser-session middleware cannot satisfy.
+ * @see apps/clustertenant-platform/templates/networkpolicy-planes.yaml — the runtime-plane policies.
+ */
+export function _RegisterInternalRoutes(app: Express, prisma: PrismaClient, authApi: k8s.AuthenticationV1Api): void
 {
-  // Internal routes — mounted before ___AuthMiddleware and not behind any token check.
-  // Access is enforced by Kubernetes NetworkPolicy: only the Obot, skill-registry, and
-  // tenant pods can reach the control-plane service on the cluster network.
-  // @see apps/clustertenant-platform/templates/networkpolicy-planes.yaml — runtime-plane policies.
-  // @see apps/clustertenant-platform/templates/obot-mcp-gateway-deployment.yaml — OBOT_SERVER_PROVIDER_REGISTRIES wiring.
   // Optional OCI store for skill-bundle content (P4D.2); null → DB-only delivery.
   const ociBundleStore = _BuildOciBundleStore();
-
-  // Gateway admin for the connection kill-switch (CONN.5); no-op until a
-  // control-plane operator device is paired (CONN.4 — needs live infra).
-  const gatewayAdmin = _BuildGatewayAdmin();
-
   app.use("/api/internal/bundles", _RegisterInternalBundles(prisma, ociBundleStore));
   // NetworkPolicy-only (no auth/TokenReview): the operator fetches a tenant's
   // allowed model set + effective default at reconcile. Best-effort — never 404/500.
@@ -93,6 +95,20 @@ export function _RegisterRoutes(app: Express, prisma: PrismaClient, customApi: k
   // Note: /api/internal/contract enforces per-tenant identity via TokenReview — not NetworkPolicy-only.
   app.use("/api/internal/contract", _RegisterInternalTenantContract(prisma, authApi));
   app.use("/api/internal/awareness/participation", _RegisterInternalParticipation(prisma, authApi));
+}
+
+export function _RegisterRoutes(app: Express, prisma: PrismaClient, customApi: k8s.CustomObjectsApi, coreApi: k8s.CoreV1Api, authApi: k8s.AuthenticationV1Api): Express
+{
+  // NOTE: the internal (`/api/internal/*`) routers are mounted separately by
+  // `_RegisterInternalRoutes`, which index.ts calls BEFORE `___AuthMiddleware` so the
+  // operator's tokenless reconcile fetch + the pod-identity TokenReview routes are not
+  // gated by the browser-session auth. Do NOT re-mount them here.
+  // Optional OCI store for skill-bundle content (P4D.2); null → DB-only delivery.
+  const ociBundleStore = _BuildOciBundleStore();
+
+  // Gateway admin for the connection kill-switch (CONN.5); no-op until a
+  // control-plane operator device is paired (CONN.4 — needs live infra).
+  const gatewayAdmin = _BuildGatewayAdmin();
 
   app.use("/api/v1/metrics", metricsRouter(customApi, prisma));
   app.use("/api/v1/audit", auditRouter(prisma));
@@ -126,6 +142,9 @@ export function _RegisterRoutes(app: Express, prisma: PrismaClient, customApi: k
   app.use("/api/v1/access-tokens", accessTokensRouter(prisma));
   app.use("/api/v1/providers/keys", providerKeysRouter(prisma));
   app.use("/api/v1/providers/credentials", providerCredentialsRouter(prisma));
+  // BYOK raw-key path — writes the silo's provider key Secret in the operator's own namespace
+  // (POD_NAMESPACE, downward-API populated; "default" fallback mirrors config._readOwnNamespace).
+  app.use("/api/v1/providers/byok", providerByokRouter(prisma, coreApi, process.env.POD_NAMESPACE?.trim() || "default"));
   app.use("/api/v1/models", modelRegistryRouter(prisma));
   app.use("/api/v1/openapi.json", _OpenapiRouter(spec));
   app.get("/healthz", _CheckDbHealth(prisma));

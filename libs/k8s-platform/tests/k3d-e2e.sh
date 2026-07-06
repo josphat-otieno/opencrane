@@ -34,6 +34,26 @@ function _require_docker_healthy()
   fi
 }
 
+# Retry a flaky network-bound command with linear backoff. The image builds and pulls
+# below fetch base layers from Docker Hub, which intermittently times out or rate-limits
+# on CI runners (e.g. `dial tcp …:443: i/o timeout` resolving node:22-bookworm-slim) and
+# fails the whole job on a transient blip. A retry is safe: builds/pulls are idempotent and
+# the layer cache lets a re-run resume where it left off.
+function _retry()
+{
+  local attempts="$1"; shift
+  local n=1
+  until "$@"; do
+    if [[ "$n" -ge "$attempts" ]]; then
+      echo "[e2e] command failed after ${attempts} attempts: $*"
+      return 1
+    fi
+    echo "[e2e] attempt ${n}/${attempts} failed; retrying in $(( n * 5 ))s: $*"
+    sleep "$(( n * 5 ))"
+    n=$(( n + 1 ))
+  done
+}
+
 function _require_free_space()
 {
   local free_kb
@@ -109,24 +129,25 @@ _require_cmd k3d
 _require_docker_healthy
 _require_free_space
 
-# 2. Build local images so e2e does not depend on pre-published GHCR tags.
+# 2. Build local images so e2e does not depend on pre-published GHCR tags. Each build is
+#    retried — the base-image pull from Docker Hub flakes intermittently on CI runners.
 echo "[e2e] Building fleet-operator image"
-docker build -f "$ROOT_DIR/apps/fleet-operator/deploy/Dockerfile" -t opencrane/operator:e2e "$ROOT_DIR"
+_retry 3 docker build -f "$ROOT_DIR/apps/fleet-operator/deploy/Dockerfile" -t opencrane/operator:e2e "$ROOT_DIR"
 
 echo "[e2e] Building clustertenant-operator (silo) image"
-docker build -f "$ROOT_DIR/apps/clustertenant-operator/deploy/Dockerfile" -t opencrane/clustertenant-manager:e2e "$ROOT_DIR"
+_retry 3 docker build -f "$ROOT_DIR/apps/clustertenant-operator/deploy/Dockerfile" -t opencrane/clustertenant-manager:e2e "$ROOT_DIR"
 
 echo "[e2e] Building tenant image"
-docker build -f "$ROOT_DIR/apps/tenant/deploy/Dockerfile" -t opencrane/tenant:e2e "$ROOT_DIR"
+_retry 3 docker build -f "$ROOT_DIR/apps/tenant/deploy/Dockerfile" -t opencrane/tenant:e2e "$ROOT_DIR"
 
 # 3. Create a fresh cluster for deterministic test runs.
 echo "[e2e] Recreating k3d cluster '$CLUSTER_NAME'"
 k3d cluster delete "$CLUSTER_NAME" >/dev/null 2>&1 || true
 k3d cluster create "$CLUSTER_NAME" --agents 1
 
-# 4a. Pre-pulling the official CloudNativePG database image.
+# 4a. Pre-pulling the official CloudNativePG database image (retried — registry pulls flake).
 echo "[e2e] Pre-pulling official CloudNativePG database image"
-docker pull ghcr.io/cloudnative-pg/postgresql:16
+_retry 3 docker pull ghcr.io/cloudnative-pg/postgresql:16
 
 # 4b. Import images into the k3d cluster runtime.
 echo "[e2e] Importing images into k3d"

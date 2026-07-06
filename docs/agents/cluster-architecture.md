@@ -133,7 +133,7 @@ All planes are **ClusterIP-only** (no external LB) — external traffic arrives 
 
 **Multi-instance (`multiInstance.enabled: true`):** each customer install gets its own namespace (`oc-acme`, `oc-globex`, …) with its own planes, namespaced RBAC, namespaced cert Issuer/SecretStore, and a default-deny cross-instance NetworkPolicy. CRDs are installed **once** cluster-wide (`--skip-crds` on releases). See [Multi-Instance](#multi-instance-cluster-shape).
 
-**Per-ClusterTenant fencing (when a UserTenant has `clusterTenantRef`):** the operator provisions/uses the parent's bound namespace with a **PSA `restricted`** label, a `ResourceQuota` (cpu/mem/pods/storage/gpu), and a `LimitRange` (per-container defaults — required because the quota constrains `requests.*`).
+**Per-ClusterTenant fencing (when a UserTenant has `clusterTenantRef`):** the operator provisions/uses the parent's bound namespace with a **PSA `baseline`** label, a `ResourceQuota` (cpu/mem/pods/storage/gpu), and a `LimitRange` (per-container defaults — required because the quota constrains `requests.*`). `baseline` (not `restricted`) because silos run 3rd-party planes — Obot ships an embedded root Postgres with no `USER`, Cognee runs as root, Langfuse subcharts — that cannot satisfy `restricted`; `baseline` still blocks privileged containers, host namespaces, `hostPath`, and host ports. Tightening to `restricted` behind a leaner non-root gateway is tracked as a security follow-up.
 
 ## Network Topology
 

@@ -22,21 +22,11 @@ Nothing changes silently. The platform *proposes*; a human *approves*.
 
 Each skill can be **pinned** to a model you choose, or set to **auto** so OpenCrane picks the
 default for that scope. Pin when you want predictability; use auto when you'd rather manage
-the choice in one place.
+the choice in one place. When a skill is on auto, the choice comes from a default you set
+once — for the whole company, or per customer.
 
-```bash
-oc skill-posture set <skill-key> --pinned-model my-fast-model   # always use this model
-oc skill-posture set <skill-key> --auto                         # let the platform choose
-oc skill-posture list
-```
-
-When a skill is on **auto**, the choice comes from a default you set once — for the whole
-company, or per customer:
-
-```bash
-oc model-default set --model my-fast-model            # company-wide default
-oc model-default set --cluster-tenant <id> --model …  # default for one customer
-```
+Manage this from the command line — see [CLI reference → `oc skill-posture`](/reference/cli#oc-skill-posture)
+and [`oc model`](/reference/cli#oc-model).
 
 ## Keep each customer to their allowed models
 
@@ -57,97 +47,26 @@ This is the part that protects quality. Instead of guessing whether a cheaper mo
 3. **Nothing changes.** A good result becomes a *suggestion* waiting for your approval — live
    traffic is never touched during a measurement.
 
-```bash
-# 1. Record example tasks for a skill
-oc routing eval-case add --skill-name summarise --skill-scope org \
-  --input '{"messages":[{"role":"user","content":"Summarise: …"}]}' \
-  --expected "A two-sentence summary covering …" \
-  --quality-bar 0.8
-
-# 2. Try a cheaper model against them
-oc routing measurement run --skill-name summarise --candidate-model my-cheap-model
-
-# 3. See the result
-oc routing measurement list --skill-name summarise
-```
+Manage this from the command line — see [CLI reference → `oc routing`](/reference/cli#oc-routing).
 
 ## Approve or reject — you decide
 
 A measurement that shows real savings turns into a ranked suggestion. You review it and
-choose; nothing is ever applied on its own.
-
-```bash
-oc routing recommendation list      # ranked "save up to N%" suggestions
-oc routing proposal approve <id>    # switch the skill to the cheaper model
-oc routing proposal reject <id>     # leave everything exactly as-is
-```
-
-Approving switches the skill and records the decision in the [audit log](/guide/audit);
-rejecting changes nothing.
+choose; nothing is ever applied on its own. Approving switches the skill and records the
+decision in the [audit log](/guide/audit); rejecting changes nothing.
 
 ## See cost & quality at a glance
 
-```bash
-oc routing metrics
-```
+`oc routing metrics` shows the fleet's cost and quality trend at a glance — see the
+[CLI reference](/reference/cli#oc-routing). Operators see the whole fleet; everyone else
+sees only their own usage. Credentials stay on the server — the browser never holds them.
 
-Operators see the whole fleet; everyone else sees only their own usage. Credentials stay on
-the server — the browser never holds them.
+## Going deeper
 
----
-
-## How it works (the details)
-
-You don't need this to use routing day to day — it's here when you want to understand
-exactly what the platform does.
-
-### Registering models
-
-A model is routable once it's in the registry. Each entry maps a public slug to an upstream
-model and the provider credential behind it. Models and credentials are scoped **Global** or
-**per-ClusterTenant**, and a credential only ever stores a Kubernetes Secret *reference* — a
-raw API key is never written to the database.
-
-```bash
-oc model add --name my-cheap-model --upstream openai/gpt-4o-mini --credential <id>
-oc model list / show <id> / update <id> / remove <id>
-```
-
-### How the effective model is resolved
-
-At call time the control plane walks this precedence and writes the winner into the tenant's
-effective contract — **no pod restart**:
-
-```
-explicit request override
-  → skill-pinned model
-    → skill auto-config
-      → ClusterTenant default
-        → Global default
-```
-
-### How the allowlist is enforced
-
-Each tenant's LiteLLM virtual key carries a `models[]` allowlist, populated from the registry
-at key-mint time and kept in sync by the operator's reconcile loop. A call to a model outside
-the allowlist is rejected at the gateway.
-
-### How measurement estimates savings
-
-A run replays every eval case through both the **baseline** and the **candidate**, grades each
-output with an independent **judge** model, reads the real per-call USD cost from LiteLLM, and
-estimates the saving with a bootstrap **95% confidence interval**. A proposal is emitted *only*
-when that interval excludes zero.
-
-The measurement seams are **live** — they require a deployed LiteLLM, provider keys, and a
-`ROUTING_JUDGE_MODEL`. With any unset, a run is a safe no-op. Full operator recipe:
+How model resolution, allowlists, and savings measurement work under the hood is covered in
+the [API overview → Model routing](/reference/api-overview#model-routing). The full operator
+recipe for turning on measurement lives at
 [`docs/operators/routing-measurement.md`](https://github.com/italanta/opencrane/blob/main/docs/operators/routing-measurement.md).
-
-::: warning Trust the judge, but verify it
-Keep the judge model independent of the candidate's family — a model graded by a sibling of
-itself scores too highly. LLM-as-judge grading also carries position and verbosity bias, so
-calibrate against a small human-graded slice before trusting the absolute savings figure.
-:::
 
 ## See also
 

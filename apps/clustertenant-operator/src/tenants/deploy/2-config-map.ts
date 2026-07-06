@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,6 +8,7 @@ import type { OpenClawTenantOperatorConfig } from "../../config.js";
 import type { AccessPolicy } from "../../policies/types.js";
 import type { Tenant } from "../models/tenant.interface.js";
 import type { TenantModelSet } from "@opencrane/contracts";
+import { AWARENESS_CONTRACT_VERSION } from "@opencrane/awareness";
 import { _BuildTenantLabels } from "./tenant-labels.js";
 
 /** Directory containing the workspace template files shipped with the operator. */
@@ -14,6 +16,82 @@ const _WORKSPACE_TEMPLATES_DIR = join(dirname(fileURLToPath(import.meta.url)), "
 
 /** Absolute path inside the tenant pod where OpenClaw's persistent workspace lives. */
 const _WORKSPACE_PATH = "/data/openclaw/workspace";
+
+/**
+ * Base path the gateway serves its built-in Control UI (Vite+Lit SPA) under, so the
+ * org-admin SPA can EMBED it as the chat surface instead of maintaining a bespoke
+ * renderer. The SPA owns `/` and the gateway WS is proxied at `/gateway`, so the
+ * Control UI mounts under its own prefix; the org ingress routes this path to the
+ * gateway (via the gateway-proxy) in the embedding phase.
+ */
+const _CONTROL_UI_BASE_PATH = "/control-ui";
+
+/**
+ * Reading-measure cap for grouped Control UI chat messages (openclaw default is
+ * `min(900px, 68%)`). Pinned to a comfortable, legible width for the embed.
+ */
+const _CONTROL_UI_CHAT_MAX_WIDTH = "min(820px, 100%)";
+
+/**
+ * Default agent reasoning posture — makes the model's thinking a first-class part
+ * of the transcript so it streams live AND is returned by `chat.history` (the
+ * org-admin SPA renders reasoning as a collapsible "Thinking" card).
+ *
+ * Verified against openclaw@2026.6.9 `AgentDefaultsConfig` (both keys are valid;
+ * the operator's `agents.defaults` block is `.passthrough`, and OpenClaw accepts
+ * them):
+ *  - `reasoningDefault: "stream"` — deliver reasoning as it happens (as reasoning
+ *    content parts on the assistant turn), so it persists into history rather than
+ *    being dropped by the visible-history projection.
+ *  - `thinkingDefault: "medium"` — a middle thinking level so reasoning-capable
+ *    models actually produce a trace (with `"off"` there is nothing to show).
+ *
+ * These are DEFAULTS, not platform-pinned: they are spread BEFORE the tenant's
+ * merged `agents.defaults`, so a tenant can dial either down via
+ * `spec.configOverrides.agents.defaults` (e.g. `reasoningDefault: "off"` to save
+ * tokens/latency). NOTE: enabling reasoning has a real token-cost/latency cost.
+ */
+const _REASONING_DEFAULT = "stream";
+const _THINKING_DEFAULT = "medium";
+
+/**
+ * The OpenClaw provider id the LiteLLM proxy is registered under (in `models.providers`).
+ *
+ * This id is ALSO the mandatory prefix on any model reference that must route through the proxy
+ * (see `_toModelRef`). OpenClaw resolves a model reference by splitting on the FIRST `/`: the head
+ * is the provider, the tail is the model. So a bare LiteLLM public name like `openai/gpt-5.5`
+ * resolves to OpenClaw's BUILT-IN `openai` provider — which then demands a real OpenAI key in the
+ * per-agent auth store and fails the first turn with `No API key found for provider "openai"`,
+ * NEVER touching our `litellm-proxy` provider. Prefixing the reference (`litellm-proxy/openai/gpt-5.5`)
+ * pins provider resolution to this proxy; OpenClaw strips the head and sends the tail (`openai/gpt-5.5`,
+ * the LiteLLM public model name) upstream. The provider's own `models[].id` catalog stays BARE (the
+ * name is relative to the provider), so only the *reference* — `agents.defaults.model` — is prefixed.
+ */
+const _LITELLM_PROVIDER_ID = "litellm-proxy";
+
+/**
+ * The `mcp.servers` key OpenClaw registers the org-memory tool under. Mirrors
+ * `ORG_MEMORY_SERVER_NAME` in `@opencrane/org-memory-mcp` (duplicated as a plain
+ * string rather than imported, to avoid pulling the MCP SDK into the operator).
+ */
+const _ORG_MEMORY_SERVER_NAME = "org-memory";
+
+/**
+ * Absolute path to the org-memory MCP server baked into the tenant image
+ * (see `apps/tenant/deploy/Dockerfile`). OpenClaw spawns it over stdio and the
+ * process inherits the pod env — including `COGNEE_ENDPOINT` — so no per-server
+ * env block is needed.
+ */
+const _ORG_MEMORY_MCP_ENTRYPOINT = "/opt/org-memory-mcp/dist/index.js";
+
+/**
+ * Turn a LiteLLM public model name into an OpenClaw model REFERENCE that routes through the proxy.
+ * See {@link _LITELLM_PROVIDER_ID} for why the provider prefix is mandatory.
+ */
+function _toModelRef(publicModelName: string): string
+{
+  return `${_LITELLM_PROVIDER_ID}/${publicModelName}`;
+}
 
 /**
  * Build the tenant ConfigMap that carries both OpenClaw runtime configuration
@@ -34,19 +112,29 @@ const _WORKSPACE_PATH = "/data/openclaw/workspace";
  * @param namespace - Namespace the ConfigMap is written to.
  * @param effectivePolicy - The resolved AccessPolicy, when one applies.
  * @param modelSet - The tenant's allowed model set fetched best-effort from the
- *        control-plane, or `null`. When non-empty (and LiteLLM is enabled) the
- *        `litellm-proxy` provider is restricted to those models and the default
- *        model is surfaced; when empty/null the provider keeps `models: []`
- *        (unchanged today's behaviour — OpenClaw treats `[]` as the proxy default).
+ *        control-plane, or `null`. When LiteLLM is enabled the `litellm-proxy` provider runs in
+ *        `replace` mode (it is the ONLY provider), restricted to these models with the default
+ *        surfaced. An empty/null result yields `models: []` — and because there are no built-in
+ *        providers to fall back to, the pod then has zero usable models. Cluster onboarding makes
+ *        that impossible by requiring ≥1 registered model before a silo is provisioned; a transient
+ *        control-plane outage at reconcile is the only window it can occur, and it self-heals on the
+ *        next successful fetch.
+ * @param servingHost - The host the org's Control UI is served at (`<org>.<base>` or
+ *        vanity), used to allowlist the browser Origin in `gateway.controlUi.allowedOrigins`.
+ *        With `bind: lan` the gateway rejects a Control-UI WS whose Origin is not allowlisted
+ *        (`CONTROL_UI_ORIGIN_NOT_ALLOWED`); the SPA reaches the gateway via this host, so its
+ *        `https://<host>` origin must be allowed. Omitted ⇒ no origin is added (the gateway's
+ *        own localhost seeding applies — the pre-same-origin behaviour).
  */
-export function _BuildConfigMap(config: OpenClawTenantOperatorConfig, tenant: Tenant, namespace: string, effectivePolicy?: AccessPolicy, modelSet?: TenantModelSet | null): k8s.V1ConfigMap
+export function _BuildConfigMap(config: OpenClawTenantOperatorConfig, tenant: Tenant, namespace: string, effectivePolicy?: AccessPolicy, modelSet?: TenantModelSet | null, servingHost?: string): k8s.V1ConfigMap
 {
   const name = tenant.metadata!.name!;
 
-  // 0. Allowed models — restrict the litellm-proxy provider to the tenant's
-  //    registered set when the control-plane returned a non-empty list. An empty
-  //    or null result falls back to `[]` (unchanged), so a control-plane outage
-  //    never narrows or breaks the tenant's model access.
+  // 0. Allowed models — the litellm-proxy provider (the ONLY provider under `replace` mode below)
+  //    is restricted to the tenant's registered set. An empty or null result yields `[]`; with no
+  //    built-ins to fall back to that means no usable models, which onboarding prevents by requiring
+  //    ≥1 registered model before provisioning (the empty case is only reachable on a transient
+  //    control-plane outage at reconcile, and self-heals on the next fetch).
   const allowedModels = modelSet && modelSet.models.length > 0 ? [...modelSet.models] : [];
   const defaultModel = modelSet?.defaultModel ?? null;
 
@@ -62,6 +150,30 @@ export function _BuildConfigMap(config: OpenClawTenantOperatorConfig, tenant: Te
       mode: "local",
       port: config.gatewayPort,
       bind: "lan",
+      // Control-UI (org-admin SPA) policy:
+      //  - allowedOrigins: with bind:lan the gateway enforces a Control-UI Origin allowlist
+      //    (since v2026.2.26) and refuses an unlisted Origin with CONTROL_UI_ORIGIN_NOT_ALLOWED.
+      //    The SPA reaches the gateway through the org host, so allow its https origin (when known).
+      //  - dangerouslyDisableDeviceAuth: this platform is device-less by design — identity is the
+      //    OIDC session the operator proxy verifies and injects as X-Forwarded-User (CONN.4), not a
+      //    per-browser device key. Without this flag the gateway connects a trusted-proxy Control-UI
+      //    but STRIPS its operator scopes (shouldClearUnboundScopesForMissingDeviceIdentity), so
+      //    chat RPCs fail "missing scope". Disabling device auth lets the proxy be the authority and
+      //    the connect's scopes stand. SAFE ONLY IF the gateway port is reachable solely through the
+      //    proxy — enforced by the openclaw-<name>-gateway NetworkPolicy. NOTE: that requires the
+      //    cluster to actually ENFORCE NetworkPolicy (Dataplane V2 / Calico); the dev cluster does
+      //    not yet — tracked separately. The owner-pin (auth.allowUsers) is defence-in-depth, not a
+      //    substitute (a caller that asserts the owner email is trusted under trusted-proxy).
+      controlUi: {
+        // Serve the gateway's built-in Control UI so the org-admin SPA can embed it as
+        // the chat surface (see _CONTROL_UI_BASE_PATH). Chat-only is enforced at the
+        // gateway-proxy, which caps the WS session to operator.read/write.
+        enabled: true,
+        basePath: _CONTROL_UI_BASE_PATH,
+        chatMessageMaxWidth: _CONTROL_UI_CHAT_MAX_WIDTH,
+        dangerouslyDisableDeviceAuth: true,
+        ...(servingHost ? { allowedOrigins: [`https://${servingHost}`] } : {}),
+      },
       // OC-2 / CONN.4 — the gateway delegates auth to the control-plane: the pod
       // ingress validates the OIDC session and injects the user header, and the
       // gateway trusts it only from the configured proxy source. No shared token
@@ -95,14 +207,29 @@ export function _BuildConfigMap(config: OpenClawTenantOperatorConfig, tenant: Te
     ...(config.liteLlmEnabled
       ? {
             models: {
-              mode: "merge",
-              ...(defaultModel ? { default: defaultModel } : {}),
+              // `replace` (not `merge`): the litellm-proxy provider REPLACES OpenClaw's built-in
+              // providers, so EVERY model call must go through LiteLLM — no bare-provider bypass of
+              // the virtual key / budget metering / BYOK upstream key. This makes a non-empty model
+              // allowlist a hard requirement (an empty list ⇒ the pod has zero usable models), which
+              // cluster onboarding enforces by requiring at least one registered model before a silo
+              // is provisioned (see fleet-operator ClusterTenant readiness). The BYOK key flow also
+              // auto-seeds a default model, so a key-configured silo always satisfies this.
+              mode: "replace",
+              // NOTE: the default model is NOT set here. OpenClaw's `models` block is strict
+              // and has no `default` key (only `mode` + `providers`) — a `models.default`
+              // fails startup with "models: Invalid input". The effective default lives at
+              // `agents.defaults.model` (set in step 4 below).
               providers: {
-                "litellm-proxy": {
+                [_LITELLM_PROVIDER_ID]: {
                   baseUrl: config.liteLlmEndpoint,
                   apiKey: "${LITELLM_API_KEY}",
                   api: "openai-completions",
-                  models: allowedModels,
+                  // OpenClaw's config schema (verified against openclaw@2026.6.9
+                  // plugin-sdk/config-schema) requires each provider model to be an OBJECT
+                  // with `id` + `name` (both required) — NOT a bare string. Rendering strings
+                  // makes the gateway fail startup with "models.providers.*.models.N: Invalid
+                  // input". We use the LiteLLM public model name for both id and name.
+                  models: allowedModels.map((model) => ({ id: model, name: model })),
                 },
               },
             },
@@ -139,6 +266,26 @@ export function _BuildConfigMap(config: OpenClawTenantOperatorConfig, tenant: Te
       // Actual entitled skill index is fetched from effective-contract at runtime.
       entitled: [],
     },
+    // Org-memory backend advertised to the runtime. Cognee IS the platform memory engine — a
+    // settled dependency, not an option. When it is wired (COGNEE_ENDPOINT injected into the pod —
+    // see 3-deployment.ts), the OpenClaw runtime's `@opencrane/awareness` client retrieves org
+    // context DIRECTLY from its per-tenant Cognee knowledge graph — a first-class in-pod capability,
+    // NOT an MCP server, so it is deliberately outside the Obot-gateway "no direct MCP" boundary
+    // (retrieval has no control-plane mediation in the hot path by design). A `backend: "workspace"`
+    // value is NOT a supported mode — it marks a MISCONFIGURED pod (no Cognee wired), which the pod
+    // entrypoint surfaces as a startup warning; org memory is unavailable until an operator fixes it.
+    memory: config.cogneeEndpoint
+      ? {
+          backend: "cognee",
+          // Per-tenant Cognee base URL the awareness client retrieves from (also injected as
+          // the COGNEE_ENDPOINT env var). Datasets are scope-derived (`org`, `team/<subject>`, …)
+          // and access is enforced by the awareness grants the control-plane syncs to Cognee.
+          endpoint: config.cogneeEndpoint,
+          contractVersion: AWARENESS_CONTRACT_VERSION,
+        }
+      : {
+          backend: "workspace",
+        },
     capabilities: {
       liteLlmProxy: config.liteLlmEnabled,
       hostingProvider: config.hostingProvider,
@@ -175,12 +322,50 @@ export function _BuildConfigMap(config: OpenClawTenantOperatorConfig, tenant: Te
     agents: {
       ...(existingAgents ?? {}),
       defaults: {
+        // Reasoning-visibility DEFAULTS (overridable) — spread first so a tenant's
+        // `configOverrides.agents.defaults` wins. Makes the model's thinking stream
+        // live and persist into `chat.history` (see _REASONING_DEFAULT).
+        reasoningDefault: _REASONING_DEFAULT,
+        thinkingDefault: _THINKING_DEFAULT,
         ...existingDefaults,
         workspace: _WORKSPACE_PATH,
         skipBootstrap: true,
+        // Effective default model (from the tenant's model set). OpenClaw reads the default
+        // from `agents.defaults.model`, NOT `models.default`. Applied platform-side so it
+        // can't be dropped by a tenant `configOverrides.agents` override. Omitted when no
+        // default resolves (then OpenClaw falls back to its own model selection).
+        //
+        // MUST be prefixed with the litellm-proxy provider id (`_toModelRef`): OpenClaw resolves
+        // the provider from the reference's leading segment, so a bare `openai/gpt-5.5` would bind
+        // to the built-in `openai` provider (→ "No API key found for provider openai") instead of
+        // routing through the proxy. The prefix pins it to `litellm-proxy`; the tail is sent upstream.
+        ...(defaultModel ? { model: _toModelRef(defaultModel) } : {}),
       },
     },
   };
+
+  // 5. Platform-owned org-memory tool — applied after the tenant merge so it cannot be
+  //    dropped by a `spec.configOverrides.mcp` override. When Cognee is wired, register the
+  //    LOCAL org-memory MCP server OpenClaw spawns over stdio (the binary is baked into the
+  //    tenant image at `_ORG_MEMORY_MCP_ENTRYPOINT`). This is a first-class in-pod capability,
+  //    NOT an Obot-gateway server — it talks directly to the per-tenant Cognee, so it lives in
+  //    `mcp.servers` here rather than in the effective-contract grant set. Any tenant-declared
+  //    mcp.servers are preserved; the org-memory entry is merged in on top so it is always present.
+  if (config.cogneeEndpoint)
+  {
+    const existingMcp = (merged["mcp"] as Record<string, unknown> | undefined) ?? {};
+    const existingServers = (existingMcp["servers"] as Record<string, unknown> | undefined) ?? {};
+    merged["mcp"] = {
+      ...existingMcp,
+      servers: {
+        ...existingServers,
+        [_ORG_MEMORY_SERVER_NAME]: {
+          command: "node",
+          args: [_ORG_MEMORY_MCP_ENTRYPOINT],
+        },
+      },
+    };
+  }
 
   return {
     apiVersion: "v1",
@@ -208,6 +393,28 @@ export function _BuildConfigMap(config: OpenClawTenantOperatorConfig, tenant: Te
       "USER.md.seed": _ReadWorkspaceTemplate("USER.md.seed"),
     },
   };
+}
+
+/**
+ * Deterministic SHA-256 over a ConfigMap's `data` block, for the pod-template
+ * `opencrane.io/config-checksum` annotation (see `_BuildDeployment`).
+ *
+ * WHY: OpenClaw reads `openclaw.json` only at process START. A mounted ConfigMap
+ * update (e.g. a newly-registered BYOK default model landing in the `models`
+ * block) refreshes the file on disk but does NOT restart the running process, so
+ * a pod that booted before its models existed stays on the keyless
+ * `gateway-injected` fallback forever. Stamping this digest on the pod template
+ * makes any config change alter the template → the Recreate strategy rolls the
+ * pod → OpenClaw re-reads the config and picks up the LiteLLM default model.
+ *
+ * Keys are sorted so the digest is stable across reconciles (no spurious rolls);
+ * the values are the already-deterministic rendered config strings.
+ */
+export function _ConfigChecksum(configMap: k8s.V1ConfigMap): string
+{
+  const data = configMap.data ?? {};
+  const canonical = JSON.stringify(data, Object.keys(data).sort());
+  return createHash("sha256").update(canonical).digest("hex");
 }
 
 /**

@@ -37,15 +37,10 @@ The same four scopes appear everywhere you share or restrict something:
 
 ## Grouping people
 
-When you create an assistant you can tag the person's team:
-
-```bash
-oc tenants create --name alice --display-name "Alice" --email alice@example.com \
-  --team engineering
-```
-
-That team label is what you then reference when you share skills with "engineering"
-or give a department access to a tool — so everyone in that group is covered at once.
+When you create an assistant, you can tag the person's team — see
+[Create your first employee assistant](/guide/first-tenant). That team label is what
+you then reference when you share skills with "engineering" or give a department
+access to a tool — so everyone in that group is covered at once.
 
 ## A simple way to start
 

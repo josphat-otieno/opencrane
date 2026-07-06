@@ -34,7 +34,7 @@
 # ───────────────────────────────────────────────────────────────────────────
 #
 # Usage:
-#   ./platform/configure-oidc.sh \
+#   libs/k8s-platform/configure-oidc.sh \
 #       --issuer-url https://id.example.com \
 #       --client-id <client-id> \
 #       --client-secret <secret>            # or env OPENCRANE_OIDC_CLIENT_SECRET
@@ -49,7 +49,7 @@
 #       [--chart <role-chart-dir>] [--dry-run]
 #
 # Required: --issuer-url, --client-id, and a client secret (flag or env).
-# Disable OIDC again with: ./platform/configure-oidc.sh --disable [--context …]
+# Disable OIDC again with: libs/k8s-platform/configure-oidc.sh --disable [--context …]
 #
 # Prereqs: kubectl (pointed at / --context the target cluster), helm, openssl.
 # =============================================================================
@@ -116,7 +116,7 @@ _active_context="${KUBE_CONTEXT:-$(kubectl config current-context 2>/dev/null ||
 # Confirm the release exists — this is a CONFIGURATOR, not an installer.
 if ! helm ${KCTX[@]+"${KCTX[@]}"} -n "$NAMESPACE" status "$RELEASE" >/dev/null 2>&1; then
   err "Release '$RELEASE' not found in namespace '$NAMESPACE' (context: $_active_context)."
-  err "This script configures OIDC on an EXISTING install. Deploy first (k8s-deploy.sh / deploy-multi-tenant.sh)."
+  err "This script configures OIDC on an EXISTING install. Deploy first (apps/fleet-platform/deploy.sh)."
   exit 1
 fi
 

@@ -1,68 +1,80 @@
 # App: fleet-operator (`@opencrane/fleet-operator`)
 
 > Deep-dive for `apps/fleet-operator`. Index: [`../app-specific.md`](../app-specific.md). Cluster context:
-> [`../cluster-architecture.md`](../cluster-architecture.md). Verified June 2026.
+> [`../cluster-architecture.md`](../cluster-architecture.md). Verified June 2026 (post fleet/silo split, v0.6.0).
 
-The Kubernetes operator: a set of resilient watch loops that reconcile OpenCrane CRs into running
-workloads. Pure `@kubernetes/client-node` + a custom watch runner — no controller-runtime framework.
+The **cluster-wide hub + super-admin** — a single fleet-wide singleton (`@opencrane/fleet-operator`,
+"fleet-manager") that owns ClusterTenant lifecycle for the whole fleet. It serves at the fleet
+control-plane host (the platform host / apex), runs against its **own registry DB**, and combines a
+**fleet HTTP API** (cross-silo super-admin surface) with **one reconcile loop**. Pure
+`@kubernetes/client-node` + a custom watch runner — no controller-runtime framework.
 
-**Two distinct roles** (terminology per
+It does **not** watch anything inside a silo — every per-org/in-silo controller (tenant runtime,
+policies, plane drift-repair, rollout canary, Obot health, gateway proxy) runs in the per-silo
+[`clustertenant-operator`](./clustertenant-operator.md). The fleet's only reconcile loop is the
+**ClusterTenantOperator** below.
+
+**Roles** (terminology per
 [`cluster-architecture.md` → Tenancy Model](../cluster-architecture.md#tenancy-model--clustertenant-vs-usertenant)):
 
-1. **Builds UserTenant workloads** — per `Tenant` CR (the **UserTenant**, a per-user OpenClaw agent gateway)
-   it creates the Deployment / Service / Ingress (+ ConfigMap, Secrets, SA). One UserTenant Ingress lands
-   at `<name>.<ingress.domain>` under the parent ClusterTenant's wildcard.
-2. **Enforces ClusterTenant isolation** — for the parent **ClusterTenant** (the customer/isolation unit)
-   it provisions/uses the bound namespace and stamps the PSA `restricted` label, `ResourceQuota`,
-   `LimitRange`, and dedicated-node scheduling.
+1. **Owns ClusterTenant lifecycle (fleet API)** — the cross-silo super-admin surface served from its
+   own registry DB: ClusterTenant CRUD + provisioner registry, org membership, billing, platform DNS,
+   and Zitadel management (per-org OIDC client provisioning). See the Fleet API section below.
+2. **Enforces ClusterTenant isolation (ClusterTenantOperator)** — for each **ClusterTenant** (the
+   customer/isolation unit) it drives the cluster-scoped CR `pending`→`ready`: provisions/uses the
+   bound namespace and stamps the PSA `baseline` label, `ResourceQuota`, `LimitRange`, and
+   dedicated-node scheduling, plus the gated per-org domain.
 
-## Boot & Controllers (`src/index.ts`)
+## Boot (`src/index.ts`)
 
-`main()` loads config, builds the K8s client + hosting adapter, and starts independent loops; SIGTERM/SIGINT shut them down. Loops:
+`main()` loads config, builds the K8s client, brings up the fleet HTTP API, then starts the one
+reconcile loop; SIGTERM/SIGINT shut them down. In order: `___CreateFleetPrismaClient` (the registry
+DB) → OIDC session middleware + `___FleetAuthRouter` (public login, before auth) → `___AuthMiddleware`
+(OIDC session or env-var token; the registry has no `AccessToken` model) → `_RegisterFleetRoutes` →
+error handler → `app.listen`. Then `_SeedClusterTenant` (single-tenant profile boot-seed, idempotent,
+fail-soft) and finally `ClusterTenantOperator.start()`. The fleet watches **only** the cluster-scoped
+`ClusterTenant` CR — nothing inside a silo.
 
-| Controller | Watches / cadence | Does |
-|------------|-------------------|------|
-| **TenantOperator** (`tenants/operator.ts`) | `Tenant` (UserTenant) CRs (`WATCH_NAMESPACE` or all) | The main reconcile pipeline (below). |
-| **PolicyOperator** (`policies/operator.ts`) | AccessPolicy CRs | Builds NetworkPolicy (+ optional CiliumNetworkPolicy) from egress/domain rules. |
-| **IdleChecker** (`tenants/runtime/idle-checker.ts`) | interval | Auto-suspends UserTenants idle past `IDLE_TIMEOUT_MINUTES` (sets `spec.suspended=true`). Disabled when ≤0. |
-| **ObotHealthChecker** (`mcp-gateway/obot-health-checker.ts`) | ~30s | Polls Obot `/healthz`; tracks consecutive failures; non-blocking. |
-| **RuntimePlaneDriftRepairer** (`runtime-planes/drift-repairer.ts`) | ~60s | Repairs env-var drift on the Obot + skill-registry Deployments (image/replicas left to Helm). |
-| **TenantUpdateWithCanaryStrategyController** (`tenant-rollout/`) | ~15min, opt-in | When `OPENCRANE_AUTO_UPDATE_ENABLED`, canary-rolls new tenant images from the npm registry. |
+## ClusterTenantOperator (`cluster-tenants/operator.ts`, idempotent)
 
-## Reconcile Pipeline (`tenants/operator.ts`, idempotent)
+The fleet's one reconcile loop: drives each cluster-scoped `ClusterTenant` CR (an org) `pending`→`ready`
+via server-side apply, with per-org coalescing so a watch-reconnect replay can't pile up reconciles.
+Per CR event:
 
-Runs once per `Tenant` CR (a **UserTenant**). Each step uses server-side apply
-(`fieldManager: openclane-operator`) so re-runs are safe:
+1. **`provisioning`** — stamp the transitional phase.
+2. **Resolve the isolation boundary** — the shared provisioner binds the `opencrane-<name>` namespace for in-cluster tiers; an unsupported tier → `failed`.
+3. **Fence the bound namespace** — apply the namespace with the PSA `baseline` enforce/warn/audit labels (`_BuildClusterTenantNamespace`), idempotently. `baseline` (not `restricted`) because silos run 3rd-party planes — Obot's embedded root Postgres, Cognee-as-root, Langfuse subcharts — that can't meet `restricted`; `baseline` still blocks privileged containers, host namespaces, hostPath, and host ports.
+4. **Provision the per-org domain** — `OrgDomainProvisioner.provisionOrgDomain(...)` applies the per-org wildcard `Certificate` and declares the A records as an external-dns `DNSEndpoint`; runtime-gated to a recorded skip condition when cert-manager or the DNSEndpoint CRD is absent, so a missing backend never fails reconcile.
+5. **`ready`** — stamp `boundNamespace` + provisioner + domain status so `_ResolveClusterTenant` stops hard-failing and the silo can attach.
 
-1. **Resolve parent ClusterTenant** — ref-less → install namespace; with `clusterTenantRef` → parent's `status.boundNamespace` (fails if unbound).
-2. **Enforce isolation** (only with a ref) — Namespace (PSA restricted) → ResourceQuota → LimitRange.
-3. **Resolve effective AccessPolicy** — precedence `policyRef` > unique selector match > `DEFAULT_TENANT_POLICY_REF` > none; `>1` selector match = `PolicyConflict` → Error.
-4. **ServiceAccount** `openclaw-{name}` — identity annotations from the hosting adapter (Workload Identity on GKE, empty on-prem).
-5. **External storage** — GCP: idempotent GCS bucket; on-prem: no-op.
-6. **Encryption-key Secret** — AES-256, generated once, never rotated.
-7. **LiteLLM virtual-key Secret** — best-effort; backend failures log but don't block.
-8. **ConfigMap** — base OpenClaw config + `spec.configOverrides` + the managed-runtime contract (plane URLs, capabilities) + workspace templates.
-9. **State volume** — GCS Fuse CSI mount (GCP) or PVC (on-prem) — adapter decides.
-10. **Deployment + Service + Ingress** — single replica, hardened pod (runAsNonRoot, drop ALL caps, readOnlyRootFilesystem, seccomp), 3 projected audience-bound tokens, liveness on the gateway port; the UserTenant Ingress host is `{name}.{INGRESS_DOMAIN}` (a host under the parent ClusterTenant's base domain) with optional shared wildcard TLS.
-11. **Patch `status`** — phase `Running`, pod name, ingress host, policy resolution source/state, `lastReconciled`.
+Re-running on an already-`ready` org converges to the same state.
 
-Step 1 (resolve parent ClusterTenant) and step 2 (enforce isolation) are where the operator acts on the
-**ClusterTenant** customer boundary; steps 4–11 build the **UserTenant** workload itself.
+## Fleet API (`routes.ts`, `/api/v1`)
 
-**Delete** removes child resources but **retains buckets + encryption key** (data-loss prevention). **Suspend** scales to 0 and keeps state. Errors set `phase: Error` + message and re-throw to the watch loop.
+The cross-silo super-admin surface, served from the fleet registry DB. Both feature blocks default ON
+and are env-gated off (`OPENCRANE_CLUSTER_TENANT_MANAGER_ENABLED`, `OPENCRANE_BILLING_ENABLED`):
 
-## Hosting Adapter (`src/hosting/`)
+- **cluster-tenants** — ClusterTenant lifecycle CRUD: `GET /`, `GET /:name`, `GET /:name/status`, `POST /:name/refresh`, `POST /` (org create, billing-gated), `PUT /:name`, `DELETE /:name`. Wires the **provisioner registry** (gates `isolationTier` → `422 TIER_UNAVAILABLE`) and the Zitadel management client (per-org OIDC client provisioning). Most routes `requireOrgManager`.
+- **cluster-tenants/:name/members** — org membership registry (mergeParams under the parent org).
+- **billing-accounts** — fleet-level seat ordering; the fleet notifies the silo of approved seats.
+- **platform/dns** — platform-admin cert-manager DNS-01 issuer + creds Secret for the wildcard tenant cert.
+- **admin/zitadel** — superadmin-gated rotation of the platform Zitadel SA key (the master IdP credential) + idempotent reconcile/backfill of half-provisioned orgs.
+- **openapi.json** (public), **healthz** (DB health).
 
-A `HostingAdapter` interface (`provisionTenantStorage`, `buildServiceAccountIdentity`, `buildStateVolume`, `buildIngressBinding`, …) selected by `HOSTING_PROVIDER`. **OnPrem** (default): no-op storage, empty identity, PVC volume, `nginx` ingress class. **Gcp**: GCS bucket `{prefix}-{name}`, Workload Identity annotation, GCS Fuse CSI volume, `gce` ingress class. Azure/AWS are stubs. This is the single seam for cloud-specific behaviour — keep provider logic out of the reconcile pipeline.
+Zitadel is a hard dependency of the ClusterTenant path and is built **only** inside that gated block, so
+an install without the cluster-tenant manager never requires Zitadel.
 
-## Watch Runner (`shared/watch-runner.ts`)
+## Registry DB
 
-Generic loop with 5s reconnect backoff. The K8s API closes watch streams every ~5–10 min; reconnect is normal. Per-event handler errors are caught and logged, never crashing the loop.
+The fleet runs its own Prisma/PostgreSQL registry (`infra/db/`) — distinct from each silo's projection
+DB. It holds the fleet-owned models: `ClusterTenant`, org membership, and billing accounts. There is no
+`AccessToken` model here, so the fleet API authenticates by OIDC session or the env-var token only.
+
+## Watch Runner (`@opencrane/infra-api` `_RunWatchLoop`)
+
+Generic loop with reconnect backoff. The K8s API closes watch streams every ~5–10 min; reconnect is
+normal. Per-event handler errors are caught and logged, never crashing the loop.
 
 ## Key Env (`src/config.ts`)
 
-`WATCH_NAMESPACE`, `REQUIRE_WATCH_NAMESPACE` (fail-closed guard), `TENANT_DEFAULT_IMAGE`, `INGRESS_DOMAIN`, `GATEWAY_PORT`, `IDLE_TIMEOUT_MINUTES`, `LITELLM_ENABLED`/`_ENDPOINT`/`_MASTER_KEY`, `DEFAULT_TENANT_POLICY_REF`, `PROJECTED_TOKEN_TTL_SECONDS`, `HOSTING_PROVIDER` (+ `GCP_*`), `MCP_GATEWAY_URL`/`SKILL_REGISTRY_URL`/`CONTROL_PLANE_INTERNAL_URL` (Helm injects release-prefixed values — the in-code defaults are dev fallbacks only).
-
-## Aspirational / stubs
-
-Azure & AWS adapters are stubs. MCP allow/deny lists and skill allowlists in the specs are advisory (the gateway/registry planes enforce, not the operator). Encryption-key rotation is deliberately deferred.
+`PORT` (8080), `DATABASE_URL` (the fleet registry), OIDC (`OIDC_*`/`SESSION_SECRET`/`ALLOWED_EMAIL(_DOMAINS)`), `OPENCRANE_API_TOKEN`, the feature gates `OPENCRANE_CLUSTER_TENANT_MANAGER_ENABLED` / `OPENCRANE_BILLING_ENABLED`, the per-org domain inputs (`PLATFORM_BASE_DOMAIN`, cert/DNS issuer config), and the single-tenant boot-seed env consumed by `_SeedClusterTenant`. Helm injects release-prefixed values — the in-code defaults are dev fallbacks only.

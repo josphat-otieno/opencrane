@@ -259,6 +259,13 @@ export class _HttpZitadelManagementClient implements ZitadelManagementClient
         roleKeys: ["admin"],
       }, orgId);
 
+      // Grant the master ORG_OWNER rights so they can invite team members
+      // from within their new Zitadel organization.
+      await this._call("POST", "/management/v1/orgs/me/members", {
+        userId: input.masterSubject,
+        roles: ["ORG_OWNER"],
+      }, orgId);
+
       _log.info({ orgId, projectId, appId: app.appId, orgName: input.orgName, redirectUriCount: redirectUris.length }, "provisioned Zitadel org for ClusterTenant");
       return { orgId, projectId, appId: app.appId, clientId: app.clientId, redirectUri: input.redirectUri };
     }

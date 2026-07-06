@@ -8,17 +8,9 @@ changed a policy, shared a skill, connected a tool, or adjusted a budget. It doe
 
 ## Look it up
 
-```bash
-oc audit list                          # most recent activity
-oc audit list --tenant alice           # everything about one assistant
-oc audit list --tenant alice --limit 50
-```
-
-Add `--output json` to feed it into other tools:
-
-```bash
-oc audit list --output json | jq '.[] | {time, actor, action}'
-```
+Look up the most recent activity across your company, or everything about one
+assistant, and feed the results into another tool if you like. Manage this from the
+command line — see [CLI reference → `oc audit`](/reference/cli#oc-audit).
 
 The log is kept accurate even if part of the system is briefly unavailable, so it's a
 reliable record for reviews and compliance.

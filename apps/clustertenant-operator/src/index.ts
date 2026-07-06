@@ -21,16 +21,17 @@ import { ___CreateOidcAuthService } from "./infra/auth/oidc.service.js";
 import { ___CreatePrismaClient } from "./infra/db/db.js";
 import { _TransportSecurity } from "./infra/middleware/transport-security.middleware.js";
 import { _log as log } from "./log.js";
-import { _RegisterRoutes } from "./routes.js";
+import { _RegisterInternalRoutes, _RegisterRoutes } from "./routes.js";
 import { TenantProjectionRepairer } from "./infra/tenant-projection-repairer.js";
 
 // In-silo controllers (Stage 5). The silo runs every in-silo reconcile loop over its OWN
 // namespace, so a silo stands on its own; the fleet-manager watches only the cluster-scoped
 // ClusterTenant CR and nothing inside a silo.
 import { _LoadOperatorConfig } from "./config.js";
+import type { OpenClawTenantOperatorConfig } from "./config.js";
+import { _ProvisionByokKey } from "./core/model-routing/provision-byok-key.js";
 import { _CreateTenantOperator, IdleChecker } from "./tenants/index.js";
 import { PolicyOperator } from "./policies/operator.js";
-import { RuntimePlaneDriftRepairer } from "./runtime-planes/drift-repairer.js";
 import { _ReadTenantRolloutConfig, TenantUpdateWithCanaryStrategyController } from "./tenant-rollout/tenant-update-with-canary-strategy.controller.js";
 import { GatewayProxyServer } from "./gateway-proxy/server.js";
 import { ObotHealthChecker } from "./mcp-gateway/obot-health-checker.js";
@@ -77,6 +78,12 @@ export function createApp(prisma: PrismaClient, customApi: k8s.CustomObjectsApi,
   // session check internally.
   app.use("/api/v1/auth", ___AuthRouter(authService, prisma, coreApi, _BuildGatewayAdmin()));
 
+  // NOTE: `/api/internal/*` is NOT on this public listener — it is served by the
+  // separate internal app (see `createInternalApp`) on its own port, which the public
+  // ingress never routes to. Keeping the tokenless internal routes off the public
+  // listener is what stops them being reachable from the internet under the org
+  // ingress's `/api` path (they take no auth by design — NetworkPolicy is their gate).
+
   // Pass prisma so DB-issued access tokens (from `oc auth login` and
   // POST /access-tokens) are validated in addition to the env-var token.
   app.use(___AuthMiddleware(prisma));
@@ -87,6 +94,29 @@ export function createApp(prisma: PrismaClient, customApi: k8s.CustomObjectsApi,
   // Global error handler — must be registered after all routes.
   app.use(_ErrorHandler(log));
 
+  return app;
+}
+
+/**
+ * Build the INTERNAL Express app — a second listener serving ONLY the tokenless
+ * `/api/internal/*` routes on {@link OpenClawTenantOperatorConfig.internalPort}.
+ *
+ * This listener is bound to its own port and exposed by a Service port the public
+ * ingress never routes to; NetworkPolicy restricts it to platform pods. There is NO
+ * session/token auth middleware here by design — the NetworkPolicy-only routes
+ * (bundles, tenant-models) authenticate at the network layer and the pod-identity
+ * routes (contract, participation) run their own TokenReview. Splitting them onto a
+ * separate listener is what keeps them off the internet-facing `/api` surface.
+ */
+export function createInternalApp(prisma: PrismaClient, authApi: k8s.AuthenticationV1Api): Express
+{
+  const app = express();
+  app.set("trust proxy", 1);
+  app.use(express.json());
+  app.use(___RequestContext());
+  app.use(pinoHttp({ logger: log, genReqId: function _genReqId() { return ___GetContext()?.requestId ?? randomUUID(); } }));
+  _RegisterInternalRoutes(app, prisma, authApi);
+  app.use(_ErrorHandler(log));
   return app;
 }
 
@@ -110,7 +140,7 @@ const coreApi = kc.makeApiClient(k8s.CoreV1Api);
 /** Kubernetes Authentication API client — used for tenant contract TokenReview validation. */
 const authApi = kc.makeApiClient(k8s.AuthenticationV1Api);
 
-// Build and start app
+// Build and start the PUBLIC app (ingress-facing: /api/v1/*, /auth — session-authed).
 const app = createApp(prisma, customApi, coreApi, authApi);
 
 log.info({ port }, "starting opencrane control plane");
@@ -118,6 +148,17 @@ log.info({ port }, "starting opencrane control plane");
 const server = app.listen(port, function _onListen()
 {
   log.info({ port }, "control plane listening");
+});
+
+// Build and start the INTERNAL app on a SEPARATE port (/api/internal/* — tokenless,
+// NetworkPolicy-gated). Kept off the public listener so the org ingress's `/api` path
+// can never reach it from the internet. Same process, distinct socket.
+/** Port for the internal-only listener (see config.internalPort). */
+const internalPort = Number(process.env.INTERNAL_PORT ?? "8081");
+const internalApp = createInternalApp(prisma, authApi);
+const internalServer = internalApp.listen(internalPort, function _onInternalListen()
+{
+  log.info({ internalPort }, "control plane internal API listening");
 });
 
 // NOTE: the single-tenant ClusterTenant boot-seed moved to the fleet-manager (Stage 4) — the
@@ -137,9 +178,6 @@ tenantProjectionRepairer.start();
 /** Idle-checker handle, set during controller bootstrap for shutdown access. */
 let _idleCheckerRef: IdleChecker | null = null;
 
-/** Runtime-plane drift repairer handle, for graceful shutdown. */
-let _driftRepairerRef: RuntimePlaneDriftRepairer | null = null;
-
 /** In-process gateway proxy server handle, for graceful shutdown. */
 let _gatewayProxyRef: GatewayProxyServer | null = null;
 
@@ -158,12 +196,49 @@ let _gatewayProxyRef: GatewayProxyServer | null = null;
  * management API + health endpoint stay up so the misconfiguration is diagnosable rather than
  * crash-looping.
  */
+/**
+ * Optional boot-time bootstrap of this silo's OpenAI BYOK key, gated on the
+ * `OPENCRANE_BOOTSTRAP_OPENAI_KEY` env var (injected from a deploy Secret — never hardcoded). When
+ * set, provisions it as the silo's Global OpenAI key via the same path as the BYOK route: writes the
+ * encrypted Secret, registers the LiteLLM credential, and seeds a default model. Idempotent (upsert)
+ * so re-running on every boot is safe, and best-effort so a hiccup never blocks controller startup.
+ *
+ * Intended for short-lived testing: populate the deploy Secret to light a silo up, then delete it to
+ * stop re-applying (the live key is removed via the BYOK delete endpoint / Model Keys UI, not by
+ * clearing the env). The raw key is never logged.
+ *
+ * @param config - Operator config; supplies the operator's own namespace for the Secret write.
+ */
+async function _BootstrapProviderKeyIfConfigured(config: OpenClawTenantOperatorConfig): Promise<void>
+{
+  const apiKey = process.env.OPENCRANE_BOOTSTRAP_OPENAI_KEY?.trim();
+  if (!apiKey)
+  {
+    return;
+  }
+
+  try
+  {
+    const result = await _ProvisionByokKey({ prisma, coreApi, operatorNamespace: config.operatorNamespace, provider: "openai", apiKey, log });
+    log.info({ provider: "openai", litellmRegistered: result.litellmRegistered }, "bootstrap provider key provisioned for silo");
+  }
+  catch (err)
+  {
+    log.warn({ err }, "bootstrap provider key provisioning failed; continuing boot");
+  }
+}
+
 async function _startInSiloControllers(): Promise<void>
 {
   try
   {
     const config = _LoadOperatorConfig();
     log.info({ watchNamespace: config.watchNamespace }, "starting in-silo controllers");
+
+    // Optional test bootstrap — provision this silo's OpenAI BYOK key from an injected env var
+    // (sourced from a deploy Secret), BEFORE the default-tenant seed so the model it seeds satisfies
+    // the seed's ≥1-model onboarding gate and the silo comes up usable. Awaited for that ordering.
+    await _BootstrapProviderKeyIfConfigured(config);
 
     // Seed this silo's own `<org>-default` workspace Tenant from its ClusterTenant CR owner.
     // Use config.watchNamespace (the namespace the operators below reconcile in) so the seed
@@ -179,9 +254,6 @@ async function _startInSiloControllers(): Promise<void>
     idleChecker.start();
 
     const appsApi = kc.makeApiClient(k8s.AppsV1Api);
-    const driftRepairer = new RuntimePlaneDriftRepairer(appsApi, config, log);
-    _driftRepairerRef = driftRepairer;
-    driftRepairer.start();
 
     // Tenant rollout canary release polling (only when auto-update is enabled).
     const tenantRolloutConfig = _ReadTenantRolloutConfig();
@@ -224,7 +296,9 @@ async function _startInSiloControllers(): Promise<void>
     {
       const gatewayProxy = new GatewayProxyServer({
         port: config.gatewayProxyPort,
-        controlPlaneUrl: config.controlPlaneInternalUrl,
+        // The proxy calls GET /api/v1/auth/gateway-resolve — a PUBLIC route on the public
+        // listener (same pod), so it targets localhost:<public port>, NOT the internal listener.
+        controlPlaneUrl: `http://localhost:${port}`,
         gatewayPort: config.gatewayPort,
         clusterDomain: config.clusterDomain,
         userHeader: config.gatewayTrustedProxyUserHeader,
@@ -269,13 +343,15 @@ async function _shutdown(signal: string): Promise<void>
   // Stop the projection-repair loop + in-silo controllers so no sweep races the disconnect below.
   tenantProjectionRepairer.stop();
   _idleCheckerRef?.stop();
-  _driftRepairerRef?.stop();
   await _gatewayProxyRef?.stop();
 
   try
   {
-    // 2. Stop accepting new connections and let in-flight requests finish.
-    await new Promise<void>(function _close(resolve) { server.close(function _done() { resolve(); }); });
+    // 2. Stop accepting new connections and let in-flight requests finish — both listeners.
+    await Promise.all([
+      new Promise<void>(function _close(resolve) { server.close(function _done() { resolve(); }); }),
+      new Promise<void>(function _closeInternal(resolve) { internalServer.close(function _done() { resolve(); }); }),
+    ]);
     // 3. Release the DB pool so Postgres connections aren't leaked.
     await prisma.$disconnect();
     // 4. Flush any buffered spans to the collector before the process dies.

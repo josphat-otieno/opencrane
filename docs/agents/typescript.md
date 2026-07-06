@@ -63,8 +63,9 @@ const total = items.reduce((sum, item) => sum + item.price, 0);
 
 ## Self-Review Before Finishing
 
-After writing or editing any TypeScript file, explicitly verify each item below before moving on.
-Do **not** rely on "it feels right" — check each rule against the actual code you just wrote.
+After writing or editing any TypeScript file, run `scripts/agent-style-check.sh` — it checks
+every mechanical rule below deterministically (ERROR = fix now; WARN = confirm at the cited
+line). Use its output to populate the table; do **not** rely on "it feels right".
 
 When a coding turn writes or edits `.ts` files, include a compact compliance table in the response:
 

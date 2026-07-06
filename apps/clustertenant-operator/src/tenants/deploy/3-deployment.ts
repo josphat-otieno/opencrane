@@ -24,9 +24,15 @@ import { _BuildClusterTenantScheduling } from "./cluster-tenant-scheduling.js";
  * @param compute - Optional ClusterTenant compute placement; when `dedicated`
  *   with a node pool, the pod is pinned to that pool. Omitted/shared leaves the
  *   pod unconstrained, keeping ref-less openclaws byte-for-byte unchanged.
+ * @param configChecksum - Optional SHA of the tenant ConfigMap (`_ConfigChecksum`).
+ *   When set it is stamped as the pod-template `opencrane.io/config-checksum`
+ *   annotation so a config change (e.g. a newly-registered BYOK default model)
+ *   rolls the pod — a mounted ConfigMap update alone does not restart OpenClaw,
+ *   which reads `openclaw.json` only at startup. Omitted ⇒ no annotation, so the
+ *   suspend path and existing tests render byte-for-byte unchanged.
  */
 export function _BuildDeployment(config: OpenClawTenantOperatorConfig, stateVolume: TenantStateVolume, tenant: Tenant,
-                                 namespace: string, compute?: ClusterTenantComputeView): k8s.V1Deployment
+                                 namespace: string, compute?: ClusterTenantComputeView, configChecksum?: string): k8s.V1Deployment
 {
   const name = tenant.metadata!.name!;
   const image = tenant.spec.openclawImage ?? config.tenantDefaultImage;
@@ -55,12 +61,27 @@ export function _BuildDeployment(config: OpenClawTenantOperatorConfig, stateVolu
     { name: "OPENCRANE_SKILL_REGISTRY_URL", value: config.skillRegistryUrl },
     { name: "OPENCRANE_MCP_GATEWAY_TOKEN_PATH", value: "/var/run/opencrane/tokens/obot-gateway.token" },
     { name: "OPENCRANE_SKILL_REGISTRY_TOKEN_PATH", value: "/var/run/opencrane/tokens/skill-registry.token" },
-    { name: "OPENCRANE_CONTROL_PLANE_URL", value: config.controlPlaneInternalUrl },
+    // The tenant pod reaches /api/internal/contract on the control-plane's INTERNAL listener
+    // via the Service DNS (a pod's own localhost is itself — controlPlaneInternalUrl is the
+    // operator's self-call and must NOT be injected here).
+    { name: "OPENCRANE_CONTROL_PLANE_URL", value: config.controlPlaneInternalServiceUrl },
     { name: "OPENCRANE_CONTRACT_TOKEN_PATH", value: "/var/run/opencrane/tokens/control-plane.token" },
     { name: "HOME", value: "/tmp/opencrane-home" },
     { name: "TMPDIR", value: "/tmp" },
     { name: "NPM_CONFIG_CACHE", value: "/tmp/npm-cache" },
     ...(config.liteLlmEnabled ? [{ name: "LITELLM_ENDPOINT", value: config.liteLlmEndpoint }] : []),
+    // Org-memory backend. When Cognee is wired at the cluster level, the pod's `@opencrane/awareness`
+    // client retrieves org context DIRECTLY from its per-tenant Cognee (no control-plane mediation in
+    // the hot path — see libs/awareness). `OPENCRANE_MEMORY_BACKEND=cognee` is the explicit signal the
+    // runtime/workspace docs key off; both are injected only when configured so a Cognee-less
+    // deployment renders byte-for-byte unchanged and the runtime cleanly falls back to workspace-file
+    // memory (the docs treat an unset backend as `workspace`).
+    ...(config.cogneeEndpoint
+      ? [
+          { name: "OPENCRANE_MEMORY_BACKEND", value: "cognee" },
+          { name: "COGNEE_ENDPOINT", value: config.cogneeEndpoint },
+        ]
+      : []),
     ...(tenant.spec.team ? [{ name: "OPENCRANE_TEAM", value: tenant.spec.team }] : []),
     ...(tenant.spec.policyRef ? [{ name: "OPENCRANE_POLICY_REF", value: tenant.spec.policyRef }] : []),
     // Gateway auth is trusted-proxy (OC-2 / CONN.4), configured in openclaw.json
@@ -169,6 +190,9 @@ export function _BuildDeployment(config: OpenClawTenantOperatorConfig, stateVolu
             "opencrane.io/tenant": name,
             ...(tenant.spec.team ? { "opencrane.io/team": tenant.spec.team } : {}),
           },
+          // Roll the pod when the tenant config changes (OpenClaw reads openclaw.json
+          // only at startup). Omitted when no checksum is supplied (suspend path).
+          ...(configChecksum ? { annotations: { "opencrane.io/config-checksum": configChecksum } } : {}),
         },
         spec: {
           // 4. Pod defaults — enforce the baseline runtime hardening profile
