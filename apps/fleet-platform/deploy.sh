@@ -117,5 +117,21 @@ if [[ -n "$PROVISION" ]]; then
   [[ ${#PROVISION_DEPLOY_SET[@]} -gt 0 ]] && PROFILE_SET+=("${PROVISION_DEPLOY_SET[@]}")
 fi
 
+# The multi-tenant profile hosts many orgs (ClusterTenants) in one cluster, so cross-tenant
+# isolation is MANDATORY. Run a fail-fast MULTI-CT PREFLIGHT FIRST (unless the caller opts out
+# with OPENCRANE_SKIP_PREFLIGHT=1): --multi-ct makes the NetworkPolicy-enforcing-CNI check FATAL
+# and adds the tenant-StorageClass encryption advisory, and the preflight exits WITHOUT mutating
+# the cluster on failure — so a no-op CNI is caught before any install work.
+#
+# NOTE: this passes --multi-ct to the PREFLIGHT only. Flipping the chart's `multiCt.enabled`
+# (which makes the platform + cross-instance default-deny render unconditionally, gated by the
+# `fail` guard) is the breaking default change tracked separately (#127 slice 5); the plumbing
+# and fail guard are in place, but this profile does not yet set it so the Helm render is
+# unchanged for existing installs.
+if [[ "${OPENCRANE_SKIP_PREFLIGHT:-0}" != "1" ]]; then
+  echo -e "\033[0;32m[multi-tenant]\033[0m Running mandatory multi-CT preflight (no cluster changes)…"
+  "$CORE" --preflight --multi-ct "${PROFILE_SET[@]}" "${PASSTHROUGH[@]}"
+fi
+
 echo -e "\033[0;32m[multi-tenant]\033[0m Profile: multi-tenant platform on $BASE_DOMAIN (self-service orgs + billing ON)"
 exec "$CORE" "${PROFILE_SET[@]}" "${PASSTHROUGH[@]}"
