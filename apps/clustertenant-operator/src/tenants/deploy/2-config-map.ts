@@ -18,21 +18,6 @@ const _WORKSPACE_TEMPLATES_DIR = join(dirname(fileURLToPath(import.meta.url)), "
 const _WORKSPACE_PATH = "/data/openclaw/workspace";
 
 /**
- * Base path the gateway serves its built-in Control UI (Vite+Lit SPA) under, so the
- * org-admin SPA can EMBED it as the chat surface instead of maintaining a bespoke
- * renderer. The SPA owns `/` and the gateway WS is proxied at `/gateway`, so the
- * Control UI mounts under its own prefix; the org ingress routes this path to the
- * gateway (via the gateway-proxy) in the embedding phase.
- */
-const _CONTROL_UI_BASE_PATH = "/control-ui";
-
-/**
- * Reading-measure cap for grouped Control UI chat messages (openclaw default is
- * `min(900px, 68%)`). Pinned to a comfortable, legible width for the embed.
- */
-const _CONTROL_UI_CHAT_MAX_WIDTH = "min(820px, 100%)";
-
-/**
  * Default agent reasoning posture — makes the model's thinking a first-class part
  * of the transcript so it streams live AND is returned by `chat.history` (the
  * org-admin SPA renders reasoning as a collapsible "Thinking" card).
@@ -165,12 +150,6 @@ export function _BuildConfigMap(config: OpenClawTenantOperatorConfig, tenant: Te
       //    not yet — tracked separately. The owner-pin (auth.allowUsers) is defence-in-depth, not a
       //    substitute (a caller that asserts the owner email is trusted under trusted-proxy).
       controlUi: {
-        // Serve the gateway's built-in Control UI so the org-admin SPA can embed it as
-        // the chat surface (see _CONTROL_UI_BASE_PATH). Chat-only is enforced at the
-        // gateway-proxy, which caps the WS session to operator.read/write.
-        enabled: true,
-        basePath: _CONTROL_UI_BASE_PATH,
-        chatMessageMaxWidth: _CONTROL_UI_CHAT_MAX_WIDTH,
         dangerouslyDisableDeviceAuth: true,
         ...(servingHost ? { allowedOrigins: [`https://${servingHost}`] } : {}),
       },

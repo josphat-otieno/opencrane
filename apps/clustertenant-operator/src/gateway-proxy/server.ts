@@ -5,8 +5,8 @@ import type { Duplex } from "node:stream";
 import httpProxy from "http-proxy";
 import type { Logger } from "pino";
 
-import { _HandleControlUiRequest, _HandleUpgrade, _IsControlUiRequest, _RelaxControlUiFrameHeaders } from "./proxy.js";
-import type { ControlUiDeps, GatewayProxyRuntime, WebProxy, WsProxy } from "./proxy.js";
+import { _HandleUpgrade } from "./proxy.js";
+import type { GatewayProxyRuntime, WsProxy } from "./proxy.js";
 import { FixedWindowRateLimiter } from "./rate-limit.js";
 
 /** Everything the in-operator proxy server needs, derived from the operator config. */
@@ -55,19 +55,10 @@ export class GatewayProxyServer
 
     const proxy = httpProxy.createProxyServer({ ws: true });
     proxy.on("error", (err) => this.log.error({ err }, "http-proxy emitted an error"));
-    // Control UI responses: relax the gateway's frame-blocking headers (XFO DENY +
-    // frame-ancestors 'none') to same-origin so the org SPA can iframe the chat surface.
-    // Mutating proxyRes.headers here is the http-proxy seam — they are copied to the
-    // client response after this event fires. Scoped to /control-ui requests only.
-    proxy.on("proxyRes", (proxyRes, req) =>
-    {
-      if (_IsControlUiRequest(req.url)) _RelaxControlUiFrameHeaders(proxyRes.headers as Record<string, unknown>);
-    });
     this.proxy = proxy;
 
     const limiter = new FixedWindowRateLimiter(this.config.rateLimitPerMinute);
     const deps = { config: this.config, proxy: proxy as unknown as WsProxy, limiter, log: this.log };
-    const controlUiDeps: ControlUiDeps = { config: this.config, proxy: proxy as unknown as WebProxy, log: this.log };
 
     const server = createServer((req: IncomingMessage, res: ServerResponse) =>
     {
@@ -75,21 +66,6 @@ export class GatewayProxyServer
       {
         res.writeHead(200, { "content-type": "text/plain" });
         res.end("ok");
-        return;
-      }
-      // Serve the Control UI static bundle (so the org SPA can embed it) by proxying
-      // to the caller's pod gateway; static assets, so no identity/scope injection.
-      if (_IsControlUiRequest(req.url))
-      {
-        void _HandleControlUiRequest(controlUiDeps, req, res).catch((err: unknown) =>
-        {
-          this.log.error({ err }, "unhandled error in control-ui request handler");
-          if (!res.headersSent)
-          {
-            res.writeHead(502, { "content-type": "text/plain" });
-            res.end("Bad Gateway");
-          }
-        });
         return;
       }
       res.writeHead(404, { "content-type": "text/plain" });

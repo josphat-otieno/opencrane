@@ -36,17 +36,6 @@ describe("openclaw.json render contract — zod schema (task_d611ab4d)", functio
     expect(parsed.success, parsed.success ? "" : JSON.stringify(parsed.error.issues, null, 2)).toBe(true);
   });
 
-  it("serves + configures the Control UI for embedding (enabled, basePath, chatMessageMaxWidth)", function _controlUi()
-  {
-    const config = _renderConfig();
-    const controlUi = ((config["gateway"] as Record<string, unknown>)["controlUi"]) as Record<string, unknown>;
-    expect(controlUi["enabled"]).toBe(true);
-    expect(controlUi["basePath"]).toBe("/control-ui");
-    expect(typeof controlUi["chatMessageMaxWidth"]).toBe("string");
-    expect(controlUi["dangerouslyDisableDeviceAuth"]).toBe(true); // device-less trusted-proxy preserved
-    expect(_OpenclawConfigSchema.safeParse(config).success).toBe(true);
-  });
-
   it("validates the LiteLLM-enabled config (models block) against the schema", function _modelsOk()
   {
     // Exercise the optional `models` branch so the provider/mode shape is covered.

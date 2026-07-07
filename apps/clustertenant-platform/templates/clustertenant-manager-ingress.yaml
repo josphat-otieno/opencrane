@@ -50,16 +50,6 @@ spec:
                 name: {{ include "opencrane.fullname" . }}-gateway-proxy
                 port:
                   number: {{ .Values.gatewayProxy.port }}
-          # OpenClaw's Control UI static bundle, so the org SPA can embed it as the chat
-          # surface. The gateway-proxy reverse-proxies /control-ui to the caller's pod
-          # gateway (which serves the bundle under this base path); the WS stays on /gateway.
-          - path: /control-ui
-            pathType: Prefix
-            backend:
-              service:
-                name: {{ include "opencrane.fullname" . }}-gateway-proxy
-                port:
-                  number: {{ .Values.gatewayProxy.port }}
           {{- end }}
           - path: /
             pathType: Prefix
