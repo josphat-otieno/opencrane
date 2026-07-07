@@ -562,10 +562,11 @@ ingress:
   # -- Ingress class is set by the hosting adapter; override here only for custom setups.
   className: nginx
   # -- The platform org-wildcard BASE domain for this install (fixed-wildcard topology).
-  #    Orgs (ClusterTenants) are served at `<org>.<domain>` and their users at
-  #    `<user>.<org>.<domain>`; the platform wildcard `*.<domain>` covers the org apexes.
-  #    This is wired to the operator as INGRESS_DOMAIN (the wildcard base it derives
-  #    UserTenant hosts from). See docs/agents/cluster-architecture.md → "Tenancy Model".
+  #    Orgs (ClusterTenants) are each served at their SINGLE host `<org>.<domain>`; every
+  #    user in an org connects through that one host (the operator's in-process gateway
+  #    proxy routes each connection to the right pod — there are NO per-user subdomains).
+  #    The platform wildcard `*.<domain>` covers the org apexes. Wired to the operator as
+  #    INGRESS_DOMAIN. See docs/agents/cluster-architecture.md → "Tenancy Model".
   domain: opencrane.local
   # -- The FIXED super-operator / control-plane host (the management API above every
   #    org). DISTINCT from the org-wildcard base above — it is its own host, never an
@@ -601,11 +602,10 @@ ingress:
   tls:
     enabled: false
     # -- Secret name for the platform wildcard TLS cert (`*.<domain>`, covering every
-    #    org apex `<org>.<domain>`) that per-UserTenant Ingresses reference by default.
-    #    NOTE: this wildcard does NOT cover the per-user level `<user>.<org>.<domain>`
-    #    (DNS wildcards match one label) — each org gets its own `*.<org>.<domain>`
-    #    cert at provision time. See docs/agents/cluster-architecture.md → "Multi-level
-    #    wildcard TLS".
+    #    org apex `<org>.<domain>`) that the org-host Ingress references by default. Every
+    #    org is served at its single apex host, so this one wildcard covers them all — there
+    #    is no per-user level and no per-org `*.<org>.<domain>` cert. See
+    #    docs/agents/cluster-architecture.md → "Wildcard TLS".
     secretName: opencrane-wildcard-tls
 
 # -- Documentation site (optional). When enabled, serves the VitePress docs build
@@ -863,13 +863,6 @@ skillRegistry:
         cpu: 500m
         memory: 256Mi
 
-# -- Identity-routing gateway proxy (DOMAIN.T4). A thin, logic-free WS reverse proxy
-# that serves every user in an org through the org's SINGLE host (`<org>.<domain>`)
-# instead of per-user subdomains: on a gateway WS upgrade it delegates auth to the
-# control plane (`/auth/gateway-resolve`), enforces an Origin allowlist (CSWSH), and
-# forwards to the resolved `openclaw-<user>.<ns>.svc` pod. OFF by default — enabling
-# it is the per-org-host cutover (see website/security/connection-security.md); until
-# then the operator keeps minting per-user Ingresses.
 # -- Identity-routing gateway proxy (DOMAIN.T4), folded IN-PROCESS into the operator
 # (interim — can be split into its own pod later). When enabled, the operator runs a WS
 # proxy on `port`: the per-org host's gateway WS upgrade is path-routed here, the proxy

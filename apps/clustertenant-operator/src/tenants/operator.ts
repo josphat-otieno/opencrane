@@ -283,13 +283,13 @@ export class TenantOperator
         await this.enforceClusterTenantIsolation(clusterTenantResolution.clusterTenant, namespace);
       }
       const compute = clusterTenantResolution.clusterTenant?.spec.compute;
-      // Fixed-wildcard topology — derive the UserTenant ingress host from the org's
-      // domain under the platform wildcard base (`config.ingressDomain`). An org
-      // (ClusterTenant) is served at its DERIVED apex `<org>.<base>`, so its users
-      // land at `<user>.<org>.<base>` — handled by `_ResolveOrgServingDomain`, which
-      // also lets a customer-vanity domain (CNAMEd onto the apex) override the apex.
-      // Ref-less openclaws have no parent org → they stay at the bare
-      // `<user>.<base>` per-instance host, so the default path is unchanged.
+      // Fixed-wildcard topology — resolve the org's SINGLE serving host under the platform
+      // wildcard base (`config.ingressDomain`). An org (ClusterTenant) is served at its
+      // DERIVED apex `<org>.<base>`; every user connects through that one host and the
+      // in-process gateway proxy routes each connection to the right pod (NO per-user
+      // subdomains). `_ResolveOrgServingDomain` also lets a customer-vanity domain (CNAMEd
+      // onto the apex) override it. Ref-less openclaws have no parent org → they stay at the
+      // bare `<base>` per-instance host, so the default path is unchanged.
       const ingressDomain = _ResolveOrgServingDomain(
         clusterTenantResolution.clusterTenant?.metadata?.name,
         clusterTenantResolution.clusterTenant?.spec.vanityDomain,

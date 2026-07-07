@@ -1,14 +1,15 @@
 /**
- * Resolve the domain a UserTenant gateway host hangs off, under the fixed-wildcard
- * topology.
+ * Resolve an org's SINGLE serving host under the fixed-wildcard topology. Every user in
+ * the org connects through this one host; the in-process gateway proxy routes each
+ * connection to the right pod, so there are no per-user subdomains.
  *
  * Precedence:
  *   1. A customer-vanity domain CNAMEd onto the org apex, when set — the org is
- *      reachable under that name, so its users serve there too.
+ *      reachable under that name, so it serves there.
  *   2. The org's DERIVED apex `<org>.<platformBaseDomain>` — the canonical home,
  *      used when a parent org is resolved with no vanity overlay.
  *   3. The bare `platformBaseDomain` — for ref-less openclaws with no parent org, so
- *      the single-install default path (`<user>.<base>`) is byte-for-byte unchanged.
+ *      the single-install default path (`<base>`) is byte-for-byte unchanged.
  *
  * @param orgName - The parent ClusterTenant name, or undefined for a ref-less openclaw.
  * @param vanityDomain - Optional customer-vanity domain CNAMEd onto the org apex.
