@@ -6,6 +6,7 @@ import type { PrismaClient } from "@prisma/client";
 import { OidcAuthServiceBase, _RequestHost } from "@opencrane/infra-auth";
 import type { AuthUser, LoginClient } from "@opencrane/infra-auth";
 
+import { _AdoptMemberOnLogin } from "./adopt-member.js";
 import { _ResolveCallerClusterTenant } from "./resolve-caller-cluster-tenant.js";
 import { _ClusterTenantFromHost } from "./request-silo.js";
 import { _OrgScope, _ResolvePerOrgClient } from "./per-org-client.js";
@@ -33,18 +34,29 @@ export class OidcAuthService extends OidcAuthServiceBase
   private customApi: k8s.CustomObjectsApi | null;
 
   /**
-   * @param log       - Parent logger; a child scoped to `oidc-auth` is derived by the base.
-   * @param prisma    - Prisma client (also the base's `OrgMembership` read surface + the
-   *                    `/auth/me` email→tenant lookup).
-   * @param customApi - Kubernetes custom-objects client used to read the cluster-scoped
-   *                    ClusterTenant CR for per-org login resolution; null in dev/test (login
-   *                    then always uses the masters client).
+   * The namespace the silo's TenantOperator reconciles in (`config.watchNamespace`). Member
+   * workspaces seeded on login MUST land here — the same namespace the owner-default seed
+   * targets — or the TenantOperator never picks up the CRD (it is NOT the projection-repair
+   * `NAMESPACE`, which can differ).
    */
-  constructor(log: Logger, prisma: PrismaClient, customApi: k8s.CustomObjectsApi | null = null)
+  private watchNamespace: string;
+
+  /**
+   * @param log            - Parent logger; a child scoped to `oidc-auth` is derived by the base.
+   * @param prisma         - Prisma client (also the base's `OrgMembership` read surface + the
+   *                         `/auth/me` email→tenant lookup).
+   * @param customApi      - Kubernetes custom-objects client used to read the cluster-scoped
+   *                         ClusterTenant CR for per-org login resolution; null in dev/test (login
+   *                         then always uses the masters client).
+   * @param watchNamespace - The TenantOperator's watch namespace; where first-login member
+   *                         workspaces are seeded (parity with the owner-default seed).
+   */
+  constructor(log: Logger, prisma: PrismaClient, customApi: k8s.CustomObjectsApi | null = null, watchNamespace = "default")
   {
     super(log, prisma);
     this.prisma = prisma;
     this.customApi = customApi;
+    this.watchNamespace = watchNamespace;
   }
 
   /**
@@ -72,15 +84,36 @@ export class OidcAuthService extends OidcAuthServiceBase
     const clusterTenant = await _ResolveCallerClusterTenant(this.prisma, authUser.email, _ClusterTenantFromHost(_RequestHost(req)));
     return { clusterTenant };
   }
+
+  /**
+   * Adopt the verified user into their org and seed their workspace on first login (#126 S4).
+   * Runs only when the login resolved a per-org client (proof of org membership); a masters /
+   * platform login is a no-op. Delegated to {@link _AdoptMemberOnLogin}; the base wraps this in
+   * a best-effort try/catch so a failure here can never break the login.
+   */
+  protected override async onLoginEstablished(req: Request, authUser: AuthUser): Promise<void>
+  {
+    await _AdoptMemberOnLogin({
+      prisma: this.prisma,
+      customApi: this.customApi,
+      namespace: this.watchNamespace,
+      host: _RequestHost(req),
+      subject: authUser.sub,
+      email: authUser.email,
+      log: this.log,
+    });
+  }
 }
 
 /**
  * Create the OIDC auth service used by the clustertenant-manager Express app.
- * @param log       - Parent logger.
- * @param prisma    - Prisma client for the `/auth/me` email→tenant lookup + membership facts.
- * @param customApi - Kubernetes custom-objects client for per-org login CR reads (null in dev/test).
+ * @param log            - Parent logger.
+ * @param prisma         - Prisma client for the `/auth/me` email→tenant lookup + membership facts.
+ * @param customApi      - Kubernetes custom-objects client for per-org login CR reads (null in dev/test).
+ * @param watchNamespace - The TenantOperator's watch namespace, where first-login member workspaces
+ *                         are seeded (defaults to `"default"` for dev/test).
  */
-export function ___CreateOidcAuthService(log: Logger, prisma: PrismaClient, customApi: k8s.CustomObjectsApi | null = null): OidcAuthService
+export function ___CreateOidcAuthService(log: Logger, prisma: PrismaClient, customApi: k8s.CustomObjectsApi | null = null, watchNamespace = "default"): OidcAuthService
 {
-  return new OidcAuthService(log, prisma, customApi);
+  return new OidcAuthService(log, prisma, customApi, watchNamespace);
 }
