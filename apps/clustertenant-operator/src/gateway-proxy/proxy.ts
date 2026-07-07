@@ -230,6 +230,30 @@ export function _IsControlUiRequest(url: string | undefined): boolean
 }
 
 /**
+ * Relax the gateway's frame-blocking headers on Control UI responses so the org-admin
+ * SPA can embed the chat surface in a SAME-ORIGIN iframe.
+ *
+ * OpenClaw serves the Control UI with `X-Frame-Options: DENY` and a CSP containing
+ * `frame-ancestors 'none'` (verified against openclaw@2026.6.9), which blocks ALL
+ * framing — including our own same-origin embed. The proxy rewrites these to the
+ * same-origin equivalents: drop `X-Frame-Options` (superseded by CSP frame-ancestors
+ * in every modern browser) and rewrite `frame-ancestors 'none'` → `'self'`, so ONLY
+ * the org host itself may frame it — clickjacking protection is preserved, third-party
+ * framing stays refused. Every other CSP directive is left untouched.
+ *
+ * @param headers - The upstream response headers, mutated in place.
+ */
+export function _RelaxControlUiFrameHeaders(headers: Record<string, unknown>): void
+{
+  delete headers["x-frame-options"];
+  const csp = headers["content-security-policy"];
+  if (typeof csp === "string")
+  {
+    headers["content-security-policy"] = csp.replace(/frame-ancestors 'none'/g, "frame-ancestors 'self'");
+  }
+}
+
+/**
  * Serve OpenClaw's Control UI static bundle by reverse-proxying `/control-ui/…` to the
  * caller's own pod gateway (which serves the bundle under the same base path).
  *

@@ -5,7 +5,7 @@ import type { Duplex } from "node:stream";
 import httpProxy from "http-proxy";
 import type { Logger } from "pino";
 
-import { _HandleControlUiRequest, _HandleUpgrade, _IsControlUiRequest } from "./proxy.js";
+import { _HandleControlUiRequest, _HandleUpgrade, _IsControlUiRequest, _RelaxControlUiFrameHeaders } from "./proxy.js";
 import type { ControlUiDeps, GatewayProxyRuntime, WebProxy, WsProxy } from "./proxy.js";
 import { FixedWindowRateLimiter } from "./rate-limit.js";
 
@@ -55,6 +55,14 @@ export class GatewayProxyServer
 
     const proxy = httpProxy.createProxyServer({ ws: true });
     proxy.on("error", (err) => this.log.error({ err }, "http-proxy emitted an error"));
+    // Control UI responses: relax the gateway's frame-blocking headers (XFO DENY +
+    // frame-ancestors 'none') to same-origin so the org SPA can iframe the chat surface.
+    // Mutating proxyRes.headers here is the http-proxy seam — they are copied to the
+    // client response after this event fires. Scoped to /control-ui requests only.
+    proxy.on("proxyRes", (proxyRes, req) =>
+    {
+      if (_IsControlUiRequest(req.url)) _RelaxControlUiFrameHeaders(proxyRes.headers as Record<string, unknown>);
+    });
     this.proxy = proxy;
 
     const limiter = new FixedWindowRateLimiter(this.config.rateLimitPerMinute);

@@ -3,7 +3,7 @@ import type { Duplex } from "node:stream";
 import pino from "pino";
 import { describe, expect, it, vi } from "vitest";
 
-import { _HandleControlUiRequest, _HandleUpgrade, _IsControlUiRequest, _StripGatewayPrefix } from "../../gateway-proxy/proxy.js";
+import { _HandleControlUiRequest, _HandleUpgrade, _IsControlUiRequest, _RelaxControlUiFrameHeaders, _StripGatewayPrefix } from "../../gateway-proxy/proxy.js";
 import type { ControlUiDeps, UpgradeDeps, WebProxy, WsProxy, GatewayProxyRuntime } from "../../gateway-proxy/proxy.js";
 import type { ResolveOutcome } from "../../gateway-proxy/auth-client.js";
 import { FixedWindowRateLimiter } from "../../gateway-proxy/rate-limit.js";
@@ -171,6 +171,32 @@ describe("_StripGatewayPrefix", () =>
     expect(_StripGatewayPrefix("/api")).toBe("/api");
     expect(_StripGatewayPrefix("/gateways")).toBe("/gateways"); // not the /gateway segment
     expect(_StripGatewayPrefix(undefined)).toBe("/");
+  });
+});
+
+describe("_RelaxControlUiFrameHeaders", () =>
+{
+  it("drops X-Frame-Options and rewrites frame-ancestors 'none' to 'self' (same-origin iframe embed)", () =>
+  {
+    const headers: Record<string, unknown> = {
+      "x-frame-options": "DENY",
+      "content-security-policy": "default-src 'self'; frame-ancestors 'none'; img-src 'self' data: blob:",
+      "x-content-type-options": "nosniff"
+    };
+
+    _RelaxControlUiFrameHeaders(headers);
+
+    expect(headers["x-frame-options"]).toBeUndefined();
+    expect(headers["content-security-policy"]).toBe("default-src 'self'; frame-ancestors 'self'; img-src 'self' data: blob:");
+    // Unrelated security headers are untouched.
+    expect(headers["x-content-type-options"]).toBe("nosniff");
+  });
+
+  it("is a no-op on responses without frame headers (static assets)", () =>
+  {
+    const headers: Record<string, unknown> = { "content-type": "application/javascript" };
+    _RelaxControlUiFrameHeaders(headers);
+    expect(headers).toEqual({ "content-type": "application/javascript" });
   });
 });
 
