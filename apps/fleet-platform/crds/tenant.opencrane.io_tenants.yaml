@@ -35,6 +35,11 @@ spec:
                   type: string
                   pattern: '^[^ @]+@[^ @]+$'
                   description: Tenant email address
+                subject:
+                  type: string
+                  description: >-
+                    IdP-verified subject (OIDC sub) of the user this workspace belongs to.
+                    Bound so per-user grant inheritance can attribute the workspace to its owner.
                 team:
                   type: string
                   description: Team the tenant belongs to

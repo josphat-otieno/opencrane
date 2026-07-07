@@ -365,6 +365,25 @@ export function tenantsRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCli
   {
     const body = req.body as CreateTenantRequest;
 
+    // Bind the workspace to its owner subject and VALIDATE membership before seeding (#126 S1):
+    // when a subject + parent org are given, the subject MUST be an OrgMembership of that org
+    // (the read-model the fleet→silo repairer populates), else a non-member could seat a
+    // workspace inside an org they don't belong to. Reject with 403. When no subject is given
+    // (legacy/owner-seed path) validation is skipped — nothing to bind or check.
+    const subject = body.subject?.trim() || undefined;
+    if (subject && body.clusterTenantRef)
+    {
+      const membership = await prisma.orgMembership.findUnique({
+        where: { clusterTenant_subject: { clusterTenant: body.clusterTenantRef, subject } },
+        select: { role: true },
+      });
+      if (!membership)
+      {
+        res.status(403).json({ error: "Subject is not a member of the parent organisation.", code: "FORBIDDEN_ORG_SCOPE" });
+        return;
+      }
+    }
+
     const tenantCr = {
       apiVersion: `${OPENCRANE_API_GROUP}/${OPENCRANE_API_VERSION}`,
       kind: "Tenant",
@@ -372,6 +391,7 @@ export function tenantsRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCli
       spec: {
         displayName: body.displayName,
         email: body.email,
+        subject,
         team: body.team,
         clusterTenantRef: body.clusterTenantRef,
         monthlyBudgetUsd: body.monthlyBudgetUsd,
@@ -416,6 +436,7 @@ export function tenantsRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCli
         name: body.name,
         displayName: body.displayName,
         email: body.email,
+        subject,
         team: body.team,
         clusterTenantRef: body.clusterTenantRef,
       },
@@ -444,11 +465,35 @@ export function tenantsRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCli
     // how vanityDomain is cleared on cluster-tenants. Absent → field left untouched.
     const clusterTenantRefProvided = body.clusterTenantRef !== undefined;
     const normalizedClusterTenantRef = clusterTenantRefProvided && body.clusterTenantRef!.trim() ? body.clusterTenantRef!.trim() : null;
+    const subject = body.subject?.trim() || undefined;
+
+    // Re-bind + re-validate membership (#126 S1) when a subject is (re)assigned to an org: the
+    // subject MUST be an OrgMembership of the target org. Use the incoming clusterTenantRef when
+    // provided, else the tenant's existing parent (so setting just the subject still validates).
+    if (subject)
+    {
+      const targetOrg = clusterTenantRefProvided
+        ? normalizedClusterTenantRef
+        : (await prisma.tenant.findUnique({ where: { name }, select: { clusterTenantRef: true } }))?.clusterTenantRef ?? null;
+      if (targetOrg)
+      {
+        const membership = await prisma.orgMembership.findUnique({
+          where: { clusterTenant_subject: { clusterTenant: targetOrg, subject } },
+          select: { role: true },
+        });
+        if (!membership)
+        {
+          res.status(403).json({ error: "Subject is not a member of the parent organisation.", code: "FORBIDDEN_ORG_SCOPE" });
+          return;
+        }
+      }
+    }
 
     const patch = {
       spec: {
         ...(body.displayName ? { displayName: body.displayName } : {}),
         ...(body.email ? { email: body.email } : {}),
+        ...(subject ? { subject } : {}),
         ...(body.team ? { team: body.team } : {}),
         ...(clusterTenantRefProvided ? { clusterTenantRef: normalizedClusterTenantRef } : {}),
         ...(body.monthlyBudgetUsd !== undefined ? { monthlyBudgetUsd: body.monthlyBudgetUsd } : {}),
@@ -471,6 +516,7 @@ export function tenantsRouter(customApi: k8s.CustomObjectsApi, prisma: PrismaCli
       data: {
         ...(body.displayName ? { displayName: body.displayName } : {}),
         ...(body.email ? { email: body.email } : {}),
+        ...(subject ? { subject } : {}),
         ...(body.team ? { team: body.team } : {}),
         ...(clusterTenantRefProvided ? { clusterTenantRef: normalizedClusterTenantRef } : {}),
       },
