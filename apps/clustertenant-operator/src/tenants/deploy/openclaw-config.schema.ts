@@ -71,12 +71,6 @@ const _authSchema = z
  */
 const _controlUiSchema = z
   .object({
-    /** Serve the gateway's built-in Control UI (so the org SPA can embed it for chat). */
-    enabled: z.boolean().optional(),
-    /** Base path the Control UI is served under (e.g. `/control-ui`). */
-    basePath: z.string().optional(),
-    /** Reading-measure cap for grouped chat messages (e.g. `min(820px, 100%)`). */
-    chatMessageMaxWidth: z.string().optional(),
     /** Browser Origins allowed to open a Control-UI WS (e.g. `https://<org>.<base>`). */
     allowedOrigins: z.array(z.string()).optional(),
     /** Trust the proxy as the auth authority instead of per-browser device identity. */
