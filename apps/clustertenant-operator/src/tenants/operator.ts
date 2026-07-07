@@ -6,11 +6,12 @@ import { _BuildHostingAdapter, type HostingAdapter } from "../hosting/index.js";
 
 import type { Tenant } from "./models/tenant.interface.js";
 import { TenantPolicyResolutionState, TenantStatusPhase } from "./models/tenant-status.interface.js";
+import type { TenantDegradedReason } from "./models/tenant-status.interface.js";
 
-import { __IsK8sForbidden, __K8sApplyResource } from "@opencrane/infra-api";
+import { __IsK8sForbidden, __K8sApplyResource, _IsK8sNotFound } from "@opencrane/infra-api";
 import { _RunWatchLoop, K8sWatchEventType } from "@opencrane/infra-api";
 import { OPENCRANE_API_GROUP, OPENCRANE_API_VERSION, TENANT_CRD_PLURAL } from "@opencrane/infra-api";
-import { _BuildClusterTenantLimitRange, _BuildClusterTenantNamespace, _BuildClusterTenantResourceQuota, _BuildConfigMap, _BuildDeployment, _BuildGatewayNetworkPolicy, _BuildService, _BuildServiceAccount, _BuildSiloBaselineNetworkPolicy, _BuildSiloLinkerdIdentityPolicy, _BuildStatePvc, _ConfigChecksum } from "./deploy/index.js";
+import { _BuildClusterTenantLimitRange, _BuildClusterTenantNamespace, _BuildClusterTenantResourceQuota, _BuildConfigMap, _BuildDeployment, _BuildGatewayNetworkPolicy, _BuildService, _BuildServiceAccount, _BuildSiloBaselineNetworkPolicy, _BuildSiloLinkerdIdentityPolicy, _BuildStatePvc, _ConfigChecksum, _ResolveTenantModelGate } from "./deploy/index.js";
 import { TenantCleanup } from "./destroy/tenant-cleanup.js";
 import { LinkerdIdentityClient } from "./internal/linkerd-identity.client.js";
 
@@ -306,9 +307,11 @@ export class TenantOperator
 
       // 0c. Allowed model set — best-effort fetch of the tenant's registered models
       //     from the control-plane internal API. This is a deliberate, non-fatal
-      //     operator → control-plane dependency: a null result (outage, 404, timeout)
-      //     falls back to today's unrestricted behaviour and never blocks reconcile.
-      const modelSet = await _FetchTenantModels(this.config.controlPlaneInternalUrl, name, this.log);
+      //     operator → control-plane dependency: it never throws. The fetch reports
+      //     ok / empty / error so step 5 can refuse to clobber a good config with a
+      //     model-less one on a transient empty/failed read (issue #144).
+      const modelFetch = await _FetchTenantModels(this.config.controlPlaneInternalUrl, name, this.log);
+      const modelSet = modelFetch.modelSet;
 
       // 1. ServiceAccount — identity annotations come from the adapter; empty on-prem,
       //    Workload Identity annotation on GKE, IRSA on EKS, etc.
@@ -337,14 +340,45 @@ export class TenantOperator
       // 5. ConfigMap — serialises the base OpenClaw JSON config merged with any
       //    spec.configOverrides the tenant author provided. Capture it so its
       //    checksum can roll the pod when the config changes (step 7).
-      const configMap = _BuildConfigMap(this.config, effectiveTenant, namespace, policyResolution.effectivePolicy, modelSet, ingressDomain);
-      await __K8sApplyResource(this.coreApi, configMap, this.log);
-      // Checksum of the rendered config — stamped on the pod template so a config
-      // change (e.g. a newly-registered BYOK default model landing in openclaw.json)
-      // rolls the pod. Without this, a mounted ConfigMap update never restarts the
-      // running OpenClaw process, which reads openclaw.json only at startup — so a
-      // pod that booted before its models existed stays on the keyless fallback.
-      const configChecksum = _ConfigChecksum(configMap);
+      //
+      //    FAIL-SAFE (issue #144): when LiteLLM is enabled the config's model set comes
+      //    from the live `tenant-models` read; an empty/failed read would render a
+      //    model-less config and openclaw would fall back to the keyless built-in
+      //    provider (missing-provider-auth). The gate refuses to re-render over an
+      //    already-applied config in that case — it keeps the last-applied ConfigMap and
+      //    marks the tenant Degraded — while a first-ever provision still renders.
+      //
+      //    The existing ConfigMap is only read when it could change the decision (LiteLLM
+      //    on AND the fetch was not clean-ok); on the happy path the gate is `render`
+      //    regardless, so the extra API read is skipped.
+      const needsExistingConfigMap = this.config.liteLlmEnabled && modelFetch.status !== "ok";
+      const existingConfigMap = needsExistingConfigMap ? await this.readExistingConfigMap(name, namespace) : null;
+      const modelGate = _ResolveTenantModelGate(modelFetch.status, this.config.liteLlmEnabled, existingConfigMap !== null);
+
+      let configChecksum: string;
+      let degradedReason: TenantDegradedReason | undefined;
+      let degradedMessage: string | undefined;
+      if (modelGate.action === "skip-degraded")
+      {
+        // Keep the last-applied ConfigMap untouched and pin the pod template to ITS
+        // checksum so the deployment does not roll onto a config we deliberately did not
+        // write. The condition is surfaced on the CR in step 10.
+        this.log.warn({ name, reason: modelGate.reason }, modelGate.message);
+        degradedReason = modelGate.reason;
+        degradedMessage = modelGate.message;
+        configChecksum = _ConfigChecksum(existingConfigMap!);
+      }
+      else
+      {
+        const configMap = _BuildConfigMap(this.config, effectiveTenant, namespace, policyResolution.effectivePolicy, modelSet, ingressDomain);
+        await __K8sApplyResource(this.coreApi, configMap, this.log);
+        // Checksum of the rendered config — stamped on the pod template so a config
+        // change (e.g. a newly-registered BYOK default model landing in openclaw.json)
+        // rolls the pod. Without this, a mounted ConfigMap update never restarts the
+        // running OpenClaw process, which reads openclaw.json only at startup — so a
+        // pod that booted before its models existed stays on the keyless fallback.
+        configChecksum = _ConfigChecksum(configMap);
+      }
 
       // 6. State volume — adapter decides CSI mount (cloud) vs PVC (on-prem).
       //    Create the PVC only when the adapter requests it (on-prem path).
@@ -370,10 +404,17 @@ export class TenantOperator
       //    cert and gets an explicit external-dns record (see the org-domain provisioner).
       await __K8sApplyResource(this.networkingApi, _BuildGatewayNetworkPolicy(this.config, effectiveTenant, namespace), this.log);
 
-      // 10. Status — write the observed Running state back to the Tenant CR so that
-      //    kubectl, the control-plane API, and the UI all see the current phase.
+      // 10. Status — write the observed state back to the Tenant CR so that kubectl, the
+      //    control-plane API, and the UI all see the current phase. When the model gate
+      //    skipped the ConfigMap refresh the pod is still serving on its last-applied
+      //    (good) config, so the phase is Degraded (not Error) with the reason recorded;
+      //    otherwise Running with any stale reason cleared. observedGeneration is NOT
+      //    stamped when degraded so the next reconcile retries the model fetch rather than
+      //    being short-circuited by the generation guard — the requeue that self-heals it.
       await this.statusWriter.patchStatus(tenant, crNamespace, {
-        phase: TenantStatusPhase.Running,
+        phase: degradedReason ? TenantStatusPhase.Degraded : TenantStatusPhase.Running,
+        message: degradedMessage,
+        degradedReason,
         podName: `openclaw-${name}`,
         // Served at the ORG host (`<org>.<base>` or vanity) via the proxy — no per-user subdomain.
         ingressHost: ingressDomain,
@@ -383,8 +424,8 @@ export class TenantOperator
         lastReconciled: new Date().toISOString(),
         // Record the generation we converged so the guard at the top of reconcileTenant
         // skips the next watch replay of this unchanged Tenant. A spec edit bumps generation
-        // and re-arms a full reconcile.
-        observedGeneration: tenant.metadata?.generation,
+        // and re-arms a full reconcile. Left UNSET while degraded so the fetch is retried.
+        observedGeneration: degradedReason ? undefined : tenant.metadata?.generation,
       });
     }
     catch (err)
@@ -395,6 +436,35 @@ export class TenantOperator
         message: err instanceof Error ? err.message : String(err),
         lastReconciled: new Date().toISOString(),
       });
+      throw err;
+    }
+  }
+
+  /**
+   * Read the tenant's currently-applied openclaw ConfigMap, if any.
+   *
+   * Used by the model gate (issue #144) to tell a first-ever provision (nothing to
+   * protect — render the temporarily model-less config) apart from a re-reconcile over
+   * an already-good config (keep it, mark Degraded). A confirmed 404 means "no ConfigMap
+   * yet" → `null`. Any OTHER read error is inconclusive: we must NOT assume absence, or a
+   * transient API blip could let an empty/failed model fetch clobber a working config, so
+   * it is re-thrown to fail the reconcile into a retry rather than resolved to `null`.
+   *
+   * @param name - Tenant CR name (the ConfigMap is `openclaw-<name>-config`).
+   * @param namespace - Namespace the tenant's child resources live in.
+   */
+  private async readExistingConfigMap(name: string, namespace: string): Promise<k8s.V1ConfigMap | null>
+  {
+    try
+    {
+      return await this.coreApi.readNamespacedConfigMap({ name: `openclaw-${name}-config`, namespace });
+    }
+    catch (err)
+    {
+      if (_IsK8sNotFound(err))
+      {
+        return null;
+      }
       throw err;
     }
   }

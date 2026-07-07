@@ -13,8 +13,33 @@ export enum TenantStatusPhase
   /** Tenant workload is intentionally scaled down to zero replicas. */
   Suspended = "Suspended",
 
+  /**
+   * The tenant is running on a previously-applied config, but the latest reconcile
+   * could not safely refresh it. Set when the `tenant-models` fetch returned empty or
+   * failed and the operator DELIBERATELY skipped the ConfigMap re-render to avoid
+   * clobbering a working config with a model-less one (see `_ResolveTenantModelGate`).
+   * The workload keeps serving; `degradedReason` records why the refresh was skipped.
+   */
+  Degraded = "Degraded",
+
   /** Reconciliation failed and operator recorded the latest error message. */
   Error = "Error",
+}
+
+/** Why a reconcile marked the tenant {@link TenantStatusPhase.Degraded}. */
+export enum TenantDegradedReason
+{
+  /**
+   * The control-plane returned a well-formed empty model set (the tenant has no
+   * registered models — onboarding is incomplete). The last-applied ConfigMap was kept.
+   */
+  ModelSetEmpty = "ModelSetEmpty",
+
+  /**
+   * The `tenant-models` fetch failed (transport error, timeout, non-200, or malformed
+   * body), so the real model set is unknown. The last-applied ConfigMap was kept.
+   */
+  ModelFetchFailed = "ModelFetchFailed",
 }
 
 /** Resolution state for how tenant policy assignment was computed. */
@@ -65,6 +90,13 @@ export interface TenantStatus
 
   /** Resolution state of tenant policy assignment. */
   policyResolutionState?: TenantPolicyResolutionState;
+
+  /**
+   * Why the tenant is {@link TenantStatusPhase.Degraded}, when it is. Cleared (set to
+   * `undefined`) on any reconcile that resolves back to a healthy phase so a recovered
+   * tenant does not carry a stale reason.
+   */
+  degradedReason?: TenantDegradedReason;
 
   /** ISO-8601 timestamp of the last successful reconciliation. */
   lastReconciled?: string;
