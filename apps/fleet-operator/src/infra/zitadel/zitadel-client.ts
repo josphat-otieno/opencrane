@@ -313,6 +313,18 @@ export class _HttpZitadelManagementClient implements ZitadelManagementClient
     throw new Error(`Zitadel org teardown failed (${res.status}): ${await res.text()}`);
   }
 
+  public async grantProjectRole(orgId: string, projectId: string, subject: string, roleKey: string): Promise<void>
+  {
+    // Same cross-org user-grant endpoint `provisionOrg` uses for the master `admin`: grant the
+    // subject the given project role, scoped to the org via the x-zitadel-orgid header. Fail-loud
+    // (via _call) so a caller wrapping this in a DB transaction rolls the membership write back.
+    await this._call("POST", `/management/v1/users/${subject}/grants`, {
+      projectId,
+      roleKeys: [roleKey],
+    }, orgId);
+    _log.info({ orgId, projectId, subject, roleKey }, "granted Zitadel project role to org member");
+  }
+
   /** Issue an authenticated, org-scoped Management API call; throw on any non-OK status. */
   private async _call(method: string, path: string, body: unknown, orgId?: string): Promise<unknown>
   {

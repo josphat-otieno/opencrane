@@ -123,6 +123,27 @@ describe("_HttpZitadelManagementClient — live provisioning lifecycle (injected
     expect(calls.some(c => c.method === "DELETE" && c.path === "/admin/v1/orgs/org-9")).toBe(true);
   });
 
+  it("grantProjectRole POSTs the org-scoped user grant with the given project role (#126 S3)", async function _grantRole()
+  {
+    const { fetchImpl, calls } = _fakeFetch();
+    const client = new _HttpZitadelManagementClient({ apiUrl: "https://z.example.com", serviceAccountKey: _saKeyJson(), baseDomain: "d" }, fetchImpl);
+
+    await client.grantProjectRole("org-9", "proj-9", "user-2", "member");
+
+    const grant = calls.find(c => c.path === "/management/v1/users/user-2/grants");
+    expect(grant?.method).toBe("POST");
+    expect(grant?.orgId).toBe("org-9");
+    expect(grant?.body).toEqual({ projectId: "proj-9", roleKeys: ["member"] });
+  });
+
+  it("grantProjectRole throws on a non-OK Zitadel response (rolls a wrapping DB tx back)", async function _grantFails()
+  {
+    const { fetchImpl } = _fakeFetch({ "/management/v1/users/user-2/grants": { status: 500, body: { message: "boom" } } });
+    const client = new _HttpZitadelManagementClient({ apiUrl: "https://z.example.com", serviceAccountKey: _saKeyJson(), baseDomain: "d" }, fetchImpl);
+
+    await expect(client.grantProjectRole("org-9", "proj-9", "user-2", "member")).rejects.toThrow(/grants failed \(500\)/);
+  });
+
   it("teardownOrg tolerates an already-absent org (404)", async function _teardown404()
   {
     const { fetchImpl } = _fakeFetch({ "/admin/v1/orgs/gone": { status: 404, body: {} } });

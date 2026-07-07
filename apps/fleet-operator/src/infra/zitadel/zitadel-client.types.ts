@@ -113,6 +113,21 @@ export interface ZitadelManagementClient
   teardownOrg(orgId: string): Promise<void>;
 
   /**
+   * Grant a subject a role on an org's `opencrane` project — the seating step that makes
+   * an invited member's `sub` authorizable at the org's login surface. Mirrors the master
+   * `admin` grant `provisionOrg` issues (`POST /management/v1/users/{userId}/grants`), scoped
+   * to the org via the `x-zitadel-orgid` header. The role keys (`owner`/`admin`/`member`) are
+   * the ones `provisionOrg` bulk-creates on the project. Throws on failure so a caller wrapping
+   * it in a DB transaction rolls the local membership write back.
+   *
+   * @param orgId    - Zitadel Organization id the project + user grant live in.
+   * @param projectId - Zitadel project id whose role is granted.
+   * @param subject  - IdP subject (Zitadel user id) receiving the grant.
+   * @param roleKey  - Project role key to grant (`owner` | `admin` | `member`).
+   */
+  grantProjectRole(orgId: string, projectId: string, subject: string, roleKey: string): Promise<void>;
+
+  /**
    * Validate a CANDIDATE service-account key WITHOUT touching the live client's key or
    * token cache. Builds a throwaway signer from the candidate, performs a jwt-bearer token
    * exchange, then a NON-DESTRUCTIVE instance-`IAM_OWNER` probe (`GET /admin/v1/instances/me`,

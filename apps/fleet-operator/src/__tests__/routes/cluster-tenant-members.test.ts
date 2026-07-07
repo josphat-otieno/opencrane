@@ -5,13 +5,16 @@ import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { clusterTenantMembersRouter } from "../../routes/cluster-tenant-members.js";
+import type { ZitadelManagementClient } from "../../infra/zitadel/zitadel-client.types.js";
 
 /**
- * Route tests for the org MEMBER management API (S3c):
+ * Route tests for the org MEMBER management API (S3c) + Zitadel seating (#126 S3):
  *   - list / add (upsert) / remove the local OrgMembership rows,
  *   - the last-Owner guardrail (409 on demoting/removing the sole Owner),
  *   - 404 when the org (or membership) is missing,
- *   - the org-manager gate (403 for a non-member; allow operator + owner/admin).
+ *   - the org-manager gate (403 for a non-member; allow operator + owner/admin),
+ *   - Zitadel member seating: grant the project role on upsert, roll the DB write back
+ *     when the grant throws, and skip the grant for a not-yet-provisioned org.
  */
 
 type Row = Record<string, unknown>;
@@ -19,29 +22,79 @@ type Row = Record<string, unknown>;
 /** A membership fixture row. */
 interface Membership { clusterTenant: string; subject: string; role: "Owner" | "Admin" | "Member" }
 
+/** An org fixture: name plus optional provisioned Zitadel ids (present ⇒ seatable). */
+interface OrgFixture { name: string; zitadelOrgId?: string | null; zitadelProjectId?: string | null }
+
 /** Seed shape for the in-memory fixtures. */
 interface Seed
 {
-  orgs?: string[];
+  orgs?: Array<string | OrgFixture>;
   memberships?: Membership[];
+}
+
+/** A grant call recorded by the fake Zitadel client. */
+interface GrantCall { orgId: string; projectId: string; subject: string; roleKey: string }
+
+/**
+ * Build a fake Zitadel client that records `grantProjectRole` calls. When `throwOnGrant`
+ * is set, the grant rejects — exercising the transactional rollback (the DB write must
+ * not survive an IdP failure).
+ */
+function _fakeZitadel(opts: { throwOnGrant?: boolean } = {}): { client: ZitadelManagementClient; grants: GrantCall[] }
+{
+  const grants: GrantCall[] = [];
+  const client: ZitadelManagementClient = {
+    async provisionOrg(input) { return { orgId: "z", projectId: "p", appId: "a", clientId: "c", redirectUri: input.redirectUri }; },
+    async setAppRedirectUris() { /* no-op */ },
+    async teardownOrg() { /* no-op */ },
+    async grantProjectRole(orgId, projectId, subject, roleKey)
+    {
+      if (opts.throwOnGrant) { throw new Error("zitadel grant rejected"); }
+      grants.push({ orgId, projectId, subject, roleKey });
+    },
+    async validateCandidateKey() { return { tokenExchangeOk: true, instanceScopeOk: true, keyId: "k", detail: "ok" }; },
+    currentKeyId() { return "k"; },
+    reloadKey() { /* no-op */ },
+  };
+  return { client, grants };
 }
 
 /**
  * Build a Prisma stub backed by in-memory arrays for the membership tables.
  * Implements only the surface the members router touches: clusterTenant.findUnique,
- * and orgMembership.{findMany,findUnique,count,upsert,delete}.
+ * orgMembership.{findMany,findUnique,count,upsert,delete}, and a $transaction that runs
+ * its callback against the stub (rolling the local rows back if the callback throws).
  */
 function _mockPrisma(seed: Seed = {}): { prisma: PrismaClient; memberships: Membership[] }
 {
-  const orgs = new Set(seed.orgs ?? []);
+  const orgFixtures = new Map<string, OrgFixture>(
+    (seed.orgs ?? []).map(o => typeof o === "string" ? [o, { name: o }] : [o.name, o]),
+  );
   const memberships: Membership[] = (seed.memberships ?? []).map(m => ({ ...m }));
 
   const _find = (clusterTenant: string, subject: string): Membership | undefined =>
     memberships.find(m => m.clusterTenant === clusterTenant && m.subject === subject);
 
   const prisma = {
+    $transaction: vi.fn(async function _transaction(fn: (tx: PrismaClient) => Promise<unknown>)
+    {
+      // Snapshot for rollback: the seating grant is the last fallible step, so a throw
+      // must leave the in-memory rows as they were before the callback ran.
+      const snapshot = memberships.map(m => ({ ...m }));
+      try { return await fn(prisma); }
+      catch (err) { memberships.splice(0, memberships.length, ...snapshot); throw err; }
+    }),
     clusterTenant: {
-      findUnique: vi.fn(async function _findUnique(args: { where: { name: string } }) { return orgs.has(args.where.name) ? { name: args.where.name } : null; }),
+      findUnique: vi.fn(async function _findUnique(args: { where: { name: string }; select?: Record<string, boolean> })
+      {
+        const org = orgFixtures.get(args.where.name);
+        if (!org) { return null; }
+        if (args.select?.zitadelOrgId || args.select?.zitadelProjectId)
+        {
+          return { zitadelOrgId: org.zitadelOrgId ?? null, zitadelProjectId: org.zitadelProjectId ?? null };
+        }
+        return { name: org.name };
+      }),
     },
     orgMembership: {
       findMany: vi.fn(async function _findMany(args: { where: { clusterTenant: string } })
@@ -82,7 +135,7 @@ function _mockPrisma(seed: Seed = {}): { prisma: PrismaClient; memberships: Memb
 interface User { sub: string; isPlatformOperator: boolean }
 
 /** Mount the members router under the org `:name`, optionally seeding a session user. */
-function _buildApp(prisma: PrismaClient, user?: User): Express
+function _buildApp(prisma: PrismaClient, user?: User, zitadel?: ZitadelManagementClient): Express
 {
   const app = express();
   app.use(express.json());
@@ -90,7 +143,7 @@ function _buildApp(prisma: PrismaClient, user?: User): Express
   {
     app.use(function _seedSession(req, _res, next) { (req as unknown as { session: { authUser: User } }).session = { authUser: user }; next(); });
   }
-  app.use("/api/v1/cluster-tenants/:name/members", clusterTenantMembersRouter(prisma));
+  app.use("/api/v1/cluster-tenants/:name/members", clusterTenantMembersRouter(prisma, zitadel ?? _fakeZitadel().client));
   return app;
 }
 
@@ -145,7 +198,9 @@ describe("clusterTenantMembersRouter — org member management (S3c)", function 
     const res = await request(_buildApp(prisma, _owner)).post("/api/v1/cluster-tenants/acme/members").send({ subject: "user-2", role: "Admin" });
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ subject: "user-2", role: "Admin" });
+    // Response shape is stable + extended: existing { subject, role } unchanged, `zitadelSeated`
+    // is additive (false here since the seed org has no provisioned Zitadel ids).
+    expect(res.body).toEqual({ subject: "user-2", role: "Admin", zitadelSeated: false });
     expect(memberships).toContainEqual({ clusterTenant: "acme", subject: "user-2", role: "Admin" });
   });
 
@@ -267,5 +322,45 @@ describe("clusterTenantMembersRouter — org member management (S3c)", function 
 
     expect(res.status).toBe(200);
     expect(memberships).toContainEqual({ clusterTenant: "acme", subject: "user-9", role: "Member" });
+  });
+
+  // --- Zitadel member seating (#126 S3) -----------------------------------
+
+  const _provisionedOrg = { name: "acme", zitadelOrgId: "z-org", zitadelProjectId: "z-proj" };
+
+  it("seats the member's Zitadel project role on upsert for a provisioned org", async function _seats()
+  {
+    const { prisma } = _mockPrisma({ orgs: [_provisionedOrg], memberships: [{ clusterTenant: "acme", subject: "owner-1", role: "Owner" }] });
+    const { client, grants } = _fakeZitadel();
+    const res = await request(_buildApp(prisma, _owner, client)).post("/api/v1/cluster-tenants/acme/members").send({ subject: "user-2", role: "Admin" });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ subject: "user-2", role: "Admin", zitadelSeated: true });
+    // The role key is the lower-cased OrgRole; the org's provisioned ids are used.
+    expect(grants).toEqual([{ orgId: "z-org", projectId: "z-proj", subject: "user-2", roleKey: "admin" }]);
+  });
+
+  it("rolls the membership write back when the Zitadel grant fails (grant is the last fallible step)", async function _rollsBack()
+  {
+    const { prisma, memberships } = _mockPrisma({ orgs: [_provisionedOrg], memberships: [{ clusterTenant: "acme", subject: "owner-1", role: "Owner" }] });
+    const { client } = _fakeZitadel({ throwOnGrant: true });
+    const res = await request(_buildApp(prisma, _owner, client)).post("/api/v1/cluster-tenants/acme/members").send({ subject: "user-2", role: "Member" });
+
+    // The IdP failure surfaces (not a 200) and the local row never survives the failed tx.
+    expect(res.status).not.toBe(200);
+    expect(memberships.find(m => m.subject === "user-2")).toBeUndefined();
+  });
+
+  it("records the membership without seating for a not-yet-provisioned org (null Zitadel ids)", async function _noSeat()
+  {
+    // Org exists but has no Zitadel ids yet (pending) → membership recorded locally, grant skipped.
+    const { prisma, memberships } = _mockPrisma({ orgs: [{ name: "acme" }], memberships: [{ clusterTenant: "acme", subject: "owner-1", role: "Owner" }] });
+    const { client, grants } = _fakeZitadel();
+    const res = await request(_buildApp(prisma, _owner, client)).post("/api/v1/cluster-tenants/acme/members").send({ subject: "user-2", role: "Member" });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ subject: "user-2", role: "Member", zitadelSeated: false });
+    expect(grants).toHaveLength(0);
+    expect(memberships).toContainEqual({ clusterTenant: "acme", subject: "user-2", role: "Member" });
   });
 });
