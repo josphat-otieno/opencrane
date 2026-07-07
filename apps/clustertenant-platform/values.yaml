@@ -18,6 +18,18 @@ global:
 #    identically to the central release, just scoped to the silo namespace. No chart-side
 #    per-CT DB block is needed.
 
+# -- Multi-ClusterTenant profile switch (issue #127). The EXPLICIT predicate (never
+#    inferred) that this install hosts MANY tenants — many orgs (ClusterTenants) and/or
+#    many isolated instances — in one cluster, so cross-tenant isolation is MANDATORY.
+#    The fleet profile (`apps/fleet-platform/deploy.sh`) sets this true. When true, the
+#    platform-namespace default-deny and the cross-instance deny render UNCONDITIONALLY,
+#    and a Helm `fail` guard REJECTS the render if their opt-out knobs are switched off
+#    (fail-closed: an install flagged multi-CT can never silently ship without the deny
+#    baselines). The single-CT opt-out (mainNetworkDefaultDeny.enabled=false /
+#    multiInstance disabled) is honoured ONLY when this is false.
+multiCt:
+  enabled: false
+
 # -- Native multi-instance mode (run N strictly-isolated OpenCrane instances in
 #    one cluster). Off by default → the legacy single-install path is unchanged.
 #    When enabled, the chart flips the isolation-safe defaults below.
@@ -26,6 +38,9 @@ global:
 #    lifecycle + version compatibility contract, blocker B3).
 multiInstance:
   # -- Turn on the per-instance isolation defaults (namespaced RBAC, fail-closed watch).
+  #    MANDATORY under the `--multi-ct` profile (`multiCt.enabled`): the cross-instance
+  #    default-deny renders unconditionally there and a Helm `fail` REJECTS the render if
+  #    this is left false. This false default is the SINGLE-CT opt-out only.
   enabled: false
   # -- The namespace(s) this instance owns. Namespaced RBAC is rendered for each.
   #    Empty → defaults to the release namespace.
@@ -925,12 +940,16 @@ networkPolicy:
   #    with CiliumNetworkPolicy objects scoped to the exact FQDNs
   #    (api.openai.com, api.anthropic.com, your Zitadel host, etc.).
   mainNetworkDefaultDeny:
-    # -- Set to true ONLY after validating platform connectivity in a non-production
-    #    environment. Enabling this without validation can break all planes simultaneously.
+    # -- MANDATORY under the `--multi-ct` profile (`multiCt.enabled`): the template renders
+    #    unconditionally there and a Helm `fail` REJECTS the render if this is left false, so a
+    #    multi-CT install can never ship without the platform default-deny. This false default
+    #    is the SINGLE-CT opt-out only — a one-org box may run without it (set true after
+    #    validating platform connectivity in a non-production environment; enabling it
+    #    unvalidated can break all planes simultaneously).
     enabled: false
     # -- Set to true to also render the OTEL collector HTTPS egress rule (rule 11).
     #    Only needed when observability.otel.enabled=true AND the OTEL exporter sends
-    #    to an external backend (e.g. GCP Cloud Trace). Ignored when enabled=false.
+    #    to an external backend (e.g. GCP Cloud Trace). Ignored when the policy is not rendered.
     allowOtelEgress: false
 
 # -- Org-wide secrets injected into all tenant pods
