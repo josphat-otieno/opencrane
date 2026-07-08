@@ -50,7 +50,10 @@ facts. To PERSIST a generalizable learning back to org memory, use the **`memory
 (`org`/`team`/`department`/`project`/`personal`) — it is stored attributed to you and becomes
 retrievable by other agents. Cognee is a settled platform dependency, not an option — if it is ever
 missing at startup the runtime logs a warning and these tools are unavailable until an operator
-fixes it.
+fixes it. If `memory_search` returns a "temporarily unavailable" error, or is momentarily absent
+from your tools just after startup, that is a transient startup/backend hiccup: wait a few seconds
+and try again. Never fabricate an error, an index status, or a remediation command — report what
+the tool actually returns, and if org memory stays unavailable after a retry, tell the user plainly.
 
 ## Workspace Ownership
 

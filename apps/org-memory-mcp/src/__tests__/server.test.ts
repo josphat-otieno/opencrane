@@ -31,10 +31,11 @@ const _citableRow: CogneeSearchHit = {
 /** An uncitable hit (no title/uri) — the SDK must drop it. */
 const _uncitableRow: CogneeSearchHit = { content: "orphan fact", metadata: {} };
 
-/** Wire a Client to a freshly-built org-memory server over an in-memory transport pair. */
+/** Wire a Client to a freshly-built org-memory server over an in-memory transport pair.
+ * Injects a zero-delay `sleep` so the search-retry loop runs instantly under test. */
 async function _connectClient(client: AwarenessClient, writer?: MemoryWriter): Promise<Client>
 {
-  const server = _BuildOrgMemoryServer({ client, writer });
+  const server = _BuildOrgMemoryServer({ client, writer, sleep: async function _noWait() {} });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
   const mcpClient = new Client({ name: "test", version: "0.0.0" });
@@ -121,17 +122,41 @@ describe("org-memory MCP surface", function _mcpSuite()
     expect(res.isError).toBeFalsy();
   });
 
-  it("surfaces a backend failure as a tool error, not a crash", async function _errors()
+  it("surfaces a persistent backend failure as a temporary-unavailable retry signal, not a crash", async function _errors()
   {
+    let calls = 0;
     const failing = new AwarenessClient({
       cogneeEndpoint: "http://cognee:8000",
-      search: async function _boom() { throw new Error("cognee unreachable"); },
+      search: async function _boom() { calls += 1; throw new Error("cognee unreachable"); },
     });
     const mcpClient = await _connectClient(failing);
     const res = await mcpClient.callTool({ name: "memory_search", arguments: { query: "x" } });
     expect(res.isError).toBe(true);
     const text = (res.content as Array<{ type: string; text?: string }>).map((c) => c.text ?? "").join("\n");
-    expect(text).toContain("Org-memory search failed: cognee unreachable");
+    // The agent must be told this is transient and to retry — NOT be handed a bare failure it might
+    // dress up into an invented index error.
+    expect(text).toContain("Org-memory search is temporarily unavailable (cognee unreachable)");
+    expect(text).toContain("wait a few seconds and call memory_search again");
+    expect(text).toContain("Do NOT invent");
+    // It retried in-process before giving up (defends against a single cold-start flake).
+    expect(calls).toBe(3);
+  });
+
+  it("retries a transient failure in-process and returns results once it clears", async function _retryRecovers()
+  {
+    let calls = 0;
+    const flaky = new AwarenessClient({
+      cogneeEndpoint: "http://cognee:8000",
+      // Fail the first two attempts, then succeed on the third with a citable hit.
+      search: async function _flaky() { calls += 1; if (calls < 3) { throw new Error("cold start"); } return [_citableRow]; },
+    });
+    const mcpClient = await _connectClient(flaky);
+    const res = await mcpClient.callTool({ name: "memory_search", arguments: { query: "launch date" } });
+    expect(res.isError).toBeFalsy();
+    const text = (res.content as Array<{ type: string; text?: string }>).map((c) => c.text ?? "").join("\n");
+    expect(text).toContain("15 September");
+    expect(text).toContain("Source: Q3 Launch Plan");
+    expect(calls).toBe(3);
   });
 });
 

@@ -34,8 +34,15 @@ To persist a generalizable learning back to org memory, use **`memory_remember`*
 decisions other agents would want — NOT for your personal style, this user's preferences, or
 transient task state (those stay in `MEMORY.md`). Remembered facts are attributed to you.
 
+If `memory_search` returns a "temporarily unavailable" error, or is briefly missing from your
+tools just after startup, treat it as a transient hiccup: wait a few seconds and call it again.
+Never invent an error message, an index status, or a `memory`/index CLI command — the tool
+reports exactly what happened, and there is no memory-index command to run.
+
 If the runtime starts up without Cognee wired, that is a **misconfiguration**, not a fallback:
-the pod logs a startup warning and org memory is unavailable until an operator fixes it.
+the pod logs a startup warning and org memory is unavailable until an operator fixes it. If org
+memory stays unavailable after you retry, say so plainly to the user and note that an operator
+should check the pod.
 
 ## LiteLLM Proxy
 

@@ -18,6 +18,46 @@ const _SERVER_VERSION = "0.1.0";
 const _MAX_LIMIT = 50;
 
 /**
+ * How many times a transient `memory_search` is attempted in-process before it gives up
+ * and hands the agent a retry signal, and the base (linear) backoff between attempts.
+ *
+ * Retrieval is safe to retry: `AwarenessClient.query` is a read, so a duplicated attempt
+ * has no side effect. Writes (`memory_remember`) are deliberately NOT retried here — a
+ * partially-applied Cognee `/v1/add` must never be silently duplicated.
+ */
+const _SEARCH_MAX_ATTEMPTS = 3;
+const _SEARCH_BACKOFF_MS = 400;
+
+/** Real wall-clock sleep; injectable so tests exercise the retry loop with zero delay. */
+const _defaultSleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Run `op`, retrying on ANY thrown error up to `attempts` times with linear backoff.
+ * Returns the first success; rethrows the last error once attempts are exhausted so the
+ * caller can turn it into an agent-facing signal.
+ *
+ * @param op    - The idempotent async operation to attempt.
+ * @param opts  - Attempt count, base backoff, and the sleep function to wait between tries.
+ */
+async function _withRetry<T>(op: () => Promise<T>, opts: { attempts: number; backoffMs: number; sleep: (ms: number) => Promise<void> }): Promise<T>
+{
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= opts.attempts; attempt += 1)
+  {
+    try
+    {
+      return await op();
+    }
+    catch (error)
+    {
+      lastError = error;
+      if (attempt < opts.attempts) { await opts.sleep(opts.backoffMs * attempt); }
+    }
+  }
+  throw lastError;
+}
+
+/**
  * Build the org-memory MCP server: a LOCAL, in-pod tool OpenClaw spawns over stdio
  * to retrieve org context per turn. It is deliberately NOT routed through the Obot
  * MCP gateway — org-memory retrieval is a first-class platform capability that talks
@@ -30,12 +70,14 @@ const _MAX_LIMIT = 50;
  * learning up into the shared graph (omit the writer — or disable it via env — to run
  * read-only). Both deps are injected so the server is unit-testable with no live backend.
  *
- * @param deps - The awareness client (read) and optional memory writer (remember).
+ * @param deps - The awareness client (read), optional memory writer (remember), and an
+ *   optional `sleep` override so tests can drive the search-retry loop without real waits.
  * @returns A configured (not yet connected) MCP server; the caller attaches a transport.
  */
-export function _BuildOrgMemoryServer(deps: { client: AwarenessClient; writer?: MemoryWriter | null }): McpServer
+export function _BuildOrgMemoryServer(deps: { client: AwarenessClient; writer?: MemoryWriter | null; sleep?: (ms: number) => Promise<void> }): McpServer
 {
   const { client, writer } = deps;
+  const sleep = deps.sleep ?? _defaultSleep;
   const server = new McpServer({ name: ORG_MEMORY_SERVER_NAME, version: _SERVER_VERSION });
 
   server.registerTool(
@@ -65,15 +107,29 @@ export function _BuildOrgMemoryServer(deps: { client: AwarenessClient; writer?: 
     {
       try
       {
-        const result = await client.query({ query, ...(datasets ? { datasets } : {}), ...(limit ? { limit } : {}) });
+        // Retry transient blips in-process first — a cold Cognee or a spawn-time hiccup
+        // usually clears within a couple of attempts, so the agent gets results rather
+        // than a spurious "unavailable" on the first flake.
+        const result = await _withRetry(
+          () => client.query({ query, ...(datasets ? { datasets } : {}), ...(limit ? { limit } : {}) }),
+          { attempts: _SEARCH_MAX_ATTEMPTS, backoffMs: _SEARCH_BACKOFF_MS, sleep },
+        );
         return { content: [{ type: "text" as const, text: _FormatAwarenessResult(result) }] };
       }
       catch (error)
       {
-        // Surface the failure to the agent as a tool error rather than throwing, so the
-        // turn continues with a clear "memory unavailable" signal instead of crashing.
+        // In-process retries are exhausted. Hand the agent an EXPLICIT, honest retry signal
+        // so it waits and calls memory_search again rather than inventing an error, an index
+        // status, or a remediation command it cannot actually run (a real observed failure mode).
         const message = error instanceof Error ? error.message : String(error);
-        return { content: [{ type: "text" as const, text: `Org-memory search failed: ${message}` }], isError: true };
+        return {
+          content: [{ type: "text" as const, text:
+            `Org-memory search is temporarily unavailable (${message}). This is usually a brief ` +
+            `startup or backend hiccup — wait a few seconds and call memory_search again. Do NOT invent ` +
+            `an error, an index status, or a remediation command; if it keeps failing after you retry, ` +
+            `tell the user org memory is temporarily unavailable and an operator should check the pod.` }],
+          isError: true,
+        };
       }
     },
   );

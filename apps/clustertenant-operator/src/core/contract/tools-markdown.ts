@@ -64,6 +64,9 @@ const _ORG_MEMORY_SECTION = [
     "`title`, `scope`, optional `subject`/`sensitivityTags`). Use for durable org/domain facts " +
     "other agents would want — NOT personal style, this user's preferences, or transient task " +
     "state (those stay in MEMORY.md). Remembered facts are attributed to you.",
+  "- If memory_search returns a \"temporarily unavailable\" error, or is momentarily missing just " +
+    "after startup, wait a few seconds and retry — it is a transient hiccup. Never invent an error, " +
+    "an index status, or a remediation command; report what the tool actually returns.",
 ].join("\n");
 
 /** Options controlling optional sections of the generated `TOOLS.md`. */
