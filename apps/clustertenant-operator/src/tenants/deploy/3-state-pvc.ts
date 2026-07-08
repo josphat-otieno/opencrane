@@ -9,8 +9,12 @@ import { _BuildTenantLabels } from "./tenant-labels.js";
  * storage provider/CSI driver pair. In that fallback mode the tenant stores
  * its OpenClaw runtime, sessions, uploads, and other persistent state on a
  * dedicated Kubernetes volume instead of a tenant-scoped bucket mount.
+ *
+ * @param storageClassName - StorageClass to pin the PVC to. Empty ⇒ the key is
+ *   omitted and the PVC binds to the cluster default StorageClass (byte-for-byte
+ *   unchanged from before this parameter existed).
  */
-export function _BuildStatePvc(tenantName: string, namespace: string): k8s.V1PersistentVolumeClaim
+export function _BuildStatePvc(tenantName: string, namespace: string, storageClassName: string = ""): k8s.V1PersistentVolumeClaim
 {
   return {
     apiVersion: "v1",
@@ -27,6 +31,7 @@ export function _BuildStatePvc(tenantName: string, namespace: string): k8s.V1Per
           storage: "1Gi",
         },
       },
+      ...(storageClassName ? { storageClassName } : {}),
     },
   };
 }

@@ -109,4 +109,16 @@ export interface TenantStatus
    * status-write→watch-event churn they trigger) on every watch cycle.
    */
   observedGeneration?: number;
+
+  /**
+   * The operator-config checksum (`_OperatorConfigChecksum`) in effect when this tenant
+   * was last driven to `Running`. `metadata.generation` only tracks the tenant's OWN
+   * spec, not the operator's config/values — so without this a `helm upgrade` that
+   * changes operator config (e.g. `trustedProxies`, a runtime-plane URL) would be
+   * short-circuited by the generation guard on every existing tenant. The guard also
+   * compares this against the operator's current checksum, so an operator-config change
+   * re-arms a full reconcile without a manual restart or per-tenant spec edit. Left
+   * UNSET while degraded, alongside `observedGeneration`.
+   */
+  observedConfigChecksum?: string;
 }

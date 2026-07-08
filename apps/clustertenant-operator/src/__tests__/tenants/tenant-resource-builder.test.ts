@@ -366,6 +366,21 @@ describe("TenantResourceBuilder", () =>
     expect(pvc.spec?.resources?.requests?.storage).toBe("1Gi");
   });
 
+  it("omits storageClassName on the state PVC when unset (binds to cluster default)", () =>
+  {
+    const pvc = _BuildStatePvc("local", "default", "");
+
+    expect(pvc.spec?.storageClassName).toBeUndefined();
+    expect(Object.keys(pvc.spec ?? {})).not.toContain("storageClassName");
+  });
+
+  it("stamps storageClassName on the state PVC when set", () =>
+  {
+    const pvc = _BuildStatePvc("local", "default", "encrypted-cmek");
+
+    expect(pvc.spec?.storageClassName).toBe("encrypted-cmek");
+  });
+
   it("hardens Deployment runtime defaults and injects managed runtime env", () =>
   {
     const tenant = _makeTenant("strict", {

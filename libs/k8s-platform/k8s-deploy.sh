@@ -21,7 +21,7 @@
 #                            [--oidc-session-secret SECRET]
 #                            [--platform-operator-seed-email EMAIL]
 #                            [--platform-operator-groups CSV]
-#                            [--preflight]
+#                            [--preflight] [--multi-ct]
 #                            [--no-ingress-nginx]
 #                            [--no-external-dns]
 #                            [--cert-manager] [--acme-email EMAIL]
@@ -212,6 +212,14 @@ DNS_WRITER_GSA="${OPENCRANE_DNS_WRITER_GSA:-${DNS_WRITER_GSA:-}}"
 # OPENCRANE_PREFLIGHT=1. It is advisory unless run — the install itself does not auto-run it.
 PREFLIGHT="${OPENCRANE_PREFLIGHT:-0}"
 
+# --multi-ct is the EXPLICIT multi-ClusterTenant predicate: this install hosts many orgs
+# (ClusterTenants) or many isolated instances in one cluster, so cross-tenant isolation is
+# mandatory rather than advisory. It is a deliberate flag (never inferred), so the fail-closed
+# checks below can trust it: preflight makes the NetworkPolicy-enforcing-CNI check FATAL (not
+# advisory) under multi-CT, and the fleet profile passes it so `apps/fleet-platform/deploy.sh`
+# runs a mandatory preflight. Also via OPENCRANE_MULTI_CT=1.
+MULTI_CT="${OPENCRANE_MULTI_CT:-0}"
+
 # --auto-ingress-ip derives ingress.externalIp from the ingress-nginx LoadBalancer after
 # it is installed (so per-org *.<domain> A records resolve without hand-copying the IP).
 # Opt-in; an explicit ingress.externalIp --set always wins. Also via OPENCRANE_AUTO_INGRESS_IP=1.
@@ -249,6 +257,7 @@ while [[ $# -gt 0 ]]; do
     --platform-operator-seed-email) PLATFORM_OPERATOR_SEED_EMAIL="$2"; shift 2 ;;
     --platform-operator-groups)     PLATFORM_OPERATOR_GROUPS="$2"; shift 2 ;;
     --preflight)        PREFLIGHT="1"; shift ;;
+    --multi-ct)         MULTI_CT="1"; shift ;;
     --auto-ingress-ip)  AUTO_INGRESS_IP="1"; shift ;;
     --verify)           VERIFY="1"; shift ;;
     --no-ingress-nginx) INSTALL_INGRESS_NGINX="0"; shift ;;
@@ -307,9 +316,26 @@ _run_preflight() {
 
   # 2. NetworkPolicy-enforcing CNI — the platform's isolation model is built on
   #    NetworkPolicy; a CNI that silently ignores them (e.g. stock kindnet/flannel) makes
-  #    every default-deny a no-op. We probe for a known enforcing CNI DaemonSet.
+  #    every default-deny a no-op. We probe for a known enforcing CNI DaemonSet. FATAL under
+  #    --multi-ct (cross-tenant isolation is mandatory there, so a no-op CNI is a security
+  #    hole, not a warning); advisory (warn-and-continue) for a single-CT install where a
+  #    non-enforcing CNI only weakens defence-in-depth on a one-org box.
   if ! kubectl get ds -n kube-system -o name 2>/dev/null | grep -qiE "calico|cilium|weave|antrea|kube-router"; then
-    PF_FAILS+=("No NetworkPolicy-enforcing CNI detected (looked for calico/cilium/weave/antrea/kube-router in kube-system). The platform's NetworkPolicy isolation is a NO-OP on a non-enforcing CNI. Install an enforcing CNI (GKE: enable Dataplane V2 / network-policy).")
+    if [[ "$MULTI_CT" == "1" ]]; then
+      PF_FAILS+=("No NetworkPolicy-enforcing CNI detected (looked for calico/cilium/weave/antrea/kube-router in kube-system). Under --multi-ct the platform's NetworkPolicy isolation is MANDATORY and would be a NO-OP on this CNI — cross-tenant traffic would not be denied. Install an enforcing CNI (GKE: enable Dataplane V2 / network-policy).")
+    else
+      warn "Preflight: no NetworkPolicy-enforcing CNI detected (calico/cilium/weave/antrea/kube-router). NetworkPolicy isolation will be a no-op; acceptable for a single-tenant box but re-run with --multi-ct if this hosts multiple tenants."
+    fi
+  fi
+
+  # 2b. Tenant StorageClass encryption (ADVISORY) — tenant state lands on the cluster's
+  #     default StorageClass unless --storage-class pins one. At-rest encryption is a
+  #     StorageClass/provider concern the deploy script cannot positively verify, so this
+  #     only WARNS (never fails): flag when no explicit tenant StorageClass is set so a
+  #     multi-CT operator consciously chooses an encrypted/CMEK class (see tenant.storage
+  #     .storageClassName) rather than inheriting an unknown default.
+  if [[ "$MULTI_CT" == "1" && -z "$STORAGE_CLASS" ]]; then
+    warn "Preflight: --multi-ct with no --storage-class — tenant state PVCs will use the cluster default StorageClass, whose at-rest encryption is unverified. Pin an encrypted/CMEK class (--storage-class, or tenant.storage.storageClassName) for multi-tenant isolation."
   fi
 
   # 3. First-party images pullable — catch a private/typo'd registry before the rollout

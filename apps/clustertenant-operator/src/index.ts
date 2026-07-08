@@ -23,6 +23,8 @@ import { _TransportSecurity } from "./infra/middleware/transport-security.middle
 import { _log as log } from "./log.js";
 import { _RegisterInternalRoutes, _RegisterRoutes } from "./routes.js";
 import { TenantProjectionRepairer } from "./infra/tenant-projection-repairer.js";
+import { MembershipProjectionRepairer, _BuildHttpFleetMembershipReader, _BuildHttpFleetMembershipWriter } from "./infra/membership-projection-repairer.js";
+import { _ResolveOwnClusterTenantName } from "./core/cluster-tenants/resolve-own-cluster-tenant.js";
 
 // In-silo controllers (Stage 5). The silo runs every in-silo reconcile loop over its OWN
 // namespace, so a silo stands on its own; the fleet-manager watches only the cluster-scoped
@@ -53,7 +55,14 @@ const _unbindConsole = ___BindConsole(log);
 export function createApp(prisma: PrismaClient, customApi: k8s.CustomObjectsApi, coreApi: k8s.CoreV1Api, authApi: k8s.AuthenticationV1Api): Express
 {
   const app = express();
-  const authService = ___CreateOidcAuthService(log, prisma, customApi);
+  // First-login member workspaces are seeded into the TenantOperator's watch namespace
+  // (WATCH_NAMESPACE) — the same target as the owner-default seed — falling back to NAMESPACE
+  // then "default" for dev/test. It is deliberately NOT the projection-repair namespace.
+  // Member adoption writes THROUGH to the fleet's authoritative membership when FLEET_INTERNAL_URL
+  // is set (fleet-managed); the writer is null for a standalone silo, where adoption writes local.
+  const authWatchNamespace = process.env.WATCH_NAMESPACE ?? process.env.NAMESPACE ?? "default";
+  const authFleetWriter = _BuildHttpFleetMembershipWriter(process.env.FLEET_INTERNAL_URL?.trim() ?? "", process.env.OPENCRANE_API_TOKEN?.trim() ?? "", log);
+  const authService = ___CreateOidcAuthService(log, prisma, customApi, authWatchNamespace, authFleetWriter);
 
   // Middleware
   app.set("trust proxy", 1);
@@ -174,6 +183,34 @@ const _projectionRepairNamespace = process.env.NAMESPACE ?? "default";
 const _projectionRepairIntervalMs = Number(process.env.OPENCRANE_PROJECTION_REPAIR_INTERVAL_SECONDS ?? "60") * 1000;
 const tenantProjectionRepairer = new TenantProjectionRepairer(customApi, prisma, _projectionRepairNamespace, log, _projectionRepairIntervalMs);
 tenantProjectionRepairer.start();
+
+// Periodic fleet → silo OrgMembership projection repair (#126 S2). The fleet registry owns the
+// authoritative membership; the silo keeps a local read-model the org-admin gate + POST /tenants
+// membership validation (S1) depend on. This loop pulls the org's membership from the fleet
+// internal endpoint and reconciles the silo rows. Standalone-safe (#151): when FLEET_INTERNAL_URL
+// is unset or the fleet is unreachable, the reader returns null and the sweep no-ops, leaving
+// locally-managed rows intact. Interval shares OPENCRANE_PROJECTION_REPAIR_INTERVAL_SECONDS.
+/** Reference to the membership repairer, populated once the silo's org name resolves. */
+let _membershipRepairerRef: MembershipProjectionRepairer | null = null;
+void (async function _startMembershipRepairer()
+{
+  const clusterTenant = await _ResolveOwnClusterTenantName(customApi, _projectionRepairNamespace, log);
+  if (!clusterTenant)
+  {
+    log.info({ namespace: _projectionRepairNamespace }, "no ClusterTenant bound to this namespace yet; membership projection repairer idle");
+    return;
+  }
+  const fleetInternalUrl = process.env.FLEET_INTERNAL_URL?.trim() ?? "";
+  const fleetInternalToken = process.env.OPENCRANE_API_TOKEN?.trim() ?? "";
+  const reader = _BuildHttpFleetMembershipReader(fleetInternalUrl, fleetInternalToken, log);
+  // Suspension ENFORCEMENT (#126): the sweep cuts a Suspended member's sessions/devices and
+  // suspends their workspace pod. Thread the k8s clients + gateway admin + this silo's namespace so
+  // the repairer can drive `_CutTenant` and the Tenant `spec.suspended` patch.
+  const enforcement = { customApi, coreApi, gatewayAdmin: _BuildGatewayAdmin(), namespace: _projectionRepairNamespace };
+  const repairer = new MembershipProjectionRepairer(prisma, reader, clusterTenant, log, _projectionRepairIntervalMs, enforcement);
+  repairer.start();
+  _membershipRepairerRef = repairer;
+})();
 
 /** Idle-checker handle, set during controller bootstrap for shutdown access. */
 let _idleCheckerRef: IdleChecker | null = null;
@@ -340,8 +377,9 @@ async function _shutdown(signal: string): Promise<void>
   const hardExit = setTimeout(function _force() { process.exit(1); }, 10_000);
   hardExit.unref();
 
-  // Stop the projection-repair loop + in-silo controllers so no sweep races the disconnect below.
+  // Stop the projection-repair loops + in-silo controllers so no sweep races the disconnect below.
   tenantProjectionRepairer.stop();
+  _membershipRepairerRef?.stop();
   _idleCheckerRef?.stop();
   await _gatewayProxyRef?.stop();
 

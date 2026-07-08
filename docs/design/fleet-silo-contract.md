@@ -65,8 +65,8 @@ Current CRD fields (`spec`), each grounded in the CRD YAML and the `ClusterTenan
 `spec.zitadel.{clientId, orgId, redirectUri}`** — but the CRD YAML
 (`opencrane.io_clustertenants.yaml`) does **not declare it**. On an API server pruning unknown fields
 (the default under structural schemas), the block is silently dropped on write, so the silo reads nothing
-and per-org login falls through to the masters client. **This is new work for #150/#151** (see the
-new-work list at the end). Everything below assumes the CRD is amended to declare `spec.zitadel`.
+and per-org login falls through to the masters client. **Resolved** — the CRD now declares `spec.zitadel`
+(PR #157, branch `fix/clustertenant-crd-zitadel-schema`); this section documents the model that fix enables.
 
 ### Status (silo-operator-owned observed state)
 
@@ -162,6 +162,39 @@ it calls `zitadelClient.provisionOrg(...)` (`apps/fleet-operator/src/infra/zitad
 dedicated Zitadel Organization + `opencrane` project + roles + OIDC app, grant the owner `admin`, and persist
 the resulting identifiers. The silo has no Zitadel credentials and must not gain any (that authority stays
 proprietary, on the fleet side of the AGPL boundary — see ADR 0004).
+
+### Zitadel tenancy model (one instance, dedicated org + project per clustertenant)
+
+**One shared Zitadel instance** backs both planes — isolation is at the org and project level, never a
+separate IdP deployment. `provisionOrg` (`apps/fleet-operator/src/infra/zitadel/zitadel-client.ts`) establishes
+the following hierarchy:
+
+| Level | Fleet plane | Each clustertenant |
+|---|---|---|
+| **Instance** | shared — the fleet holds the sole service-account key (instance-level rights) | the same instance |
+| **Organization** | the **masters org** (single masters client; `masterSubject` lives here) | a **dedicated org** (`POST /v2/organizations`) → `orgId`, its own isolated user pool |
+| **Project** | the fleet's own project | a **dedicated `opencrane` project** created inside that org (`POST /management/v1/projects`, org-scoped) → a unique `projectId`, with `owner/admin/member` roles + a `login` OIDC app |
+
+**Invariant: every clustertenant has its own Zitadel project.** The project is created fresh inside each org,
+so its `projectId` is unique per clustertenant even though the project is uniformly named `opencrane` — org
+scoping isolates them. No project is ever shared between the fleet and a clustertenant, or between two
+clustertenants. The master is then granted `admin` into each clustertenant's project as the cross-org SSO
+bridge (a masters-org user granted into the CT org, `zitadel-client.ts`).
+
+**Why the CR carries login ids only, not the project.** The `spec.zitadel` payload below projects
+`clientId`/`orgId`/`redirectUri` — the public ids the silo's login flow needs — and deliberately omits
+`projectId` and `appId`. The authorization-code flow needs the org scope + client id + redirect uri, not the
+project; `projectId`/`appId` are **management** identifiers used only for role grants and redirect-uri updates,
+both performed fleet-side. They are persisted in the fleet registry DB (`zitadel_project_id`, `zitadel_app_id`,
+`zitadel_client_id`, `zitadel_org_id` on the `ClusterTenant` row), never on the CR. So the separate-project
+invariant holds without surfacing the project on the boundary.
+
+**Standalone-silo (#151) consequence.** A fleet-managed silo never needs `projectId` (the fleet owns project
+management). A **standalone** silo has no fleet DB to read it from, so if it manages its own roles it must
+provision (or be handed) its own project. Two clean options for #151, both preserving the per-clustertenant-
+project invariant: the silo provisions its own dedicated `opencrane` project against its own Zitadel, or
+`projectId` is added to the CR delegation payload for a silo-side management client. That choice is a #151
+decision — not needed for fleet-managed login today.
 
 ### What fleet must expose
 
@@ -276,11 +309,11 @@ share a working tree, only tagged artifacts.
 Everything below is code the current tree does **not** yet expose but the contract needs. This is the concrete
 hand-off list; none of it is done by this design doc.
 
-1. **Declare `spec.zitadel` on the CRD.** `opencrane.io_clustertenants.yaml` must add
-   `spec.zitadel: { clientId, orgId, redirectUri }` (all strings, optional). The TypeScript type, the fleet
-   writer, and the silo reader already use it; without the CRD field a structural-schema API server prunes it
-   on write and per-org login silently degrades to the masters client. **This is the single highest-priority
-   gap** — it is what makes surface 3 (OIDC delegation) actually work end-to-end.
+1. **Declare `spec.zitadel` on the CRD.** ✅ **Done** (PR #157, branch `fix/clustertenant-crd-zitadel-schema`).
+   `opencrane.io_clustertenants.yaml` now declares `spec.zitadel: { clientId, orgId, redirectUri }` (all
+   strings, optional), with a schema regression test; without it a structural-schema API server pruned the
+   block on write and per-org login silently degraded to the masters client. This was the single
+   highest-priority gap for surface 3 (OIDC delegation) to work end-to-end.
 2. **Finalizer-driven teardown (#138).** Move CR teardown from best-effort CR-delete + namespace-GC race to a
    silo-operator finalizer, so the silo drains its planes and honours the #126 dataset-retention policy before
    the namespace is reclaimed. Decide where the retention policy lives (a CR `spec` field vs. a silo-internal

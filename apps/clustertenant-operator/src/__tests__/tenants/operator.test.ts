@@ -3,6 +3,7 @@ import pino from "pino";
 
 import { defaultConfig, _makeTenant } from "../fixtures.js";
 import { _ResolveOrgServingDomain } from "../../tenants/internal/org-serving-domain.js";
+import { _OperatorConfigChecksum } from "../../config.js";
 import { TenantOperator } from "../../tenants/operator.js";
 import { TenantStatusPhase } from "../../tenants/models/tenant-status.interface.js";
 import type { TenantStatusWriter } from "../../tenants/internal/tenant-status-writer.js";
@@ -105,17 +106,32 @@ describe("TenantOperator reconcile guard + coalescing", () =>
     return { op, patch };
   }
 
-  it("skips the reconcile when an already-Running tenant's generation is unchanged", async () =>
+  it("skips the reconcile when an already-Running tenant's generation and config are unchanged", async () =>
   {
     const { op, patch } = _build();
     const tenant = _makeTenant("acme"); // status.phase = Running
     tenant.metadata!.generation = 3;
     tenant.status!.observedGeneration = 3;
+    tenant.status!.observedConfigChecksum = _OperatorConfigChecksum(defaultConfig);
 
     await op.reconcileTenant(tenant);
 
     // Guard short-circuited before any work — no status write, no resource applies.
     expect(patch).not.toHaveBeenCalled();
+  });
+
+  it("does NOT skip when the operator config changed since the tenant last converged", async () =>
+  {
+    const { op, patch } = _build();
+    const tenant = _makeTenant("acme");
+    tenant.metadata!.generation = 3;
+    tenant.status!.observedGeneration = 3;           // generation matches
+    tenant.status!.observedConfigChecksum = "stale-config-checksum"; // but operator config rolled
+
+    // The guard must NOT short-circuit: it falls through into the real reconcile body, which
+    // (against stub deps) fails and writes an Error status — proving the guard let it through.
+    await expect(op.reconcileTenant(tenant)).rejects.toThrow();
+    expect(patch).toHaveBeenCalled();
   });
 
   it("does NOT skip when a spec change bumps generation past observedGeneration", async () =>
@@ -157,6 +173,81 @@ describe("TenantOperator reconcile guard + coalescing", () =>
 
     // 3 events while one was in flight → exactly 2 reconciles (in-flight + one coalesced).
     expect(calls).toEqual(["acme", "acme"]);
+  });
+});
+
+describe("TenantOperator suspend self-loop guard", () =>
+{
+  /**
+   * Build an operator with the status-writer spy live. When `driveBody` is set, `hosting`
+   * and `appsApi` are stubbed just enough that the real suspend body reaches its status
+   * write (ref-less tenant → no ClusterTenant lookup); otherwise the fast-path stubs are
+   * used and only the guard short-circuit is exercised.
+   */
+  function _build(driveBody = false): { op: TenantOperator; patch: ReturnType<typeof vi.fn> }
+  {
+    const patch = vi.fn(async () => {});
+    const statusWriter = { patchStatus: patch } as unknown as TenantStatusWriter;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const stub = {} as any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const hosting = driveBody ? ({ buildStateVolume: () => ({ requiresPvc: false }) } as any) : stub;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const appsApi = driveBody ? ({ createNamespacedDeployment: async () => ({}) } as any) : stub;
+    const op = new TenantOperator(stub, stub, stub, appsApi, stub, pino({ level: "silent" }),
+      defaultConfig, hosting, stub, statusWriter, stub, stub);
+    return { op, patch };
+  }
+
+  /** Reach the private suspendTenant without widening its visibility. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const _suspend = (op: TenantOperator, t: Tenant) => (op as any).suspendTenant(t) as Promise<void>;
+
+  it("skips when a Suspended tenant is re-observed at the same generation (its own status write)", async () =>
+  {
+    const { op, patch } = _build();
+    const tenant = _makeTenant("paused", { suspended: true, phase: TenantStatusPhase.Suspended });
+    tenant.metadata!.generation = 7;
+    tenant.status!.observedGeneration = 7;
+
+    await _suspend(op, tenant);
+
+    // Guard short-circuited before touching any stub client — no status re-write, no loop.
+    expect(patch).not.toHaveBeenCalled();
+  });
+
+  it("stamps observedGeneration on the Suspended status so the self-loop is broken", async () =>
+  {
+    const { op, patch } = _build(true);
+    // First-time suspend of a ref-less tenant (status still Running); the real body resolves
+    // to the install namespace, applies the scaled-to-zero deployment against the stub, then
+    // writes status — which must carry observedGeneration so the Modified event it fires is
+    // skipped by the guard on the next pass.
+    const tenant = _makeTenant("paused", { suspended: true });
+    tenant.metadata!.generation = 2;
+
+    await _suspend(op, tenant);
+
+    expect(patch).toHaveBeenCalledWith(tenant, "default", expect.objectContaining({
+      phase: TenantStatusPhase.Suspended,
+      observedGeneration: 2,
+    }));
+  });
+
+  it("does NOT skip when un-suspend or a spec edit bumps generation past observedGeneration", async () =>
+  {
+    const { op, patch } = _build(true);
+    const tenant = _makeTenant("paused", { suspended: true, phase: TenantStatusPhase.Suspended });
+    tenant.metadata!.generation = 8;
+    tenant.status!.observedGeneration = 7; // stale → must fall through the guard
+
+    await _suspend(op, tenant);
+
+    // Fell through the guard and re-ran the suspend body → re-stamped the new generation.
+    expect(patch).toHaveBeenCalledWith(tenant, "default", expect.objectContaining({
+      phase: TenantStatusPhase.Suspended,
+      observedGeneration: 8,
+    }));
   });
 });
 

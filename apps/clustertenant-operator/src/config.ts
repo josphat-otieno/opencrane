@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { HostingProvider } from "./hosting/hosting-adapter.types.js";
 import type { GcpHostingConfig } from "./hosting/hosting-adapter.types.js";
 import { _ParseTrustedProxies, _DeriveTrustedProxyCidr, _AUTO_TRUSTED_PROXY_TOKEN, _DEFAULT_AUTO_TRUSTED_PROXY_MASK } from "./trusted-proxies.js";
@@ -104,6 +106,14 @@ export interface OpenClawTenantOperatorConfig
   /** GCP-specific config; present only when hostingProvider === Gcp. */
   gcp?: GcpHostingConfig;
 
+  /**
+   * StorageClass stamped on the per-tenant state PVC (on-prem/non-cloud path). Empty ⇒
+   * the PVC omits `storageClassName` and binds to the cluster default StorageClass
+   * (byte-for-byte unchanged from before this knob existed). Set it to pin the PVC to an
+   * encrypted/CMEK class for multi-CT installs.
+   */
+  tenantStorageClassName: string;
+
   /** Minutes of inactivity before a tenant is auto-suspended (0 = disabled). */
   idleTimeoutMinutes: number;
 
@@ -197,6 +207,18 @@ export interface OpenClawTenantOperatorConfig
    * exists, and the apply itself fails closed (skips) if the Linkerd CRDs are absent.
    */
   linkerdMeshEnabled: boolean;
+
+  /**
+   * Whether this silo OWNS per-ClusterTenant namespace creation. Default false: in the
+   * fleet-managed topology the fleet-manager creates + owns each org's namespace
+   * (`managed-by: opencrane-fleet-manager`) and the silo's ServiceAccount is granted NO
+   * cluster-scoped `namespaces` verbs — so the silo must NOT attempt the create (it would only
+   * ever be Forbidden). When true — an all-in-one / standalone deploy that grants the silo the
+   * gated namespace-management ClusterRole — the silo creates the namespace itself. Either way
+   * the namespaced applies that follow (baseline NetworkPolicy, quota) require the namespace to
+   * exist, so a genuinely-absent namespace still surfaces as NotFound there.
+   */
+  manageTenantNamespaces: boolean;
 }
 
 /**
@@ -257,6 +279,7 @@ export function _LoadOperatorConfig(): OpenClawTenantOperatorConfig
           csiDriver: _readEnvValue<string>("GCP_CSI_DRIVER", "string", false, "gcsfuse.csi.storage.gke.io"),
         }
       : undefined,
+    tenantStorageClassName: _readEnvValue<string>("TENANT_STORAGE_CLASS", "string", false, ""),
     idleTimeoutMinutes: _readEnvValue<number>("IDLE_TIMEOUT_MINUTES", "number"),
     idleCheckIntervalSeconds: _readEnvValue<number>("IDLE_CHECK_INTERVAL_SECONDS", "number"),
     liteLlmEnabled: _readEnvValue<boolean>("LITELLM_ENABLED", "boolean"),
@@ -275,6 +298,7 @@ export function _LoadOperatorConfig(): OpenClawTenantOperatorConfig
     controlPlaneInternalServiceUrl: _readEnvValue<string>("CLUSTERTENANT_MANAGER_INTERNAL_SERVICE_URL", "string", false, `http://opencrane-clustertenant-manager.${ownNamespace}.svc:8081`),
     projectedTokenTtlSeconds: _readEnvValue<number>("PROJECTED_TOKEN_TTL_SECONDS", "number", false, 600),
     linkerdMeshEnabled: _readEnvValue<boolean>("LINKERD_MESH_ENABLED", "boolean", false, false),
+    manageTenantNamespaces: _readEnvValue<boolean>("MANAGE_TENANT_NAMESPACES", "boolean", false, false),
   };
 
   // 4. Fail closed in multi-instance mode: refuse to watch the whole cluster when
@@ -288,6 +312,33 @@ export function _LoadOperatorConfig(): OpenClawTenantOperatorConfig
   }
 
   return config;
+}
+
+/**
+ * Deterministic SHA-256 over the operator's OWN reconcile-affecting config, the
+ * operator-input analogue of {@link _ConfigChecksum} (which rolls a TENANT pod when
+ * its ConfigMap changes).
+ *
+ * WHY: the operator renders this config into every tenant's child resources (config
+ * env, network policy, trusted-proxy list, runtime-plane URLs, …), but the reconcile
+ * guard skips an already-`Running` tenant whose `observedGeneration` matches — a
+ * status-only field that a config/values change does NOT bump. So a `helm upgrade`
+ * that changes operator values (e.g. `trustedProxies`, a runtime-plane URL) never
+ * reaches existing tenants until each Tenant spec is touched by hand.
+ *
+ * Folding this digest into the guard makes an operator-config change re-arm a full
+ * reconcile for every tenant automatically: the checksum stamped on the last
+ * `Running` status no longer matches, so the guard stops short-circuiting. Composes
+ * with the generation guard (skip requires BOTH to match) — it only ever makes the
+ * guard skip LESS, so it never suppresses a needed reconcile.
+ *
+ * @param config - The loaded operator config to digest.
+ * @returns Hex SHA-256 of the canonical (sorted-key) config JSON.
+ */
+export function _OperatorConfigChecksum(config: OpenClawTenantOperatorConfig): string
+{
+  const canonical = JSON.stringify(config, Object.keys(config).sort());
+  return createHash("sha256").update(canonical).digest("hex");
 }
 
 /**

@@ -18,6 +18,18 @@ global:
 #    identically to the central release, just scoped to the silo namespace. No chart-side
 #    per-CT DB block is needed.
 
+# -- Multi-ClusterTenant profile switch (issue #127). The EXPLICIT predicate (never
+#    inferred) that this install hosts MANY tenants — many orgs (ClusterTenants) and/or
+#    many isolated instances — in one cluster, so cross-tenant isolation is MANDATORY.
+#    The fleet profile (`apps/fleet-platform/deploy.sh`) sets this true. When true, the
+#    platform-namespace default-deny and the cross-instance deny render UNCONDITIONALLY,
+#    and a Helm `fail` guard REJECTS the render if their opt-out knobs are switched off
+#    (fail-closed: an install flagged multi-CT can never silently ship without the deny
+#    baselines). The single-CT opt-out (mainNetworkDefaultDeny.enabled=false /
+#    multiInstance disabled) is honoured ONLY when this is false.
+multiCt:
+  enabled: false
+
 # -- Native multi-instance mode (run N strictly-isolated OpenCrane instances in
 #    one cluster). Off by default → the legacy single-install path is unchanged.
 #    When enabled, the chart flips the isolation-safe defaults below.
@@ -26,6 +38,9 @@ global:
 #    lifecycle + version compatibility contract, blocker B3).
 multiInstance:
   # -- Turn on the per-instance isolation defaults (namespaced RBAC, fail-closed watch).
+  #    MANDATORY under the `--multi-ct` profile (`multiCt.enabled`): the cross-instance
+  #    default-deny renders unconditionally there and a Helm `fail` REJECTS the render if
+  #    this is left false. This false default is the SINGLE-CT opt-out only.
   enabled: false
   # -- The namespace(s) this instance owns. Namespaced RBAC is rendered for each.
   #    Empty → defaults to the release namespace.
@@ -213,6 +228,26 @@ clustertenantManager:
   # first (the fleet-manager's CLUSTERTENANT_MANAGER_INTERNAL_URL + the shared LiteLLM secret).
   # Today the fleet install renders an idle clustertenant-manager + planes (waste, not harm). The
   # correctness-critical gate — never running a SECOND fleet-manager in a silo — is `fleetManager.enabled`.
+
+  # -- Whether this silo OWNS per-ClusterTenant namespace creation. Default false: the
+  #    fleet-manager creates + owns each org's namespace, and the silo SA is granted NO
+  #    cluster-scoped `namespaces` RBAC, so the silo skips the create. Set true ONLY for an
+  #    all-in-one / standalone silo — it renders the gated namespace-management ClusterRole
+  #    (clustertenant-manager-rbac.yaml) and injects MANAGE_TENANT_NAMESPACES=true.
+  manageTenantNamespaces: false
+
+  # -- Fleet internal API base for the fleet-managed topology, e.g.
+  #    http://<fleet-fullname>-fleet-manager.<fleet-namespace>.svc:8080. Empty = STANDALONE:
+  #    the silo owns membership locally, and the fleet→silo membership mirror + first-login
+  #    adoption write-through both idle. A fleet-managed silo MUST set this — without it
+  #    member adoptions never reach the fleet's authoritative registry (the next mirror sweep
+  #    reaps them) and login-path seat caps are unenforced.
+  fleetInternalUrl: ""
+  # -- Bearer presented to the fleet internal API (the fleet's OPENCRANE_API_TOKEN — one
+  #    shared service credential). Prefer the existing-Secret form; inline is for dev only.
+  fleetApiToken: ""
+  fleetApiTokenExistingSecret: ""
+  fleetApiTokenSecretKey: "token"
   image:
     repository: ghcr.io/italanta/opencrane-clustertenant-manager
     tag: latest
@@ -473,6 +508,13 @@ tenant:
     limits:
       cpu: "1"
       memory: 4Gi
+  # -- Per-tenant state volume (on-prem/non-cloud installs only; the cloud path mounts a
+  #    tenant-scoped bucket via CSI and this is unused).
+  storage:
+    # -- StorageClass stamped on the tenant state PVC. Empty ⇒ the cluster's default
+    #    StorageClass (byte-for-byte unchanged from today). Set it to pin the PVC to an
+    #    encrypted/CMEK class for multi-CT installs. Wired to the operator as TENANT_STORAGE_CLASS.
+    storageClassName: ""
   # -- OpenClaw gateway port inside tenant pods
   gatewayPort: 18789
   # -- OpenClaw gateway trusted-proxy auth (OC-2 / CONN.4).
@@ -540,10 +582,11 @@ ingress:
   # -- Ingress class is set by the hosting adapter; override here only for custom setups.
   className: nginx
   # -- The platform org-wildcard BASE domain for this install (fixed-wildcard topology).
-  #    Orgs (ClusterTenants) are served at `<org>.<domain>` and their users at
-  #    `<user>.<org>.<domain>`; the platform wildcard `*.<domain>` covers the org apexes.
-  #    This is wired to the operator as INGRESS_DOMAIN (the wildcard base it derives
-  #    UserTenant hosts from). See docs/agents/cluster-architecture.md → "Tenancy Model".
+  #    Orgs (ClusterTenants) are each served at their SINGLE host `<org>.<domain>`; every
+  #    user in an org connects through that one host (the operator's in-process gateway
+  #    proxy routes each connection to the right pod — there are NO per-user subdomains).
+  #    The platform wildcard `*.<domain>` covers the org apexes. Wired to the operator as
+  #    INGRESS_DOMAIN. See docs/agents/cluster-architecture.md → "Tenancy Model".
   domain: opencrane.local
   # -- The FIXED super-operator / control-plane host (the management API above every
   #    org). DISTINCT from the org-wildcard base above — it is its own host, never an
@@ -579,11 +622,10 @@ ingress:
   tls:
     enabled: false
     # -- Secret name for the platform wildcard TLS cert (`*.<domain>`, covering every
-    #    org apex `<org>.<domain>`) that per-UserTenant Ingresses reference by default.
-    #    NOTE: this wildcard does NOT cover the per-user level `<user>.<org>.<domain>`
-    #    (DNS wildcards match one label) — each org gets its own `*.<org>.<domain>`
-    #    cert at provision time. See docs/agents/cluster-architecture.md → "Multi-level
-    #    wildcard TLS".
+    #    org apex `<org>.<domain>`) that the org-host Ingress references by default. Every
+    #    org is served at its single apex host, so this one wildcard covers them all — there
+    #    is no per-user level and no per-org `*.<org>.<domain>` cert. See
+    #    docs/agents/cluster-architecture.md → "Wildcard TLS".
     secretName: opencrane-wildcard-tls
 
 # -- Documentation site (optional). When enabled, serves the VitePress docs build
@@ -841,13 +883,6 @@ skillRegistry:
         cpu: 500m
         memory: 256Mi
 
-# -- Identity-routing gateway proxy (DOMAIN.T4). A thin, logic-free WS reverse proxy
-# that serves every user in an org through the org's SINGLE host (`<org>.<domain>`)
-# instead of per-user subdomains: on a gateway WS upgrade it delegates auth to the
-# control plane (`/auth/gateway-resolve`), enforces an Origin allowlist (CSWSH), and
-# forwards to the resolved `openclaw-<user>.<ns>.svc` pod. OFF by default — enabling
-# it is the per-org-host cutover (see website/security/connection-security.md); until
-# then the operator keeps minting per-user Ingresses.
 # -- Identity-routing gateway proxy (DOMAIN.T4), folded IN-PROCESS into the operator
 # (interim — can be split into its own pod later). When enabled, the operator runs a WS
 # proxy on `port`: the per-org host's gateway WS upgrade is path-routed here, the proxy
@@ -918,12 +953,16 @@ networkPolicy:
   #    with CiliumNetworkPolicy objects scoped to the exact FQDNs
   #    (api.openai.com, api.anthropic.com, your Zitadel host, etc.).
   mainNetworkDefaultDeny:
-    # -- Set to true ONLY after validating platform connectivity in a non-production
-    #    environment. Enabling this without validation can break all planes simultaneously.
+    # -- MANDATORY under the `--multi-ct` profile (`multiCt.enabled`): the template renders
+    #    unconditionally there and a Helm `fail` REJECTS the render if this is left false, so a
+    #    multi-CT install can never ship without the platform default-deny. This false default
+    #    is the SINGLE-CT opt-out only — a one-org box may run without it (set true after
+    #    validating platform connectivity in a non-production environment; enabling it
+    #    unvalidated can break all planes simultaneously).
     enabled: false
     # -- Set to true to also render the OTEL collector HTTPS egress rule (rule 11).
     #    Only needed when observability.otel.enabled=true AND the OTEL exporter sends
-    #    to an external backend (e.g. GCP Cloud Trace). Ignored when enabled=false.
+    #    to an external backend (e.g. GCP Cloud Trace). Ignored when the policy is not rendered.
     allowOtelEgress: false
 
 # -- Org-wide secrets injected into all tenant pods

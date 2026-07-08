@@ -35,6 +35,13 @@ export interface CreateTenantRequest
   displayName: string;
   /** Contact email for the tenant owner. */
   email: string;
+  /**
+   * IdP-verified subject (OIDC `sub`) the workspace belongs to. Bound onto the CR spec + the
+   * projection row so per-user grant inheritance (S4 `effective-contract` compiles over
+   * `[tenantName, subject]`) has an owner to attribute to. Validated against the parent org's
+   * `OrgMembership` before seeding (#126 S1): a non-member is rejected.
+   */
+  subject?: string;
   /** Optional team the tenant belongs to. */
   team?: string;
   /** Optional parent ClusterTenant (customer) this tenant attaches to (CRD `spec.clusterTenantRef`). */

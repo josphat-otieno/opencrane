@@ -186,14 +186,19 @@ Phases 1 and 2 compound (tighter packing on fewer nodes) and are the cheapest ne
   manager: run a single `helm upgrade --force` (or `kubectl … apply --server-side --force-conflicts`)
   with `ingress.sameOrigin.enabled=true` to hand ownership back to Helm; every subsequent upgrade is
   then clean.
-- **Deploy hygiene — skill-registry env (still open).** `skill-registry` env is still patched
-  out-of-band (a `node-fetch`-managed apply). Characterise exactly which keys and fold them into
-  `skill-registry-deployment.yaml` so the plane can be resized/upgraded without a partial apply.
-- **Suspend self-loop** — the operator's suspend path has no `observedGeneration` guard, so a status
-  write can re-trigger suspend with 409s. File separately.
-- **Operator auto-reconcile on config change** — changing operator config (e.g. resources,
-  trustedProxies) needs a forced reconcile today because the guard skips `Running` tenants at the
-  same generation.
+- **Deploy hygiene — skill-registry env (resolved, #134/#140).** The out-of-band writer was the
+  operator's `RuntimePlaneDriftRepairer`, whose client-side apply landed as the `node-fetch` field
+  manager and contested Helm's ownership. #140 deleted it; `CONTROL_PLANE_URL`, `PORT`, and the
+  observability env are all rendered by `skill-registry-deployment.yaml`, so a plain `helm upgrade`
+  no longer reverts the plane's env. (`k8s-deploy.sh` also runs `--force-conflicts` so a one-time
+  recreate clears any stale `node-fetch` ownership left on a live silo — #146.)
+- **Suspend self-loop (resolved, #134).** The suspend path now carries an `observedGeneration` guard
+  (mirroring `reconcileTenant`): it stamps `observedGeneration` on the Suspended status and skips a
+  Modified event that matches it, so the operator no longer re-processes its own suspend write.
+- **Operator auto-reconcile on config change (resolved, #134).** The reconcile guard now also
+  compares an `_OperatorConfigChecksum` (stamped as `observedConfigChecksum`); a `helm upgrade` that
+  changes operator config re-arms a full reconcile of every tenant without a manual restart or
+  per-tenant spec edit — the operator-input analogue of the tenant-pod config-checksum roll.
 
 ---
 
