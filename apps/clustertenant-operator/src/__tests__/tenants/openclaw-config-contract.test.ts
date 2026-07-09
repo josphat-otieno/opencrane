@@ -81,6 +81,18 @@ describe("openclaw.json render contract — zod schema (task_d611ab4d)", functio
     expect((config["gateway"] as Record<string, unknown>)["reload"]).toBeUndefined();
   });
 
+  it("renders a `meta` stub so OpenClaw's config-integrity guard doesn't revert our config", function _metaStub()
+  {
+    // Verified against openclaw@2026.6.11 (dist/io-*.js): hasConfigMeta() is a presence-only check
+    // (isRecord(value.meta)); a config observed WITHOUT it, after one WITH it was last-known-good,
+    // is flagged "missing-meta-vs-last-good" and silently reverted to the gateway's own .bak — which
+    // is exactly how a prior deploy's plugins/gateway/mcp changes failed to reach the running pod
+    // (the entrypoint's `openclaw plugins install` writes a meta-stamped config just before our
+    // `cp -f` overwrote it with one that lacked `meta`). An empty object satisfies the guard.
+    const config = _renderConfig();
+    expect(config["meta"]).toEqual({});
+  });
+
   it("never leaks the internal trustNothing flag into the gateway block", function _noTrustNothing()
   {
     // The exact f6afafd regression: trustNothing is operator-internal, not an
@@ -151,6 +163,17 @@ describe("configOverrides cannot clobber the platform gateway (C1)", function _c
     expect(gateway["trustedProxies"]).toEqual(["10.0.0.0/8"]);
     // 4. The result still validates against the strict OpenClaw schema.
     expect(_OpenclawConfigSchema.safeParse(config).success).toBe(true);
+    // 5. `meta` survives too — a tenant can't drop it and reopen the config-integrity clobber.
+    expect(config["meta"]).toEqual({});
+  });
+
+  it("ignores a tenant override of the platform-owned meta stub", function _metaOverride()
+  {
+    // A tenant tries to drop/replace `meta` (e.g. via a stale/hand-authored override). The
+    // re-pin must restore the empty stub regardless — dropping it would reopen the
+    // config-integrity clobber this field exists to prevent.
+    const config = _render({ meta: { lastTouchedVersion: "not-a-real-stamp" } });
+    expect(config["meta"]).toEqual({});
   });
 
   it("still applies a non-gateway override", function _nonGatewayOverride()
