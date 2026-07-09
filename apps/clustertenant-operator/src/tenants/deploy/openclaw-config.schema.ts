@@ -216,8 +216,23 @@ const _pluginsSchema = z
     allow: z.array(z.string()).optional(),
     /** Capability slot → owning plugin id (e.g. `{ memory: "cognee-openclaw" }`). */
     slots: z.record(z.string(), z.string()).optional(),
-    /** Plugin id → `{ enabled, config }` entry. */
-    entries: z.record(z.string(), z.object({ enabled: z.boolean().optional() }).passthrough()).optional(),
+    /**
+     * Plugin id → `{ enabled, hooks, config }` entry. `hooks` grants a non-bundled plugin's typed
+     * hooks (verified: `allowPromptInjection` gates `before_prompt_build`, `allowConversationAccess`
+     * gates `llm_output`/`agent_end` — openclaw@2026.6.11 `config-normalization-shared`); without it
+     * OpenClaw blocks the hook at gateway startup and the plugin silently does nothing.
+     */
+    entries: z
+      .record(
+        z.string(),
+        z
+          .object({
+            enabled: z.boolean().optional(),
+            hooks: z.object({ allowPromptInjection: z.boolean().optional(), allowConversationAccess: z.boolean().optional() }).passthrough().optional(),
+          })
+          .passthrough(),
+      )
+      .optional(),
   })
   .passthrough();
 
