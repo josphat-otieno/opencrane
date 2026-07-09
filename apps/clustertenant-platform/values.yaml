@@ -543,7 +543,7 @@ tenant:
   # -- OpenClaw npm package version installed into each tenant pod. Pinned (not `latest`)
   # so the gateway can't silently roll across breaking changes; bump deliberately. A
   # Tenant CR's `spec.openclawVersion` overrides this per-tenant.
-  defaultOpenclawVersion: "2026.6.9"
+  defaultOpenclawVersion: "2026.6.11"
 
 # -- Hosting provider: onprem (default), gcp, azure, aws.
 # Override with values/gcp.yaml etc. for cloud installs.

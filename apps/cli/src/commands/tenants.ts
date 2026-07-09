@@ -44,6 +44,7 @@ export function _RegisterTenants(parent: Command, getConfig: () => CliConfig): v
     .requiredOption("--name <name>", "Tenant name (must be a valid DNS label)")
     .requiredOption("--display-name <displayName>", "Human-readable display name")
     .requiredOption("--email <email>", "Contact email for the tenant")
+    .requiredOption("--subject <sub>", "IdP-verified subject (OIDC `sub`) to bind this workspace to; the contract compiler inherits this principal's rights")
     .option("--team <team>", "Team name")
     .option("--cluster-tenant <name>", "Parent ClusterTenant (customer) to attach this tenant to")
     .option("--budget <usd>", "Monthly budget ceiling in USD")
@@ -53,6 +54,7 @@ export function _RegisterTenants(parent: Command, getConfig: () => CliConfig): v
       name: string;
       displayName: string;
       email: string;
+      subject: string;
       team?: string;
       clusterTenant?: string;
       budget?: string;
@@ -66,6 +68,7 @@ export function _RegisterTenants(parent: Command, getConfig: () => CliConfig): v
           name: opts.name,
           displayName: opts.displayName,
           email: opts.email,
+          subject: opts.subject,
           ...(opts.team ? { team: opts.team } : {}),
           ...(opts.clusterTenant ? { clusterTenantRef: opts.clusterTenant } : {}),
           ...(opts.budget ? { monthlyBudgetUsd: Number(opts.budget) } : {}),
