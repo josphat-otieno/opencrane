@@ -281,22 +281,30 @@ export function _BuildConfigMap(config: OpenClawTenantOperatorConfig, tenant: Te
   //     reference) keeps `merged` free of aliasing into the local baseConfig object.
   tenantMerged["gateway"] = { ...(baseConfig["gateway"] as Record<string, unknown>) };
 
-  // 3c. Platform-owned `meta` stub — a bare `{}` record at the config root. This is NOT
-  //     tenant-facing config; it exists solely to satisfy OpenClaw@2026.6.11's own config-
-  //     integrity guard, verified against the installed package (`dist/io-*.js`,
-  //     `hasConfigMeta` = `isRecord(value.meta)`; `resolveConfigObserveSuspiciousReasons`
-  //     flags `missing-meta-vs-last-good` whenever a config the gateway reads lacks `meta`
-  //     but the last-known-good snapshot had it). Without this, the entrypoint's `openclaw
-  //     plugins install` step writes a small config update WITH a `meta` stamp (OpenClaw's
-  //     own writer auto-stamps it), which becomes the gateway's "last known good" baseline;
-  //     the entrypoint then `cp -f`s our full rendered config over it, which (pre-fix) had
-  //     no `meta` key — so on next read the gateway flags it as suspicious, discards it, and
-  //     silently RESTORES THE STALE PRE-DEPLOY CONFIG from its own `.bak`, which is exactly
-  //     how a prior deploy's `plugins`/`gateway.reload`/`mcp` changes failed to take effect.
-  //     Re-pinned after the tenant merge (like `gateway`) so a tenant override can never
-  //     drop it and reintroduce the bug. An empty object is sufficient — the guard only
-  //     checks presence, not shape.
-  tenantMerged["meta"] = {};
+  // 3c. Platform-owned `meta` stub at the config root. This is NOT tenant-facing config; it
+  //     exists solely to satisfy OpenClaw@2026.6.11's own config-integrity guard.
+  //
+  //     CORRECTED (see PR #171 — a first attempt at this, PR #170, rendered a bare `meta: {}`
+  //     and was verified LIVE to still fail): the bundled openclaw.json has TWO same-named but
+  //     DIFFERENT `hasConfigMeta` helpers (an esbuild artifact of two bundled modules). The one
+  //     that actually gates the gateway-startup/config-observe path is `hasConfigMeta$1`
+  //     (`dist/io-*.js`): `isRecord(value.meta) && (typeof value.meta.lastTouchedVersion ===
+  //     "string" || typeof value.meta.lastTouchedAt === "string")` — NOT presence-only. A bare
+  //     `{}` satisfies `isRecord` but neither string clause, so `hasConfigMeta$1` still returns
+  //     false and `resolveConfigObserveSuspiciousReasons` still flags `missing-meta-vs-last-good`
+  //     against the meta-stamped write `openclaw plugins install` leaves as "last known good" —
+  //     confirmed by re-deploying PR #170 to elewa: a fresh `.clobbered.*` file appeared holding
+  //     our correctly-rendered (but still-non-conforming) config, and the gateway reverted to
+  //     `.bak` and rebooted with the stale pre-#168 plugin set. Re-verified this time against
+  //     BOTH the downloaded openclaw@2026.6.11 tarball AND the literal installed binary inside
+  //     the live pod (`/data/openclaw/runtime/node_modules/openclaw/dist/io-9CAVAPVZ.js`) before
+  //     writing this fix — not inferred from a commit message.
+  //
+  //     `lastTouchedVersion` is a static, deterministic string (not a live timestamp) so the
+  //     rendered ConfigMap never churns between reconciles — a moving `lastTouchedAt` would
+  //     force a spurious redeploy/reload on every poll cycle. Re-pinned after the tenant merge
+  //     (like `gateway`) so a tenant override can never drop it and reintroduce the bug.
+  tenantMerged["meta"] = { lastTouchedVersion: "opencrane-operator" };
 
   // 4. Platform-owned agent workspace settings — applied after the tenant merge so
   //    they cannot be overridden by spec.configOverrides.  The workspace path must

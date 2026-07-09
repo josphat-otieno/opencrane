@@ -5,6 +5,22 @@ import { _BuildConfigMap } from "../../tenants/deploy/index.js";
 import { _OpenclawConfigSchema } from "../../tenants/deploy/openclaw-config.schema.js";
 
 /**
+ * Mirrors `hasConfigMeta$1` EXACTLY as verified in the installed openclaw@2026.6.11 binary
+ * (`dist/io-9CAVAPVZ.js:1121-1123`, re-confirmed inside a live pod after PR #170's `meta: {}`
+ * was silently reverted in production) — a presence-only `meta` object does NOT satisfy it; a
+ * string `lastTouchedVersion`/`lastTouchedAt` is required. Encoding the real predicate here
+ * (not `toEqual({})`) is the point: PR #170's tests passed while the fix didn't actually work.
+ * Module scope — shared by every describe block in this file.
+ */
+function _satisfiesOpenClawConfigMetaGuard(config: Record<string, unknown>): boolean
+{
+  const meta = config["meta"];
+  if (typeof meta !== "object" || meta === null) return false;
+  const m = meta as Record<string, unknown>;
+  return typeof m["lastTouchedVersion"] === "string" || typeof m["lastTouchedAt"] === "string";
+}
+
+/**
  * Schema contract test for the rendered `openclaw.json` (task_d611ab4d, S1).
  *
  * OpenClaw's config schema is **strict** — an unknown key crashes the pod on boot
@@ -81,16 +97,17 @@ describe("openclaw.json render contract — zod schema (task_d611ab4d)", functio
     expect((config["gateway"] as Record<string, unknown>)["reload"]).toBeUndefined();
   });
 
-  it("renders a `meta` stub so OpenClaw's config-integrity guard doesn't revert our config", function _metaStub()
+  it("renders a `meta` stub that satisfies OpenClaw's config-integrity guard", function _metaStub()
   {
-    // Verified against openclaw@2026.6.11 (dist/io-*.js): hasConfigMeta() is a presence-only check
-    // (isRecord(value.meta)); a config observed WITHOUT it, after one WITH it was last-known-good,
-    // is flagged "missing-meta-vs-last-good" and silently reverted to the gateway's own .bak — which
-    // is exactly how a prior deploy's plugins/gateway/mcp changes failed to reach the running pod
-    // (the entrypoint's `openclaw plugins install` writes a meta-stamped config just before our
-    // `cp -f` overwrote it with one that lacked `meta`). An empty object satisfies the guard.
+    // Verified against openclaw@2026.6.11 (dist/io-*.js `hasConfigMeta$1`, re-confirmed inside a
+    // live pod): a config observed without a string lastTouchedVersion/lastTouchedAt, after one
+    // WITH it was last-known-good, is flagged "missing-meta-vs-last-good" and silently reverted
+    // to the gateway's own .bak — exactly how a deploy's plugins/gateway/mcp changes failed to
+    // reach the running pod (entrypoint's `openclaw plugins install` writes a meta-stamped config
+    // just before our `cp -f` overwrote it). Assert the REAL predicate, not just key presence —
+    // a bare `meta: {}` (PR #170) passes `isRecord` but not this, and still gets reverted.
     const config = _renderConfig();
-    expect(config["meta"]).toEqual({});
+    expect(_satisfiesOpenClawConfigMetaGuard(config)).toBe(true);
   });
 
   it("never leaks the internal trustNothing flag into the gateway block", function _noTrustNothing()
@@ -164,16 +181,17 @@ describe("configOverrides cannot clobber the platform gateway (C1)", function _c
     // 4. The result still validates against the strict OpenClaw schema.
     expect(_OpenclawConfigSchema.safeParse(config).success).toBe(true);
     // 5. `meta` survives too — a tenant can't drop it and reopen the config-integrity clobber.
-    expect(config["meta"]).toEqual({});
+    expect(_satisfiesOpenClawConfigMetaGuard(config)).toBe(true);
   });
 
   it("ignores a tenant override of the platform-owned meta stub", function _metaOverride()
   {
-    // A tenant tries to drop/replace `meta` (e.g. via a stale/hand-authored override). The
-    // re-pin must restore the empty stub regardless — dropping it would reopen the
-    // config-integrity clobber this field exists to prevent.
-    const config = _render({ meta: { lastTouchedVersion: "not-a-real-stamp" } });
-    expect(config["meta"]).toEqual({});
+    // A tenant tries to override `meta` with a value that would NOT satisfy OpenClaw's guard
+    // (a bare object, no string sub-field — exactly PR #170's mistake). The re-pin must restore
+    // the platform's own conforming value regardless of what the tenant supplied.
+    const config = _render({ meta: { lastTouchedVersion: 12345 } });
+    expect(_satisfiesOpenClawConfigMetaGuard(config)).toBe(true);
+    expect((config["meta"] as Record<string, unknown>)["lastTouchedVersion"]).toBe("opencrane-operator");
   });
 
   it("still applies a non-gateway override", function _nonGatewayOverride()

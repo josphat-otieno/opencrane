@@ -240,11 +240,17 @@ export const _OpenclawConfigSchema = z
     /** Optional MCP block (only when a tenant declares its own `mcp.servers`). */
     mcp: _mcpSchema.optional(),
     /**
-     * Platform-owned `meta` stub (always `{}`) — satisfies OpenClaw@2026.6.11's config-integrity
-     * guard (`hasConfigMeta` = presence-only check), which otherwise flags our externally-written
-     * config as suspicious on the next read and silently reverts to the gateway's last-known-good
-     * `.bak` snapshot. `.passthrough()` since OpenClaw's own writes may add sub-fields here.
+     * Platform-owned `meta` stub — satisfies OpenClaw@2026.6.11's config-integrity guard
+     * (`hasConfigMeta$1` in `dist/io-*.js`, verified against the installed binary: requires
+     * `lastTouchedVersion` OR `lastTouchedAt` to be a STRING, not just `isRecord(meta)` — see
+     * 2-config-map.ts for the PR #170→#171 correction history), which otherwise flags our
+     * externally-written config as suspicious on the next read and silently reverts to the
+     * gateway's last-known-good `.bak` snapshot. `.passthrough()` since OpenClaw's own writes
+     * may add sub-fields here.
      */
-    meta: z.object({}).passthrough().optional(),
+    meta: z
+      .object({ lastTouchedVersion: z.string().optional(), lastTouchedAt: z.string().optional() })
+      .passthrough()
+      .optional(),
   })
   .passthrough();
