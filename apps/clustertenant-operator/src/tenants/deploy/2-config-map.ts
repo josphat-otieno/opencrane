@@ -281,6 +281,23 @@ export function _BuildConfigMap(config: OpenClawTenantOperatorConfig, tenant: Te
   //     reference) keeps `merged` free of aliasing into the local baseConfig object.
   tenantMerged["gateway"] = { ...(baseConfig["gateway"] as Record<string, unknown>) };
 
+  // 3c. Platform-owned `meta` stub — a bare `{}` record at the config root. This is NOT
+  //     tenant-facing config; it exists solely to satisfy OpenClaw@2026.6.11's own config-
+  //     integrity guard, verified against the installed package (`dist/io-*.js`,
+  //     `hasConfigMeta` = `isRecord(value.meta)`; `resolveConfigObserveSuspiciousReasons`
+  //     flags `missing-meta-vs-last-good` whenever a config the gateway reads lacks `meta`
+  //     but the last-known-good snapshot had it). Without this, the entrypoint's `openclaw
+  //     plugins install` step writes a small config update WITH a `meta` stamp (OpenClaw's
+  //     own writer auto-stamps it), which becomes the gateway's "last known good" baseline;
+  //     the entrypoint then `cp -f`s our full rendered config over it, which (pre-fix) had
+  //     no `meta` key — so on next read the gateway flags it as suspicious, discards it, and
+  //     silently RESTORES THE STALE PRE-DEPLOY CONFIG from its own `.bak`, which is exactly
+  //     how a prior deploy's `plugins`/`gateway.reload`/`mcp` changes failed to take effect.
+  //     Re-pinned after the tenant merge (like `gateway`) so a tenant override can never
+  //     drop it and reintroduce the bug. An empty object is sufficient — the guard only
+  //     checks presence, not shape.
+  tenantMerged["meta"] = {};
+
   // 4. Platform-owned agent workspace settings — applied after the tenant merge so
   //    they cannot be overridden by spec.configOverrides.  The workspace path must
   //    be pinned to the persistent volume; skipBootstrap prevents the interactive

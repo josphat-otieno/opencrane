@@ -239,5 +239,12 @@ export const _OpenclawConfigSchema = z
     plugins: _pluginsSchema.optional(),
     /** Optional MCP block (only when a tenant declares its own `mcp.servers`). */
     mcp: _mcpSchema.optional(),
+    /**
+     * Platform-owned `meta` stub (always `{}`) — satisfies OpenClaw@2026.6.11's config-integrity
+     * guard (`hasConfigMeta` = presence-only check), which otherwise flags our externally-written
+     * config as suspicious on the next read and silently reverts to the gateway's last-known-good
+     * `.bak` snapshot. `.passthrough()` since OpenClaw's own writes may add sub-fields here.
+     */
+    meta: z.object({}).passthrough().optional(),
   })
   .passthrough();
