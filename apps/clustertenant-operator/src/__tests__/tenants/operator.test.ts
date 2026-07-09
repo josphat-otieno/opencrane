@@ -86,7 +86,7 @@ describe("TenantOperator", () =>
   {
     const tenant = _makeTenant("default-version");
     const version = tenant.spec.openclawVersion ?? defaultConfig.defaultOpenclawVersion;
-    expect(version).toBe("2026.6.9");
+    expect(version).toBe("2026.6.11");
     expect(version).not.toBe("latest");
   });
 });

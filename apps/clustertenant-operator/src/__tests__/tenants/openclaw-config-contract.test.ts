@@ -79,6 +79,19 @@ describe("openclaw.json render contract — zod schema (task_d611ab4d)", functio
     const trustedProxy = auth["trustedProxy"] as { allowUsers: string[] };
     expect(trustedProxy.allowUsers).toEqual(["contract@example.com"]);
   });
+
+  it("pins gateway.reload to hot so a config rewrite never restart-respawns MCP servers", function _reloadHot()
+  {
+    // openclaw@2026.6.11 `gateway.reload`: `hot` keeps every apply in-process, so the entrypoint's
+    // openclaw.json rewrites never escalate to a full gateway restart (which would re-spawn the
+    // stdio org-memory server and re-open the -32000 spawn race). debounceMs > OpenClaw's 300
+    // default coalesces burst rewrites into one apply.
+    const gateway = _renderConfig()["gateway"] as Record<string, unknown>;
+    const reload = gateway["reload"] as { mode: string; debounceMs: number };
+    expect(reload.mode).toBe("hot");
+    expect(reload.debounceMs).toBeGreaterThan(300);
+    expect(_OpenclawConfigSchema.safeParse(_renderConfig()).success).toBe(true);
+  });
 });
 
 /**

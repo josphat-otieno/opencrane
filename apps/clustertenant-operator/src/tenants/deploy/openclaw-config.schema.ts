@@ -5,7 +5,7 @@ import { z } from "zod";
  * validate the rendered config in the contract test (task_d611ab4d).
  *
  * PINNED OpenClaw version: 2026.6.x (operator `config.ts` `defaultOpenclawVersion`
- * = "2026.6.9"). OpenClaw is shipped as a container image, not an npm dependency,
+ * = "2026.6.11"). OpenClaw is shipped as a container image, not an npm dependency,
  * so its canonical schema is not importable; this file VENDORS a strict best-effort
  * mirror of the documented config schema for the subset of keys the operator emits.
  *
@@ -79,6 +79,26 @@ const _controlUiSchema = z
   .strict();
 
 /**
+ * Config-reload policy (`gateway.reload`), from openclaw@2026.6.11. VERIFIED against the
+ * installed package's `resolveGatewayReloadSettings` (not the docs): `mode` ∈
+ * {off,restart,hot,hybrid} (default `hybrid`), `debounceMs`/`deferralTimeoutMs` optional
+ * non-negative ints. The operator pins `mode:"hot"` so a runtime config rewrite never
+ * escalates to a full gateway restart (which tears down and re-spawns every stdio MCP
+ * server). `.strict()` — an unknown key here would crash the gateway on boot, and this
+ * whole block only exists from 2026.6.11 (the pinned default; older pins must not emit it).
+ */
+const _reloadSchema = z
+  .object({
+    /** How config changes apply: never / always-restart / always-hot / hybrid. */
+    mode: z.enum(["off", "restart", "hot", "hybrid"]),
+    /** Debounce window (ms) coalescing burst rewrites into one apply. */
+    debounceMs: z.number().int().min(0).optional(),
+    /** Deferral window (ms) before a deferred apply runs. */
+    deferralTimeoutMs: z.number().int().min(0).optional(),
+  })
+  .strict();
+
+/**
  * PLATFORM-OWNED gateway block. `.strict()` is the load-bearing guarantee: an
  * unknown key here is the exact class of bug that crashed live tenant pods on boot.
  */
@@ -96,6 +116,8 @@ const _gatewaySchema = z
     trustedProxies: z.array(z.string()),
     /** Delegated-auth configuration. */
     auth: _authSchema,
+    /** Config-reload policy (openclaw ≥ 2026.6.11): pinned `hot` to avoid restart-driven MCP re-spawn. */
+    reload: _reloadSchema.optional(),
   })
   .strict();
 

@@ -253,7 +253,7 @@ export function _LoadOperatorConfig(): OpenClawTenantOperatorConfig
     watchNamespace: _readEnvValue<string>("WATCH_NAMESPACE", "string"),
     requireWatchNamespace: _readEnvValue<boolean>("REQUIRE_WATCH_NAMESPACE", "boolean", false, false),
     tenantDefaultImage: _readEnvValue<string>("TENANT_DEFAULT_IMAGE", "string"),
-    defaultOpenclawVersion: _readEnvValue<string>("DEFAULT_OPENCLAW_VERSION", "string", false, "2026.6.9"),
+    defaultOpenclawVersion: _readEnvValue<string>("DEFAULT_OPENCLAW_VERSION", "string", false, "2026.6.11"),
     ingressDomain: _readEnvValue<string>("INGRESS_DOMAIN", "string"),
     ingressIp: _readEnvValue<string>("INGRESS_IP", "string", false, ""),
     certManagerIssuerName: _readEnvValue<string>("CERT_MANAGER_ISSUER_NAME", "string", false, "opencrane-issuer"),

@@ -15,7 +15,7 @@ export const defaultConfig: OpenClawTenantOperatorConfig = {
   watchNamespace: "default",
   requireWatchNamespace: false,
   tenantDefaultImage: "ghcr.io/opencrane/tenant:latest",
-  defaultOpenclawVersion: "2026.6.9",
+  defaultOpenclawVersion: "2026.6.11",
   ingressDomain: "opencrane.local",
   ingressIp: "",
   certManagerIssuerName: "opencrane-issuer",

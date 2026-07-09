@@ -182,6 +182,20 @@ export function _BuildConfigMap(config: OpenClawTenantOperatorConfig, tenant: Te
           allowUsers: [ownerEmail],
         },
       },
+      // Config-reload policy (openclaw@2026.6.11 `gateway.reload`, the pinned default). The pod
+      // entrypoint rewrites openclaw.json to hot-apply contract/skills/docs changes without a pod
+      // restart (guarded by a reload-only-when-relevant fingerprint — PR #164). OpenClaw's default
+      // `hybrid` mode promotes a "critical" change to a FULL gateway restart, which tears down and
+      // re-spawns every stdio MCP server (incl. the org-memory server) and re-opens the
+      // `-32000 Connection closed` spawn race that OpenClaw itself does NOT retry (verified: its
+      // `connectWithTimeout` is called once, no backoff). `hot` keeps every apply in-process so a
+      // rewrite never triggers that restart-driven re-spawn; `debounceMs` (up from the 300 default)
+      // coalesces burst rewrites into a single apply. Requires openclaw ≥ 2026.6.11 — the gateway
+      // schema is strict, so this key must never be emitted for an older pin.
+      reload: {
+        mode: "hot",
+        debounceMs: 1000,
+      },
     },
     ...(config.liteLlmEnabled
       ? {
