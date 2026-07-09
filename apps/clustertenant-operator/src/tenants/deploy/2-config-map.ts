@@ -367,6 +367,17 @@ export function _BuildConfigMap(config: OpenClawTenantOperatorConfig, tenant: Te
         "memory-core": { enabled: false },
         [_COGNEE_PLUGIN_ID]: {
           enabled: true,
+          // Grant the plugin its required hook permissions — verified live: without these, OpenClaw
+          // blocks the plugin's typed hooks at gateway startup with "non-bundled plugins must set
+          // plugins.entries.cognee-openclaw.hooks.<key>=true", and the plugin silently does nothing.
+          // allowPromptInjection gates `before_prompt_build` (auto-recall — the whole point of this
+          // plugin); allowConversationAccess gates `llm_output`/`agent_end` (session capture into
+          // Cognee). Both are independent, currently-valid keys (verified in the installed
+          // openclaw@2026.6.11 binary's config-normalization path) — the plugin's own README claims
+          // allowConversationAccess was renamed/rejected pre-2026.4.2, but the live gateway explicitly
+          // requested it by this exact name, so both are granted rather than trusting either source
+          // alone.
+          hooks: { allowPromptInjection: true, allowConversationAccess: true },
           config: {
             mode: "local",
             baseUrl: config.cogneeEndpoint,

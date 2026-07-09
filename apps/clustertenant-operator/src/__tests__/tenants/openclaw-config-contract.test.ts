@@ -80,9 +80,13 @@ describe("openclaw.json render contract — zod schema (task_d611ab4d)", functio
     const plugins = config["plugins"] as Record<string, unknown>;
     expect(plugins["allow"]).toEqual(["cognee-openclaw"]);
     expect((plugins["slots"] as Record<string, unknown>)["memory"]).toBe("cognee-openclaw");
-    const entries = plugins["entries"] as Record<string, { enabled?: boolean; config?: Record<string, unknown> }>;
+    const entries = plugins["entries"] as Record<string, { enabled?: boolean; hooks?: Record<string, unknown>; config?: Record<string, unknown> }>;
     expect(entries["memory-core"].enabled).toBe(false);
     expect(entries["cognee-openclaw"].enabled).toBe(true);
+    // Hook permissions — without these OpenClaw blocks the plugin's typed hooks at gateway startup
+    // (verified live: "non-bundled plugins must set plugins.entries.cognee-openclaw.hooks.<key>=true")
+    // and auto-recall/session-capture silently do nothing despite the plugin showing "enabled".
+    expect(entries["cognee-openclaw"].hooks).toEqual({ allowPromptInjection: true, allowConversationAccess: true });
     const cfg = entries["cognee-openclaw"].config as Record<string, unknown>;
     expect(cfg["baseUrl"]).toBe("http://cognee:8000");
     expect(cfg["companyDataset"]).toBe("company");
