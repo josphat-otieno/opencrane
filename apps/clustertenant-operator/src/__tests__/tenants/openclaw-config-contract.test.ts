@@ -45,25 +45,40 @@ describe("openclaw.json render contract — zod schema (task_d611ab4d)", functio
     expect(parsed.success, parsed.success ? "" : JSON.stringify(parsed.error?.issues, null, 2)).toBe(true);
   });
 
-  it("validates the Cognee-wired config (mcp.servers block) against the schema", function _mcpOk()
+  it("validates the Cognee-wired config (plugins block) against the schema", function _pluginsOk()
   {
-    // Exercise the optional `mcp` branch so the local org-memory stdio server shape is covered.
+    // Exercise the optional `plugins` branch so the Cognee memory-plugin config shape is covered.
     const cogneeConfig = { ...defaultConfig, cogneeEndpoint: "http://cognee:8000" };
     const configMap = _BuildConfigMap(cogneeConfig, _makeTenant("contract"), "default");
     const parsed = _OpenclawConfigSchema.safeParse(JSON.parse(configMap.data?.["openclaw.json"] ?? "{}"));
     expect(parsed.success, parsed.success ? "" : JSON.stringify(parsed.error?.issues, null, 2)).toBe(true);
   });
 
-  it("disables MCP idle eviction (sessionIdleTtlMs=0) so org-memory never idle-respawns", function _idleTtl()
+  it("gives the Cognee plugin exclusive memory-slot ownership + disables the built-in", function _cogneePlugin()
   {
-    // openclaw evicts an idle bundled MCP runtime after mcp.sessionIdleTtlMs (default 10min) and
-    // re-spawns on next use, racing its own connect -> -32000. 0 keeps the org-memory stdio server
-    // warm for the pod's life. Rendered only when Cognee is wired (the org-memory branch).
+    // Adopt the official @cognee/cognee-openclaw plugin as the memory provider: it owns the memory
+    // slot (so the built-in memory-core — the stale-index native memory_search — never registers)
+    // and is configured multi-scope (company/user/agent) pinned to this tenant + its IdP subject.
     const cogneeConfig = { ...defaultConfig, cogneeEndpoint: "http://cognee:8000" };
     const config = JSON.parse(_BuildConfigMap(cogneeConfig, _makeTenant("contract"), "default").data?.["openclaw.json"] ?? "{}") as Record<string, unknown>;
-    const mcp = config["mcp"] as Record<string, unknown>;
-    expect(mcp["sessionIdleTtlMs"]).toBe(0);
-    expect((mcp["servers"] as Record<string, unknown>)["org-memory"]).toBeTruthy();
+    const plugins = config["plugins"] as Record<string, unknown>;
+    expect(plugins["allow"]).toEqual(["cognee-openclaw"]);
+    expect((plugins["slots"] as Record<string, unknown>)["memory"]).toBe("cognee-openclaw");
+    const entries = plugins["entries"] as Record<string, { enabled?: boolean; config?: Record<string, unknown> }>;
+    expect(entries["memory-core"].enabled).toBe(false);
+    expect(entries["cognee-openclaw"].enabled).toBe(true);
+    const cfg = entries["cognee-openclaw"].config as Record<string, unknown>;
+    expect(cfg["baseUrl"]).toBe("http://cognee:8000");
+    expect(cfg["companyDataset"]).toBe("company");
+    expect(cfg["userDatasetPrefix"]).toBe("user");
+    expect(cfg["agentDatasetPrefix"]).toBe("agent");
+    expect(typeof cfg["agentId"]).toBe("string");
+    expect(typeof cfg["userId"]).toBe("string");
+    expect(cfg["recallScopes"]).toEqual(["agent", "user", "company"]);
+    expect(cfg["defaultWriteScope"]).toBe("agent");
+    // No stale native-memory config should linger from the removed bespoke MCP server.
+    expect(config["mcp"]).toBeUndefined();
+    expect((config["gateway"] as Record<string, unknown>)["reload"]).toBeUndefined();
   });
 
   it("never leaks the internal trustNothing flag into the gateway block", function _noTrustNothing()
@@ -90,19 +105,6 @@ describe("openclaw.json render contract — zod schema (task_d611ab4d)", functio
     const auth = (config["gateway"] as Record<string, unknown>)["auth"] as Record<string, unknown>;
     const trustedProxy = auth["trustedProxy"] as { allowUsers: string[] };
     expect(trustedProxy.allowUsers).toEqual(["contract@example.com"]);
-  });
-
-  it("pins gateway.reload to hot so a config rewrite never restart-respawns MCP servers", function _reloadHot()
-  {
-    // openclaw@2026.6.11 `gateway.reload`: `hot` keeps every apply in-process, so the entrypoint's
-    // openclaw.json rewrites never escalate to a full gateway restart (which would re-spawn the
-    // stdio org-memory server and re-open the -32000 spawn race). debounceMs > OpenClaw's 300
-    // default coalesces burst rewrites into one apply.
-    const gateway = _renderConfig()["gateway"] as Record<string, unknown>;
-    const reload = gateway["reload"] as { mode: string; debounceMs: number };
-    expect(reload.mode).toBe("hot");
-    expect(reload.debounceMs).toBeGreaterThan(300);
-    expect(_OpenclawConfigSchema.safeParse(_renderConfig()).success).toBe(true);
   });
 });
 

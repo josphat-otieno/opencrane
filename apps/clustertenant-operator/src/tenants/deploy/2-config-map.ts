@@ -55,19 +55,11 @@ const _THINKING_DEFAULT = "medium";
 const _LITELLM_PROVIDER_ID = "litellm-proxy";
 
 /**
- * The `mcp.servers` key OpenClaw registers the org-memory tool under. Mirrors
- * `ORG_MEMORY_SERVER_NAME` in `@opencrane/org-memory-mcp` (duplicated as a plain
- * string rather than imported, to avoid pulling the MCP SDK into the operator).
+ * The official Cognee OpenClaw memory plugin id (npm `@cognee/cognee-openclaw`,
+ * installed into the tenant runtime by `entrypoint.sh`). The operator gives it
+ * exclusive ownership of OpenClaw's memory slot and renders its multi-scope config.
  */
-const _ORG_MEMORY_SERVER_NAME = "org-memory";
-
-/**
- * Absolute path to the org-memory MCP server baked into the tenant image
- * (see `apps/tenant/deploy/Dockerfile`). OpenClaw spawns it over stdio and the
- * process inherits the pod env — including `COGNEE_ENDPOINT` — so no per-server
- * env block is needed.
- */
-const _ORG_MEMORY_MCP_ENTRYPOINT = "/opt/org-memory-mcp/dist/index.js";
+const _COGNEE_PLUGIN_ID = "cognee-openclaw";
 
 /**
  * Turn a LiteLLM public model name into an OpenClaw model REFERENCE that routes through the proxy.
@@ -182,20 +174,6 @@ export function _BuildConfigMap(config: OpenClawTenantOperatorConfig, tenant: Te
           allowUsers: [ownerEmail],
         },
       },
-      // Config-reload policy (openclaw@2026.6.11 `gateway.reload`, the pinned default). The pod
-      // entrypoint rewrites openclaw.json to hot-apply contract/skills/docs changes without a pod
-      // restart (guarded by a reload-only-when-relevant fingerprint — PR #164). OpenClaw's default
-      // `hybrid` mode promotes a "critical" change to a FULL gateway restart, which tears down and
-      // re-spawns every stdio MCP server (incl. the org-memory server) and re-opens the
-      // `-32000 Connection closed` spawn race that OpenClaw itself does NOT retry (verified: its
-      // `connectWithTimeout` is called once, no backoff). `hot` keeps every apply in-process so a
-      // rewrite never triggers that restart-driven re-spawn; `debounceMs` (up from the 300 default)
-      // coalesces burst rewrites into a single apply. Requires openclaw ≥ 2026.6.11 — the gateway
-      // schema is strict, so this key must never be emitted for an older pin.
-      reload: {
-        mode: "hot",
-        debounceMs: 1000,
-      },
     },
     ...(config.liteLlmEnabled
       ? {
@@ -261,18 +239,17 @@ export function _BuildConfigMap(config: OpenClawTenantOperatorConfig, tenant: Te
     },
     // Org-memory backend advertised to the runtime. Cognee IS the platform memory engine — a
     // settled dependency, not an option. When it is wired (COGNEE_ENDPOINT injected into the pod —
-    // see 3-deployment.ts), the OpenClaw runtime's `@opencrane/awareness` client retrieves org
-    // context DIRECTLY from its per-tenant Cognee knowledge graph — a first-class in-pod capability,
-    // NOT an MCP server, so it is deliberately outside the Obot-gateway "no direct MCP" boundary
-    // (retrieval has no control-plane mediation in the hot path by design). A `backend: "workspace"`
+    // see 3-deployment.ts), the official `@cognee/cognee-openclaw` plugin owns OpenClaw's memory
+    // slot (see the `plugins` block below) and retrieves org context DIRECTLY from the per-tenant
+    // Cognee knowledge graph — auto-recalling scope-labeled context each turn. A `backend: "workspace"`
     // value is NOT a supported mode — it marks a MISCONFIGURED pod (no Cognee wired), which the pod
     // entrypoint surfaces as a startup warning; org memory is unavailable until an operator fixes it.
     memory: config.cogneeEndpoint
       ? {
           backend: "cognee",
-          // Per-tenant Cognee base URL the awareness client retrieves from (also injected as
-          // the COGNEE_ENDPOINT env var). Datasets are scope-derived (`org`, `team/<subject>`, …)
-          // and access is enforced by the awareness grants the control-plane syncs to Cognee.
+          // Per-tenant Cognee base URL the plugin retrieves from (also injected as COGNEE_ENDPOINT).
+          // Datasets are scope-partitioned (company / user / agent) by the plugin config below;
+          // access is enforced by the Cognee-side grants the control-plane syncs.
           endpoint: config.cogneeEndpoint,
           contractVersion: AWARENESS_CONTRACT_VERSION,
         }
@@ -337,32 +314,48 @@ export function _BuildConfigMap(config: OpenClawTenantOperatorConfig, tenant: Te
     },
   };
 
-  // 5. Platform-owned org-memory tool — applied after the tenant merge so it cannot be
-  //    dropped by a `spec.configOverrides.mcp` override. When Cognee is wired, register the
-  //    LOCAL org-memory MCP server OpenClaw spawns over stdio (the binary is baked into the
-  //    tenant image at `_ORG_MEMORY_MCP_ENTRYPOINT`). This is a first-class in-pod capability,
-  //    NOT an Obot-gateway server — it talks directly to the per-tenant Cognee, so it lives in
-  //    `mcp.servers` here rather than in the effective-contract grant set. Any tenant-declared
-  //    mcp.servers are preserved; the org-memory entry is merged in on top so it is always present.
+  // 5. Platform-owned memory plugin — applied after the tenant merge so a `spec.configOverrides`
+  //    can't drop or weaken it. When Cognee is wired, give the official `@cognee/cognee-openclaw`
+  //    plugin (installed into the runtime by entrypoint.sh) EXCLUSIVE ownership of OpenClaw's memory
+  //    slot and disable the built-in `memory-core`. OpenClaw registers the memory capability ONLY for
+  //    the slot owner, so the built-in's embedding index — which self-disables with "index metadata is
+  //    missing" on a provider/model mismatch and would otherwise shadow this — never surfaces. The
+  //    plugin auto-recalls scope-labeled context per turn and exposes the `cognee_memories` tool.
+  //    Multi-scope is operator-configured: company (org-wide) / user (per IdP subject) / agent (per tenant).
   if (config.cogneeEndpoint)
   {
-    const existingMcp = (merged["mcp"] as Record<string, unknown> | undefined) ?? {};
-    const existingServers = (existingMcp["servers"] as Record<string, unknown> | undefined) ?? {};
-    merged["mcp"] = {
-      ...existingMcp,
-      // Keep the org-memory stdio runtime warm for the pod's whole life. OpenClaw evicts an idle
-      // bundled MCP runtime after `mcp.sessionIdleTtlMs` (default 10 min) and RE-SPAWNS it on next
-      // use — and OpenClaw does not retry a failed stdio spawn, so that periodic re-spawn races its
-      // connect and surfaces as `MCP error -32000: Connection closed` roughly every ~10-30 min.
-      // `0` disables idle eviction (verified in openclaw@2026.6.11: `idleTtlMs <= 0` skips the sweep),
-      // so the server spawns once at startup and stays up. Set AFTER the tenant spread so a
-      // `configOverrides.mcp` can't re-enable eviction and break org-memory. Requires openclaw ≥ 2026.6.11.
-      sessionIdleTtlMs: 0,
-      servers: {
-        ...existingServers,
-        [_ORG_MEMORY_SERVER_NAME]: {
-          command: "node",
-          args: [_ORG_MEMORY_MCP_ENTRYPOINT],
+    const subject = tenant.spec.subject?.trim() || ownerEmail;
+    const existingPlugins = (merged["plugins"] as Record<string, unknown> | undefined) ?? {};
+    const existingSlots = (existingPlugins["slots"] as Record<string, unknown> | undefined) ?? {};
+    const existingEntries = (existingPlugins["entries"] as Record<string, unknown> | undefined) ?? {};
+    merged["plugins"] = {
+      ...existingPlugins,
+      // Security allowlist — only platform-approved plugins load (MUST be an array; an object crashes
+      // OpenClaw's config parse). Forced platform-side so a tenant can't allow arbitrary plugins.
+      allow: [_COGNEE_PLUGIN_ID],
+      // Exclusive memory slot: OpenClaw skips memory-capability registration for any non-slot plugin,
+      // so the stale built-in memory is fully out of the picture.
+      slots: { ...existingSlots, memory: _COGNEE_PLUGIN_ID },
+      entries: {
+        ...existingEntries,
+        // Retire the built-in memory provider (the source of the broken native `memory_search`).
+        "memory-core": { enabled: false },
+        [_COGNEE_PLUGIN_ID]: {
+          enabled: true,
+          config: {
+            mode: "local",
+            baseUrl: config.cogneeEndpoint,
+            // Multi-scope partitioning. Setting company/user/agent dataset keys enables multi-scope
+            // mode; identity is pinned to this tenant + its IdP subject so scopes never bleed across
+            // tenants/users. Recall is most-specific-first; agent-authored memory writes to the agent scope.
+            companyDataset: "company",
+            userDatasetPrefix: "user",
+            agentDatasetPrefix: "agent",
+            userId: subject,
+            agentId: name,
+            recallScopes: ["agent", "user", "company"],
+            defaultWriteScope: "agent",
+          },
         },
       },
     };

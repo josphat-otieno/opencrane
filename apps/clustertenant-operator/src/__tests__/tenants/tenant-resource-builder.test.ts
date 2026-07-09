@@ -271,31 +271,37 @@ describe("TenantResourceBuilder", () =>
     expect(typeof runtimeContract.memory.contractVersion).toBe("string");
   });
 
-  it("registers the local org-memory MCP server only when Cognee is configured", () =>
+  it("runs the Cognee memory plugin only when Cognee is configured", () =>
   {
     const tenant = _makeTenant("mcp-mem");
 
-    // Unset ⇒ no mcp block leaks into openclaw.json (byte-for-byte unchanged path).
+    // Unset ⇒ no plugins block leaks into openclaw.json (byte-for-byte unchanged path).
     const bare = JSON.parse(_BuildConfigMap(defaultConfig, tenant, "default").data?.["openclaw.json"] ?? "{}");
+    expect(bare.plugins).toBeUndefined();
     expect(bare.mcp).toBeUndefined();
 
-    // Configured ⇒ OpenClaw is told to spawn the local org-memory server over stdio.
+    // Configured ⇒ the Cognee plugin owns the memory slot and the built-in memory-core is disabled.
     const cogneeConfig = { ...defaultConfig, cogneeEndpoint: "http://cognee:8000" };
     const wired = JSON.parse(_BuildConfigMap(cogneeConfig, tenant, "default").data?.["openclaw.json"] ?? "{}");
-    expect(wired.mcp.servers["org-memory"]).toEqual({ command: "node", args: ["/opt/org-memory-mcp/dist/index.js"] });
+    expect(wired.plugins.slots.memory).toBe("cognee-openclaw");
+    expect(wired.plugins.entries["cognee-openclaw"].enabled).toBe(true);
+    expect(wired.plugins.entries["memory-core"].enabled).toBe(false);
+    expect(wired.plugins.entries["cognee-openclaw"].config.baseUrl).toBe("http://cognee:8000");
   });
 
-  it("preserves a tenant's own mcp.servers while forcing org-memory in", () =>
+  it("preserves a tenant's own plugins while forcing the Cognee memory plugin in", () =>
   {
     const cogneeConfig = { ...defaultConfig, cogneeEndpoint: "http://cognee:8000" };
-    const tenant = _makeTenant("mcp-merge", {
-      configOverrides: { mcp: { servers: { custom: { command: "true", args: [] } } } },
+    const tenant = _makeTenant("plugins-merge", {
+      configOverrides: { plugins: { entries: { "my-plugin": { enabled: true } } } },
     });
     const cfg = JSON.parse(_BuildConfigMap(cogneeConfig, tenant, "default").data?.["openclaw.json"] ?? "{}");
 
-    // Tenant server survives, and the platform org-memory server is merged in on top.
-    expect(cfg.mcp.servers.custom).toEqual({ command: "true", args: [] });
-    expect(cfg.mcp.servers["org-memory"].args).toEqual(["/opt/org-memory-mcp/dist/index.js"]);
+    // Tenant plugin entry survives; the platform forces the Cognee memory plugin, slot + allowlist on top.
+    expect(cfg.plugins.entries["my-plugin"]).toEqual({ enabled: true });
+    expect(cfg.plugins.entries["cognee-openclaw"].enabled).toBe(true);
+    expect(cfg.plugins.slots.memory).toBe("cognee-openclaw");
+    expect(cfg.plugins.allow).toEqual(["cognee-openclaw"]);
   });
 
   it("injects the Cognee org-memory env only when configured", () =>
