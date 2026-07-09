@@ -16,6 +16,9 @@ SKILLS_DIR="$STATE_DIR/agents/main/skills"
 # still installs a known-good OpenClaw; the operator normally sets this from
 # tenant.defaultOpenclawVersion (or a Tenant CR's spec.openclawVersion).
 OPENCLAW_VERSION="${OPENCLAW_VERSION:-2026.6.11}"
+# Pinned default for the official Cognee memory plugin (npm @cognee/cognee-openclaw). Installed at
+# boot when Cognee is wired; the operator renders its config into openclaw.json (plugins.entries).
+COGNEE_PLUGIN_VERSION="${COGNEE_PLUGIN_VERSION:-2026.7.9}"
 # Control-plane re-pull configuration (injected by operator into every tenant Deployment).
 OPENCRANE_CONTROL_PLANE_URL="${OPENCRANE_CONTROL_PLANE_URL:-}"
 OPENCRANE_CONTRACT_TOKEN_PATH="${OPENCRANE_CONTRACT_TOKEN_PATH:-/var/run/opencrane/tokens/control-plane.token}"
@@ -415,14 +418,13 @@ function _contract_poll_loop()
         _pull_entitled_skills "$writable_path"
 
         # Only trigger the file-watch reload when a reload would actually change what the
-        # agent sees. Rewriting openclaw.json makes OpenClaw dispose + re-spawn its stdio MCP
-        # servers (incl. org-memory); doing that for a no-op delta needlessly risks a
-        # `-32000 Connection closed` spawn race, so skip it when docs+skills are unchanged.
+        # agent sees. A no-op openclaw.json rewrite still makes OpenClaw re-read its config and
+        # re-init plugins for nothing, so skip it when workspace docs + skills are unchanged.
         if [ "$new_fp" != "$old_fp" ]; then
           echo "[opencrane] Reload-relevant fields (workspace docs/skills) changed; triggering hot-reload" >&2
           _trigger_openclaw_reload
         else
-          echo "[opencrane] Contract change is not reload-relevant; skipping MCP re-spawn" >&2
+          echo "[opencrane] Contract change is not reload-relevant; skipping reload" >&2
         fi
       else
         rm -f "$tmp_path"
@@ -493,6 +495,28 @@ function _main()
 
   # Add runtime bin to PATH
   export PATH="$RUNTIME_DIR/node_modules/.bin:$PATH"
+
+  # Install / upgrade the official Cognee memory plugin — ONLY when Cognee is wired. OpenClaw installs
+  # plugins under $OPENCLAW_STATE_DIR/extensions (the PVC), so they survive restarts like the runtime;
+  # gate the (re)install on a version marker and only run on a pin change. The operator renders
+  # plugins.allow/slots/entries into openclaw.json to give this plugin exclusive ownership of the
+  # memory slot (and to disable the built-in memory-core). Without Cognee, no plugin is installed and
+  # org memory is deliberately unavailable (a misconfiguration the entrypoint warns about below).
+  if [ -n "$COGNEE_ENDPOINT" ]; then
+    COGNEE_PLUGIN_MARKER="$RUNTIME_DIR/.cognee-plugin-version"
+    installed_plugin_version=""
+    [ -f "$COGNEE_PLUGIN_MARKER" ] && installed_plugin_version="$(cat "$COGNEE_PLUGIN_MARKER" 2>/dev/null || echo "")"
+    if [ "$installed_plugin_version" != "$COGNEE_PLUGIN_VERSION" ]; then
+      echo "[opencrane] Installing Cognee memory plugin @cognee/cognee-openclaw@${COGNEE_PLUGIN_VERSION}..."
+      openclaw plugins install "@cognee/cognee-openclaw@${COGNEE_PLUGIN_VERSION}" --force
+      echo "$COGNEE_PLUGIN_VERSION" > "$COGNEE_PLUGIN_MARKER"
+      echo "[opencrane] Cognee memory plugin @${COGNEE_PLUGIN_VERSION} installed"
+    else
+      echo "[opencrane] Cognee memory plugin @${installed_plugin_version} present (matches pin)"
+    fi
+  else
+    echo "[opencrane] COGNEE_ENDPOINT not set — skipping Cognee memory plugin install (org memory unavailable)"
+  fi
 
   # Always apply the operator-managed config on boot — the configmap is the
   # authoritative source for platform settings (auth, port, bind, MCP servers).

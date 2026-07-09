@@ -10,6 +10,13 @@ export interface TenantSpec
   /** Contact email for the tenant owner. */
   email: string;
 
+  /**
+   * IdP-verified subject (OIDC `sub`) this workspace is bound to. Used as the per-user memory
+   * scope id for the Cognee plugin (`plugins.entries.cognee-openclaw.config.userId`). Optional —
+   * absent only on legacy/imported tenants, where the memory user scope falls back to the email.
+   */
+  subject?: string;
+
   /** Optional team identifier for grouping tenants. */
   team?: string;
 

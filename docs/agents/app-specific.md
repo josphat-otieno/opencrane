@@ -24,7 +24,7 @@ linked below** — read it before non-trivial work in that package. The whole-cl
 | Package | Deep-dive | One-liner |
 |---------|-----------|-----------|
 | `@opencrane/contracts` | [libs/contracts.md](./libs/contracts.md) | **The keystone** — shared CRD enums/DTOs + the generated typed control-plane client (`___CreateControlPlaneClient`, `paths`). Import from the barrel; never redefine types per app. |
-| `@opencrane/awareness` | [libs/awareness.md](./libs/awareness.md) | In-pod SDK to query org context (Cognee) directly. Enforces citations + contract-version stamping; golden-suite gates the rollout. |
+| `@opencrane/awareness` | [libs/awareness.md](./libs/awareness.md) | Awareness contract-version module for the control-plane rollout/canary. Org-context retrieval moved to the `@cognee/cognee-openclaw` plugin. |
 | _(libs/onboarding)_ | — | **Empty placeholder** — not in `pnpm-workspace.yaml`, no code yet. |
 
 ## API-First / CLI-First Rule

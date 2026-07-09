@@ -163,9 +163,9 @@ export interface OpenClawTenantOperatorConfig
 
   /**
    * In-cluster per-tenant Cognee base URL (e.g. `http://cognee:8000`), injected into tenant
-   * pods as `COGNEE_ENDPOINT` so the OpenClaw runtime's `@opencrane/awareness` org-memory client
-   * can retrieve org context directly (no control-plane mediation in the hot path — see
-   * `libs/awareness`). Empty string ⇒ Cognee is not wired into the pod and the runtime falls back
+   * pods as `COGNEE_ENDPOINT` so the Cognee OpenClaw memory plugin can retrieve org context
+   * directly (no control-plane mediation in the hot path). Empty string ⇒ Cognee is not wired
+   * into the pod and the runtime falls back
    * to workspace-file memory only; this mirrors the control-plane's "skip when unset" grant-sync
    * behaviour so a Cognee-less deployment stays byte-for-byte unchanged.
    */

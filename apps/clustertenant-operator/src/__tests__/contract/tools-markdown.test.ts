@@ -34,12 +34,12 @@ describe("_RenderToolsMarkdown", function _suite()
 	{
 		const without = _RenderToolsMarkdown([], []);
 		expect(without).not.toContain("Org memory (Cognee)");
-		expect(without).not.toContain("memory_search");
+		expect(without).not.toContain("cognee_memories");
 
 		const withMemory = _RenderToolsMarkdown([], [], { orgMemory: true });
 		expect(withMemory).toContain("## Org memory (Cognee)");
-		expect(withMemory).toContain("**memory_search**");
-		expect(withMemory).toContain("**memory_remember**");
+		expect(withMemory).toContain("Auto-recall");
+		expect(withMemory).toContain("**cognee_memories**");
 		expect(withMemory.endsWith("\n")).toBe(true);
 	});
 

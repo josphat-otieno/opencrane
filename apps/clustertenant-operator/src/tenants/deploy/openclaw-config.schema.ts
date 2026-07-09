@@ -79,26 +79,6 @@ const _controlUiSchema = z
   .strict();
 
 /**
- * Config-reload policy (`gateway.reload`), from openclaw@2026.6.11. VERIFIED against the
- * installed package's `resolveGatewayReloadSettings` (not the docs): `mode` ∈
- * {off,restart,hot,hybrid} (default `hybrid`), `debounceMs`/`deferralTimeoutMs` optional
- * non-negative ints. The operator pins `mode:"hot"` so a runtime config rewrite never
- * escalates to a full gateway restart (which tears down and re-spawns every stdio MCP
- * server). `.strict()` — an unknown key here would crash the gateway on boot, and this
- * whole block only exists from 2026.6.11 (the pinned default; older pins must not emit it).
- */
-const _reloadSchema = z
-  .object({
-    /** How config changes apply: never / always-restart / always-hot / hybrid. */
-    mode: z.enum(["off", "restart", "hot", "hybrid"]),
-    /** Debounce window (ms) coalescing burst rewrites into one apply. */
-    debounceMs: z.number().int().min(0).optional(),
-    /** Deferral window (ms) before a deferred apply runs. */
-    deferralTimeoutMs: z.number().int().min(0).optional(),
-  })
-  .strict();
-
-/**
  * PLATFORM-OWNED gateway block. `.strict()` is the load-bearing guarantee: an
  * unknown key here is the exact class of bug that crashed live tenant pods on boot.
  */
@@ -116,8 +96,6 @@ const _gatewaySchema = z
     trustedProxies: z.array(z.string()),
     /** Delegated-auth configuration. */
     auth: _authSchema,
-    /** Config-reload policy (openclaw ≥ 2026.6.11): pinned `hot` to avoid restart-driven MCP re-spawn. */
-    reload: _reloadSchema.optional(),
   })
   .strict();
 
@@ -197,8 +175,8 @@ const _agentsSchema = z
  * A single `mcp.servers` entry. INFERRED shape (docs: configuration-reference): a LOCAL
  * server uses `command` + `args` (stdio transport); a REMOTE server uses `url` + `transport`
  * ("streamable-http"/"sse"). Common optional fields (headers, toolFilter, timeouts) are tolerated
- * via `.passthrough()` rather than pinned. The operator only emits the local `command`/`args` form
- * (the org-memory server OpenClaw spawns over stdio — see 2-config-map.ts).
+ * via `.passthrough()` rather than pinned. The operator no longer emits any local server (memory
+ * moved to the Cognee plugin); this remains only for tenant-declared `mcp.servers`.
  */
 const _mcpServerSchema = z
   .object({
@@ -214,19 +192,32 @@ const _mcpServerSchema = z
   .passthrough();
 
 /**
- * MCP block. Optional (present only when the operator wires a local server such as org-memory).
- * `.passthrough()` at the block level tolerates any sibling MCP keys OpenClaw accepts; the server
- * map is `id → entry`.
+ * MCP block. Optional — the operator no longer emits it (memory moved to the Cognee plugin), but a
+ * tenant MAY declare its own `mcp.servers` via configOverrides, so the schema still admits it.
+ * `.passthrough()` at the block level tolerates any sibling MCP keys OpenClaw accepts.
  */
 const _mcpSchema = z
   .object({
     /** Server id → server config map. */
     servers: z.record(z.string(), _mcpServerSchema),
-    /**
-     * MCP runtime idle TTL in ms (openclaw ≥ 2026.6.11 `mcp.sessionIdleTtlMs`). `0` disables idle
-     * eviction so stdio servers (org-memory) stay warm and are never re-spawned mid-session.
-     */
-    sessionIdleTtlMs: z.number().int().min(0).optional(),
+  })
+  .passthrough();
+
+/**
+ * Plugins block (openclaw `plugins`). The operator renders this to run the official Cognee memory
+ * plugin as the EXCLUSIVE memory-slot owner (see 2-config-map.ts): `allow` is the security allowlist
+ * (array), `slots.memory` names the owning plugin, `entries` toggles/configures each plugin (built-in
+ * `memory-core` disabled; `cognee-openclaw` enabled + multi-scope config). `.passthrough()` — each
+ * plugin's `config` surface is the plugin's own and is not pinned here.
+ */
+const _pluginsSchema = z
+  .object({
+    /** Security allowlist of plugin ids permitted to load (array form is required by OpenClaw). */
+    allow: z.array(z.string()).optional(),
+    /** Capability slot → owning plugin id (e.g. `{ memory: "cognee-openclaw" }`). */
+    slots: z.record(z.string(), z.string()).optional(),
+    /** Plugin id → `{ enabled, config }` entry. */
+    entries: z.record(z.string(), z.object({ enabled: z.boolean().optional() }).passthrough()).optional(),
   })
   .passthrough();
 
@@ -244,7 +235,9 @@ export const _OpenclawConfigSchema = z
     models: _modelsSchema.optional(),
     /** Agents block carrying the platform-pinned defaults. */
     agents: _agentsSchema,
-    /** Optional MCP block (present only when a local server such as org-memory is wired). */
+    /** Platform-owned plugins block — runs the Cognee memory plugin as the memory-slot owner. */
+    plugins: _pluginsSchema.optional(),
+    /** Optional MCP block (only when a tenant declares its own `mcp.servers`). */
     mcp: _mcpSchema.optional(),
   })
   .passthrough();

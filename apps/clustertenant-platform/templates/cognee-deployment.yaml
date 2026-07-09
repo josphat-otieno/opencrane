@@ -74,7 +74,7 @@ spec:
 ---
 # Defence-in-depth ingress policy for the bundled Cognee. Only the control-plane
 # (awareness grant / permission sync) and tenant pods (direct org-context queries via
-# the awareness SDK) reach it; everything else is denied at the network layer.
+# the Cognee memory plugin) reach it; everything else is denied at the network layer.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

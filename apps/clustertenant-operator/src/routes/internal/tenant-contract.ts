@@ -182,7 +182,8 @@ export function _RegisterInternalTenantContract(prisma: PrismaClient, authApi: k
       //    poll loop writes this over the workspace file and SIGHUPs OpenClaw, so a
       //    grant/deny reflects in the agent's tool list within one poll interval.
       //    The org-memory section is included when Cognee is wired for the fleet, so the
-      //    regenerated doc keeps the agent aware of its always-available `memory_search` tool.
+      //    regenerated doc keeps the agent aware of its Cognee memory (auto-recall + the
+      //    `cognee_memories` tool from the memory plugin).
       const toolsMarkdown = _RenderToolsMarkdown(mcpServers, skillBundles, { orgMemory: Boolean(process.env.COGNEE_ENDPOINT?.trim()) });
 
       // 7b. Resolve approved L2 personalisation docs (P4C.5). Unlike TOOLS.md
@@ -202,7 +203,6 @@ export function _RegisterInternalTenantContract(prisma: PrismaClient, authApi: k
       // 7c. Resolve this tenant's awareness contract version from the fleet rollout
       //     (P4B.3): the tenant's wave determines target-vs-stable, delivered via
       //     this re-pull so a fleet promotion/rollback reflects with no pod restart.
-      //     The pod's awareness SDK refuses an incompatible major (see @opencrane/awareness).
       const rollout = await _LoadAwarenessRollout(prisma);
       const awareness = _ResolveAwarenessVersion(rollout, tenant.awarenessWave);
 

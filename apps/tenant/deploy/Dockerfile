@@ -1,41 +1,9 @@
-# NOTE: build context is the REPO ROOT (e.g. `docker build -f apps/tenant/deploy/Dockerfile .`),
-# not the app dir — required so the pnpm workspace + @opencrane/* deps resolve.
+# Single-stage runtime image for the OpenClaw tenant pod (build context = repo root, per CI).
 #
-# The runtime image stays slim: OpenClaw itself is NOT baked in — it is installed into the
-# per-tenant GCS bucket on first boot (see entrypoint.sh). What we DO bake in is the
-# platform-owned org-memory MCP server, which OpenClaw spawns over stdio to retrieve org
-# context from the per-tenant Cognee (see 2-config-map.ts `mcp.servers.org-memory`).
-
-# Build stage — compile and bundle the org-memory MCP server into a self-contained dir.
-FROM node:22-bookworm-slim AS build
-
-RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
-
-WORKDIR /app
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
-COPY tsconfig.base.json ./
-COPY libs/awareness/package.json libs/awareness/tsconfig.json libs/awareness/
-COPY apps/org-memory-mcp/package.json apps/org-memory-mcp/tsconfig.json apps/org-memory-mcp/
-RUN pnpm install --frozen-lockfile --filter @opencrane/awareness --filter @opencrane/org-memory-mcp
-
-COPY libs/awareness/src libs/awareness/src
-COPY apps/org-memory-mcp/src apps/org-memory-mcp/src
-# awareness must be built first: the org-memory bundle resolves @opencrane/awareness
-# through its published `exports` (dist/index.js), so its dist has to exist before esbuild runs.
-RUN pnpm --filter @opencrane/awareness build \
- && pnpm --filter @opencrane/org-memory-mcp bundle
-
-# Assemble a MINIMAL deployable: a single self-contained esbuild bundle, NO node_modules.
-# OpenClaw re-spawns `node /opt/org-memory-mcp/dist/index.js` over stdio on every config
-# reload; shipping one file instead of a full dependency tree cuts Node's module-resolution
-# file reads at cold start, shrinking the spawn->handshake window that otherwise races
-# OpenClaw's connect timeout (observed as `MCP error -32000: Connection closed`). The tiny
-# package.json only carries `type: module` so Node parses the bundle as ESM.
-RUN mkdir -p /opt/org-memory-mcp/dist \
- && cp apps/org-memory-mcp/dist/index.js /opt/org-memory-mcp/dist/index.js \
- && printf '{"private":true,"type":"module"}\n' > /opt/org-memory-mcp/package.json
-
-# Runtime stage — Node runtime + entrypoint + the baked org-memory MCP server.
+# Nothing app-specific is baked in: OpenClaw itself is installed into the per-tenant PVC on first
+# boot (see entrypoint.sh), and the official Cognee memory plugin (@cognee/cognee-openclaw) is
+# installed the same way when Cognee is wired. The image only provides the Node runtime, curl, and
+# the entrypoint.
 FROM node:22-bookworm-slim
 
 # curl is required by entrypoint.sh's 30s effective-contract re-pull loop. bookworm-slim ships
@@ -44,8 +12,6 @@ FROM node:22-bookworm-slim
 RUN apt-get update \
  && apt-get install -y --no-install-recommends curl \
  && rm -rf /var/lib/apt/lists/*
-
-COPY --from=build /opt/org-memory-mcp /opt/org-memory-mcp
 
 COPY apps/tenant/deploy/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

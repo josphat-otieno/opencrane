@@ -8,7 +8,6 @@ packages:
   - apps/fleet-operator
   - apps/clustertenant-operator
   - apps/harvesting-agent
-  - apps/org-memory-mcp
   - apps/cli
   - apps/skill-registry
   - website

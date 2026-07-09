@@ -70,9 +70,9 @@ export function _BuildDeployment(config: OpenClawTenantOperatorConfig, stateVolu
     { name: "TMPDIR", value: "/tmp" },
     { name: "NPM_CONFIG_CACHE", value: "/tmp/npm-cache" },
     ...(config.liteLlmEnabled ? [{ name: "LITELLM_ENDPOINT", value: config.liteLlmEndpoint }] : []),
-    // Org-memory backend. When Cognee is wired at the cluster level, the pod's `@opencrane/awareness`
-    // client retrieves org context DIRECTLY from its per-tenant Cognee (no control-plane mediation in
-    // the hot path — see libs/awareness). `OPENCRANE_MEMORY_BACKEND=cognee` is the explicit signal the
+    // Org-memory backend. When Cognee is wired at the cluster level, the Cognee OpenClaw memory plugin
+    // retrieves org context DIRECTLY from its per-tenant Cognee (no control-plane mediation in the hot
+    // path). `OPENCRANE_MEMORY_BACKEND=cognee` is the explicit signal the
     // runtime/workspace docs key off; both are injected only when configured so a Cognee-less
     // deployment renders byte-for-byte unchanged and the runtime cleanly falls back to workspace-file
     // memory (the docs treat an unset backend as `workspace`).
