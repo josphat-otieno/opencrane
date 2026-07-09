@@ -222,6 +222,11 @@ const _mcpSchema = z
   .object({
     /** Server id → server config map. */
     servers: z.record(z.string(), _mcpServerSchema),
+    /**
+     * MCP runtime idle TTL in ms (openclaw ≥ 2026.6.11 `mcp.sessionIdleTtlMs`). `0` disables idle
+     * eviction so stdio servers (org-memory) stay warm and are never re-spawned mid-session.
+     */
+    sessionIdleTtlMs: z.number().int().min(0).optional(),
   })
   .passthrough();
 

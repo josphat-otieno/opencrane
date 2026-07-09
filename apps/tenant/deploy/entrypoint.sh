@@ -468,14 +468,27 @@ function _main()
   # Ensure temporary writable paths exist when the root filesystem is read-only.
   mkdir -p /tmp/opencrane-home /tmp/npm-cache
 
-  # Install or verify OpenClaw runtime on persistent storage
+  # Install or UPGRADE the OpenClaw runtime on persistent storage. The runtime lives on the
+  # pod's PVC and survives restarts, so a pinned-version bump only takes effect if we compare
+  # the INSTALLED version to $OPENCLAW_VERSION and reinstall on mismatch — an existence-only
+  # check (the previous behaviour) left already-provisioned tenants stuck on their first-boot
+  # version forever, silently ignoring every subsequent pin bump.
   OPENCLAW_BIN="$RUNTIME_DIR/node_modules/.bin/openclaw"
-  if [ ! -x "$OPENCLAW_BIN" ]; then
-    echo "[opencrane] Installing OpenClaw@${OPENCLAW_VERSION} to persistent storage..."
+  OPENCLAW_PKG="$RUNTIME_DIR/node_modules/openclaw/package.json"
+  installed_version=""
+  if [ -x "$OPENCLAW_BIN" ] && [ -f "$OPENCLAW_PKG" ]; then
+    installed_version="$(node -p "require('$OPENCLAW_PKG').version" 2>/dev/null || echo "")"
+  fi
+  if [ "$installed_version" != "$OPENCLAW_VERSION" ]; then
+    if [ -n "$installed_version" ]; then
+      echo "[opencrane] OpenClaw ${installed_version} installed but ${OPENCLAW_VERSION} is pinned — upgrading..."
+    else
+      echo "[opencrane] Installing OpenClaw@${OPENCLAW_VERSION} to persistent storage..."
+    fi
     npm install --prefix "$RUNTIME_DIR" "openclaw@${OPENCLAW_VERSION}" --omit=dev
-    echo "[opencrane] OpenClaw installed successfully"
+    echo "[opencrane] OpenClaw@${OPENCLAW_VERSION} installed successfully"
   else
-    echo "[opencrane] OpenClaw runtime found at $OPENCLAW_BIN"
+    echo "[opencrane] OpenClaw@${installed_version} runtime found at $OPENCLAW_BIN (matches pin)"
   fi
 
   # Add runtime bin to PATH

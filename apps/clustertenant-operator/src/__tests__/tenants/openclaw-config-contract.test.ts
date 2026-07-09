@@ -54,6 +54,18 @@ describe("openclaw.json render contract — zod schema (task_d611ab4d)", functio
     expect(parsed.success, parsed.success ? "" : JSON.stringify(parsed.error?.issues, null, 2)).toBe(true);
   });
 
+  it("disables MCP idle eviction (sessionIdleTtlMs=0) so org-memory never idle-respawns", function _idleTtl()
+  {
+    // openclaw evicts an idle bundled MCP runtime after mcp.sessionIdleTtlMs (default 10min) and
+    // re-spawns on next use, racing its own connect -> -32000. 0 keeps the org-memory stdio server
+    // warm for the pod's life. Rendered only when Cognee is wired (the org-memory branch).
+    const cogneeConfig = { ...defaultConfig, cogneeEndpoint: "http://cognee:8000" };
+    const config = JSON.parse(_BuildConfigMap(cogneeConfig, _makeTenant("contract"), "default").data?.["openclaw.json"] ?? "{}") as Record<string, unknown>;
+    const mcp = config["mcp"] as Record<string, unknown>;
+    expect(mcp["sessionIdleTtlMs"]).toBe(0);
+    expect((mcp["servers"] as Record<string, unknown>)["org-memory"]).toBeTruthy();
+  });
+
   it("never leaks the internal trustNothing flag into the gateway block", function _noTrustNothing()
   {
     // The exact f6afafd regression: trustNothing is operator-internal, not an

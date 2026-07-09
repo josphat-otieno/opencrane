@@ -350,6 +350,14 @@ export function _BuildConfigMap(config: OpenClawTenantOperatorConfig, tenant: Te
     const existingServers = (existingMcp["servers"] as Record<string, unknown> | undefined) ?? {};
     merged["mcp"] = {
       ...existingMcp,
+      // Keep the org-memory stdio runtime warm for the pod's whole life. OpenClaw evicts an idle
+      // bundled MCP runtime after `mcp.sessionIdleTtlMs` (default 10 min) and RE-SPAWNS it on next
+      // use — and OpenClaw does not retry a failed stdio spawn, so that periodic re-spawn races its
+      // connect and surfaces as `MCP error -32000: Connection closed` roughly every ~10-30 min.
+      // `0` disables idle eviction (verified in openclaw@2026.6.11: `idleTtlMs <= 0` skips the sweep),
+      // so the server spawns once at startup and stays up. Set AFTER the tenant spread so a
+      // `configOverrides.mcp` can't re-enable eviction and break org-memory. Requires openclaw ≥ 2026.6.11.
+      sessionIdleTtlMs: 0,
       servers: {
         ...existingServers,
         [_ORG_MEMORY_SERVER_NAME]: {

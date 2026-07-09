@@ -38,6 +38,13 @@ RUN mkdir -p /opt/org-memory-mcp/dist \
 # Runtime stage — Node runtime + entrypoint + the baked org-memory MCP server.
 FROM node:22-bookworm-slim
 
+# curl is required by entrypoint.sh's 30s effective-contract re-pull loop. bookworm-slim ships
+# without it, which silently turned that loop into a fleet-wide no-op (the pod never refreshed
+# its runtime contract / openclaw.json after boot). Kept minimal: no recommends, apt lists purged.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl \
+ && rm -rf /var/lib/apt/lists/*
+
 COPY --from=build /opt/org-memory-mcp /opt/org-memory-mcp
 
 COPY apps/tenant/deploy/entrypoint.sh /entrypoint.sh
