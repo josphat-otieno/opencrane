@@ -20,12 +20,20 @@ RUN pnpm install --frozen-lockfile --filter @opencrane/awareness --filter @openc
 
 COPY libs/awareness/src libs/awareness/src
 COPY apps/org-memory-mcp/src apps/org-memory-mcp/src
+# awareness must be built first: the org-memory bundle resolves @opencrane/awareness
+# through its published `exports` (dist/index.js), so its dist has to exist before esbuild runs.
 RUN pnpm --filter @opencrane/awareness build \
- && pnpm --filter @opencrane/org-memory-mcp build
+ && pnpm --filter @opencrane/org-memory-mcp bundle
 
-# Produce a self-contained deployable dir (real node_modules, no workspace symlinks).
-# `--legacy` is required from pnpm v10 to deploy non-injected workspace packages.
-RUN pnpm --filter @opencrane/org-memory-mcp deploy --prod --legacy /opt/org-memory-mcp
+# Assemble a MINIMAL deployable: a single self-contained esbuild bundle, NO node_modules.
+# OpenClaw re-spawns `node /opt/org-memory-mcp/dist/index.js` over stdio on every config
+# reload; shipping one file instead of a full dependency tree cuts Node's module-resolution
+# file reads at cold start, shrinking the spawn->handshake window that otherwise races
+# OpenClaw's connect timeout (observed as `MCP error -32000: Connection closed`). The tiny
+# package.json only carries `type: module` so Node parses the bundle as ESM.
+RUN mkdir -p /opt/org-memory-mcp/dist \
+ && cp apps/org-memory-mcp/dist/index.js /opt/org-memory-mcp/dist/index.js \
+ && printf '{"private":true,"type":"module"}\n' > /opt/org-memory-mcp/package.json
 
 # Runtime stage — Node runtime + entrypoint + the baked org-memory MCP server.
 FROM node:22-bookworm-slim

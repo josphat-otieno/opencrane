@@ -304,6 +304,40 @@ function _link_shared_skills()
   echo "$success_message"
 }
 
+# Fingerprint the CONTRACT fields whose change a hot-reload actually propagates to the
+# running agent: the workspace docs (consumed by _apply_workspace_docs) and the entitled
+# skills (consumed by _pull_entitled_skills). openclaw.json's mcp.servers are static —
+# rendered once at boot — so a contract delta touching neither docs nor skills would
+# re-spawn the stdio MCP servers for nothing, and every needless re-spawn is a fresh
+# chance to hit `MCP error -32000: Connection closed`. The poll loop reloads only when
+# this fingerprint changes. Emits a sha256 hex digest (or a sentinel that forces a reload
+# when the contract is missing/unparseable, so we fail safe towards reloading).
+function _reload_fingerprint()
+{
+  local contract_file="$1"
+
+  if [ ! -f "$contract_file" ]; then
+    echo "NO_CONTRACT"
+    return 0
+  fi
+
+  node - "$contract_file" <<'EOF'
+const fs = require("node:fs");
+const crypto = require("node:crypto");
+try {
+  const c = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+  const relevant = {
+    workspace: c && c.workspace !== undefined ? c.workspace : null,
+    managedDocs: c && Array.isArray(c.managedDocs) ? c.managedDocs : [],
+    skills: c && c.skills && Array.isArray(c.skills.entitled) ? c.skills.entitled : [],
+  };
+  process.stdout.write(crypto.createHash("sha256").update(JSON.stringify(relevant)).digest("hex"));
+} catch {
+  process.stdout.write("PARSE_ERROR");
+}
+EOF
+}
+
 # Trigger OpenClaw's hot-reload of mcp.*/agents/models/tools.
 #
 # OpenClaw reloads by WATCHING its config file (openclaw.json); SIGHUP is NOT a
@@ -360,22 +394,36 @@ function _contract_poll_loop()
       old_sum=$(sha256sum "$writable_path" 2>/dev/null | cut -d' ' -f1)
 
       if [ "$new_sum" != "$old_sum" ]; then
+        # Fingerprint the reload-relevant fields BEFORE overwriting the old contract, so a
+        # docs/skills change (which a reload must propagate) is distinguishable from a bare
+        # metadata/model-catalog delta (which must NOT churn the stdio MCP servers).
+        # Distinct sentinels on failure so a fingerprint error never aborts the poll loop
+        # (set -e) and always falls through to a reload (fail safe).
+        local new_fp old_fp
+        old_fp=$(_reload_fingerprint "$writable_path") || old_fp="FP_ERR_OLD"
+        new_fp=$(_reload_fingerprint "$tmp_path") || new_fp="FP_ERR_NEW"
+
         mv "$tmp_path" "$writable_path"
-        echo "[opencrane] Contract updated (sha256: ${new_sum}); reloading MCP policy" >&2
+        echo "[opencrane] Contract updated (sha256: ${new_sum})" >&2
 
-        # Re-render contract-derived workspace docs (TOOLS.md) before the reload so the
-        # agent sees the new tool list as soon as it restarts.
+        # Re-render contract-derived workspace docs (TOOLS.md) and pull newly-entitled skill
+        # bundles. Both are idempotent, so running them on every contract change is cheap and
+        # keeps the on-disk files current. Additive: a de-entitled skill stops being advertised
+        # in TOOLS.md and 404s at the registry, but its on-disk copy is left in place (pruning
+        # de-entitled skills is a separate follow-up).
         _apply_workspace_docs "$writable_path"
-
-        # Pull any newly-entitled skill bundles from the registry before the reload so
-        # the agent can use them on restart. Additive: a de-entitled skill stops being
-        # advertised in TOOLS.md and 404s at the registry, but its on-disk copy is left
-        # in place (pruning de-entitled skills is a separate follow-up).
         _pull_entitled_skills "$writable_path"
 
-        # Make the new policy/skills/docs take effect without a full pod restart by
-        # triggering OpenClaw's config-file watcher (file-watch reload, not SIGHUP).
-        _trigger_openclaw_reload
+        # Only trigger the file-watch reload when a reload would actually change what the
+        # agent sees. Rewriting openclaw.json makes OpenClaw dispose + re-spawn its stdio MCP
+        # servers (incl. org-memory); doing that for a no-op delta needlessly risks a
+        # `-32000 Connection closed` spawn race, so skip it when docs+skills are unchanged.
+        if [ "$new_fp" != "$old_fp" ]; then
+          echo "[opencrane] Reload-relevant fields (workspace docs/skills) changed; triggering hot-reload" >&2
+          _trigger_openclaw_reload
+        else
+          echo "[opencrane] Contract change is not reload-relevant; skipping MCP re-spawn" >&2
+        fi
       else
         rm -f "$tmp_path"
       fi
