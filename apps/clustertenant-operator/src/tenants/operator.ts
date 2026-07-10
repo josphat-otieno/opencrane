@@ -18,6 +18,7 @@ import { LinkerdIdentityClient } from "./internal/linkerd-identity.client.js";
 
 import { TenantEncryptionKeys } from "./internal/tenant-encryption-keys.js";
 import { TenantLiteLlmKeys } from "./internal/tenant-litellm-keys.js";
+import { CogneeTenantIdentity } from "./internal/cognee-tenant-identity.js";
 import { _ResolveTenantPolicy } from "./internal/policy-resolution.js";
 import { _FetchTenantModels } from "./internal/tenant-models.js";
 import { _ResolveClusterTenant } from "./internal/cluster-tenant-resolution.js";
@@ -71,6 +72,9 @@ export class TenantOperator
   /** Helper for LiteLLM virtual key provisioning and Secret creation. */
   private liteLlmKeys: TenantLiteLlmKeys;
 
+  /** Helper for provisioning a real, per-tenant Cognee login (never a shared default). */
+  private cogneeTenantIdentity: CogneeTenantIdentity;
+
   /**
    * Per-tenant reconcile coalescing. The watch runner dispatches handlers fire-and-forget,
    * so a watch reconnect replays every Tenant as `ADDED` at once, and a persistently failing
@@ -111,7 +115,8 @@ export class TenantOperator
               cleanup: TenantCleanup,
               statusWriter: TenantStatusWriter,
               encryptionKeys: TenantEncryptionKeys,
-              liteLlmKeys: TenantLiteLlmKeys)
+              liteLlmKeys: TenantLiteLlmKeys,
+              cogneeTenantIdentity: CogneeTenantIdentity)
   {
     this.watch = watch;
     this.customApi = customApi;
@@ -125,6 +130,7 @@ export class TenantOperator
     this.statusWriter = statusWriter;
     this.encryptionKeys = encryptionKeys;
     this.liteLlmKeys = liteLlmKeys;
+    this.cogneeTenantIdentity = cogneeTenantIdentity;
     this.configChecksum = _OperatorConfigChecksum(config);
   }
 
@@ -355,7 +361,22 @@ export class TenantOperator
         this.log.warn({ err, name }, "litellm key provisioning failed; continuing reconcile");
       }
 
-      // 5. ConfigMap — serialises the base OpenClaw JSON config merged with any
+      // 5. Cognee tenant identity — registers a REAL Cognee user account for this tenant
+      //    (the same owner email the gateway's trusted-proxy allowlist already pins the pod
+      //    to), so the pod authenticates to Cognee as ITSELF rather than the plugin's
+      //    hardcoded default_user fallback. Best-effort so a Cognee outage does not block
+      //    tenant startup (memory is a dependency, not a hard requirement). Skipped when
+      //    Cognee is not configured for this silo.
+      try
+      {
+        await this.cogneeTenantIdentity.ensureTenantCogneeIdentity(effectiveTenant, namespace);
+      }
+      catch (err)
+      {
+        this.log.warn({ err, name }, "cognee tenant identity provisioning failed; continuing reconcile");
+      }
+
+      // 6. ConfigMap — serialises the base OpenClaw JSON config merged with any
       //    spec.configOverrides the tenant author provided. Capture it so its
       //    checksum can roll the pod when the config changes (step 7).
       //
@@ -398,7 +419,7 @@ export class TenantOperator
         configChecksum = _ConfigChecksum(configMap);
       }
 
-      // 6. State volume — adapter decides CSI mount (cloud) vs PVC (on-prem).
+      // 7. State volume — adapter decides CSI mount (cloud) vs PVC (on-prem).
       //    Create the PVC only when the adapter requests it (on-prem path).
       const stateVolume = this.hosting.buildStateVolume(name);
       if (stateVolume.requiresPvc)
@@ -406,15 +427,15 @@ export class TenantOperator
         await __K8sApplyResource(this.coreApi, _BuildStatePvc(name, namespace, this.config.tenantStorageClassName), this.log);
       }
 
-      // 7. Deployment — single-replica pod running the tenant's OpenClaw gateway.
+      // 8. Deployment — single-replica pod running the tenant's OpenClaw gateway.
       //    Mounts the ConfigMap, encryption key, state volume, and projected identity tokens.
       await __K8sApplyResource(this.appsApi, _BuildDeployment(this.config, stateVolume, effectiveTenant, namespace, compute, configChecksum), this.log);
 
-      // 8. Service — ClusterIP that makes the gateway reachable inside the cluster
+      // 9. Service — ClusterIP that makes the gateway reachable inside the cluster
       //    on the configured gateway port.
       await __K8sApplyResource(this.coreApi, _BuildService(this.config, effectiveTenant, namespace), this.log);
 
-      // 9. NetworkPolicy — lock the gateway port to the identity-routing proxy (now folded
+      // 10. NetworkPolicy — lock the gateway port to the identity-routing proxy (now folded
       //    into the operator) so the trusted-proxy auth (CONN.4) can't be abused by other
       //    in-cluster pods. No per-user Ingress is minted: every user reaches their pod
       //    through the org's single host `<org>.<base>`, reverse-proxied by the operator to
@@ -422,7 +443,7 @@ export class TenantOperator
       //    cert and gets an explicit external-dns record (see the org-domain provisioner).
       await __K8sApplyResource(this.networkingApi, _BuildGatewayNetworkPolicy(this.config, effectiveTenant, namespace), this.log);
 
-      // 10. Status — write the observed state back to the Tenant CR so that kubectl, the
+      // 11. Status — write the observed state back to the Tenant CR so that kubectl, the
       //    control-plane API, and the UI all see the current phase. When the model gate
       //    skipped the ConfigMap refresh the pod is still serving on its last-applied
       //    (good) config, so the phase is Degraded (not Error) with the reason recorded;
@@ -682,6 +703,7 @@ export function _CreateTenantOperator(kc: k8s.KubeConfig, config: OpenClawTenant
   const statusWriter = new TenantStatusWriter(customApi, log);
   const encryptionKeys = new TenantEncryptionKeys(coreApi, objectApi, log);
   const liteLlmKeys = new TenantLiteLlmKeys(config, coreApi, objectApi, log);
+  const cogneeTenantIdentity = new CogneeTenantIdentity(config, coreApi, objectApi, log);
 
-  return new TenantOperator(watch, customApi, coreApi, appsApi, networkingApi, log, config, hosting, cleanup, statusWriter, encryptionKeys, liteLlmKeys);
+  return new TenantOperator(watch, customApi, coreApi, appsApi, networkingApi, log, config, hosting, cleanup, statusWriter, encryptionKeys, liteLlmKeys, cogneeTenantIdentity);
 }
