@@ -24,4 +24,11 @@ export interface LiteLlmModelRegistration
    * LiteLLM's encrypted credential store with no pod restart, instead of the `os.environ` baseline.
    */
   litellmCredentialName?: string | null;
+  /**
+   * Optional explicit LiteLLM `model_info.mode`. Omitted for ordinary chat/completion models (the
+   * default across this catalog) — set to `"embedding"` for an embedding deployment so LiteLLM's
+   * `/embeddings` route resolves it correctly rather than relying on LiteLLM's own internal
+   * model-name inference.
+   */
+  mode?: "chat" | "embedding";
 }

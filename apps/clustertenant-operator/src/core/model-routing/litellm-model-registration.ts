@@ -79,6 +79,9 @@ async function _registerLive(endpoint: string, masterKey: string, input: LiteLlm
       body: JSON.stringify({
         model_name: input.publicModelName,
         litellm_params: litellmParams,
+        // Explicit mode (e.g. "embedding") rather than relying on LiteLLM's own model-name
+        // inference — omitted (LiteLLM defaults to chat) for the ordinary catalog models.
+        ...(input.mode ? { model_info: { mode: input.mode } } : {}),
       }),
     });
 

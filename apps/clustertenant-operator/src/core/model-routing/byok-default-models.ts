@@ -38,6 +38,17 @@ export interface ByokProviderCatalog
   defaultClass: ByokModelClassName;
   /** Model classes for this provider (≥1); ALL share the provider's single credential/key. */
   models: readonly ByokModelClass[];
+  /**
+   * Optional embedding model, registered directly with LiteLLM (see
+   * `provision-byok-key.ts` `_ensureProviderEmbeddingModel`) — deliberately NOT a `models[]`
+   * entry: every `models[]` class becomes a Global `ModelDefinition` row, and
+   * `tenant-models.ts` exposes ALL Global rows unconditionally as tenant-selectable CHAT
+   * models. An embedding deployment must never appear there, so it bypasses `ModelDefinition`
+   * entirely — internal callers needing it (Cognee, via its own dedicated LiteLLM key; see
+   * `cognee-litellm-key.ts`) reference the slug directly. Absent ⇒ no embedding model for
+   * this provider yet (set only where needed, not required for every provider).
+   */
+  embeddingModel?: { slug: string };
 }
 
 /** BYOK provider key → its model catalog. Absent providers set a key but seed no model. */
@@ -50,6 +61,9 @@ export const _BYOK_PROVIDER_CATALOG: Readonly<Record<string, ByokProviderCatalog
       { className: "balanced", slug: "openai/gpt-5.4" },
       { className: "fast", slug: "openai/gpt-5.4-nano" },
     ],
+    // Cognee's embedding pipeline (its own dedicated LiteLLM key — cognee-litellm-key.ts) needs
+    // this; it is NOT a tenant-selectable chat model (see ByokProviderCatalog.embeddingModel).
+    embeddingModel: { slug: "openai/text-embedding-3-large" },
   },
   anthropic: {
     litellmProvider: "anthropic",

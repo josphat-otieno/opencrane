@@ -330,22 +330,27 @@ clustertenantManager:
     #    it Cognee has no embedding/LLM credentials and every memory-capture attempt aborts
     #    after ~60s of failed embedding calls (the pre-fix symptom).
     #
-    #    IMPORTANT — the model names below are PLACEHOLDERS. Verify they are actually
-    #    registered/routable on this cluster's live LiteLLM proxy before relying on them in
-    #    production (e.g. `curl $LITELLM_ENDPOINT/v1/models`); override per-deploy with
-    #    `--set clustertenantManager.cognee.llm.model=...` /
-    #    `--set clustertenantManager.cognee.embedding.model=...` if they differ.
+    #    Verified against the live opencrane-dev LiteLLM proxy (`/model/info`) — the two
+    #    original placeholders here did NOT exist (neither `openai/gpt-4o-mini` nor any
+    #    embedding model was registered). Fixed as follows:
     llm:
       # -- "openai" matches Cognee's own default AND this platform's litellm-proxy
       #    convention (api: openai-completions) for an OpenAI-compatible upstream.
       provider: "openai"
-      model: "openai/gpt-4o-mini"
+      # -- "auto" is this platform's own stable model-selection alias (byok-default-models.ts),
+      #    seeded by the BYOK bootstrap alongside every provider's chat models — it currently
+      #    resolves to openai/gpt-5.4-nano on opencrane-dev, but re-points automatically if the
+      #    catalog's cheapest tier changes, so this stays correct without a values.yaml edit.
+      model: "auto"
     embedding:
       # -- "custom" (NOT "openai") — verified against Cognee's own docs: the "custom"
       #    provider passes EMBEDDING_ENDPOINT straight through to LiteLLM as `api_base`
       #    with no automatic /v1 append or /embeddings strip, which the "openai" provider
       #    does and which breaks routing through a proxy base URL.
       provider: "custom"
+      # -- Registered directly with LiteLLM by the BYOK bootstrap flow (see
+      #    ByokProviderCatalog.embeddingModel / _ensureProviderEmbeddingModel) — NOT a
+      #    tenant-selectable ModelDefinition, so this exact slug must match that registration.
       model: "openai/text-embedding-3-large"
       dimensions: 3072
   # -- OIDC human-login session config for the control-plane. Zitadel is the single

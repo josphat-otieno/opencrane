@@ -96,6 +96,17 @@ export async function _ProvisionByokKey(opts: {
     log.warn({ provider, err }, "byok model seed failed; key is set but its models were not seeded");
   }
 
+  // 5. Best-effort: register the provider's embedding model (if catalogued) directly with LiteLLM —
+  //    deliberately OUTSIDE step 4's ModelDefinition path (see ByokProviderCatalog.embeddingModel).
+  try
+  {
+    await _ensureProviderEmbeddingModel(catalog, litellmCredentialName, log);
+  }
+  catch (err)
+  {
+    log.warn({ provider, err }, "byok embedding model registration failed; key is set but no embedding model was registered");
+  }
+
   return { litellmRegistered, row };
 }
 
@@ -317,4 +328,75 @@ async function _ensureProviderModels(prisma: PrismaClient, catalog: ByokProvider
       });
     }
   }
+}
+
+/**
+ * Best-effort, idempotent registration of a provider's embedding model directly with LiteLLM —
+ * deliberately WITHOUT a `ModelDefinition` row (see `ByokProviderCatalog.embeddingModel`'s doc:
+ * every Global `ModelDefinition` is exposed to EVERY tenant as a selectable chat model, so an
+ * embedding deployment must never become one). No-op when the provider has no catalogued
+ * embedding model, or when LiteLLM is unconfigured (dev/tests — mirrors `_RegisterLiteLlmModel`'s
+ * own guard).
+ *
+ * Idempotency is checked directly against LiteLLM (`GET /model/info`) rather than a local
+ * bookkeeping row, since intentionally skipping `ModelDefinition` here means there is no row to
+ * check against; a read failure falls through to attempting registration anyway (LiteLLM's own
+ * `/model/new` on an existing `model_name` is itself safe to repeat).
+ *
+ * @param catalog               - The provider's catalog, or undefined (provider not catalogued).
+ * @param litellmCredentialName - The LiteLLM credential name (null ⇒ Secret-only baseline).
+ * @param log                   - Scoped logger for the registration outcome.
+ */
+async function _ensureProviderEmbeddingModel(catalog: ByokProviderCatalog | undefined, litellmCredentialName: string | null, log: Logger): Promise<void>
+{
+  if (!catalog?.embeddingModel)
+  {
+    return;
+  }
+
+  const endpoint = process.env.LITELLM_ENDPOINT?.trim() ?? "";
+  const masterKey = process.env.LITELLM_MASTER_KEY?.trim() ?? "";
+  if (!endpoint || !masterKey)
+  {
+    return;
+  }
+
+  const slug = catalog.embeddingModel.slug;
+
+  // 1. Skip re-registration when LiteLLM already has this model_name — best-effort: any failure
+  //    here (network, non-2xx, bad JSON) just falls through to attempting registration anyway.
+  try
+  {
+    const infoResponse = await fetch(`${endpoint}/model/info`, {
+      headers: { Authorization: `Bearer ${masterKey}` },
+    });
+    if (infoResponse.ok)
+    {
+      const info = await infoResponse.json() as { data?: Array<{ model_name?: string }> };
+      if ((info.data ?? []).some(function _match(m) { return m.model_name === slug; }))
+      {
+        log.debug({ slug }, "provider embedding model already registered with litellm");
+        return;
+      }
+    }
+  }
+  catch
+  {
+    // Fall through — an unreachable /model/info must not block attempting registration.
+  }
+
+  // 2. Register GLOBALLY, explicitly tagged `mode: "embedding"` so LiteLLM's `/embeddings` route
+  //    resolves it correctly. scope/clusterTenant are only used to build a discarded placeholder
+  //    id when LiteLLM is unreachable — no ModelDefinition row is created for this deployment.
+  await _RegisterLiteLlmModel({
+    publicModelName: slug,
+    upstreamModel: slug,
+    scope: ModelRoutingScope.Global,
+    clusterTenant: null,
+    apiBase: null,
+    apiKeyEnvRef: null,
+    litellmCredentialName,
+    mode: "embedding",
+  });
+  log.info({ slug }, "provider embedding model registered with litellm");
 }
