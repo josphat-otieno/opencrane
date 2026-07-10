@@ -6,6 +6,7 @@ import type { Tenant } from "../models/tenant.interface.js";
 import type { ClusterTenantComputeView } from "@opencrane/infra-api";
 import { _BuildTenantLabels } from "./tenant-labels.js";
 import { _BuildClusterTenantScheduling } from "./cluster-tenant-scheduling.js";
+import { _CredentialsSecretName } from "../internal/cognee-tenant-identity.js";
 
 /**
  * Build the tenant Deployment that runs a single OpenClaw gateway pod.
@@ -80,6 +81,18 @@ export function _BuildDeployment(config: OpenClawTenantOperatorConfig, stateVolu
       ? [
           { name: "OPENCRANE_MEMORY_BACKEND", value: "cognee" },
           { name: "COGNEE_ENDPOINT", value: config.cogneeEndpoint },
+          // Real, per-tenant Cognee login (see CogneeTenantIdentity) — NOT the plugin's
+          // hardcoded default_user fallback. The plugin's config.js reads these env vars
+          // directly when its rendered config carries no username/password (2-config-map.ts
+          // deliberately omits them — a real password never belongs in a ConfigMap).
+          {
+            name: "COGNEE_USERNAME",
+            valueFrom: { secretKeyRef: { name: _CredentialsSecretName(name), key: "username", optional: true } },
+          },
+          {
+            name: "COGNEE_PASSWORD",
+            valueFrom: { secretKeyRef: { name: _CredentialsSecretName(name), key: "password", optional: true } },
+          },
         ]
       : []),
     ...(tenant.spec.team ? [{ name: "OPENCRANE_TEAM", value: tenant.spec.team }] : []),

@@ -323,6 +323,28 @@ describe("TenantResourceBuilder", () =>
     expect(wiredEnv.OPENCRANE_MEMORY_BACKEND).toBe("cognee");
   });
 
+  it("wires COGNEE_USERNAME/COGNEE_PASSWORD from the tenant's own cognee-credentials Secret (never a shared default)", () =>
+  {
+    const cogneeConfig = { ...defaultConfig, cogneeEndpoint: "http://cognee:8000" };
+    const tenant = _makeTenant("cognee-identity");
+    const stateVolume = onPremAdapter.buildStateVolume("cognee-identity");
+
+    // Unset ⇒ no Cognee login env leaks into the pod.
+    const bare = _BuildDeployment(defaultConfig, stateVolume, tenant, "default");
+    const bareEnvNames = (bare.spec?.template?.spec?.containers?.[0]?.env ?? []).map((e) => e.name);
+    expect(bareEnvNames).not.toContain("COGNEE_USERNAME");
+    expect(bareEnvNames).not.toContain("COGNEE_PASSWORD");
+
+    // Configured ⇒ both env vars are populated from the PER-TENANT credentials Secret
+    // (openclaw-<name>-cognee-credentials), not any shared/silo-wide Secret.
+    const wired = _BuildDeployment(cogneeConfig, stateVolume, tenant, "default");
+    const wiredEnv = wired.spec?.template?.spec?.containers?.[0]?.env ?? [];
+    const username = wiredEnv.find((e) => e.name === "COGNEE_USERNAME");
+    const password = wiredEnv.find((e) => e.name === "COGNEE_PASSWORD");
+    expect(username?.valueFrom?.secretKeyRef).toEqual({ name: "openclaw-cognee-identity-cognee-credentials", key: "username", optional: true });
+    expect(password?.valueFrom?.secretKeyRef).toEqual({ name: "openclaw-cognee-identity-cognee-credentials", key: "password", optional: true });
+  });
+
   it("builds Deployment with PVC volume on-prem", () =>
   {
     const tenant = _makeTenant("local");
