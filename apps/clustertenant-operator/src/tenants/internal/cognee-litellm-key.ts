@@ -78,7 +78,12 @@ export class CogneeLiteLlmKey
     if (existingKey !== undefined)
     {
       await this._updateLiteLlmVirtualKey(existingKey, clusterTenantName, budget);
-      this.log.debug({ clusterTenantName, budget }, "reconciled existing cognee litellm virtual key params");
+      // .info (not .debug): the deployed fleet runs LOG_LEVEL=info, so a .debug line here was
+      // PERMANENTLY invisible in production — the only way to tell this path fired (vs. the
+      // create+restart path) was inferring it from the ABSENCE of the create-path's own .info
+      // line. This is exactly the log a human/agent needs when diagnosing the boot-order race
+      // this class of Secret can hit (see `_restartCogneeDeployment`'s doc comment).
+      this.log.info({ clusterTenantName, budget }, "reconciled existing cognee litellm virtual key params (no restart — key value unchanged)");
       return;
     }
 

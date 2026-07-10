@@ -353,6 +353,14 @@ clustertenantManager:
       #    tenant-selectable ModelDefinition, so this exact slug must match that registration.
       model: "openai/text-embedding-3-large"
       dimensions: 3072
+    # -- Extra pod-template annotations, same convention as `litellm.podAnnotations` /
+    #    `mcpGateway.podAnnotations`. Also a sanctioned, script-driven rollout trigger: Cognee's
+    #    LiteLLM key Secret is minted by the operator at runtime (not Helm-templated), so a plain
+    #    `helm upgrade` has no checksum of it to roll Cognee automatically when the key changes.
+    #    Bump this (e.g. `--set clustertenantManager.cognee.podAnnotations.restartedAt=<value>`)
+    #    to force Cognee to pick up a credential it missed at boot, without touching kubectl/helm
+    #    directly.
+    podAnnotations: {}
   # -- OIDC human-login session config for the control-plane. Zitadel is the single
   #    trusted issuer (Mode-2 broker, no upstream Entra), but nothing here is
   #    Zitadel-specific — any spec-compliant issuer works. OIDC is OFF unless
