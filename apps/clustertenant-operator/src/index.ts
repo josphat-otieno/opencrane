@@ -299,9 +299,10 @@ async function _startInSiloControllers(): Promise<void>
         return;
       }
       const objectApi = k8s.KubernetesObjectApi.makeApiClient(kc);
+      const cogneeAppsApi = kc.makeApiClient(k8s.AppsV1Api);
       try
       {
-        await new CogneeLiteLlmKey(config, coreApi, objectApi, log).ensureCogneeLiteLlmKeySecret(clusterTenantName, config.watchNamespace);
+        await new CogneeLiteLlmKey(config, coreApi, objectApi, cogneeAppsApi, log).ensureCogneeLiteLlmKeySecret(clusterTenantName, config.watchNamespace);
       }
       catch (err)
       {

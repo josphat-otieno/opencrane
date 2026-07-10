@@ -34,18 +34,21 @@ export class CogneeLiteLlmKey
   private config: OpenClawTenantOperatorConfig;
   private coreApi: k8s.CoreV1Api;
   private objectApi: k8s.KubernetesObjectApi;
+  private appsApi: k8s.AppsV1Api;
   private log: Logger;
 
   constructor(
     config: OpenClawTenantOperatorConfig,
     coreApi: k8s.CoreV1Api,
     objectApi: k8s.KubernetesObjectApi,
+    appsApi: k8s.AppsV1Api,
     log: Logger,
   )
   {
     this.config = config;
     this.coreApi = coreApi;
     this.objectApi = objectApi;
+    this.appsApi = appsApi;
     this.log = log;
   }
 
@@ -107,6 +110,15 @@ export class CogneeLiteLlmKey
 
     await __K8sApplyResource(this.objectApi, secret, this.log);
     this.log.info({ clusterTenantName, budget }, "created cognee litellm virtual key secret");
+
+    // Close the boot-order race: Cognee's Deployment is Helm-templated and starts as part of
+    // the SAME `helm upgrade` that rolls this manager pod, with no ordering guarantee that this
+    // Secret exists first. `secretKeyRef` env vars resolve empty (not an error, since the chart
+    // marks them `optional: true`) when the Secret is missing at pod start, and — being env vars,
+    // not a mounted volume — never pick up the Secret's value without a restart. Only needed on
+    // the CREATE path: an update-existing-secret reconcile doesn't rotate the key value, so any
+    // pod already running still has the credential it started with.
+    await this._restartCogneeDeployment(namespace, clusterTenantName);
   }
 
   /**
@@ -197,6 +209,67 @@ export class CogneeLiteLlmKey
     catch
     {
       return undefined;
+    }
+  }
+
+  /**
+   * Trigger a rollout restart of this silo's Cognee Deployment so it picks up the just-minted
+   * key Secret — mirrors what `kubectl rollout restart` does under the hood (a pod-template
+   * annotation patch), since a Secret consumed via `secretKeyRef` env vars never refreshes on
+   * its own. Discovered by label (`app.kubernetes.io/component: cognee`, matching
+   * `cognee-deployment.yaml`'s own labels) rather than by name — the operator cannot compute
+   * the chart's release-prefixed Deployment name, and there is exactly one Cognee Deployment
+   * per namespace (documented invariant), so label discovery is safe and chart-agnostic.
+   *
+   * Best-effort and non-fatal: the Secret is already durably written regardless of whether this
+   * succeeds — a failure here (RBAC, no Cognee installed yet, API hiccup) just means Cognee picks
+   * up the credential on its NEXT restart (a future deploy, pod eviction, etc.) instead of now.
+   */
+  private async _restartCogneeDeployment(namespace: string, clusterTenantName: string): Promise<void>
+  {
+    try
+    {
+      const list = await this.appsApi.listNamespacedDeployment({
+        namespace,
+        labelSelector: "app.kubernetes.io/component=cognee",
+      });
+      const deployments = list.items ?? [];
+      if (deployments.length === 0)
+      {
+        this.log.debug({ clusterTenantName, namespace }, "no cognee deployment found to restart (not installed in this release?)");
+        return;
+      }
+
+      for (const deployment of deployments)
+      {
+        const name = deployment.metadata?.name;
+        if (!name)
+        {
+          continue;
+        }
+
+        await this.appsApi.patchNamespacedDeployment(
+          {
+            name,
+            namespace,
+            body: {
+              spec: {
+                template: {
+                  metadata: {
+                    annotations: { "opencrane.io/restarted-at": new Date().toISOString() },
+                  },
+                },
+              },
+            },
+          },
+          k8s.setHeaderOptions("Content-Type", k8s.PatchStrategy.StrategicMergePatch),
+        );
+        this.log.info({ clusterTenantName, namespace, deployment: name }, "restarted cognee deployment to pick up its new litellm key");
+      }
+    }
+    catch (err)
+    {
+      this.log.warn({ clusterTenantName, namespace, err }, "cognee deployment restart failed; it will pick up the new key on its next natural restart instead");
     }
   }
 }
