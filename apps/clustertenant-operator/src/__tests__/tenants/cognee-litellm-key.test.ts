@@ -48,6 +48,17 @@ function _makeObjectApi(): k8s.KubernetesObjectApi
   } as unknown as k8s.KubernetesObjectApi;
 }
 
+/** Stub AppsV1Api: lists a single cognee Deployment (or none) and records restart patches. */
+function _makeAppsApi(deploymentNames: string[] = ["opencrane-elewa-opencrane-cognee"]): k8s.AppsV1Api
+{
+  return {
+    listNamespacedDeployment: vi.fn().mockResolvedValue({
+      items: deploymentNames.map(function _toDeployment(name) { return { metadata: { name } }; }),
+    }),
+    patchNamespacedDeployment: vi.fn().mockResolvedValue({}),
+  } as unknown as k8s.AppsV1Api;
+}
+
 /** Parse the JSON body of a recorded fetch call. */
 function _bodyOf(call: unknown[]): Record<string, unknown>
 {
@@ -74,7 +85,7 @@ describe("CogneeLiteLlmKey", () =>
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const keys = new CogneeLiteLlmKey(_enabledConfig, _makeCoreApi(), _makeObjectApi(), _log);
+    const keys = new CogneeLiteLlmKey(_enabledConfig, _makeCoreApi(), _makeObjectApi(), _makeAppsApi(), _log);
     await keys.ensureCogneeLiteLlmKeySecret("acme", "default");
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -99,7 +110,7 @@ describe("CogneeLiteLlmKey", () =>
     vi.stubGlobal("fetch", fetchMock);
 
     const objectApi = _makeObjectApi();
-    const keys = new CogneeLiteLlmKey(_enabledConfig, _makeCoreApi(), objectApi, _log);
+    const keys = new CogneeLiteLlmKey(_enabledConfig, _makeCoreApi(), objectApi, _makeAppsApi(), _log);
     await keys.ensureCogneeLiteLlmKeySecret("acme", "opencrane-elewa");
 
     expect(objectApi.create as ReturnType<typeof vi.fn>).toHaveBeenCalledTimes(1);
@@ -115,12 +126,17 @@ describe("CogneeLiteLlmKey", () =>
     vi.stubGlobal("fetch", fetchMock);
 
     const objectApi = _makeObjectApi();
-    const keys = new CogneeLiteLlmKey(_enabledConfig, _makeCoreApi("sk-cognee-existing"), objectApi, _log);
+    const appsApi = _makeAppsApi();
+    const keys = new CogneeLiteLlmKey(_enabledConfig, _makeCoreApi("sk-cognee-existing"), objectApi, appsApi, _log);
     await keys.ensureCogneeLiteLlmKeySecret("acme", "default");
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url] = fetchMock.mock.calls[0] as [string];
     expect(url).toBe("http://litellm:4000/key/update");
+
+    // The existing-secret (reconcile-params) path must NOT restart Cognee — the key value
+    // didn't rotate, so any pod already running still has the credential it started with.
+    expect(appsApi.patchNamespacedDeployment as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
 
     const body = _bodyOf(fetchMock.mock.calls[0]);
     expect(body["key"]).toBe("sk-cognee-existing");
@@ -137,14 +153,14 @@ describe("CogneeLiteLlmKey", () =>
     const fetchMock = vi.fn().mockResolvedValue(new Response("boom", { status: 500 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const keys = new CogneeLiteLlmKey(_enabledConfig, _makeCoreApi("sk-cognee-existing"), _makeObjectApi(), _log);
+    const keys = new CogneeLiteLlmKey(_enabledConfig, _makeCoreApi("sk-cognee-existing"), _makeObjectApi(), _makeAppsApi(), _log);
     await expect(keys.ensureCogneeLiteLlmKeySecret("acme", "default")).resolves.toBeUndefined();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("throws when LITELLM_MASTER_KEY is missing while enabled", async () =>
   {
-    const keys = new CogneeLiteLlmKey({ ..._enabledConfig, liteLlmMasterKey: "" }, _makeCoreApi(), _makeObjectApi(), _log);
+    const keys = new CogneeLiteLlmKey({ ..._enabledConfig, liteLlmMasterKey: "" }, _makeCoreApi(), _makeObjectApi(), _makeAppsApi(), _log);
     await expect(keys.ensureCogneeLiteLlmKeySecret("acme", "default")).rejects.toThrow(/LITELLM_MASTER_KEY is required/);
   });
 
@@ -153,9 +169,60 @@ describe("CogneeLiteLlmKey", () =>
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    const keys = new CogneeLiteLlmKey(defaultConfig, _makeCoreApi(), _makeObjectApi(), _log);
+    const keys = new CogneeLiteLlmKey(defaultConfig, _makeCoreApi(), _makeObjectApi(), _makeAppsApi(), _log);
     await keys.ensureCogneeLiteLlmKeySecret("acme", "default");
 
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("restarts the cognee Deployment (found by label) on the CREATE path, closing the boot-order race", async () =>
+  {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ key: "sk-cognee-new" }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const appsApi = _makeAppsApi(["opencrane-elewa-opencrane-cognee"]);
+    const keys = new CogneeLiteLlmKey(_enabledConfig, _makeCoreApi(), _makeObjectApi(), appsApi, _log);
+    await keys.ensureCogneeLiteLlmKeySecret("acme", "opencrane-elewa");
+
+    expect(appsApi.listNamespacedDeployment as ReturnType<typeof vi.fn>).toHaveBeenCalledWith(
+      expect.objectContaining({ namespace: "opencrane-elewa", labelSelector: "app.kubernetes.io/component=cognee" }),
+    );
+    expect(appsApi.patchNamespacedDeployment as ReturnType<typeof vi.fn>).toHaveBeenCalledTimes(1);
+    const [patchArgs] = (appsApi.patchNamespacedDeployment as ReturnType<typeof vi.fn>).mock.calls[0] as [{ name: string; namespace: string; body: unknown }];
+    expect(patchArgs.name).toBe("opencrane-elewa-opencrane-cognee");
+    expect(patchArgs.namespace).toBe("opencrane-elewa");
+  });
+
+  it("does not crash the set when no cognee Deployment is found to restart", async () =>
+  {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ key: "sk-cognee-new" }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const appsApi = _makeAppsApi([]);
+    const keys = new CogneeLiteLlmKey(_enabledConfig, _makeCoreApi(), _makeObjectApi(), appsApi, _log);
+    await expect(keys.ensureCogneeLiteLlmKeySecret("acme", "default")).resolves.toBeUndefined();
+    expect(appsApi.patchNamespacedDeployment as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
+  });
+
+  it("does not crash the set when the restart patch fails (best-effort, non-fatal); the Secret is already durably written regardless", async () =>
+  {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ key: "sk-cognee-new" }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const appsApi = {
+      listNamespacedDeployment: vi.fn().mockResolvedValue({ items: [{ metadata: { name: "opencrane-elewa-opencrane-cognee" } }] }),
+      patchNamespacedDeployment: vi.fn().mockRejectedValue(new Error("RBAC denied")),
+    } as unknown as k8s.AppsV1Api;
+    const objectApi = _makeObjectApi();
+    const keys = new CogneeLiteLlmKey(_enabledConfig, _makeCoreApi(), objectApi, appsApi, _log);
+
+    await expect(keys.ensureCogneeLiteLlmKeySecret("acme", "default")).resolves.toBeUndefined();
+    expect(objectApi.create as ReturnType<typeof vi.fn>).toHaveBeenCalledTimes(1);
   });
 });
