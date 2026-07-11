@@ -47,21 +47,24 @@ metadata:
 spec:
   replicas: 1
   {{- if .Values.clustertenantManager.cognee.persistence.enabled }}
-  # The data PVC is ReadWriteOnce — only one pod may mount it at a time. Recreate
-  # avoids a new pod deadlocking on the disk the old pod still holds (mirrors the
-  # tenant pod's own state-volume strategy). Cognee is a per-silo singleton, so the
-  # brief downtime on a roll is acceptable.
+  # The data PVC is ReadWriteOnce — two pods can't mount it at once, so a rollout that
+  # surged a second pod would deadlock (the new pod stuck Pending on the volume the old
+  # pod still holds). `maxSurge: 0` tears the OLD pod down BEFORE creating the new one, so
+  # the volume is free when the new pod mounts — RWO-safe, like Recreate would be.
   #
-  # `rollingUpdate: null` is load-bearing on an UPGRADE of an already-live Deployment:
-  # a pre-existing pod defaulted to `RollingUpdate` carries an API-set
-  # `strategy.rollingUpdate{maxSurge,maxUnavailable}` block, and a patch that sets only
-  # `type: Recreate` leaves that block in place → the API server rejects the object
-  # ("rollingUpdate may not be specified when type is 'Recreate'"). Rendering an explicit
-  # null deletes the stale field in the merge. (A fresh install has nothing to clear, so
-  # null is a harmless no-op there.)
+  # We deliberately do NOT use `type: Recreate`: switching an ALREADY-LIVE Deployment from
+  # RollingUpdate→Recreate is rejected by the API server because the pre-existing object
+  # carries an API-defaulted `strategy.rollingUpdate` block that can't coexist with
+  # type:Recreate, and a Helm template `rollingUpdate: null` does NOT reliably clear a
+  # field Helm never previously owned (the 3-way merge drops the null — verified live, the
+  # #187/#188 failures). Keeping `type: RollingUpdate` and only tuning the params is a
+  # plain in-place field update that upgrades cleanly on the live object AND on a fresh
+  # install, with no strategy-type transition to migrate.
   strategy:
-    type: Recreate
-    rollingUpdate: null
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   {{- end }}
   selector:
     matchLabels:
