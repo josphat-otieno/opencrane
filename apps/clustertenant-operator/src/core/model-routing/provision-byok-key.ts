@@ -27,6 +27,19 @@ import type { ByokProviderCatalog } from "./byok-default-models.js";
  */
 const _AUTO_MODEL_NAME = "auto";
 
+/**
+ * Public model name of the stable EMBEDDING selection — the embedding-side mirror of
+ * {@link _AUTO_MODEL_NAME}. Backed by the configured provider's catalogued embedding model
+ * (see `_ensureProviderEmbeddingModel`); an internal consumer (Cognee) references this stable
+ * alias instead of a provider-specific slug, so the operator can re-point the backing embedding
+ * model without a consumer/values edit.
+ *
+ * MUST equal `apps/clustertenant-platform/values.yaml`'s
+ * `clustertenantManager.cognee.embedding.model` (the two agree by convention — the chart cannot
+ * import this constant), exactly like the `cognee-litellm-key` Secret-name agreement.
+ */
+export const _AUTO_EMBEDDING_MODEL_NAME = "auto-embedding";
+
 /** Outcome of {@link _ProvisionByokKey}. */
 export interface ProvisionByokKeyResult
 {
@@ -363,40 +376,70 @@ async function _ensureProviderEmbeddingModel(catalog: ByokProviderCatalog | unde
 
   const slug = catalog.embeddingModel.slug;
 
-  // 1. Skip re-registration when LiteLLM already has this model_name — best-effort: any failure
-  //    here (network, non-2xx, bad JSON) just falls through to attempting registration anyway.
+  // Register TWO embedding deployments, both GLOBAL, both explicitly `mode: "embedding"` so
+  // LiteLLM's `/embeddings` route resolves them, and both WITHOUT a ModelDefinition row (see
+  // ByokProviderCatalog.embeddingModel — an embedding deployment must never surface as a
+  // tenant-selectable chat model):
+  //   1. the provider's real embedding model under its own slug; and
+  //   2. the stable `auto-embedding` alias (_AUTO_EMBEDDING_MODEL_NAME) pointing at that same
+  //      upstream — the embedding-side mirror of the chat `auto` selection. Cognee references
+  //      the alias, so its backing model can be re-pointed here without a Cognee/values edit.
+  // First-wins across providers: the alias resolves to whichever provider's embedding model is
+  // registered first, and the /model/info check below skips it thereafter — two different-provider
+  // embedding models must never both answer to `auto-embedding` (incompatible vector spaces).
+  const deployments = [
+    { publicModelName: slug, upstreamModel: slug },
+    { publicModelName: _AUTO_EMBEDDING_MODEL_NAME, upstreamModel: slug },
+  ];
+
+  // Best-effort idempotency: read the already-registered model names ONCE. Any failure here
+  // (network, non-2xx, bad JSON) yields an empty set, so registration is simply attempted —
+  // LiteLLM's own `/model/new` on an existing `model_name` is itself safe to repeat.
+  const registered = await _litellmRegisteredModelNames(endpoint, masterKey);
+
+  for (const deployment of deployments)
+  {
+    if (registered.has(deployment.publicModelName))
+    {
+      log.debug({ publicModelName: deployment.publicModelName }, "embedding model already registered with litellm");
+      continue;
+    }
+
+    await _RegisterLiteLlmModel({
+      publicModelName: deployment.publicModelName,
+      upstreamModel: deployment.upstreamModel,
+      scope: ModelRoutingScope.Global,
+      clusterTenant: null,
+      apiBase: null,
+      apiKeyEnvRef: null,
+      litellmCredentialName,
+      mode: "embedding",
+    });
+    log.info({ publicModelName: deployment.publicModelName, upstreamModel: deployment.upstreamModel }, "embedding model registered with litellm");
+  }
+}
+
+/**
+ * Best-effort read of the set of `model_name`s LiteLLM already has registered (`GET /model/info`).
+ * Returns an empty set on any failure (unconfigured, unreachable, non-2xx, bad JSON) so callers
+ * fall through to attempting registration rather than being blocked by a transient read.
+ */
+async function _litellmRegisteredModelNames(endpoint: string, masterKey: string): Promise<Set<string>>
+{
   try
   {
-    const infoResponse = await fetch(`${endpoint}/model/info`, {
+    const response = await fetch(`${endpoint}/model/info`, {
       headers: { Authorization: `Bearer ${masterKey}` },
     });
-    if (infoResponse.ok)
+    if (!response.ok)
     {
-      const info = await infoResponse.json() as { data?: Array<{ model_name?: string }> };
-      if ((info.data ?? []).some(function _match(m) { return m.model_name === slug; }))
-      {
-        log.debug({ slug }, "provider embedding model already registered with litellm");
-        return;
-      }
+      return new Set();
     }
+    const info = await response.json() as { data?: Array<{ model_name?: string }> };
+    return new Set((info.data ?? []).map(function _name(m) { return m.model_name ?? ""; }).filter(Boolean));
   }
   catch
   {
-    // Fall through — an unreachable /model/info must not block attempting registration.
+    return new Set();
   }
-
-  // 2. Register GLOBALLY, explicitly tagged `mode: "embedding"` so LiteLLM's `/embeddings` route
-  //    resolves it correctly. scope/clusterTenant are only used to build a discarded placeholder
-  //    id when LiteLLM is unreachable — no ModelDefinition row is created for this deployment.
-  await _RegisterLiteLlmModel({
-    publicModelName: slug,
-    upstreamModel: slug,
-    scope: ModelRoutingScope.Global,
-    clusterTenant: null,
-    apiBase: null,
-    apiKeyEnvRef: null,
-    litellmCredentialName,
-    mode: "embedding",
-  });
-  log.info({ slug }, "provider embedding model registered with litellm");
 }
