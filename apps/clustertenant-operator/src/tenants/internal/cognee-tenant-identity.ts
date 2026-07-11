@@ -84,38 +84,39 @@ export class CogneeTenantIdentity
     const name = tenant.metadata!.name!;
     const secretName = _CredentialsSecretName(name);
 
-    // 1. Idempotency check — a tenant's Cognee login, once minted, is never rotated.
-    try
+    // Email is the SAME identity the gateway's trusted-proxy allowlist already pins the pod to
+    // (`_BuildConfigMap`'s `ownerEmail`) — "the user login" the tenant's owner authenticates with.
+    // `subject` (an opaque OIDC `sub`) is deliberately NOT used: Cognee validates `email` as a real
+    // email address and would reject a non-email subject string.
+    const email = tenant.spec.email.trim().toLowerCase();
+
+    // 1. Idempotency + self-heal. The login is minted once and never rotated (the password is
+    //    derived deterministically), but "the Secret exists" is NOT proof the login still WORKS: a
+    //    Cognee identity-store reset (a restart before persistence landed, a rebuilt instance) wipes
+    //    the user while the Secret lingers, orphaning it (→ 401 on every memory write). So when the
+    //    Secret is present, verify the login actually authenticates; skip only if it does. A failed
+    //    login (or missing Secret) falls through to (re-)register — the deterministic password makes
+    //    re-registration converge on the identical credential.
+    const existing = await this._readCredentialsSecret(namespace, name);
+    if (existing !== undefined && await this._loginSucceeds(existing.username, existing.password))
     {
-      await this.coreApi.readNamespacedSecret({ name: secretName, namespace });
-      this.log.debug({ name, secretName }, "cognee tenant identity already exists");
+      this.log.debug({ name, secretName }, "cognee tenant identity already exists and authenticates");
       return;
     }
-    catch
-    {
-      // Secret does not exist — continue to registration.
-    }
 
-    // 2. Derive the login. Email is the SAME identity the gateway's trusted-proxy
-    //    allowlist already pins the pod to (`_BuildConfigMap`'s `ownerEmail`) — "the user
-    //    login" the tenant's owner actually authenticates with. `subject` (an opaque OIDC
-    //    `sub`) is deliberately NOT used here: Cognee validates `email` as a real email
-    //    address and would reject a non-email subject string.
-    const email = tenant.spec.email.trim().toLowerCase();
+    // 2. Register with Cognee. A 400 almost always means the email is already registered — since the
+    //    password is derived deterministically, retrying with the identical password converges
+    //    either way, so both outcomes proceed to step 3.
     const password = await this._deriveTenantPassword(name, namespace, email);
-
-    // 3. Register with Cognee. A 400 almost always means the email is already registered
-    //    (e.g. a prior reconcile crashed before step 4 wrote the Secret) — since the
-    //    password is derived deterministically, retrying with the identical password
-    //    converges correctly either way, so both outcomes proceed to step 4.
     await this._registerCogneeUser(email, password, name);
 
-    // 4. Persist the login as a per-tenant Secret. `_BuildDeployment` mounts `username`/
-    //    `password` as COGNEE_USERNAME/COGNEE_PASSWORD env vars (secretKeyRef); the plugin
-    //    reads those directly since `2-config-map.ts` renders no username/password/apiKey.
-    //    `tenantId` starts empty — populated once `ensureTenantJoinedToSiloTenant` succeeds.
+    // 3. Persist the login. `_BuildDeployment` mounts `username`/`password` as COGNEE_USERNAME/
+    //    COGNEE_PASSWORD env vars (secretKeyRef); the plugin reads those directly since
+    //    `2-config-map.ts` renders no username/password/apiKey. `tenantId` is reset to empty: if we
+    //    reached this path the Cognee user (and thus its tenant membership) was absent, so the join
+    //    step must re-run — `ensureTenantJoinedToSiloTenant` keys off this.
     await this._writeCredentialsSecret(namespace, name, { username: email, password, tenantId: "" });
-    this.log.info({ name, secretName, email }, "created cognee tenant identity");
+    this.log.info({ name, secretName, email }, existing !== undefined ? "re-provisioned cognee tenant identity (login no longer authenticated)" : "created cognee tenant identity");
   }
 
   /**
@@ -148,16 +149,21 @@ export class CogneeTenantIdentity
       return;
     }
 
-    if (credentials.tenantId)
-    {
-      this.log.debug({ name }, "cognee tenant identity already joined to the silo tenant");
-      return;
-    }
-
     const owner = await _ReadSiloOwnerState(this.coreApi, namespace);
     if (owner === undefined || !owner.tenantId)
     {
       this.log.debug({ name }, "cognee silo owner/tenant not resolved yet; will retry joining on a later reconcile");
+      return;
+    }
+
+    // Gate on membership of the CURRENT silo tenant, not merely "some tenantId is cached". A silo
+    // re-provision (CogneeSiloTenant self-heal after an identity-store reset) mints a NEW owner
+    // tenantId, and a wiped login has its cached tenantId reset to "" by ensureTenantCogneeIdentity
+    // — both cases make the cached id differ from the owner's current one, so the (re)join below
+    // runs. When they already match, the login is joined to the live silo tenant: converged.
+    if (credentials.tenantId === owner.tenantId)
+    {
+      this.log.debug({ name }, "cognee tenant identity already joined to the current silo tenant");
       return;
     }
 
@@ -243,6 +249,25 @@ export class CogneeTenantIdentity
     }
 
     return payload.access_token;
+  }
+
+  /**
+   * Best-effort liveness gate: does this Cognee login authenticate right now? Returns false on a
+   * 401 or any error (⇒ the caller re-registers) rather than throwing. Distinct from
+   * {@link _loginCognee}, which throws — this is used only to decide whether a cached credential is
+   * still valid, so a transient blip conservatively re-runs the (idempotent) register path.
+   */
+  private async _loginSucceeds(email: string, password: string): Promise<boolean>
+  {
+    try
+    {
+      await this._loginCognee(email, password, "liveness check");
+      return true;
+    }
+    catch
+    {
+      return false;
+    }
   }
 
   /** Resolve a Cognee user's UUID from their email, authenticated as the silo owner. */

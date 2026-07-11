@@ -316,6 +316,20 @@ clustertenantManager:
       pullPolicy: IfNotPresent
     service:
       port: 8000
+    # -- Persist Cognee's identity/relational DB + graph + vector stores on a PVC so they
+    #    survive pod restarts. WITHOUT this, all of Cognee's state lives on the pod's
+    #    ephemeral filesystem and is WIPED on every restart — resetting org memory AND
+    #    orphaning the per-tenant Cognee logins the operator registers (their cached Secrets
+    #    then 401). Only consumed when `install` is true.
+    persistence:
+      enabled: true
+      # -- Size of the Cognee data volume. Grow-only: the GKE default StorageClass (pd.csi,
+      #    allowVolumeExpansion) resizes online, so bump this + re-deploy to grow (never shrinks).
+      #    Sized modestly for a dev silo; raise for a real corpus.
+      size: 10Gi
+      # -- StorageClass for the volume. Empty ⇒ the cluster default (on GKE: standard-rwo, a
+      #    PD-backed, expandable ReadWriteOnce class). Set explicitly for on-prem / other clouds.
+      storageClassName: ""
     resources:
       requests:
         cpu: 100m

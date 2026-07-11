@@ -97,17 +97,49 @@ describe("CogneeTenantIdentity", () =>
     expect(coreApi.readNamespacedSecret as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
   });
 
-  it("no-ops when the tenant's cognee-credentials Secret already exists (never rotated)", async () =>
+  it("skips re-registration when the existing login still authenticates (verifies liveness, not mere Secret existence)", async () =>
   {
-    const fetchMock = vi.fn();
+    // Secret present AND a login attempt succeeds → converged, no re-register / no Secret write.
+    const fetchMock = vi.fn().mockImplementation(async (url: string) =>
+    {
+      if (url.endsWith("/api/v1/auth/login")) { return new Response(JSON.stringify({ access_token: "jwt" }), { status: 200 }); }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
     vi.stubGlobal("fetch", fetchMock);
     const objectApi = _makeObjectApi();
 
     const identity = new CogneeTenantIdentity(_enabledConfig, _makeCoreApi({ credentialsExist: true }), objectApi, _log);
     await identity.ensureTenantCogneeIdentity(_makeTenant("acme"), "default");
 
-    expect(fetchMock).not.toHaveBeenCalled();
+    // Exactly one fetch — the liveness login — and NO register call, NO Secret write.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe("http://cognee:8000/api/v1/auth/login");
     expect(objectApi.create as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
+  });
+
+  it("re-registers when the existing login no longer authenticates (Cognee identity-store wipe)", async () =>
+  {
+    // Secret present but the login 401s (its Cognee user was wiped) → re-register + rewrite Secret
+    // with tenantId reset to "" so the join step re-runs.
+    const seen: string[] = [];
+    const fetchMock = vi.fn().mockImplementation(async (url: string) =>
+    {
+      seen.push(url);
+      if (url.endsWith("/api/v1/auth/login")) { return new Response("Unauthorized", { status: 401 }); }
+      if (url.endsWith("/api/v1/auth/register")) { return new Response("{}", { status: 201 }); }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const objectApi = _makeObjectApi();
+
+    const identity = new CogneeTenantIdentity(_enabledConfig, _makeCoreApi({ credentialsExist: true }), objectApi, _log);
+    await identity.ensureTenantCogneeIdentity(_makeTenant("acme"), "default");
+
+    expect(seen).toContain("http://cognee:8000/api/v1/auth/login");
+    expect(seen).toContain("http://cognee:8000/api/v1/auth/register");
+    expect(objectApi.create as ReturnType<typeof vi.fn>).toHaveBeenCalledTimes(1);
+    const rewritten = (objectApi.create as ReturnType<typeof vi.fn>).mock.calls[0][0] as k8s.V1Secret;
+    expect(Buffer.from(rewritten.data!["tenantId"], "base64").toString("utf8")).toBe("");
   });
 
   it("registers the tenant's owner email and writes a Secret readable by _CredentialsSecretName", async () =>
@@ -348,16 +380,42 @@ describe("CogneeTenantIdentity.ensureTenantJoinedToSiloTenant", () =>
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("no-ops when this tenant is already joined (tenantId already set)", async () =>
+  it("no-ops when already joined to the CURRENT silo tenant (cached id matches the owner's)", async () =>
   {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     const { coreApi, objectApi, store } = _makeStatefulApis();
-    _seedCredentials(store, "default", "acme", { username: "acme@example.com", password: "pw", tenantId: "already-joined" });
+    _seedCredentials(store, "default", "acme", { username: "acme@example.com", password: "pw", tenantId: "tenant-1" });
+    _seedOwner(store, "default", { username: "owner@x", password: "owner-pw", tenantId: "tenant-1" });
 
     await new CogneeTenantIdentity(_enabledConfig, coreApi, objectApi, _log).ensureTenantJoinedToSiloTenant(_makeTenant("acme"), "default");
 
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("re-joins when the cached tenant id no longer matches the current silo tenant (silo re-provisioned)", async () =>
+  {
+    // The silo owner's Cognee Tenant was re-created with a NEW id (CogneeSiloTenant self-heal after
+    // an identity-store reset); the cached membership is stale → the login must re-join + re-select.
+    const seen: string[] = [];
+    const fetchMock = vi.fn().mockImplementation(async (url: string) =>
+    {
+      seen.push(url);
+      if (url.endsWith("/auth/login")) { return new Response(JSON.stringify({ access_token: "jwt" }), { status: 200 }); }
+      if (url.endsWith("/api/v1/users/get-user-id")) { return new Response(JSON.stringify({ user_id: "u1" }), { status: 200 }); }
+      if (url.includes("/tenants?tenant_id=tenant-NEW")) { return new Response("{}", { status: 200 }); }
+      if (url.endsWith("/api/v1/permissions/tenants/select")) { return new Response("{}", { status: 200 }); }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { coreApi, objectApi, store } = _makeStatefulApis();
+    _seedCredentials(store, "default", "acme", { username: "acme@example.com", password: "tenant-pw", tenantId: "tenant-OLD" });
+    _seedOwner(store, "default", { username: "owner@x", password: "owner-pw", tenantId: "tenant-NEW" });
+
+    await new CogneeTenantIdentity(_enabledConfig, coreApi, objectApi, _log).ensureTenantJoinedToSiloTenant(_makeTenant("acme"), "default");
+
+    expect(seen.some(u => u.includes("/tenants?tenant_id=tenant-NEW"))).toBe(true);
+    expect(_field(store.get("default/" + _CredentialsSecretName("acme"))!, "tenantId")).toBe("tenant-NEW");
   });
 
   it("no-ops (retried later) when the silo owner's Cognee Tenant isn't resolved yet", async () =>

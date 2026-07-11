@@ -122,11 +122,21 @@ export class CogneeSiloTenant
       await this._writeState(namespace, state);
       this.log.info({ clusterTenantName, namespace }, "created cognee silo owner credentials");
     }
-
-    if (state.tenantId)
+    else if (state.tenantId)
     {
-      this.log.debug({ clusterTenantName, namespace }, "cognee silo tenant already resolved");
-      return;
+      // Already resolved once — but verify it is STILL live in Cognee before trusting the cached
+      // tenantId. Cognee's identity store is persisted now (PVC), but a Cognee provisioned before
+      // persistence landed, a rebuilt instance, or a manual reset leaves an empty user table, and
+      // gating on "the Secret has a tenantId" alone would then never re-provision (the wipe-blind
+      // bug this replaces). If the owner still logs in and its tenant still resolves we are
+      // converged; otherwise fall through to re-provision. Re-provisioning mints a NEW tenantId,
+      // which the per-tenant join step detects (its cached id no longer matches) and re-joins.
+      if (await this._siloTenantIsLive(state, clusterTenantName))
+      {
+        this.log.debug({ clusterTenantName, namespace }, "cognee silo tenant already resolved and live");
+        return;
+      }
+      this.log.warn({ clusterTenantName, namespace }, "cognee silo owner/tenant not live (identity store reset?); re-provisioning");
     }
 
     // Phase 2 — register (tolerating "already registered"), then find-or-create the silo's
@@ -138,6 +148,35 @@ export class CogneeSiloTenant
 
     await this._writeState(namespace, { ...state, tenantId });
     this.log.info({ clusterTenantName, namespace, tenantId }, "resolved cognee silo tenant");
+  }
+
+  /**
+   * Best-effort liveness probe of an already-resolved silo owner + Cognee Tenant: can the owner
+   * still log in, and does `tenants/me` still return the cached tenant id? Returns false (⇒
+   * re-provision) on a failed login, a non-OK lookup, or a tenant that no longer resolves. A
+   * transient/unexpected error also returns false rather than throwing, so a wipe is never
+   * silently treated as converged — re-provisioning is itself idempotent, so a false negative on a
+   * blip just re-runs harmless register/find-or-create work.
+   */
+  private async _siloTenantIsLive(state: CogneeSiloOwnerState, clusterTenantName: string): Promise<boolean>
+  {
+    try
+    {
+      const token = await this._loginOwner(state.username, state.password, clusterTenantName);
+      const response = await fetch(`${this.config.cogneeEndpoint}/api/v1/permissions/tenants/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok)
+      {
+        return false;
+      }
+      const mine = await response.json() as Array<{ id?: string }>;
+      return mine.some(function _match(t) { return t.id === state.tenantId; });
+    }
+    catch
+    {
+      return false;
+    }
   }
 
   /** Register the owner account. A 400 (already registered) is treated as success. */

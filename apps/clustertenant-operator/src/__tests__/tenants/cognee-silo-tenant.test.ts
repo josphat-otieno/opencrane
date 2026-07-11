@@ -122,9 +122,18 @@ describe("CogneeSiloTenant", () =>
     expect(_field(final, "tenantId")).toBe("tenant-123");
   });
 
-  it("is fully idempotent when a tenantId was already resolved (no fetch calls at all)", async () =>
+  it("skips re-provisioning when the resolved owner/tenant is still live (liveness-checked, not just Secret-gated)", async () =>
   {
-    const fetchMock = vi.fn();
+    // tenantId cached AND the owner still logs in AND tenants/me still returns it → converged:
+    // only the liveness probe (login + tenants/me) fires, no register / no tenant create.
+    const seen: string[] = [];
+    const fetchMock = vi.fn().mockImplementation(async (url: string) =>
+    {
+      seen.push(url);
+      if (url.endsWith("/auth/login")) { return new Response(JSON.stringify({ access_token: "jwt-owner" }), { status: 200 }); }
+      if (url.endsWith("/api/v1/permissions/tenants/me")) { return new Response(JSON.stringify([{ id: "tenant-already-resolved" }]), { status: 200 }); }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
     vi.stubGlobal("fetch", fetchMock);
     const { coreApi, objectApi, store } = _makeApis();
     store.set("default/cognee-silo-owner", {
@@ -138,7 +147,44 @@ describe("CogneeSiloTenant", () =>
 
     await new CogneeSiloTenant(_enabledConfig, coreApi, objectApi, _log).ensureSiloTenant("acme", "default");
 
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(seen).toEqual(["http://cognee:8000/api/v1/auth/login", "http://cognee:8000/api/v1/permissions/tenants/me"]);
+    expect(_field(store.get("default/cognee-silo-owner")!, "tenantId")).toBe("tenant-already-resolved");
+  });
+
+  it("re-provisions when the resolved owner/tenant is no longer live (Cognee identity-store reset)", async () =>
+  {
+    // tenantId cached but the owner login 401s (its Cognee user was wiped) → re-register the owner,
+    // re-create the tenant (tenants/me now empty), and rewrite the Secret with the NEW id.
+    let ownerRegistered = false;
+    const fetchMock = vi.fn().mockImplementation(async (url: string) =>
+    {
+      if (url.endsWith("/auth/register")) { ownerRegistered = true; return new Response("{}", { status: 201 }); }
+      if (url.endsWith("/auth/login"))
+      {
+        // 401 until the owner is (re)registered, 200 after — models the wiped-then-restored user.
+        return ownerRegistered
+          ? new Response(JSON.stringify({ access_token: "jwt-owner" }), { status: 200 })
+          : new Response("Unauthorized", { status: 401 });
+      }
+      if (url.endsWith("/api/v1/permissions/tenants/me")) { return new Response(JSON.stringify([]), { status: 200 }); }
+      if (url.includes("/api/v1/permissions/tenants?tenant_name=")) { return new Response(JSON.stringify({ tenant_id: "tenant-REPROVISIONED" }), { status: 200 }); }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { coreApi, objectApi, store } = _makeApis();
+    store.set("default/cognee-silo-owner", {
+      metadata: { name: COGNEE_SILO_OWNER_SECRET_NAME, namespace: "default" },
+      data: {
+        username: Buffer.from("silo-owner@opencrane.internal").toString("base64"),
+        password: Buffer.from("existing-pass").toString("base64"),
+        tenantId: Buffer.from("tenant-STALE").toString("base64"),
+      },
+    } as unknown as k8s.V1Secret);
+
+    await new CogneeSiloTenant(_enabledConfig, coreApi, objectApi, _log).ensureSiloTenant("acme", "default");
+
+    expect(ownerRegistered).toBe(true);
+    expect(_field(store.get("default/cognee-silo-owner")!, "tenantId")).toBe("tenant-REPROVISIONED");
   });
 
   it("resumes phase 2 with the SAME persisted password after a simulated crash (tenantId empty but credential exists)", async () =>
