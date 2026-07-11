@@ -62,6 +62,32 @@ OpenCrane uses a tiered write-through approach:
 Baseline ingest writes metadata and a summary so memory is useful by default. Explicit
 persistence captures high-signal findings with stronger provenance.
 
+## Embedding model
+
+Retrieval is semantic: Cognee turns ingested content into vector **embeddings** so agents
+recall by meaning rather than keyword. That embedding step runs through the platform's
+LiteLLM proxy on a **dedicated Cognee key**, so Cognee's embedding spend is metered as its
+own identity and never folded into a tenant's budget.
+
+The backing model is referenced through a stable, provider-agnostic alias — `auto-embedding`,
+the embedding-side mirror of the `auto` chat selection. Cognee is pinned to the alias, so an
+operator re-points the model it resolves to without editing Cognee's configuration. Today the
+alias resolves to `text-embedding-3-large` (3072-dimensional vectors), served through a
+bring-your-own-key provider credential. Cognee reaches it with its OpenAI-compatible client so
+the alias is sent to the proxy verbatim (the proxy then resolves it to the real upstream on the
+Cognee key).
+
+```
+tenant content → Cognee → auto-embedding (LiteLLM proxy) → embedding vectors → Cognee vector store
+```
+
+::: info Roadmap: fleet-level self-hosted embeddings
+A planned direction moves embeddings to a **self-hosted model shared across all ClusterTenants
+at the fleet level**, keeping the embedding path entirely in-cluster and removing the
+external-provider dependency. Each ClusterTenant keeps its own isolated vector store — only the
+model is shared, never the vectors.
+:::
+
 ## Dataset granularity and isolation
 
 Cognee datasets are the permission unit.
