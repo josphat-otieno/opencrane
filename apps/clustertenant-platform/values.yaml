@@ -343,15 +343,23 @@ clustertenantManager:
       #    catalog's cheapest tier changes, so this stays correct without a values.yaml edit.
       model: "auto"
     embedding:
-      # -- "custom" (NOT "openai") — verified against Cognee's own docs: the "custom"
-      #    provider passes EMBEDDING_ENDPOINT straight through to LiteLLM as `api_base`
-      #    with no automatic /v1 append or /embeddings strip, which the "openai" provider
-      #    does and which breaks routing through a proxy base URL.
-      provider: "custom"
-      # -- Registered directly with LiteLLM by the BYOK bootstrap flow (see
-      #    ByokProviderCatalog.embeddingModel / _ensureProviderEmbeddingModel) — NOT a
-      #    tenant-selectable ModelDefinition, so this exact slug must match that registration.
-      model: "openai/text-embedding-3-large"
+      # -- "openai_compatible" (NOT "custom") — verified against Cognee's shipped source
+      #    (cognee/infrastructure/databases/vector/embeddings/get_embedding_engine.py). Cognee
+      #    picks an embedding engine by this string: "custom" falls through to its
+      #    LiteLLMEmbeddingEngine, which runs the model name through the litellm CLIENT's provider
+      #    inference and STRIPS a provider prefix (so "openai/text-embedding-3-large" was sent to
+      #    our proxy as the bare "text-embedding-3-large" → 400 unregistered, the pre-fix symptom).
+      #    "openai_compatible" selects OpenAICompatibleEmbeddingEngine, which calls the proxy with
+      #    the OpenAI SDK and sends the model name VERBATIM (and normalises the endpoint to
+      #    `.../v1` → `.../v1/embeddings`, which our LiteLLM proxy serves).
+      provider: "openai_compatible"
+      # -- "auto-embedding" is this platform's stable embedding-selection alias, the embedding-side
+      #    mirror of the chat "auto" above. Registered by the BYOK bootstrap flow
+      #    (_AUTO_EMBEDDING_MODEL_NAME in provision-byok-key.ts / _ensureProviderEmbeddingModel),
+      #    pointing at the configured provider's real embedding model — NOT a tenant-selectable
+      #    ModelDefinition. This exact string MUST match that constant; re-pointing the backing
+      #    embedding model needs no edit here.
+      model: "auto-embedding"
       dimensions: 3072
     # -- Extra pod-template annotations, same convention as `litellm.podAnnotations` /
     #    `mcpGateway.podAnnotations`. Also a sanctioned, script-driven rollout trigger: Cognee's

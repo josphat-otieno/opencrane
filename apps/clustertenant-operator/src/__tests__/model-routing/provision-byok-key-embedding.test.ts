@@ -5,7 +5,7 @@ import type { Logger } from "pino";
 import type { PrismaClient } from "@prisma/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { _ProvisionByokKey } from "../../core/model-routing/provision-byok-key.js";
+import { _ProvisionByokKey, _AUTO_EMBEDDING_MODEL_NAME } from "../../core/model-routing/provision-byok-key.js";
 
 /**
  * Covers `_ensureProviderEmbeddingModel` (the embedding-registration step added alongside the
@@ -116,7 +116,24 @@ describe("_ProvisionByokKey — embedding model registration", function _suite()
     expect((body["litellm_params"] as Record<string, unknown>)["model"]).toBe("openai/text-embedding-3-large");
   });
 
-  it("does NOT create a ModelDefinition row for the embedding model (never tenant-selectable)", async function _noRow()
+  it("registers the stable auto-embedding alias pointing at the provider's real embedding upstream", async function _alias()
+  {
+    const fetchMock = _routedFetch([]);
+    vi.stubGlobal("fetch", fetchMock);
+
+    await _ProvisionByokKey({ prisma: _mockPrisma(), coreApi: _mockCoreApi(), operatorNamespace: "default", provider: "openai", apiKey: "sk-test", log: _log });
+
+    const registerCalls = fetchMock.mock.calls.filter(function _isNewModel(c) { return (c[0] as string).includes("/model/new"); });
+    const aliasCall = registerCalls.find(function _isAlias(c) { return _bodyOf(c)["model_name"] === _AUTO_EMBEDDING_MODEL_NAME; });
+    expect(aliasCall).toBeDefined();
+    const body = _bodyOf(aliasCall!);
+    expect(body["model_info"]).toEqual({ mode: "embedding" });
+    // The alias resolves to the provider's REAL embedding upstream (not to itself), so the proxy
+    // routes it to OpenAI on the BYOK credential — exactly how the chat `auto` alias works.
+    expect((body["litellm_params"] as Record<string, unknown>)["model"]).toBe("openai/text-embedding-3-large");
+  });
+
+  it("does NOT create a ModelDefinition row for the embedding model OR the alias (never tenant-selectable)", async function _noRow()
   {
     vi.stubGlobal("fetch", _routedFetch([]));
 
@@ -124,13 +141,30 @@ describe("_ProvisionByokKey — embedding model registration", function _suite()
     await _ProvisionByokKey({ prisma, coreApi: _mockCoreApi(), operatorNamespace: "default", provider: "openai", apiKey: "sk-test", log: _log });
 
     // The chat-model seeding path (provision-byok-key.test.ts) already asserts the 3 catalog
-    // classes + "auto" get ModelDefinition rows; this asserts the embedding slug gets NONE —
-    // it must never surface as a tenant-selectable chat model (see ByokProviderCatalog.embeddingModel).
+    // classes + "auto" get ModelDefinition rows; this asserts BOTH embedding deployments (the real
+    // slug AND the auto-embedding alias) get NONE — neither may surface as a tenant-selectable chat
+    // model (see ByokProviderCatalog.embeddingModel).
     const embeddingRow = await prisma.modelDefinition.findFirst({ where: { publicModelName: "openai/text-embedding-3-large" } } as never);
     expect(embeddingRow).toBeNull();
+    const aliasRow = await prisma.modelDefinition.findFirst({ where: { publicModelName: _AUTO_EMBEDDING_MODEL_NAME } } as never);
+    expect(aliasRow).toBeNull();
   });
 
-  it("skips re-registration when /model/info already lists the embedding model (idempotent)", async function _idempotent()
+  it("skips re-registration of BOTH the embedding model and the alias when /model/info lists them (idempotent)", async function _idempotent()
+  {
+    const fetchMock = _routedFetch([{ model_name: "openai/text-embedding-3-large" }, { model_name: _AUTO_EMBEDDING_MODEL_NAME }]);
+    vi.stubGlobal("fetch", fetchMock);
+
+    await _ProvisionByokKey({ prisma: _mockPrisma(), coreApi: _mockCoreApi(), operatorNamespace: "default", provider: "openai", apiKey: "sk-test", log: _log });
+
+    const registerCalls = fetchMock.mock.calls.filter(function _isNewModel(c) { return (c[0] as string).includes("/model/new"); });
+    const embeddingNames = registerCalls
+      .map(function _n(c) { return _bodyOf(c)["model_name"]; })
+      .filter(function _e(n) { return n === "openai/text-embedding-3-large" || n === _AUTO_EMBEDDING_MODEL_NAME; });
+    expect(embeddingNames).toHaveLength(0);
+  });
+
+  it("still registers the alias when only the real embedding slug is already present (independent idempotency)", async function _aliasOnlyMissing()
   {
     const fetchMock = _routedFetch([{ model_name: "openai/text-embedding-3-large" }]);
     vi.stubGlobal("fetch", fetchMock);
@@ -138,8 +172,9 @@ describe("_ProvisionByokKey — embedding model registration", function _suite()
     await _ProvisionByokKey({ prisma: _mockPrisma(), coreApi: _mockCoreApi(), operatorNamespace: "default", provider: "openai", apiKey: "sk-test", log: _log });
 
     const registerCalls = fetchMock.mock.calls.filter(function _isNewModel(c) { return (c[0] as string).includes("/model/new"); });
-    const embeddingCall = registerCalls.find(function _isEmbedding(c) { return _bodyOf(c)["model_name"] === "openai/text-embedding-3-large"; });
-    expect(embeddingCall).toBeUndefined();
+    // Real slug already present ⇒ skipped; alias absent ⇒ registered.
+    expect(registerCalls.find(function _s(c) { return _bodyOf(c)["model_name"] === "openai/text-embedding-3-large"; })).toBeUndefined();
+    expect(registerCalls.find(function _a(c) { return _bodyOf(c)["model_name"] === _AUTO_EMBEDDING_MODEL_NAME; })).toBeDefined();
   });
 
   it("does not register any embedding model for a provider with none catalogued (anthropic)", async function _noneCatalogued()
