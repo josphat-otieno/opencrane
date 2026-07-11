@@ -51,8 +51,17 @@ spec:
   # avoids a new pod deadlocking on the disk the old pod still holds (mirrors the
   # tenant pod's own state-volume strategy). Cognee is a per-silo singleton, so the
   # brief downtime on a roll is acceptable.
+  #
+  # `rollingUpdate: null` is load-bearing on an UPGRADE of an already-live Deployment:
+  # a pre-existing pod defaulted to `RollingUpdate` carries an API-set
+  # `strategy.rollingUpdate{maxSurge,maxUnavailable}` block, and a patch that sets only
+  # `type: Recreate` leaves that block in place → the API server rejects the object
+  # ("rollingUpdate may not be specified when type is 'Recreate'"). Rendering an explicit
+  # null deletes the stale field in the merge. (A fresh install has nothing to clear, so
+  # null is a harmless no-op there.)
   strategy:
     type: Recreate
+    rollingUpdate: null
   {{- end }}
   selector:
     matchLabels:
