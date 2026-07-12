@@ -39,7 +39,11 @@ describe("_RenderToolsMarkdown", function _suite()
 		const withMemory = _RenderToolsMarkdown([], [], { orgMemory: true });
 		expect(withMemory).toContain("## Org memory (Cognee)");
 		expect(withMemory).toContain("Auto-recall");
-		expect(withMemory).toContain("**cognee_memories**");
+		expect(withMemory).toContain("Auto-capture");
+		// The pinned plugin registers NO agent-callable tool — the doc must describe memory as
+		// passive (auto-recall/capture) and must NOT promise a callable `cognee_memories` tool.
+		expect(withMemory).toContain("there is " + "no tool for you to call");
+		expect(withMemory).not.toContain("**cognee_memories**");
 		expect(withMemory.endsWith("\n")).toBe(true);
 	});
 

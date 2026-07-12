@@ -355,7 +355,16 @@ clustertenantManager:
       #    seeded by the BYOK bootstrap alongside every provider's chat models — it currently
       #    resolves to openai/gpt-5.4-nano on opencrane-dev, but re-points automatically if the
       #    catalog's cheapest tier changes, so this stays correct without a values.yaml edit.
-      model: "auto"
+      #
+      #    MUST carry the `openai/` prefix. Cognee's chat path (remember / cognify / graph-
+      #    improvement) calls `litellm.acompletion(model=LLM_MODEL, api_base=LLM_ENDPOINT)`
+      #    through its OpenAIAdapter WITHOUT passing custom_llm_provider — litellm's client can't
+      #    infer a provider from the bare, non-standard alias `auto` and raises
+      #    "litellm.BadRequestError: LLM Provider NOT provided", 409-ing EVERY memory write so the
+      #    store never fills. `openai/auto` lets litellm resolve the provider, then strip the
+      #    prefix and send the bare `auto` (which our proxy has registered) upstream. This is the
+      #    chat-side twin of the embedding fix above (openai_compatible + auto-embedding).
+      model: "openai/auto"
     embedding:
       # -- "openai_compatible" (NOT "custom") — verified against Cognee's shipped source
       #    (cognee/infrastructure/databases/vector/embeddings/get_embedding_engine.py). Cognee
