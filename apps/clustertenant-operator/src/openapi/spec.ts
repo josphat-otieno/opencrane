@@ -29,10 +29,6 @@ import { _ModelRoutingOpenapiPaths } from "@opencrane/domain/model-routing";
 import { _SpendOpenapiPaths } from "@opencrane/domain/spend";
 import { _AuditOpenapiPaths } from "@opencrane/domain/audit";
 import { _MetricsOpenapiPaths } from "@opencrane/domain/metrics";
-import { _CompanyDocsOpenapiPaths } from "@opencrane/domain/company-docs";
-import { _ConnectionsOpenapiPaths } from "@opencrane/domain/connections";
-import { _ClusterTenantsOpenapiPaths } from "@opencrane/domain/cluster-tenants";
-import { _ContractOpenapiPaths } from "@opencrane/domain/contract";
 
 // ---------------------------------------------------------------------------
 // Reusable schema components
@@ -1007,10 +1003,6 @@ export const spec = {
     ..._SpendOpenapiPaths,
     ..._AuditOpenapiPaths,
     ..._MetricsOpenapiPaths,
-    ..._CompanyDocsOpenapiPaths,
-    ..._ConnectionsOpenapiPaths,
-    ..._ClusterTenantsOpenapiPaths,
-    ..._ContractOpenapiPaths,
 
     // ------------------------------------------------------------------
     // Auth — OIDC browser flow, device authorization grant, session introspection

@@ -7,4 +7,3 @@ export * from "./core/gateway-admin.js";
 export * from "./core/gateway-admin.types.js";
 export * from "./core/gateway-resolve.js";
 export * from "./core/org-namespace.js";
-export * from "./openapi.js";

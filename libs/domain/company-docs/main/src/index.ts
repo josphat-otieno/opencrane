@@ -9,4 +9,3 @@ export * from "./core/reconciler.types.js";
 export * from "./core/reconciliation.logic.js";
 export * from "./routes/company-docs.js";
 export * from "./routes/company-docs.types.js";
-export * from "./openapi.js";
