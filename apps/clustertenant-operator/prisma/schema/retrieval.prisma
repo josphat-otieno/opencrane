@@ -1,0 +1,76 @@
+model TenantDatasetMembership {
+  tenant    String
+  scope     DatasetScope
+  subject   String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  tenantRef Tenant   @relation(fields: [tenant], references: [name], onDelete: Cascade)
+
+  @@id([tenant, scope, subject])
+  @@index([tenant, scope])
+  @@map("tenant_dataset_memberships")
+}
+
+enum DatasetScope {
+  Org        @map("org")
+  Team       @map("team")
+  Department @map("department")
+  Project    @map("project")
+  Personal   @map("personal")
+}
+
+enum ThirdPartySourceKind {
+  McpRegistry      @map("mcp-registry")
+  AnthropicSkills  @map("anthropic-skills")
+  GitRepository    @map("git-repository")
+  ManualUpload     @map("manual-upload")
+}
+
+enum ThirdPartySourceStatus {
+  Healthy         @map("healthy")
+  Syncing         @map("syncing")
+  Error           @map("error")
+  PendingApproval @map("pending-approval")
+}
+
+enum ThirdPartySourceItemKind {
+  McpServer   @map("mcp-server")
+  SkillBundle @map("skill-bundle")
+}
+
+model ThirdPartySource {
+  id          String                 @id @default(cuid())
+  name        String                 @unique
+  kind        ThirdPartySourceKind
+  status      ThirdPartySourceStatus @default(PendingApproval)
+  originUrl   String                 @map("origin_url")
+  syncMode    String                 @map("sync_mode")
+  lastSyncedAt DateTime?             @map("last_synced_at")
+  nextRunAt   DateTime?              @map("next_run_at")
+  notes       String?
+  createdAt   DateTime               @default(now()) @map("created_at")
+  updatedAt   DateTime               @updatedAt @map("updated_at")
+  items       ThirdPartySourceItem[]
+  mcpServers  McpServer[]
+  skillBundles SkillBundle[]
+
+  @@map("third_party_sources")
+}
+
+model ThirdPartySourceItem {
+  id          String                   @id @default(cuid())
+  sourceId    String                   @map("source_id")
+  kind        ThirdPartySourceItemKind
+  name        String
+  upstreamId  String                   @map("upstream_id")
+  version     String?
+  digest      String?
+  metadata    Json?
+  createdAt   DateTime                 @default(now()) @map("created_at")
+  updatedAt   DateTime                 @updatedAt @map("updated_at")
+  source      ThirdPartySource         @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@index([sourceId])
+  @@unique([sourceId, kind, upstreamId])
+  @@map("third_party_source_items")
+}

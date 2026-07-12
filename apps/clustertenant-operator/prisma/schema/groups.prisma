@@ -1,0 +1,15 @@
+model Group {
+  id          String          @id @default(cuid())
+  name        String          @unique
+  scope       GrantScope
+  description String?
+  members     Json            @default("[]")
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+  grants      Grant[]
+  mcpGrants   McpServerGrant[]
+  entitlements SkillEntitlement[]
+
+  @@index([scope])
+  @@map("groups")
+}

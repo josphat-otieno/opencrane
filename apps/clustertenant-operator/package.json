@@ -71,5 +71,8 @@
     "tags": [
       "scope:app"
     ]
+  },
+  "prisma": {
+    "schema": "prisma/schema"
   }
 }
