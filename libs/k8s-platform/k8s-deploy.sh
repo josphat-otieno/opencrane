@@ -27,7 +27,7 @@
 #                            [--cert-manager] [--acme-email EMAIL]
 #                            [--dns01-provider clouddns] [--dns01-credentials FILE]
 #                            [--dns01-project PROJECT_ID] [--dns-writer-gsa EMAIL]
-#                            [--values FILE] [--set k=v ...]
+#                            [--values FILE] [--set k=v ...] [--helm-arg ARG ...]
 #                            [--reuse-values | --reset-values]
 #
 # Value preservation: on an UPGRADE (release already exists) this engine defaults to Helm's
@@ -35,6 +35,18 @@
 # restates fewer values (a component-tag bump preserves the rest). Pass --reuse-values to
 # inherit the last release verbatim without refreshing chart defaults, or --reset-values to
 # intentionally drop prior overrides and start from chart defaults + this run's flags.
+#
+# Image-tag float guard: after a prior release's --reset-then-reuse-values upgrade, component
+# images may be pinned to a specific tag (e.g. sha-5036a0a). If this invocation does not restate
+# those tags (no --control-plane-tag/--operator-tag/--tenant-tag) and does not explicitly float
+# (OPENCRANE_ALLOW_TAG_FLOAT=1), the script detects the prior pin, warns loudly, and
+# automatically re-pins from the last release so pinned tags float silently (a live gotcha from
+# 2026-07-12 deploy). Pass OPENCRANE_ALLOW_TAG_FLOAT=1 to intentionally float tags to chart-default.
+#
+# Raw Helm-arg passthrough: --helm-arg ARG (or OPENCRANE_HELM_EXTRA_ARGS='ARG1 ARG2 …')
+# appends verbatim arguments to the final helm upgrade invocation. Useful for sanctioned
+# one-time fixes like --take-ownership (e.g. when a Certificate loses ownership across versions).
+# Repeatable: --helm-arg --take-ownership --helm-arg --force-fields-order.
 #
 # TLS / cert-manager (Step 2.5) has THREE modes:
 #   off (default)  — no cert-manager install; the chart renders no issuer/cert.
@@ -127,6 +139,8 @@ VALUES_FILE=""
 REUSE_VALUES=""      # explicit "--reuse-values": inherit last release's values verbatim; add only overrides
 RESET_VALUES=""      # explicit "--reset-values": DROP prior values, start from chart defaults + this run's --set
 EXTRA_SET=()
+EXTRA_HELM_ARGS=()   # raw --helm-arg passthrough args (e.g. --take-ownership for Certificate ownership recovery)
+ALLOW_TAG_FLOAT="${OPENCRANE_ALLOW_TAG_FLOAT:-0}"  # allow component images to float to chart-default
 
 # OIDC + per-cluster operator bootstrap. All default empty (OIDC stays disabled and the
 # seed grants operator to nobody — fail-closed). The seed also accepts an env var so a
@@ -273,6 +287,7 @@ while [[ $# -gt 0 ]]; do
     --reuse-values)  REUSE_VALUES="1"; shift ;;
     --reset-values)  RESET_VALUES="1"; shift ;;
     --set)           EXTRA_SET+=(--set "$2"); shift 2 ;;
+    --helm-arg)      EXTRA_HELM_ARGS+=("$2"); shift 2 ;;
     -h|--help)       grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *)               err "Unknown flag: $1"; exit 1 ;;
   esac
@@ -912,6 +927,59 @@ helm_args=(upgrade --install "$RELEASE" "$CHART_DIR" --namespace "$NAMESPACE" --
   --set "litellm.existingDatabaseSecret=opencrane-litellm-db"
   --set "litellm.existingSecret=opencrane-litellm"
   --set "litellm.storeModelInDb=true")
+
+# Pinned-tag float guard: detect if the prior release pinned component images to a specific
+# tag. If this invocation does not restate them (no --control-plane-tag/--operator-tag/--tenant-tag),
+# re-pin from the prior release so they don't silently float to chart-default (a 2026-07-12 live gotcha).
+# Escape: OPENCRANE_ALLOW_TAG_FLOAT=1 to intentionally float tags.
+_enforce_tag_pins() {
+  # Only check on an existing release (upgrade path). Fresh installs have no prior values.
+  if ! helm status "$RELEASE" -n "$NAMESPACE" >/dev/null 2>&1; then
+    return 0
+  fi
+  # Allow explicit float escape.
+  if [[ "$ALLOW_TAG_FLOAT" == "1" ]]; then
+    return 0
+  fi
+  # Check what tags are pinned in the PRIOR release, and what THIS run explicitly sets.
+  local prior_cp prior_op prior_tn prior_vals
+  prior_vals="$(helm get values "$RELEASE" -n "$NAMESPACE" -o json 2>/dev/null || echo '{}')"
+
+  # Extract tags using jq if available, otherwise fall back to grep.
+  if command -v jq >/dev/null 2>&1; then
+    prior_cp="$(echo "$prior_vals" | jq -r '.clustertenantManager.image.tag // empty')"
+    prior_op="$(echo "$prior_vals" | jq -r '.fleetManager.image.tag // empty')"
+    prior_tn="$(echo "$prior_vals" | jq -r '.tenant.image.tag // empty')"
+  else
+    # Grep fallback for when jq is not available (simple pattern, may miss nested structures).
+    prior_cp="$(echo "$prior_vals" | grep -o '"clustertenantManager":[^}]*"tag":"[^"]*' | grep -o '"tag":"[^"]*' | head -1 | cut -d'"' -f4 || true)"
+    prior_op="$(echo "$prior_vals" | grep -o '"fleetManager":[^}]*"tag":"[^"]*' | grep -o '"tag":"[^"]*' | head -1 | cut -d'"' -f4 || true)"
+    prior_tn="$(echo "$prior_vals" | grep -o '"tenant":[^}]*"tag":"[^"]*' | grep -o '"tag":"[^"]*' | head -1 | cut -d'"' -f4 || true)"
+  fi
+
+  local need_warn=0
+  # If prior release had a tag and this run doesn't set one, re-pin it.
+  if [[ -n "$prior_cp" && -z "$CONTROL_PLANE_TAG" ]]; then
+    warn "Prior release had clustertenantManager.image.tag='$prior_cp' — re-pinning (to avoid silent float to chart-default). Pass OPENCRANE_ALLOW_TAG_FLOAT=1 to float intentionally."
+    CONTROL_PLANE_TAG="$prior_cp"
+    need_warn=1
+  fi
+  if [[ -n "$prior_op" && -z "$OPERATOR_TAG" ]]; then
+    warn "Prior release had fleetManager.image.tag='$prior_op' — re-pinning (to avoid silent float to chart-default). Pass OPENCRANE_ALLOW_TAG_FLOAT=1 to float intentionally."
+    OPERATOR_TAG="$prior_op"
+    need_warn=1
+  fi
+  if [[ -n "$prior_tn" && -z "$TENANT_TAG" ]]; then
+    warn "Prior release had tenant.image.tag='$prior_tn' — re-pinning (to avoid silent float to chart-default). Pass OPENCRANE_ALLOW_TAG_FLOAT=1 to float intentionally."
+    TENANT_TAG="$prior_tn"
+    need_warn=1
+  fi
+  if [[ "$need_warn" == "1" ]]; then
+    warn "Image-tag re-pin: tags were auto-restored from the prior release. Run evidence: $(date -u +%Y-%m-%dT%H:%M:%SZ) $(hostname)"
+  fi
+}
+_enforce_tag_pins
+
 # Per-component tags override the unified --image-tag so a single component can be
 # rolled through Helm (which keeps Helm the sole owner of the image field). Each
 # falls back to IMAGE_TAG when its flag is unset, preserving the all-same default.
@@ -980,6 +1048,8 @@ _DB_CKSUM="$(printf '%s' "$DB_PASSWORD" | sha256sum | cut -c1-8)"
 helm_args+=(--set "litellm.podAnnotations.db-checksum=$_DB_CKSUM")
 helm_args+=(--set "mcpGateway.podAnnotations.db-checksum=$_DB_CKSUM")
 helm_args+=("${EXTRA_SET[@]}")
+# Raw helm-arg passthrough for sanctioned one-time fixes (e.g. --take-ownership).
+[[ ${#EXTRA_HELM_ARGS[@]} -gt 0 ]] && helm_args+=("${EXTRA_HELM_ARGS[@]}")
 # Value-preservation mode. Helm's DEFAULT on upgrade drops any value a prior release set
 # via --set/-f that this invocation does not restate, silently reverting it to the chart
 # default — a footgun that broke a live silo once (a pure `--control-plane-tag` bump reverted

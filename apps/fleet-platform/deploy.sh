@@ -17,13 +17,21 @@
 #   apps/fleet-platform/deploy.sh \
 #       --base-domain dev.opencrane.ai \
 #       [--ingress-ip 34.1.2.3] [--dns-managed-zone my-zone] \
+#       [--platform-operator-seed-email admin@org] \
 #       [ANY k8s-deploy.sh flag, e.g. --cert-manager --acme-email … --dns01-provider clouddns]
 #
 # --base-domain is required (the platform wildcard base every org is served under).
+# --platform-operator-seed-email is required for every deploy (a fail-closed gate, not
+# a stored value; set it via --platform-operator-seed-email or the OPENCRANE_PLATFORM_OPERATOR_SEED_EMAIL
+# env var). Without it the fleet grants operator to nobody and the control-plane UI is inaccessible.
 # --ingress-ip / --dns-managed-zone wire the operator's per-org DNS side effect. When
 # --ingress-ip is OMITTED the core auto-derives it from the ingress-nginx LoadBalancer
 # (--auto-ingress-ip); on-prem with no LB it stays unset and the operator skips the DNS
 # write (per-org Certificate still applied). Add --verify for an advisory post-deploy check.
+#
+# Environment:
+#   OPENCRANE_SKIP_PREFLIGHT=1  Skip the mandatory multi-CT preflight check (not recommended;
+#                               preflight validates cross-tenant isolation will work).
 #
 # Prereqs: kubectl (pointed at the target cluster) and helm.
 # =============================================================================
