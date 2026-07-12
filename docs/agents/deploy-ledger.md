@@ -25,7 +25,7 @@ Friction items seen across runs; bump the count, and when it hits 2, file the fi
 
 | Friction item | Seen | Status |
 |---|---|---|
-| No raw-helm-flag passthrough in `k8s-deploy.sh` (blocks sanctioned `--take-ownership` / one-time field-clear recoveries) | 2 (07-09, 07-11) | **graduated** — needs a `--helm-arg` passthrough fix PR |
+| No raw-helm-flag passthrough in `k8s-deploy.sh` (blocks sanctioned `--take-ownership` / one-time field-clear recoveries) | 3 (07-09, 07-11, 07-12) | **fix in flight** — `--helm-arg` passthrough in the script-hardening PR |
 | `--preflight` NS-delegation check false-positives on `dev.opencrane.ai` every run (A-record in parent zone, not a delegated subzone) | 3+ (07-10..07-12) | **graduated** — scope the check to only fire when ACME/DNS-01 issuance is requested |
 | `--set` numeric-string coercion breaks string values (annotations) — needs `--set-string`/`--values` | 2 (07-10, 07-11) | fixed-forward in usage; consider a script guard |
 
@@ -161,3 +161,12 @@ Friction items seen across runs; bump the count, and when it hits 2, file the fi
 - lesson: org-memory is only "working" when the tenant pod can invoke it — a green rollout +
   healed server-side identity is necessary but not sufficient; confirm from the tenant pod's
   own logs (fresh login, no 401) after it rolls.
+
+## 2026-07-12 · dev · fleet-platform + clustertenant-platform (elewa/elewa-be/northwind/tarv-org) · e149924 · PARTIAL
+- findings: chart: `.Values.multiCt.enabled` (networkpolicy-main-network-baseline.yaml) nil-pointer-panics under `--reuse-values` — the key is a chart default added after the fleet's last release and `--reuse-values` doesn't re-merge new chart defaults; fix PR uses the nil-safe `(.Values.multiCt).enabled` idiom + drops `--reuse-values` from the dev preset header.
+- findings: script: default `--reset-then-reuse-values` silently floated the pinned per-component image tag back to chart-default `latest` (digest-equal this run, no content risk) — re-pin explicitly every run until the tag-float guard PR lands.
+- findings: chart/config: fresh silo (tarv-org) deterministically collides on the legacy cluster-wide wildcard gateway-ingress because `ingress.sameOrigin.enabled` defaults false and the silo profile didn't set it → fixed → PR #199.
+- findings: infra: external-dns `--domain-filter=dev.opencrane.ai` never matches the actual zone (`opencrane.ai.`) — ALL org A-record writes silently dropped ≥2 days; tarv-org's DNSEndpoint never written → issue #198.
+- findings: infra (bump): elewa-be + northwind Certificate-ownership block unchanged since 2026-07-02 (recovery unblocks once --helm-arg passthrough PR lands); codebase (bump): #174 litellm-key reconcile loop still reproducing on elewa.
+- friction: fleet profile REQUIRES undocumented `OPENCRANE_SKIP_PREFLIGHT=1` on this cluster (header docs in the script-hardening PR); `--platform-operator-seed-email` must be restated every invocation (fail-closed gate — header callout in same PR).
+- lesson: do NOT use `--reuse-values` on the fleet profile; use the script default AND restate `--control-plane-tag`/`--operator-tag` explicitly. npm/NX repo conversion (PR #196) is deploy-neutral: scripts build nothing; charts render identically.
