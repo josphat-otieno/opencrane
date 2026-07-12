@@ -15,6 +15,33 @@ follows [Keep a Changelog](https://keepachangelog.com/); the project uses
 
 ### Added
 
+- **Platform developers can now work on one functional domain in isolation, with module boundaries
+  enforced by lint.** Each of 20 functional domains (tenants, policies, grants, skills, model-routing,
+  providers, awareness, spend, groups, MCP, sessions, company-docs, audit, access-tokens, metrics,
+  connections, cluster-tenants, retrieval, contract, projection) is now an NX package at
+  `libs/domain/<domain>/main`, owning its routes, services, types, tests, and Prisma schema slice.
+  A module-boundary lint rule (`pnpm lint:boundaries`) enforces that imports flow domain → domain + shared
+  only — no cross-domain hard coupling. The stepping stone for multi-tenant customisation and Wave 5
+  plugin ownership.
+
+- **The workspace now builds, tests, and lints with NX caching — `pnpm build/test/lint` runs once per
+  input change across all 20 domains.** NX derives the project graph from the pnpm workspace
+  `package.json` dependencies, so a new package or dependency edge updates cache invalidation without
+  manual configuration. The developer experience remains `pnpm build && pnpm test` and the
+  CI cost drops as unchanged domains are skipped.
+
+- **Adding a new domain package requires no Dockerfile or CI edits — the image builds the app's
+  workspace dependency closure automatically.** The Dockerfile copies `libs` wholesale and
+  builds the operator's transitive workspace deps topologically (`pnpm --filter "app^..." build`);
+  each new domain is included on the next build without touching the build definition. The `pnpm install` → `docker build` → app-start
+  pipeline stays identical.
+
+- **Database models are now owned per domain, with clear migration ownership.** The single
+  `schema.prisma` is replaced by per-domain files under `prisma/schema/<domain>.prisma` (e.g.
+  `prisma/schema/tenants.prisma`), and migrations follow the convention `NNNN_<domain>_description.sql`
+  — visible code ownership and single-direction dependency for Wave 5 plugin-owned migrations.
+  The migration runner (Prisma + the pre-install Hook Job) remains unchanged.
+
 - **Org admins can supply their own upstream provider key and get a full tier-structured model
   catalog from a single credential.** Calling `PUT /api/v1/providers/byok/:provider` (org-admin
   gated) stores one raw key in a Kubernetes Secret, registers it with the silo's LiteLLM instance
