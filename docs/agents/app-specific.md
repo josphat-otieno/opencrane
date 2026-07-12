@@ -4,7 +4,7 @@
 
 This is the per-package map. The general TypeScript rules ([`typescript.md`](./typescript.md)) and
 identity rules ([`architecture.md`](./architecture.md), [`k8s.md`](./k8s.md)) apply to all of them.
-Build/test a single package with `pnpm --filter <name> build|test`. **Each package has a deep-dive doc
+Build/test a single package with `npm run build|test -w <name>` or `npx nx run <name>:build|test`. **Each package has a deep-dive doc
 linked below** — read it before non-trivial work in that package. The whole-cluster picture is in
 [`cluster-architecture.md`](./cluster-architecture.md).
 

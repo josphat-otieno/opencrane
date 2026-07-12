@@ -1,10 +1,8 @@
 # Build stage
 FROM node:22-bookworm-slim AS build
 
-RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
-
 WORKDIR /app
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.base.json ./
+COPY package.json package-lock.json tsconfig.base.json nx.json ./
 # All workspace libs (shared libs + libs/domain/*/main) come in wholesale so the image never
 # needs editing when a domain package is added; the root .dockerignore keeps
 # node_modules/dist out of the context.
@@ -16,14 +14,13 @@ COPY apps/clustertenant-operator/openapi.json apps/clustertenant-operator/openap
 COPY apps/fleet-operator/openapi.json apps/fleet-operator/openapi.json
 COPY apps/clustertenant-operator/package.json apps/clustertenant-operator/tsconfig.json apps/clustertenant-operator/
 COPY apps/clustertenant-operator/prisma apps/clustertenant-operator/prisma
-# "pkg..." selects the app plus its full workspace dependency closure.
-RUN pnpm install --frozen-lockfile --filter "@opencrane/clustertenant-operator..."
+# npm workspaces install: root package.json's "workspaces" field includes apps/* and website
+RUN npm ci
 
 COPY apps/clustertenant-operator/src apps/clustertenant-operator/src
-# Build the dependency closure first ("pkg^..." = dependencies only, topological order —
-# domain libs DO depend on each other), then the app itself.
-RUN pnpm --filter "@opencrane/clustertenant-operator^..." build
-RUN pnpm --filter @opencrane/clustertenant-operator build
+# Generate Prisma client, build dependencies first, then the app
+RUN npm run db:generate -w @opencrane/clustertenant-operator
+RUN npx nx run-many -t build --projects="@opencrane/clustertenant-operator"
 # Stage generated Prisma client to a fixed path for the runtime stage
 RUN find /app -path '*/node_modules/.prisma/client' -type d | head -1 | \
     xargs -I{} cp -r {} /generated-prisma
@@ -31,15 +28,14 @@ RUN find /app -path '*/node_modules/.prisma/client' -type d | head -1 | \
 # Runtime stage
 FROM node:22-bookworm-slim
 
-RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
-
 WORKDIR /app
-COPY --from=build /app/package.json /app/pnpm-workspace.yaml /app/pnpm-lock.yaml ./
-# Bring every built workspace lib (package.json + dist) across in one copy.
-COPY --from=build /app/libs libs
-COPY --from=build /app/apps/clustertenant-operator/package.json apps/clustertenant-operator/
-COPY --from=build /app/apps/clustertenant-operator/prisma apps/clustertenant-operator/prisma
-RUN pnpm install --frozen-lockfile --filter "@opencrane/clustertenant-operator..." --prod
+COPY package.json package-lock.json ./
+# Copy app package.json and prisma directory for runtime installation
+COPY apps/clustertenant-operator/package.json apps/clustertenant-operator/
+COPY apps/clustertenant-operator/prisma apps/clustertenant-operator/prisma
+# Install only the app workspace's runtime dependencies
+RUN npm ci --omit=dev --workspace=apps/clustertenant-operator
+
 COPY --from=build /generated-prisma /tmp/generated-prisma
 # Retrieve the generated Prisma client for the runtime stage
 RUN target=$(find /app -path '*/node_modules/.prisma/client' -type d | head -1) && \

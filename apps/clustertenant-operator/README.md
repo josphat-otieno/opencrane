@@ -80,17 +80,19 @@ Skill           — discovered skills registry (name, scope, team, contentHash)
 Run migrations:
 
 ```bash
-pnpm db:migrate   # prisma migrate deploy (production)
-pnpm db:generate  # regenerate Prisma client after schema changes
-pnpm db:push      # push schema without migrations (dev only)
+npm run db:migrate -w @opencrane/clustertenant-operator   # prisma migrate deploy (production)
+npm run db:generate -w @opencrane/clustertenant-operator  # regenerate Prisma client after schema changes
+npm run db:push -w @opencrane/clustertenant-operator      # push schema without migrations (dev only)
 ```
 
 ## Development
 
 ```bash
 # From repo root
-pnpm build          # compile TypeScript + generate Prisma client
-pnpm test           # run vitest integration tests
+npm run build                                    # compile TypeScript + generate Prisma client
+npm run build -w @opencrane/clustertenant-operator  # build only this package
+npm run test                                    # run vitest integration tests
+npx nx run clustertenant-operator:test          # alternative NX command
 ```
 
 ## Docker

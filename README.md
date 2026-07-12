@@ -173,7 +173,7 @@ reference. The site is built with [VitePress](https://vitepress.dev) from
 
 ### Prerequisites
 
-- Node 22+, pnpm 10+
+- Node 22+
 - Kubernetes 1.28+ (GKE recommended)
 - Helm 3
 - Terraform 1.5+ (for GCP deployment)
@@ -182,9 +182,9 @@ reference. The site is built with [VitePress](https://vitepress.dev) from
 ### Development
 
 ```bash
-pnpm install
-pnpm build
-pnpm test
+npm ci
+npm run build
+npm run test
 ```
 
 ### Local Deployment

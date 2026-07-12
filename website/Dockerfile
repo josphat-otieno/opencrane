@@ -5,10 +5,12 @@
 # the site's prebuild copies apps/clustertenant-operator/openapi.json for the API reference.
 FROM node:22-alpine AS builder
 WORKDIR /repo
-RUN corepack enable
-COPY . .
-RUN pnpm install --frozen-lockfile
-RUN pnpm docs:build
+COPY package.json package-lock.json tsconfig.base.json nx.json ./
+COPY libs libs
+COPY apps/clustertenant-operator/openapi.json apps/clustertenant-operator/
+COPY website website
+RUN npm ci
+RUN npm run docs:build
 
 # --- Serve the static site as an unprivileged nginx --------------------------
 # nginx-unprivileged runs as uid 101 and listens on 8080 — no root, consistent

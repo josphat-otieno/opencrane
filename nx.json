@@ -3,7 +3,7 @@
   "defaultBase": "main",
   "namedInputs": {
     "default": ["{projectRoot}/**/*", "sharedGlobals"],
-    "sharedGlobals": ["{workspaceRoot}/tsconfig.base.json", "{workspaceRoot}/pnpm-lock.yaml"],
+    "sharedGlobals": ["{workspaceRoot}/tsconfig.base.json", "{workspaceRoot}/package-lock.json"],
     "production": ["default", "!{projectRoot}/src/__tests__/**", "!{projectRoot}/**/*.test.ts"]
   },
   "targetDefaults": {

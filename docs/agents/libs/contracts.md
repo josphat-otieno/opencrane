@@ -16,7 +16,7 @@ Consumed by the CLI, control-plane, operator, and awareness SDK. Import from the
 
 The control-plane emits `apps/clustertenant-operator/openapi.json`; the contracts `generate` script runs
 `openapi-typescript apps/clustertenant-operator/openapi.json -o src/generated/api.ts`, and `build` is
-`pnpm generate && tsc`. So **the OpenAPI spec drives the client types** — after changing a
+`npm run generate -w @opencrane/contracts && tsc`. So **the OpenAPI spec drives the client types** — after changing a
 control-plane route's request/response shape, regenerate here rather than hand-typing. Runtime client
 is `openapi-fetch` (tiny, typed `GET`/`POST`/… over `paths`).
 

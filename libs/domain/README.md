@@ -20,7 +20,7 @@ The `/main` level is deliberate: a domain directory is a **namespace**, so funct
 can join it later without restructuring (e.g. `libs/domain/mcp/main` next to
 `libs/domain/mcp/infra/obot`).
 
-## Rules (enforced by `pnpm lint:boundaries`)
+## Rules (enforced by `npm run lint:boundaries`)
 
 - `scope:domain` packages may depend on other domain packages and `scope:shared` libs
   (`@opencrane/contracts`, `@opencrane/observability`, `@opencrane/infra-*`, `@opencrane/util`)
@@ -35,10 +35,14 @@ can join it later without restructuring (e.g. `libs/domain/mcp/main` next to
 
 1. `libs/domain/<d>/main` with the layout above (copy a small package such as
    `libs/domain/audit/main` as a template); name it `@opencrane/domain-<d>`, tag `scope:domain`.
-2. Mount the router in `apps/clustertenant-operator/src/routes.ts` and add the
-   `workspace:*` dependency in the operator `package.json`.
-3. Add `prisma/schema/<d>.prisma` if the domain owns models.
-4. `pnpm install && pnpm build && pnpm test && pnpm lint:boundaries`.
+   - Create `package.json` with `"name": "@opencrane/domain-<d>"`, `"type": "module"`, no dependencies.
+   - Create `tsconfig.json` that extends `../../tsconfig.base.json` and sets `compilerOptions.baseUrl` to the package root.
+   - Create `vitest.config.ts` for test configuration (copy from an existing domain package).
+2. Add path alias to `tsconfig.base.json`: `"@opencrane/domain-<d>": ["libs/domain/<d>/main/src"]`.
+3. Mount the router in `apps/clustertenant-operator/src/routes.ts` and add the
+   path alias import in the operator's `src/routes.ts`.
+4. Add `prisma/schema/<d>.prisma` if the domain owns models.
+5. `npm ci && npm run build && npm run test && npm run lint:boundaries`.
 
 No Dockerfile edits are needed — the operator image copies `libs` wholesale and builds the
-app's workspace dependency closure topologically.
+app's workspace dependency closure via esbuild (libs are source-only, no dist/ needed in image).
