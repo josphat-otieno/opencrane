@@ -25,5 +25,10 @@
   },
   "dependencies": {
     "openapi-fetch": "^0.17.0"
+  },
+  "nx": {
+    "tags": [
+      "scope:shared"
+    ]
   }
 }
