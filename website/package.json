@@ -7,9 +7,9 @@
   "type": "module",
   "scripts": {
     "sync-openapi": "node scripts/sync-openapi.mjs",
-    "predev": "pnpm sync-openapi",
+    "predev": "npm run sync-openapi",
     "dev": "vitepress dev",
-    "prebuild": "pnpm sync-openapi",
+    "prebuild": "npm run sync-openapi",
     "build": "vitepress build",
     "preview": "vitepress preview"
   },
