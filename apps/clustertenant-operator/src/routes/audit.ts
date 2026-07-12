@@ -1,7 +1,7 @@
 import { Router } from "express";
 import type { PrismaClient } from "@prisma/client";
 
-import type { AuditEntry } from "../types.js";
+import type { AuditEntry } from "./audit.types.js";
 
 /** Maximum entries per page. */
 const MAX_LIMIT = 1000;

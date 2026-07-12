@@ -14,8 +14,7 @@ import type { OpenClawGatewayAdmin } from "../core/connections/gateway-admin.typ
 import { _log } from "../log.js";
 import { OPENCRANE_API_GROUP, OPENCRANE_API_VERSION, TENANT_CRD_PLURAL, _IsK8sNotFound } from "@opencrane/infra-api";
 
-import type { CreateTenantRequest, TenantDatasetsResponse, TenantResponse, UpdateTenantDatasetsRequest } from "../types.js";
-import type { EffectiveContractResponse } from "./tenants.types.js";
+import type { CreateTenantRequest, EffectiveContractResponse, TenantDatasetsResponse, TenantResponse, UpdateTenantDatasetsRequest } from "./tenants.types.js";
 import { _DetectTenantProjectionDrift } from "./internal/projection-drift.js";
 import { _RepairTenantProjection } from "./internal/projection-repair.js";
 

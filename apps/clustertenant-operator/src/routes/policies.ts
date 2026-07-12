@@ -3,7 +3,7 @@ import { Router } from "express";
 import type { PrismaClient } from "@prisma/client";
 
 import { _log } from "../log.js";
-import type { CreatePolicyRequest } from "../types.js";
+import type { CreatePolicyRequest } from "./policies.types.js";
 import { _PropagatePolicyToCognee, _ResolvePolicyAffectedTenants } from "../core/grants/cognee-awareness-sync.js";
 import { _DetectPolicyProjectionDrift } from "./internal/projection-drift.js";
 import { _RepairPolicyProjection } from "./internal/projection-repair.js";
