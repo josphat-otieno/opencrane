@@ -76,7 +76,11 @@ export class OciBundleStore
     }
 
     // 2. Constrain the repository to a valid OCI name so it cannot inject path segments.
-    if (!/^[a-z0-9]+([._-][a-z0-9]+)*(\/[a-z0-9]+([._-][a-z0-9]+)*)*$/.test(config.repository))
+    //    Validated per path segment (split on "/") instead of one nested-quantifier regex,
+    //    which CodeQL flags as polynomial-backtracking on long "/" runs (js/polynomial-redos).
+    const repositorySegments = config.repository.split("/");
+    const segmentPattern = /^[a-z0-9]+([._-][a-z0-9]+)*$/;
+    if (repositorySegments.length === 0 || !repositorySegments.every(function _validSegment(segment) { return segmentPattern.test(segment); }))
     {
       throw new Error(`Invalid OCI repository name: ${config.repository}`);
     }

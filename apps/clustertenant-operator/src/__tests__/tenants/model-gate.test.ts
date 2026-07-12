@@ -3,11 +3,11 @@ import pino from "pino";
 import type * as k8s from "@kubernetes/client-node";
 
 import { defaultConfig, onPremAdapter, _makeTenant } from "../fixtures.js";
-import { _ResolveTenantModelGate } from "../../tenants/deploy/model-gate.js";
-import { _BuildConfigMap, _ConfigChecksum } from "../../tenants/deploy/index.js";
-import { TenantOperator } from "../../tenants/operator.js";
-import { TenantStatusWriter } from "../../tenants/internal/tenant-status-writer.js";
-import { TenantDegradedReason, TenantStatusPhase, type TenantStatus } from "../../tenants/models/tenant-status.interface.js";
+import { _ResolveTenantModelGate } from "../../reconcilers/tenants/deploy/model-gate.js";
+import { _BuildConfigMap, _ConfigChecksum } from "../../reconcilers/tenants/deploy/index.js";
+import { TenantOperator } from "../../reconcilers/tenants/operator.js";
+import { TenantStatusWriter } from "../../reconcilers/tenants/internal/tenant-status-writer.js";
+import { TenantDegradedReason, TenantStatusPhase, type TenantStatus } from "../../reconcilers/tenants/models/tenant-status.interface.js";
 import type { TenantModelSet } from "@opencrane/contracts";
 
 const _log = pino({ level: "silent" });
@@ -148,12 +148,12 @@ function _buildHarness(options: { existingConfigMap?: k8s.V1ConfigMap | null })
     patchStatus: vi.fn(async (_t: unknown, _ns: unknown, status: Partial<TenantStatus>) => { statusPatches.push(status); }),
   } as unknown as TenantStatusWriter;
 
-  const encryptionKeys = { ensureEncryptionKeySecret: vi.fn(async () => {}) } as unknown as import("../../tenants/internal/tenant-encryption-keys.js").TenantEncryptionKeys;
-  const liteLlmKeys = { ensureLiteLlmKeySecret: vi.fn(async () => {}) } as unknown as import("../../tenants/internal/tenant-litellm-keys.js").TenantLiteLlmKeys;
+  const encryptionKeys = { ensureEncryptionKeySecret: vi.fn(async () => {}) } as unknown as import("../../reconcilers/tenants/internal/tenant-encryption-keys.js").TenantEncryptionKeys;
+  const liteLlmKeys = { ensureLiteLlmKeySecret: vi.fn(async () => {}) } as unknown as import("../../reconcilers/tenants/internal/tenant-litellm-keys.js").TenantLiteLlmKeys;
   const cogneeTenantIdentity = {
     ensureTenantCogneeIdentity: vi.fn(async () => {}),
     ensureTenantJoinedToSiloTenant: vi.fn(async () => {}),
-  } as unknown as import("../../tenants/internal/cognee-tenant-identity.js").CogneeTenantIdentity;
+  } as unknown as import("../../reconcilers/tenants/internal/cognee-tenant-identity.js").CogneeTenantIdentity;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const stub = {} as any;

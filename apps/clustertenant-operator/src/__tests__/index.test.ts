@@ -159,7 +159,7 @@ describe("Control Plane", () =>
       // public ingress-facing listener so they can't be reached from the internet. We mirror
       // createInternalApp's wiring here (importing ../index.js would boot the real servers) and
       // assert /api/internal is reachable tokenless AND that a would-be auth gate never runs.
-      const { _RegisterInternalRoutes } = await import("../routes.js");
+      const { _RegisterInternalRoutes } = await import("../app/routes.js");
 
       const prisma = {
         tenant: { findUnique: vi.fn().mockResolvedValue(null) },

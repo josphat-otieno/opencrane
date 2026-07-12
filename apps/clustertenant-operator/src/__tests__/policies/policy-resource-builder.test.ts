@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { _makeAccessPolicy } from "../fixtures.js";
-import { PolicyResourceBuilder } from "../../policies/policy-resource-builder.js";
+import { PolicyResourceBuilder } from "../../reconcilers/policies/policy-resource-builder.js";
 
 describe("PolicyResourceBuilder", () =>
 {

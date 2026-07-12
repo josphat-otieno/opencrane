@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { _ParseTrustedProxies, _DeriveTrustedProxyCidr } from "../trusted-proxies.js";
+import { _ParseTrustedProxies, _DeriveTrustedProxyCidr } from "../app/trusted-proxies.js";
 
 describe("_DeriveTrustedProxyCidr — pod-IP `auto` trusted-proxy derivation (task_845dd617)", function _deriveSuite()
 {

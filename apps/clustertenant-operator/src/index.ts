@@ -20,24 +20,24 @@ import { _BuildGatewayAdmin } from "@opencrane/domain-connections";
 import { ___CreateOidcAuthService } from "./infra/auth/oidc.service.js";
 import { ___CreatePrismaClient } from "./infra/db/db.js";
 import { _TransportSecurity } from "./infra/middleware/transport-security.middleware.js";
-import { _log as log } from "./log.js";
-import { _RegisterInternalRoutes, _RegisterRoutes } from "./routes.js";
-import { TenantProjectionRepairer } from "./infra/tenant-projection-repairer.js";
-import { MembershipProjectionRepairer, _BuildHttpFleetMembershipReader, _BuildHttpFleetMembershipWriter } from "./infra/membership-projection-repairer.js";
+import { _log as log } from "./app/log.js";
+import { _RegisterInternalRoutes, _RegisterRoutes } from "./app/routes.js";
+import { TenantProjectionRepairer } from "./infra/projection/tenant-projection-repairer.js";
+import { MembershipProjectionRepairer, _BuildHttpFleetMembershipReader, _BuildHttpFleetMembershipWriter } from "./infra/projection/membership-projection-repairer.js";
 import { _ResolveOwnClusterTenantName, _SeedOwnDefaultTenant } from "@opencrane/domain-cluster-tenants";
-import { CogneeLiteLlmKey } from "./tenants/internal/cognee-litellm-key.js";
-import { CogneeSiloTenant } from "./tenants/internal/cognee-silo-tenant.js";
+import { CogneeLiteLlmKey } from "./reconcilers/tenants/internal/cognee-litellm-key.js";
+import { CogneeSiloTenant } from "./reconcilers/tenants/internal/cognee-silo-tenant.js";
 
 // In-silo controllers (Stage 5). The silo runs every in-silo reconcile loop over its OWN
 // namespace, so a silo stands on its own; the fleet-manager watches only the cluster-scoped
 // ClusterTenant CR and nothing inside a silo.
-import { _LoadOperatorConfig, type OpenClawTenantOperatorConfig } from "./config.js";
+import { _LoadOperatorConfig, type OpenClawTenantOperatorConfig } from "./app/config.js";
 import { _ProvisionByokKey } from "@opencrane/domain-model-routing";
-import { _CreateTenantOperator, IdleChecker } from "./tenants/index.js";
-import { PolicyOperator } from "./policies/operator.js";
-import { _ReadTenantRolloutConfig, TenantUpdateWithCanaryStrategyController } from "./tenant-rollout/tenant-update-with-canary-strategy.controller.js";
-import { GatewayProxyServer } from "./gateway-proxy/server.js";
-import { ObotHealthChecker } from "./mcp-gateway/obot-health-checker.js";
+import { _CreateTenantOperator, IdleChecker } from "./reconcilers/tenants/index.js";
+import { PolicyOperator } from "./reconcilers/policies/operator.js";
+import { _ReadTenantRolloutConfig, TenantUpdateWithCanaryStrategyController } from "./reconcilers/tenant-rollout/tenant-update-with-canary-strategy.controller.js";
+import { GatewayProxyServer } from "./gateways/gateway-proxy/server.js";
+import { ObotHealthChecker } from "./gateways/mcp-gateway/obot-health-checker.js";
 
 // Route any stray console.* call (first-party or third-party) through the
 // structured logger so nothing reaches stdout unstructured / uncorrelated.

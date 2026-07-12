@@ -1,7 +1,7 @@
-import type { AccessPolicy } from "../policies/types.js";
-import { type OpenClawTenantOperatorConfig, HostingProvider } from "../config.js";
-import type { Tenant } from "../tenants/models/tenant.interface.js";
-import { TenantStatusPhase } from "../tenants/models/tenant-status.interface.js";
+import type { AccessPolicy } from "../reconcilers/policies/types.js";
+import { type OpenClawTenantOperatorConfig, HostingProvider } from "../app/config.js";
+import type { Tenant } from "../reconcilers/tenants/models/tenant.interface.js";
+import { TenantStatusPhase } from "../reconcilers/tenants/models/tenant-status.interface.js";
 import type { ClusterTenantResource } from "@opencrane/infra-api";
 import { OnPremHostingAdapter } from "../hosting/adapters/onprem/onprem-hosting.adapter.js";
 import { GcpHostingAdapter } from "../hosting/adapters/gcp/gcp-hosting.adapter.js";

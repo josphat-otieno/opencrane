@@ -1,8 +1,8 @@
 import * as k8s from "@kubernetes/client-node";
 import type { Logger } from "pino";
 
-import { _OperatorConfigChecksum, type OpenClawTenantOperatorConfig } from "../config.js";
-import { _BuildHostingAdapter, type HostingAdapter } from "../hosting/index.js";
+import { _OperatorConfigChecksum, type OpenClawTenantOperatorConfig } from "../../app/config.js";
+import { _BuildHostingAdapter, type HostingAdapter } from "../../hosting/index.js";
 
 import type { Tenant } from "./models/tenant.interface.js";
 import { TenantPolicyResolutionState, TenantStatusPhase, type TenantDegradedReason } from "./models/tenant-status.interface.js";

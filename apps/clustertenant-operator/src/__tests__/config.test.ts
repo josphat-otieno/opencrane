@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { _LoadOperatorConfig } from "../config.js";
+import { _LoadOperatorConfig } from "../app/config.js";
 
 /** Minimal mandatory env so `_LoadOperatorConfig` reaches the multi-instance guard. */
 const _BASE_ENV: Record<string, string> = {

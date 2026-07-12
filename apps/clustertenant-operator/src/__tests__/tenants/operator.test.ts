@@ -2,12 +2,12 @@ import { describe, it, expect, vi } from "vitest";
 import pino from "pino";
 
 import { defaultConfig, _makeTenant } from "../fixtures.js";
-import { _ResolveOrgServingDomain } from "../../tenants/internal/org-serving-domain.js";
-import { _OperatorConfigChecksum } from "../../config.js";
-import { TenantOperator } from "../../tenants/operator.js";
-import { TenantStatusPhase } from "../../tenants/models/tenant-status.interface.js";
-import type { TenantStatusWriter } from "../../tenants/internal/tenant-status-writer.js";
-import type { Tenant } from "../../tenants/models/tenant.interface.js";
+import { _ResolveOrgServingDomain } from "../../reconcilers/tenants/internal/org-serving-domain.js";
+import { _OperatorConfigChecksum } from "../../app/config.js";
+import { TenantOperator } from "../../reconcilers/tenants/operator.js";
+import { TenantStatusPhase } from "../../reconcilers/tenants/models/tenant-status.interface.js";
+import type { TenantStatusWriter } from "../../reconcilers/tenants/internal/tenant-status-writer.js";
+import type { Tenant } from "../../reconcilers/tenants/models/tenant.interface.js";
 
 describe("TenantOperator", () =>
 {

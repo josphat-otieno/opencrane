@@ -1,6 +1,6 @@
 import * as k8s from "@kubernetes/client-node";
 
-import type { OpenClawTenantOperatorConfig } from "../../config.js";
+import type { OpenClawTenantOperatorConfig } from "../../../app/config.js";
 
 /** Namespace label every Kubernetes namespace carries (`kubernetes.io/metadata.name`). */
 const _NAMESPACE_NAME_LABEL = "kubernetes.io/metadata.name";

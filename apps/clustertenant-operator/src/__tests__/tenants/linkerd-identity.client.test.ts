@@ -2,8 +2,8 @@ import type * as k8s from "@kubernetes/client-node";
 import type { Logger } from "pino";
 import { describe, expect, it, vi } from "vitest";
 
-import { _BuildSiloLinkerdIdentityPolicy } from "../../tenants/deploy/silo-linkerd-identity.js";
-import { LinkerdIdentityClient } from "../../tenants/internal/linkerd-identity.client.js";
+import { _BuildSiloLinkerdIdentityPolicy } from "../../reconcilers/tenants/deploy/silo-linkerd-identity.js";
+import { LinkerdIdentityClient } from "../../reconcilers/tenants/internal/linkerd-identity.client.js";
 import { defaultConfig } from "../fixtures.js";
 
 /** A 404 the API server returns when a Linkerd policy CRD type is NOT served (Linkerd absent). */

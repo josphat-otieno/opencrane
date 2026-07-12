@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { FixedWindowRateLimiter } from "../../gateway-proxy/rate-limit.js";
+import { FixedWindowRateLimiter } from "../../gateways/gateway-proxy/rate-limit.js";
 
 describe("FixedWindowRateLimiter", () =>
 {

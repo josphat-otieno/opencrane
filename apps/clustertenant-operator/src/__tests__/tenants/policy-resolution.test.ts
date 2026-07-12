@@ -2,9 +2,9 @@ import type * as k8s from "@kubernetes/client-node";
 import { describe, expect, it, vi } from "vitest";
 
 import { defaultConfig, _makeTenant } from "../fixtures.js";
-import type { AccessPolicy } from "../../policies/types.js";
-import { _ResolveTenantPolicy } from "../../tenants/internal/policy-resolution.js";
-import { TenantPolicyResolutionState } from "../../tenants/models/tenant-status.interface.js";
+import type { AccessPolicy } from "../../reconcilers/policies/types.js";
+import { _ResolveTenantPolicy } from "../../reconcilers/tenants/internal/policy-resolution.js";
+import { TenantPolicyResolutionState } from "../../reconcilers/tenants/models/tenant-status.interface.js";
 
 /**
  * Build a minimal AccessPolicy fixture with selectable name and selector fields.

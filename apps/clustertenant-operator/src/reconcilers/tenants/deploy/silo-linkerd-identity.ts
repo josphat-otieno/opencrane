@@ -1,4 +1,4 @@
-import type { OpenClawTenantOperatorConfig } from "../../config.js";
+import type { OpenClawTenantOperatorConfig } from "../../../app/config.js";
 
 import type {
   LinkerdAuthorizationPolicy,

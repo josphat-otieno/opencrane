@@ -5,8 +5,8 @@ import pino from "pino";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
 import { defaultConfig, _makeTenant } from "../fixtures.js";
-import { CogneeTenantIdentity, _CredentialsSecretName } from "../../tenants/internal/cognee-tenant-identity.js";
-import type { OpenClawTenantOperatorConfig } from "../../config.js";
+import { CogneeTenantIdentity, _CredentialsSecretName } from "../../reconcilers/tenants/internal/cognee-tenant-identity.js";
+import type { OpenClawTenantOperatorConfig } from "../../app/config.js";
 
 const _log = pino({ level: "silent" });
 

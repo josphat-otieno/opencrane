@@ -5,7 +5,7 @@ import type * as k8s from "@kubernetes/client-node";
 
 import { _RequestHost } from "@opencrane/infra-auth";
 
-import { _log } from "../../log.js";
+import { _log } from "../../app/log.js";
 import type { OidcAuthService } from "./oidc.service.js";
 import { _AuthorizeDeviceGrant, _CreateDeviceGrant, _FindGrantByUserCode, _PollDeviceGrant } from "./device-grant.js";
 import { _ResolveOpenClawPairing } from "./openclaw-pairing.js";

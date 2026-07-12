@@ -15,7 +15,7 @@ vi.mock("@opencrane/domain-projection", async function _mock(importOriginal)
   return { ...actual, _RepairTenantProjection: _repair };
 });
 
-import { TenantProjectionRepairer } from "../../infra/tenant-projection-repairer.js";
+import { TenantProjectionRepairer } from "../../infra/projection/tenant-projection-repairer.js";
 
 const _log = pino({ enabled: false });
 const _customApi = {} as k8s.CustomObjectsApi;

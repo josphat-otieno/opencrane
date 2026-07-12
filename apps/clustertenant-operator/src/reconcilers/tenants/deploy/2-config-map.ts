@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type * as k8s from "@kubernetes/client-node";
 
-import type { OpenClawTenantOperatorConfig } from "../../config.js";
+import type { OpenClawTenantOperatorConfig } from "../../../app/config.js";
 import type { AccessPolicy } from "../../policies/types.js";
 import type { Tenant } from "../models/tenant.interface.js";
 import type { TenantModelSet } from "@opencrane/contracts";

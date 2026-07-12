@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { HostingProvider, type GcpHostingConfig } from "./hosting/hosting-adapter.types.js";
+import { HostingProvider, type GcpHostingConfig } from "../hosting/hosting-adapter.types.js";
 import { _ParseTrustedProxies, _DeriveTrustedProxyCidr, _AUTO_TRUSTED_PROXY_TOKEN, _DEFAULT_AUTO_TRUSTED_PROXY_MASK } from "./trusted-proxies.js";
 
 export type { GcpHostingConfig };

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import { _makeTenant } from "../fixtures.js";
-import { TenantStatusPhase } from "../../tenants/models/tenant-status.interface.js";
-import { _ComputeLastActivityMs, _ListIdleCandidates, _ShouldSuspend } from "../../tenants/runtime/idle-policy.js";
-import type { Tenant } from "../../tenants/models/tenant.interface.js";
+import { TenantStatusPhase } from "../../reconcilers/tenants/models/tenant-status.interface.js";
+import { _ComputeLastActivityMs, _ListIdleCandidates, _ShouldSuspend } from "../../reconcilers/tenants/runtime/idle-policy.js";
+import type { Tenant } from "../../reconcilers/tenants/models/tenant.interface.js";
 
 describe("idle-policy", () =>
 {

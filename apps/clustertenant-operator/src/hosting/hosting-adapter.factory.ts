@@ -1,4 +1,4 @@
-import type { OpenClawTenantOperatorConfig } from "../config.js";
+import type { OpenClawTenantOperatorConfig } from "../app/config.js";
 import { HostingProvider, type HostingAdapter } from "./hosting-adapter.types.js";
 import { OnPremHostingAdapter } from "./adapters/onprem/onprem-hosting.adapter.js";
 import { GcpHostingAdapter } from "./adapters/gcp/gcp-hosting.adapter.js";

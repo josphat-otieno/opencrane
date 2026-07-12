@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import type * as k8s from "@kubernetes/client-node";
 
 import { _makeTenant, _makeClusterTenant, defaultConfig } from "../fixtures.js";
-import { _ResolveClusterTenant } from "../../tenants/internal/cluster-tenant-resolution.js";
+import { _ResolveClusterTenant } from "../../reconcilers/tenants/internal/cluster-tenant-resolution.js";
 import type { ClusterTenantResource } from "@opencrane/infra-api";
 
 /**

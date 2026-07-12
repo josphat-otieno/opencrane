@@ -21,7 +21,7 @@ import { _BuildGatewayAdmin } from "@opencrane/domain-connections";
 import { _BuildDocMergeReconciler, companyDocsRouter } from "@opencrane/domain-company-docs";
 import { sessionsRouter } from "@opencrane/domain-sessions";
 import { _CheckDbHealth, _OpenapiRouter } from "@opencrane/infra-http";
-import { spec } from "./openapi/spec.js";
+import { spec } from "../openapi/spec.js";
 
 /**
  * Build the optional OCI (Zot) skill-bundle store from the environment.
