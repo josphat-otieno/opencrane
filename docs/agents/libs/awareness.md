@@ -12,7 +12,7 @@ removed when that plugin was adopted.
 
 `AWARENESS_CONTRACT_VERSION` (e.g. `awareness/v1alpha1`) is stamped onto the tenant runtime contract
 (`2-config-map.ts` `memory.contractVersion`) and drives the control-plane's awareness rollout/canary
-machinery (`clustertenant-operator/src/core/awareness`, `routes/awareness-rollout.ts`).
+machinery (`libs/domain/awareness/main/src/routes/awareness-rollout.ts`).
 `___AssertContractCompatible(peer)` / `___IsContractCompatible(peer)` throw / report on a **major**
 version mismatch — retained for the rollout machinery to gate on (there is no longer a pod-side SDK
 that self-enforces it).

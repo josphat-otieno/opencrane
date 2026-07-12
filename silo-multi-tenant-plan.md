@@ -208,7 +208,7 @@ local Postgres AND remote Zitadel; there is no 2PC across a remote API, so:
 | role/group change | update grant + emit session-invalidation so the user re-logs to pick up new claims |
 
 **Service-layer shape (mirror `OciBundleStore` / `_NoopGatewayAdmin` factory pattern):**
-`apps/clustertenant-operator/src/core/zitadel/zitadel-client.ts` + `_BuildZitadelManagementClient()` →
+`apps/fleet-operator/src/infra/zitadel/zitadel-client.ts` + `_BuildZitadelManagementClient()` →
 returns a no-op when unconfigured (fail-closed: lifecycle ops are best-effort + reconciled, never
 block the local write), throws fail-loud on bad config. Auth via a **Zitadel service-account JWT
 key** — this is the *one* legitimate Zitadel SA (an automation principal acting on the API), NOT
@@ -223,7 +223,7 @@ An `openclaw` Tenant is **1:1 with one ClusterTenant user** and must act with th
 entitlements across the silo's planes (Cognee datasets, Skills register, Obot/MCP, inter-user
 sharing). **The machinery already exists — it is keyed on the wrong principal.**
 
-*As-built (verified):* `core/grants/grant-compiler.ts:126` already unions `subjectType=User`
+*As-built (verified):* `libs/domain/grants/main/src/core/grant-compiler.ts:126` already unions `subjectType=User`
 + `Tenant` + every `Group` the principal is in, with **Deny>Allow → priority → recency**
 precedence; the contract (`/api/internal/contract/:name`) already projects `mcpServers.allow/deny`
 (Obot), `skills.entitled` (Skills register); the pod polls + hot-reloads
@@ -342,7 +342,7 @@ loop of §2. Depends on Phase 1 substrate.
 Make the control-plane *control* Zitadel (object model + tiers + transaction rules in §2).
 Independent of the network substrate, so it can land in parallel with Phase 1.
 - ✅ **DONE (S3 keystone, PR)** **`zitadel-client` seam + schema + transactional wiring** —
-  `core/zitadel/zitadel-client.{ts,types.ts}` (`ZitadelManagementClient` + `_NoopZitadelManagementClient`
+  `apps/fleet-operator/src/infra/zitadel/zitadel-client.ts` (`ZitadelManagementClient` + `_NoopZitadelManagementClient`
   + `_BuildZitadelManagementClient` no-op-when-unconfigured factory + `_DeriveOrgRedirectUri`);
   migration 0025 (`Tenant.subject` + CT `zitadel{OrgId,AppId,RedirectUri}`); CT create calls
   `provisionOrg` as the LAST fallible step inside `prisma.$transaction` (rollback-safe) + persists

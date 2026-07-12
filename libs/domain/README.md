@@ -35,7 +35,7 @@ can join it later without restructuring (e.g. `libs/domain/mcp/main` next to
 
 1. `libs/domain/<d>/main` with the layout above (copy a small package such as
    `libs/domain/audit/main` as a template); name it `@opencrane/domain-<d>`, tag `scope:domain`.
-2. Add the router mount in `apps/clustertenant-operator/src/routes.ts` and the
+2. Mount the router in `apps/clustertenant-operator/src/routes.ts` and add the
    `workspace:*` dependency in the operator `package.json`.
 3. Add `prisma/schema/<d>.prisma` if the domain owns models.
 4. `pnpm install && pnpm build && pnpm test && pnpm lint:boundaries`.
