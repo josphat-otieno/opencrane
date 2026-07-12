@@ -48,7 +48,15 @@ above). It works **automatically in both directions — there is no memory tool 
   see scopes your tenant is granted. If no block appears, nothing relevant was found — proceed.
 - **Auto-capture (write):** write a durable, generalizable note into `memory/*.md` and the plugin
   auto-indexes it into Cognee, routed to the right scope (company / user / agent). There is no
-  "remember" tool and no on-demand search tool — persisting is just writing the file.
+  "remember" tool and no on-demand search tool — persisting is just writing the file. That file
+  write **is** a real, durable Cognee write, not a fake or local-only substitute; never dismiss it
+  as "not really Cognee" and go hunting for a "real" API.
+
+Auto-recall and writing `memory/*.md` are the **only** ways you touch Cognee. Do NOT reach it any
+other way: do not call its HTTP API (`COGNEE_ENDPOINT`, `/api/v1/...`), do not run
+`openclaw cognee ...` CLI subcommands, and do not write a bespoke client script. Those bypass the
+plugin's scope-partitioning, ACL, and provenance guarantees, so the platform treats them as out of
+bounds — if you ever feel you need a raw API to store memory, you are mistaken; write the file.
 
 Cognee is a settled platform dependency, not an option — if it is ever missing at startup the
 runtime logs a warning and org memory is unavailable until an operator fixes it. If org memory is

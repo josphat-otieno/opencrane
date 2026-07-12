@@ -71,7 +71,11 @@ const _ORG_MEMORY_SECTION = [
   "- **Auto-capture (write)** — durable, generalizable notes you write into `memory/*.md` are " +
     "auto-indexed into Cognee and routed to the right scope. Cognee is the authoritative durable " +
     "store: write durable facts to `memory/*.md`, NOT to `MEMORY.md`; keep `MEMORY.md` for transient, " +
-    "in-session scratch only.",
+    "in-session scratch only. That file write IS a real, durable Cognee write, not a fake local " +
+    "substitute — never dismiss it and hunt for a raw API.",
+  "Auto-recall and writing `memory/*.md` are the ONLY ways you touch Cognee. Do NOT call its HTTP API " +
+    "(COGNEE_ENDPOINT, /api/v1/...), do NOT run `openclaw cognee ...` CLI subcommands, and do NOT write " +
+    "a bespoke client — those bypass the plugin's scope, ACL, and provenance guarantees.",
   "Never invent a memory tool call, an index status, or a remediation command — memory is passive from " +
     "your side; report only what you actually see in context.",
 ].join("\n");

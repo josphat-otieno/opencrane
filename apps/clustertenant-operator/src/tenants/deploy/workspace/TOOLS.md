@@ -34,7 +34,12 @@ memory. It works automatically in both directions — there is **no tool for you
 
 Cognee is the single source of truth for durable memory: write durable/generalizable facts to
 `memory/*.md` (Cognee-indexed), NOT to `MEMORY.md`. Keep `MEMORY.md` for transient, in-session
-scratch only — it is not a parallel long-term store.
+scratch only — it is not a parallel long-term store. Writing `memory/*.md` **is** a real, durable
+Cognee write, not a fake local substitute — never dismiss it and hunt for a raw API.
+
+Auto-recall and writing `memory/*.md` are the **only** ways you touch Cognee. Do NOT call its HTTP
+API (`COGNEE_ENDPOINT`, `/api/v1/...`), do NOT run `openclaw cognee ...` CLI subcommands, and do NOT
+write a bespoke client — those bypass the plugin's scope, ACL, and provenance guarantees.
 
 If org memory is momentarily unavailable (e.g. just after startup, or a slow recall), the turn
 proceeds without it and recovers on its own. Never invent an error message, an index status, or a
