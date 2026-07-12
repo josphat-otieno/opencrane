@@ -25,7 +25,9 @@ Friction items seen across runs; bump the count, and when it hits 2, file the fi
 
 | Friction item | Seen | Status |
 |---|---|---|
-| _(none yet)_ | | |
+| No raw-helm-flag passthrough in `k8s-deploy.sh` (blocks sanctioned `--take-ownership` / one-time field-clear recoveries) | 2 (07-09, 07-11) | **graduated** — needs a `--helm-arg` passthrough fix PR |
+| `--preflight` NS-delegation check false-positives on `dev.opencrane.ai` every run (A-record in parent zone, not a delegated subzone) | 3+ (07-10..07-12) | **graduated** — scope the check to only fire when ACME/DNS-01 issuance is requested |
+| `--set` numeric-string coercion breaks string values (annotations) — needs `--set-string`/`--values` | 2 (07-10, 07-11) | fixed-forward in usage; consider a script guard |
 
 ## Standing lessons (read these first)
 
@@ -36,6 +38,21 @@ Friction items seen across runs; bump the count, and when it hits 2, file the fi
 - Known dev-cluster history (see auto-memory / plan.md): migrate-on-deploy
   initContainer, tenant-pod `trustNothing` config crash, `trustedProxies: []`
   fail-closed — check whether a "new" failure is one of these before diagnosing fresh.
+- **In-place upgrade ≠ fresh render.** A chart change to an immutable/API-defaulted
+  field (Deployment `strategy`/`selector`, PVC spec, Service `clusterIP`) or a resource's
+  Helm-ownership metadata can be rejected by `helm upgrade` on an already-live object even
+  when `helm template`/CI are green. Diff `helm get manifest` / the live object before
+  applying. Two burns: RollingUpdate→Recreate needing `rollingUpdate: null` then
+  ultimately `maxSurge:0` (PRs #187→#188→#189, 3 revisions); Certificate created
+  out-of-band failing "cannot be imported into the current release" (2026-07-09).
+- `--set` coerces a numeric-looking string to a number (e.g. a `restartedAt` epoch
+  annotation → `expected string, got 1783…`). Use `--set-string` or a `--values` file
+  with a quoted value for annotation/string values.
+- A service that stores state (Cognee: identity DB + graph + vector) needs a PVC, or it
+  wipes on every restart — and any operator-registered state inside it (per-tenant logins)
+  is orphaned with it. Boot-time provisioning of such state must reconcile on a loop, not
+  one-shot; and a tenant pod that reads its credentials via `secretKeyRef` needs a
+  pod-template stamp to roll when that state is re-provisioned (PR #187→#190).
 
 ## Runs
 
@@ -99,3 +116,48 @@ Friction items seen across runs; bump the count, and when it hits 2, file the fi
 - lesson: a successful `helm upgrade` + "successfully rolled out" is NOT proof the
   intended runtime change took effect inside the tenant pod — verify the actual
   installed package version on the PVC, not just the pod's env vars/ConfigMap.
+
+## 2026-07-10 · dev · clustertenant-platform (silo: elewa) · e974df3 → 014250f → 1418d70 · LIVE
+- context: Cognee org-memory fix chain (issues behind PRs #178/#182/#183/#184). Multiple
+  same-day silo redeploys as each layer landed.
+- findings: infra: opencrane-dev has NO NetworkPolicy-enforcing CNI (standard GKE, no
+  Dataplane V2, `networkPolicy: null`, no calico/cilium DaemonSet) — every silo/Cognee
+  NetworkPolicy is declared-but-INERT, incl. the #178 Cognee egress exclusion. Filed #180.
+- findings: codebase: Cognee had no LLM/embedding creds, then no registered embedding
+  model, then a shared-`default_user` login — fixed across #182/#183/#184 (per-tenant
+  Cognee logins keyed to the IdP email + a shared silo Cognee tenant + an `auto-embedding`
+  alias). Verified live: `/v1/embeddings` model=auto-embedding → 200, no more
+  `Invalid model name` / `EmbeddingException`.
+- lesson: LiteLLM `/model/new` is not idempotent by name — guard with a `/model/info`
+  check (the embedding path does; chat guards via the ModelDefinition row). Registry
+  stayed duplicate-free across many redeploys.
+
+## 2026-07-11 · dev · clustertenant-platform (silo: elewa) · 8905cdc / 53a64f9 · FAILED ×2
+- findings: chart: Cognee had NO persistent storage — identity DB + graph + vector on the
+  pod's ephemeral fs, wiped every restart (the #184 restart orphaned the per-tenant login →
+  `qa store failed: 401`). Fixed by a PVC (#187). BUT #187/#188 used `type: Recreate`, which
+  the API server rejected on the already-live Deployment (`spec.strategy.rollingUpdate:
+  Forbidden`) — `helm upgrade` aborted at rev 32 AND rev 33, so Cognee never got the PVC. A
+  template `rollingUpdate: null` (#188) did not clear the field via Helm's 3-way merge.
+- lesson: see standing lesson "in-place upgrade ≠ fresh render". Superseded by #189's
+  `RollingUpdate maxSurge:0` (RWO-safe, no strategy-type transition).
+
+## 2026-07-12 · dev · clustertenant-platform (silo: elewa) · 584bd3c → 830f42e · LIVE
+- findings: chart: #189 (`RollingUpdate maxSurge:0`) applies cleanly on the live Deployment;
+  Cognee PVC Bound, and data VERIFIED to survive a forced restart (same PVC re-attached,
+  db mtimes pre-date the restart; transient Multi-Attach self-resolves in ~15s — the
+  RWO-safe handoff working as designed).
+- findings: codebase: the silo-owner self-heal (`ensureSiloTenant`) was one-shot at operator
+  boot with no retry — it missed the Cognee readiness window on a deploy, so the persistent
+  Cognee stayed owner-less and every per-tenant join looped on owner-login 400s. And the
+  running tenant pod (secretKeyRef creds, no re-login on 401) never picked up a healed
+  identity. Both fixed in #190: periodic 60s silo heal + an `opencrane.io/cognee-identity`
+  pod-template stamp that rolls the tenant pod when its Cognee tenant id changes. Verified
+  live: owner re-provisioned within 14s of boot, tenant pod rolled, no 401 in the post-roll
+  window, embedding 200.
+- friction: `--preflight` NS-delegation check false-positives on dev.opencrane.ai (A-record
+  in the parent zone, not a delegated subzone) on every run — candidate to scope the check
+  to only fire when ACME/DNS-01 issuance is actually requested.
+- lesson: org-memory is only "working" when the tenant pod can invoke it — a green rollout +
+  healed server-side identity is necessary but not sufficient; confirm from the tenant pod's
+  own logs (fresh login, no 401) after it rolls.

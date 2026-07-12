@@ -56,6 +56,16 @@ the next deploy cannot reproduce, which defeats your purpose.
 4. `helm dep build` (NOT `dep update`) for the profile chart — dependencies resolve
    from `Chart.lock` so every run is reproducible.
 5. Run the script's own `--preflight` when available.
+6. **In-place upgrade ≠ fresh render.** If this deploy carries a chart change to an
+   immutable or API-defaulted field — a Deployment/StatefulSet `strategy` or
+   `selector`, a PVC spec, a Service `clusterIP`/`type`, or a resource's
+   Helm-ownership metadata — diff the RENDERED manifest against the LIVE object first
+   (`helm get manifest` / `kubectl get <res> -o yaml`). The API server rejects some
+   in-place transitions even when `helm template` and CI are green: e.g.
+   RollingUpdate↔Recreate leaves a forbidden `strategy.rollingUpdate` block unless the
+   template nulls it, and a resource created out-of-band has no Helm ownership so the
+   upgrade errors "cannot be imported into the current release". Flag the hazard as a
+   `chart` finding BEFORE applying — it has cost this fleet multiple failed revisions.
 
 ## Running the deploy
 

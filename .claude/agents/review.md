@@ -48,6 +48,24 @@ fresh context — do not assume the author's intent was correct.
   is a finding. Expected/benign early returns need no log.
 - Tests exist for changed behaviour and for the regression being fixed. When in
   doubt run them: `pnpm --filter <pkg> test`.
+- **Operational correctness** (these cost real live-deploy iterations when missed —
+  flag them at PR time):
+  - *Persistence.* A workload that stores state it must not lose (database, vector/graph
+    index, identity/user table) with only ephemeral pod storage loses everything on
+    restart. A stateful container needs a volume — flag a Deployment/pod writing durable
+    state with no PVC/mount.
+  - *In-place upgrade safety.* A chart change to an immutable/API-defaulted field
+    (Deployment `strategy`/`selector`, PVC spec, Service `clusterIP`) must transition
+    cleanly on an ALREADY-LIVE object, not just render — e.g. RollingUpdate→Recreate must
+    `rollingUpdate: null` or the live upgrade is rejected. Prefer a change that avoids the
+    transition (tune `maxSurge:0` instead of switching to Recreate) over one that needs it.
+  - *Reconcile, not one-shot.* Provisioning a dependency at boot fire-and-forget (a single
+    attempt that only logs a warning on failure) silently never converges if the
+    dependency wasn't ready at that instant — it needs retry/periodic reconciliation.
+  - *Config/credential propagation.* A pod consuming a Secret/ConfigMap via env or
+    `secretKeyRef` reads it once at start and does not hot-reload; if that value's meaning
+    can change at runtime, there must be a pod-roll trigger (a checksum/identity annotation
+    on the pod template).
 
 ### DIMENSION: security
 - **IAM-first**: federated identity / OIDC / Workload Identity over static bearer
