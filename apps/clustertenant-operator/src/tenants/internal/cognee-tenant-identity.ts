@@ -179,6 +179,21 @@ export class CogneeTenantIdentity
   }
 
   /**
+   * The Cognee silo-tenant id this tenant's login is currently joined to (from its credentials
+   * Secret), or `""` when not provisioned/joined yet. The reconcile loop folds this into the tenant
+   * pod's roll-checksum: the pod caches its Cognee session at start and does NOT re-login on a 401,
+   * so a server-side identity heal (silo re-provisioned → new tenant id, or a wiped login
+   * re-registered → id reset then re-joined) is invisible to a long-running pod until it rolls.
+   * Stamping the id makes a successful (re)join change the pod template → a Recreate roll → the
+   * plugin logs in fresh against the healed Cognee.
+   */
+  async currentJoinedTenantId(tenantName: string, namespace: string): Promise<string>
+  {
+    const credentials = await this._readCredentialsSecret(namespace, tenantName);
+    return credentials?.tenantId ?? "";
+  }
+
+  /**
    * Register `email`/`password` as a Cognee user. Idempotent: a 400 response (Cognee's
    * signal for "email already registered", verified against the shipped `test_backend_auth.py`:
    * `assert register_response.status_code in (201, 400)`) is treated as success since the

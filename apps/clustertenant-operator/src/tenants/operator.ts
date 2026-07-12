@@ -390,6 +390,24 @@ export class TenantOperator
         this.log.warn({ err, name }, "cognee silo-tenant join failed; continuing reconcile");
       }
 
+      // 5c. Capture the tenant's current Cognee silo-tenant id (best-effort) so step 8 can stamp it
+      //     on the pod template. A server-side Cognee identity heal (silo re-provisioned, or a wiped
+      //     login re-registered + re-joined above) changes this id; the running pod caches its
+      //     Cognee session and never re-logins on a 401, so without this stamp it stays 401 until
+      //     something else happens to roll it. Empty string when Cognee is off / not joined yet.
+      let cogneeIdentityStamp = "";
+      if (this.config.cogneeEndpoint)
+      {
+        try
+        {
+          cogneeIdentityStamp = await this.cogneeTenantIdentity.currentJoinedTenantId(name, namespace);
+        }
+        catch (err)
+        {
+          this.log.warn({ err, name }, "reading cognee identity stamp failed; pod roll on identity change skipped this cycle");
+        }
+      }
+
       // 6. ConfigMap — serialises the base OpenClaw JSON config merged with any
       //    spec.configOverrides the tenant author provided. Capture it so its
       //    checksum can roll the pod when the config changes (step 7).
@@ -443,7 +461,7 @@ export class TenantOperator
 
       // 8. Deployment — single-replica pod running the tenant's OpenClaw gateway.
       //    Mounts the ConfigMap, encryption key, state volume, and projected identity tokens.
-      await __K8sApplyResource(this.appsApi, _BuildDeployment(this.config, stateVolume, effectiveTenant, namespace, compute, configChecksum), this.log);
+      await __K8sApplyResource(this.appsApi, _BuildDeployment(this.config, stateVolume, effectiveTenant, namespace, compute, configChecksum, cogneeIdentityStamp), this.log);
 
       // 9. Service — ClusterIP that makes the gateway reachable inside the cluster
       //    on the configured gateway port.

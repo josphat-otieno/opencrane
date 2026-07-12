@@ -741,4 +741,28 @@ describe("config checksum → pod roll", () =>
   {
     expect(_annotations(undefined)).toBeUndefined();
   });
+
+  it("stamps the Cognee identity so an identity heal rolls the pod, alongside the config checksum", () =>
+  {
+    const anns = _BuildDeployment(defaultConfig, onPremAdapter.buildStateVolume("jente"), _makeTenant("jente"), "default", undefined, "cfg1", "tenant-uuid-1")
+      .spec?.template?.metadata?.annotations;
+    expect(anns).toEqual({ "opencrane.io/config-checksum": "cfg1", "opencrane.io/cognee-identity": "tenant-uuid-1" });
+  });
+
+  it("rolls on a Cognee identity change even when the config checksum is unchanged", () =>
+  {
+    const build = (stamp: string) => _BuildDeployment(defaultConfig, onPremAdapter.buildStateVolume("jente"), _makeTenant("jente"), "default", undefined, "cfg1", stamp)
+      .spec?.template?.metadata?.annotations?.["opencrane.io/cognee-identity"];
+    // Same config checksum, different Cognee tenant id (silo re-provisioned) ⇒ annotation differs ⇒ roll.
+    expect(build("old-tenant")).toBe("old-tenant");
+    expect(build("new-tenant")).toBe("new-tenant");
+  });
+
+  it("omits the Cognee-identity annotation when the stamp is empty (Cognee-less / not joined)", () =>
+  {
+    const anns = _BuildDeployment(defaultConfig, onPremAdapter.buildStateVolume("jente"), _makeTenant("jente"), "default", undefined, "cfg1", "")
+      .spec?.template?.metadata?.annotations;
+    expect(anns).toEqual({ "opencrane.io/config-checksum": "cfg1" });
+    expect(anns).not.toHaveProperty("opencrane.io/cognee-identity");
+  });
 });

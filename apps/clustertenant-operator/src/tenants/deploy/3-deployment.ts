@@ -31,9 +31,15 @@ import { _CredentialsSecretName } from "../internal/cognee-tenant-identity.js";
  *   rolls the pod — a mounted ConfigMap update alone does not restart OpenClaw,
  *   which reads `openclaw.json` only at startup. Omitted ⇒ no annotation, so the
  *   suspend path and existing tests render byte-for-byte unchanged.
+ * @param cogneeIdentityStamp - Optional current Cognee silo-tenant id this pod's login is joined
+ *   to (`CogneeTenantIdentity.currentJoinedTenantId`). Stamped as `opencrane.io/cognee-identity`
+ *   so a server-side Cognee identity heal (silo re-provisioned → new tenant id, or a wiped login
+ *   re-registered + re-joined) rolls the pod: it reads its Cognee credentials once at start and
+ *   does NOT re-login on a 401, so it otherwise never picks up the healed identity. Omitted/empty ⇒
+ *   no annotation (Cognee-less deploys + suspend path unchanged).
  */
 export function _BuildDeployment(config: OpenClawTenantOperatorConfig, stateVolume: TenantStateVolume, tenant: Tenant,
-                                 namespace: string, compute?: ClusterTenantComputeView, configChecksum?: string): k8s.V1Deployment
+                                 namespace: string, compute?: ClusterTenantComputeView, configChecksum?: string, cogneeIdentityStamp?: string): k8s.V1Deployment
 {
   const name = tenant.metadata!.name!;
   const image = tenant.spec.openclawImage ?? config.tenantDefaultImage;
@@ -203,9 +209,17 @@ export function _BuildDeployment(config: OpenClawTenantOperatorConfig, stateVolu
             "opencrane.io/tenant": name,
             ...(tenant.spec.team ? { "opencrane.io/team": tenant.spec.team } : {}),
           },
-          // Roll the pod when the tenant config changes (OpenClaw reads openclaw.json
-          // only at startup). Omitted when no checksum is supplied (suspend path).
-          ...(configChecksum ? { annotations: { "opencrane.io/config-checksum": configChecksum } } : {}),
+          // Roll the pod when the tenant config changes (OpenClaw reads openclaw.json only at
+          // startup), or when its Cognee identity is (re)provisioned (the pod caches its Cognee
+          // session at start and never re-logins on a 401). Both omitted on the suspend path.
+          ...((configChecksum || cogneeIdentityStamp)
+            ? {
+                annotations: {
+                  ...(configChecksum ? { "opencrane.io/config-checksum": configChecksum } : {}),
+                  ...(cogneeIdentityStamp ? { "opencrane.io/cognee-identity": cogneeIdentityStamp } : {}),
+                },
+              }
+            : {}),
         },
         spec: {
           // 4. Pod defaults — enforce the baseline runtime hardening profile

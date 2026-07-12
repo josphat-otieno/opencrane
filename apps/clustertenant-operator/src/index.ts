@@ -217,6 +217,9 @@ void (async function _startMembershipRepairer()
 /** Idle-checker handle, set during controller bootstrap for shutdown access. */
 let _idleCheckerRef: IdleChecker | null = null;
 
+/** Periodic Cognee silo-tenant heal timer, cleared on shutdown. */
+let _cogneeSiloHealTimerRef: ReturnType<typeof setInterval> | null = null;
+
 /** In-process gateway proxy server handle, for graceful shutdown. */
 let _gatewayProxyRef: GatewayProxyServer | null = null;
 
@@ -326,6 +329,39 @@ async function _startInSiloControllers(): Promise<void>
       }
     })();
 
+    // Periodic Cognee silo-tenant heal. The boot attempt above is one-shot, but the silo owner +
+    // Cognee Tenant live in Cognee's OWN database (unlike the LiteLLM key, a durable k8s Secret) —
+    // a Cognee restart onto a fresh/empty store (notably the FIRST mount of its new persistent
+    // volume) wipes them, and the single boot attempt misses that window whenever Cognee isn't
+    // ready at exactly that moment (it usually restarts alongside this pod on a deploy). Without a
+    // live owner, EVERY per-tenant `ensureTenantJoinedToSiloTenant` fails at owner-login and the
+    // tenant stays 401 forever. Re-running on a slow cadence closes that gap: `ensureSiloTenant`
+    // is idempotent + liveness-checked (a cheap no-op once the owner authenticates) and
+    // re-provisions when it was wiped. Slow interval — this is a silo singleton that changes rarely.
+    if (config.cogneeEndpoint)
+    {
+      const cogneeSiloHealer = new CogneeSiloTenant(config, coreApi, k8s.KubernetesObjectApi.makeApiClient(kc), log);
+      _cogneeSiloHealTimerRef = setInterval(function _healCogneeSiloTenant()
+      {
+        void (async function _run()
+        {
+          try
+          {
+            const ctName = await _ResolveOwnClusterTenantName(customApi, config.watchNamespace, log);
+            if (!ctName)
+            {
+              return;
+            }
+            await cogneeSiloHealer.ensureSiloTenant(ctName, config.watchNamespace);
+          }
+          catch (err)
+          {
+            log.warn({ err }, "cognee silo-tenant heal tick failed; will retry next interval");
+          }
+        })();
+      }, 60_000);
+    }
+
     const tenantOperator = _CreateTenantOperator(kc, config, log);
     const policyOperator = new PolicyOperator(kc, config, log);
 
@@ -423,6 +459,10 @@ async function _shutdown(signal: string): Promise<void>
   // Stop the projection-repair loops + in-silo controllers so no sweep races the disconnect below.
   tenantProjectionRepairer.stop();
   _membershipRepairerRef?.stop();
+  if (_cogneeSiloHealTimerRef)
+  {
+    clearInterval(_cogneeSiloHealTimerRef);
+  }
   _idleCheckerRef?.stop();
   await _gatewayProxyRef?.stop();
 

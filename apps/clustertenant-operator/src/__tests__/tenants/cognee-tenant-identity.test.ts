@@ -516,3 +516,29 @@ describe("CogneeTenantIdentity.ensureTenantJoinedToSiloTenant", () =>
       .rejects.toThrow(/Cognee get-user-id failed/);
   });
 });
+
+describe("CogneeTenantIdentity.currentJoinedTenantId", () =>
+{
+  beforeEach(() => { vi.restoreAllMocks(); });
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it("returns the cached joined tenant id (the pod roll-stamp) when present", async () =>
+  {
+    const { coreApi, objectApi, store } = _makeStatefulApis();
+    _seedCredentials(store, "default", "acme", { username: "acme@example.com", password: "pw", tenantId: "tenant-live-7" });
+
+    const id = await new CogneeTenantIdentity(_enabledConfig, coreApi, objectApi, _log).currentJoinedTenantId("acme", "default");
+    expect(id).toBe("tenant-live-7");
+  });
+
+  it("returns empty string when not joined yet (tenantId empty) or no credentials Secret", async () =>
+  {
+    const { coreApi, objectApi, store } = _makeStatefulApis();
+    _seedCredentials(store, "default", "acme", { username: "acme@example.com", password: "pw" }); // tenantId defaults to ""
+
+    const identity = new CogneeTenantIdentity(_enabledConfig, coreApi, objectApi, _log);
+    expect(await identity.currentJoinedTenantId("acme", "default")).toBe("");
+    // No credentials Secret at all → also empty (never throws).
+    expect(await identity.currentJoinedTenantId("nonexistent", "default")).toBe("");
+  });
+});
