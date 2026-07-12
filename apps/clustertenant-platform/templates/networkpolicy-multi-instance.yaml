@@ -1,7 +1,7 @@
-{{- if and .Values.multiCt.enabled (not .Values.multiInstance.enabled) }}
+{{- if and (.Values.multiCt).enabled (not (.Values.multiInstance).enabled) }}
 {{- fail "multiCt.enabled=true requires multiInstance.enabled=true: the cross-instance default-deny is mandatory for a multi-ClusterTenant install and derives its namespace allow-list from multiInstance.instanceNamespaces. Set multiInstance.enabled=true (and instanceNamespaces), or drop the --multi-ct profile for a single-tenant box." }}
 {{- end }}
-{{- if and .Values.networkPolicy.enabled (or .Values.multiInstance.enabled .Values.multiCt.enabled) }}
+{{- if and (.Values.networkPolicy).enabled (or (.Values.multiInstance).enabled (.Values.multiCt).enabled) }}
 {{- /*
   Cross-instance default-deny NetworkPolicy (brief B6, MI.6).
 
