@@ -4,9 +4,9 @@ import type { PrismaClient } from "@prisma/client";
 
 import { _log } from "../log.js";
 import type { CreatePolicyRequest } from "./policies.types.js";
-import { _PropagatePolicyToCognee, _ResolvePolicyAffectedTenants } from "@opencrane/domain-grants";
-import { _DetectPolicyProjectionDrift, _RepairPolicyProjection } from "@opencrane/domain-projection";
-import { OPENCRANE_API_GROUP, OPENCRANE_API_VERSION, POLICY_CRD_PLURAL } from "@opencrane/infra-api";
+import { _PropagatePolicyToCognee, _ResolvePolicyAffectedTenants } from "@opencrane/domain/grants";
+import { _DetectPolicyProjectionDrift, _RepairPolicyProjection } from "@opencrane/domain/projection";
+import { OPENCRANE_API_GROUP, OPENCRANE_API_VERSION, POLICY_CRD_PLURAL } from "@opencrane/infra/api";
 
 /**
  * Creates an Express router that exposes CRUD operations

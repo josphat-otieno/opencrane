@@ -2,7 +2,7 @@ import { Router } from "express";
 import { AutoRoutingObjective, ModelRoutingScope, type AutoRoutingConfig, type ModelRoutingDefault, type ModelRoutingDefaultWrite } from "@opencrane/contracts";
 import { Prisma, type PrismaClient, type ModelRoutingDefault as PrismaModelRoutingDefault } from "@prisma/client";
 
-import { _ClusterTenantScopeGuard, type ClusterTenantScopedResource } from "@opencrane/domain-cluster-tenants";
+import { _ClusterTenantScopeGuard, type ClusterTenantScopedResource } from "@opencrane/domain/cluster-tenants";
 import type { ValidationFailure } from "./model-routing-defaults.types.js";
 
 /** The valid {@link AutoRoutingObjective} string values, used to validate an incoming config. */

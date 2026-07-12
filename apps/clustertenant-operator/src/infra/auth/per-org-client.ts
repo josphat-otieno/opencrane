@@ -1,6 +1,6 @@
 import * as k8s from "@kubernetes/client-node";
 
-import { CLUSTER_TENANT_CRD_PLURAL, OPENCRANE_API_GROUP, OPENCRANE_API_VERSION, _IsK8sNotFound } from "@opencrane/infra-api";
+import { CLUSTER_TENANT_CRD_PLURAL, OPENCRANE_API_GROUP, OPENCRANE_API_VERSION, _IsK8sNotFound } from "@opencrane/infra/api";
 
 import { _log } from "../../app/log.js";
 import { _ClusterTenantFromHost } from "./request-silo.js";

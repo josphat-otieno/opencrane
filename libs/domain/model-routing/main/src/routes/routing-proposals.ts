@@ -2,10 +2,10 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import { ModelRoutingScope, RoutingProposalStatus, type RoutingProposal as RoutingProposalDto } from "@opencrane/contracts";
 import { RoutingProposalStatus as PrismaRoutingProposalStatus, type PrismaClient, type RoutingProposal as PrismaRoutingProposal } from "@prisma/client";
 
-import { _ClusterTenantScopeGuard, type ClusterTenantScopedResource } from "@opencrane/domain-cluster-tenants";
+import { _ClusterTenantScopeGuard, type ClusterTenantScopedResource } from "@opencrane/domain/cluster-tenants";
 import type { DecideProposalResult } from "./routing-proposals.types.js";
 // Side-effect import: loads the express-session `SessionData.authUser` augmentation.
-import "@opencrane/infra-auth";
+import "@opencrane/infra/auth";
 
 /**
  * Map an eval/proposal's owning-skill team to the ClusterTenant-scope guard's resource shape.

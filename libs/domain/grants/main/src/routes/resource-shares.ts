@@ -3,7 +3,7 @@ import { GrantScope, type PrismaClient } from "@prisma/client";
 
 import { _log } from "../log.js";
 // Side-effect import: loads the express-session `SessionData.authUser` augmentation.
-import "@opencrane/infra-auth";
+import "@opencrane/infra/auth";
 
 /** Resource kinds a user can directly share (a file or a chat/conversation). */
 const _RESOURCE_TYPES = ["file", "chat", "dataset"] as const;

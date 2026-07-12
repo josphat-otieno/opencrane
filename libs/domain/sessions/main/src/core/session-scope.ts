@@ -1,4 +1,4 @@
-import { GrantCompilerAccess, type CompiledGrantDecision } from "@opencrane/domain-grants";
+import { GrantCompilerAccess, type CompiledGrantDecision } from "@opencrane/domain/grants";
 import type { ScopeIntersection, ScopeLevel, ScopeSelector } from "./session-scope.types.js";
 
 /** The valid organizational scope levels (matches the grant-compiler scope enum values). */

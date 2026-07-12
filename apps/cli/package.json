@@ -8,15 +8,19 @@
     "oc": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "rm -rf dist && esbuild src/index.ts --bundle --platform=node --format=esm --packages=external --sourcemap --outdir=dist",
     "dev": "tsx src/index.ts",
     "test": "vitest run",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@opencrane/contracts": "workspace:*",
-    "@opencrane/observability": "workspace:*",
-    "commander": "^12.0.0"
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.56.0",
+    "@opentelemetry/exporter-trace-otlp-proto": "^0.57.0",
+    "@opentelemetry/sdk-node": "^0.57.0",
+    "commander": "^12.0.0",
+    "openapi-fetch": "^0.17.0",
+    "pino": "^9.6.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

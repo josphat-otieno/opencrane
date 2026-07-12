@@ -6,13 +6,95 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "outDir": "dist",
-    "rootDir": "src",
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "baseUrl": ".",
+    "paths": {
+      "@opencrane/domain/access-tokens": [
+        "libs/domain/access-tokens/main/src/index.ts"
+      ],
+      "@opencrane/domain/audit": [
+        "libs/domain/audit/main/src/index.ts"
+      ],
+      "@opencrane/domain/awareness": [
+        "libs/domain/awareness/main/src/index.ts"
+      ],
+      "@opencrane/domain/cluster-tenants": [
+        "libs/domain/cluster-tenants/main/src/index.ts"
+      ],
+      "@opencrane/domain/company-docs": [
+        "libs/domain/company-docs/main/src/index.ts"
+      ],
+      "@opencrane/domain/connections": [
+        "libs/domain/connections/main/src/index.ts"
+      ],
+      "@opencrane/domain/contract": [
+        "libs/domain/contract/main/src/index.ts"
+      ],
+      "@opencrane/domain/grants": [
+        "libs/domain/grants/main/src/index.ts"
+      ],
+      "@opencrane/domain/groups": [
+        "libs/domain/groups/main/src/index.ts"
+      ],
+      "@opencrane/domain/mcp": [
+        "libs/domain/mcp/main/src/index.ts"
+      ],
+      "@opencrane/domain/metrics": [
+        "libs/domain/metrics/main/src/index.ts"
+      ],
+      "@opencrane/domain/model-routing": [
+        "libs/domain/model-routing/main/src/index.ts"
+      ],
+      "@opencrane/domain/policies": [
+        "libs/domain/policies/main/src/index.ts"
+      ],
+      "@opencrane/domain/projection": [
+        "libs/domain/projection/main/src/index.ts"
+      ],
+      "@opencrane/domain/providers": [
+        "libs/domain/providers/main/src/index.ts"
+      ],
+      "@opencrane/domain/retrieval": [
+        "libs/domain/retrieval/main/src/index.ts"
+      ],
+      "@opencrane/domain/sessions": [
+        "libs/domain/sessions/main/src/index.ts"
+      ],
+      "@opencrane/domain/skills": [
+        "libs/domain/skills/main/src/index.ts"
+      ],
+      "@opencrane/domain/spend": [
+        "libs/domain/spend/main/src/index.ts"
+      ],
+      "@opencrane/domain/tenants": [
+        "libs/domain/tenants/main/src/index.ts"
+      ],
+      "@opencrane/util": [
+        "libs/util/src/index.ts"
+      ],
+      "@opencrane/contracts": [
+        "libs/contracts/src/index.ts"
+      ],
+      "@opencrane/awareness": [
+        "libs/awareness/src/index.ts"
+      ],
+      "@opencrane/observability": [
+        "libs/observability/src/index.ts"
+      ],
+      "@opencrane/infra/api": [
+        "libs/infra/api/src/index.ts"
+      ],
+      "@opencrane/infra/auth": [
+        "libs/infra/auth/src/index.ts"
+      ],
+      "@opencrane/infra/http": [
+        "libs/infra/http/src/index.ts"
+      ],
+      "@opencrane/observability/telemetry": [
+        "libs/observability/src/telemetry.ts"
+      ]
+    }
   }
 }

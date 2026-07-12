@@ -2,7 +2,7 @@ import { Router } from "express";
 import { ModelRoutingScope, type RoutingMeasurement as RoutingMeasurementDto } from "@opencrane/contracts";
 import type { PrismaClient, RoutingMeasurement as PrismaRoutingMeasurement } from "@prisma/client";
 
-import { _ClusterTenantScopeGuard, type ClusterTenantScopedResource } from "@opencrane/domain-cluster-tenants";
+import { _ClusterTenantScopeGuard, type ClusterTenantScopedResource } from "@opencrane/domain/cluster-tenants";
 import { _RunShadowMeasurement } from "../core/shadow-measure.js";
 import type { JudgeClient, ModelRunner } from "../core/shadow-measure.types.js";
 import type { RunMeasurementBody, ValidationFailure } from "./routing-measurements.types.js";

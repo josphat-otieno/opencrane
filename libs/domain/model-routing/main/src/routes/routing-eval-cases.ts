@@ -2,7 +2,7 @@ import { Router } from "express";
 import { ModelRoutingScope, type RoutingEvalCase as RoutingEvalCaseDto } from "@opencrane/contracts";
 import { Prisma, type PrismaClient, type RoutingEvalCase as PrismaRoutingEvalCase } from "@prisma/client";
 
-import { _ClusterTenantScopeGuard, type ClusterTenantScopedResource } from "@opencrane/domain-cluster-tenants";
+import { _ClusterTenantScopeGuard, type ClusterTenantScopedResource } from "@opencrane/domain/cluster-tenants";
 import type { ValidationFailure } from "./routing-eval-cases.types.js";
 
 /**

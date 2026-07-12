@@ -7,8 +7,8 @@ import * as k8s from "@kubernetes/client-node";
 import express from "express";
 
 import { ___BindConsole, ___ShutdownTelemetry } from "@opencrane/observability";
-import { ___AuthMiddleware } from "@opencrane/infra-auth";
-import { _ErrorHandler, _RateLimit } from "@opencrane/infra-http";
+import { ___AuthMiddleware } from "@opencrane/infra/auth";
+import { _ErrorHandler, _RateLimit } from "@opencrane/infra/http";
 
 import { _LoadFleetOperatorConfig } from "./config.js";
 import { _CreateClusterTenantOperator } from "./cluster-tenants/index.js";

@@ -1,7 +1,7 @@
 import type * as k8s from "@kubernetes/client-node";
 import type { Logger } from "pino";
 
-import { CLUSTER_TENANT_CRD_PLURAL, OPENCRANE_API_GROUP, OPENCRANE_API_VERSION, type ClusterTenantResource } from "@opencrane/infra-api";
+import { CLUSTER_TENANT_CRD_PLURAL, OPENCRANE_API_GROUP, OPENCRANE_API_VERSION, type ClusterTenantResource } from "@opencrane/infra/api";
 
 /**
  * Resolve WHICH org (ClusterTenant) this silo serves: the cluster-scoped ClusterTenant CR

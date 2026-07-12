@@ -2,11 +2,11 @@ import { Router } from "express";
 import * as k8s from "@kubernetes/client-node";
 import type { PrismaClient } from "@prisma/client";
 
-import { compileForPrincipals, GrantCompilerAccess, GrantCompilerPayloadType } from "@opencrane/domain-grants";
+import { compileForPrincipals, GrantCompilerAccess, GrantCompilerPayloadType } from "@opencrane/domain/grants";
 import { _RenderToolsMarkdown } from "../../core/tools-markdown.js";
-import { _LoadAwarenessRollout, _ResolveAwarenessVersion } from "@opencrane/domain-awareness";
-import { _ResolveContractSkillModels } from "@opencrane/domain-model-routing";
-import { _SyncDerivedDatasetMembership } from "@opencrane/domain-tenants";
+import { _LoadAwarenessRollout, _ResolveAwarenessVersion } from "@opencrane/domain/awareness";
+import { _ResolveContractSkillModels } from "@opencrane/domain/model-routing";
+import { _SyncDerivedDatasetMembership } from "@opencrane/domain/tenants";
 import { _log } from "../../log.js";
 
 /** Expected audience on the projected token the tenant pod uses to call this endpoint. */

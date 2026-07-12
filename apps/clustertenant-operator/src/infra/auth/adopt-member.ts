@@ -2,7 +2,7 @@ import type * as k8s from "@kubernetes/client-node";
 import type { PrismaClient } from "@prisma/client";
 import type { Logger } from "pino";
 
-import { _EnsureMemberTenant } from "@opencrane/domain-cluster-tenants";
+import { _EnsureMemberTenant } from "@opencrane/domain/cluster-tenants";
 import type { FleetMembershipWriter } from "../projection/membership-projection-repairer.js";
 import { _ResolvePerOrgClient } from "./per-org-client.js";
 

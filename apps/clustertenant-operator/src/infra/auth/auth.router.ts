@@ -3,7 +3,7 @@ import { Router } from "express";
 import type { PrismaClient } from "@prisma/client";
 import type * as k8s from "@kubernetes/client-node";
 
-import { _RequestHost } from "@opencrane/infra-auth";
+import { _RequestHost } from "@opencrane/infra/auth";
 
 import { _log } from "../../app/log.js";
 import type { OidcAuthService } from "./oidc.service.js";
@@ -11,7 +11,7 @@ import { _AuthorizeDeviceGrant, _CreateDeviceGrant, _FindGrantByUserCode, _PollD
 import { _ResolveOpenClawPairing } from "./openclaw-pairing.js";
 import { _ClusterTenantFromHost } from "./request-silo.js";
 import { _RecordBrokeredDevice } from "./brokered-device.js";
-import { _CutTenant, type OpenClawGatewayAdmin, _IsMemberSuspended, _ResolveGatewayTarget } from "@opencrane/domain-connections";
+import { _CutTenant, type OpenClawGatewayAdmin, _IsMemberSuspended, _ResolveGatewayTarget } from "@opencrane/domain/connections";
 
 /**
  * Build the auth router covering:

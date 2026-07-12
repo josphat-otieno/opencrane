@@ -3,7 +3,7 @@ import type * as k8s from "@kubernetes/client-node";
 
 import { _makeTenant, _makeClusterTenant, defaultConfig } from "../fixtures.js";
 import { _ResolveClusterTenant } from "../../reconcilers/tenants/internal/cluster-tenant-resolution.js";
-import type { ClusterTenantResource } from "@opencrane/infra-api";
+import type { ClusterTenantResource } from "@opencrane/infra/api";
 
 /**
  * Build a stub CustomObjectsApi whose `getClusterCustomObject` returns the

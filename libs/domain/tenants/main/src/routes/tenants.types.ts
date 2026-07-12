@@ -1,4 +1,4 @@
-import type { TenantDatasetMembership } from "@opencrane/domain-retrieval";
+import type { TenantDatasetMembership } from "@opencrane/domain/retrieval";
 
 /** Effective-contract response returned to tenant runtimes. */
 export interface EffectiveContractResponse

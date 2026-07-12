@@ -1,7 +1,7 @@
 import * as k8s from "@kubernetes/client-node";
 import type { Logger } from "pino";
 
-import { _K8sDeleteResource } from "@opencrane/infra-api";
+import { _K8sDeleteResource } from "@opencrane/infra/api";
 
 /**
  * Handles deletion of tenant-managed Kubernetes resources.

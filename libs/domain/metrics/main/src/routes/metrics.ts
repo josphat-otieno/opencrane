@@ -4,7 +4,7 @@ import type { PrismaClient } from "@prisma/client";
 import pino from "pino";
 
 import type { ProjectionTimestampRow } from "./metrics.types.js";
-import { _DetectPolicyProjectionDrift, _DetectTenantProjectionDrift } from "@opencrane/domain-projection";
+import { _DetectPolicyProjectionDrift, _DetectTenantProjectionDrift } from "@opencrane/domain/projection";
 
 /** Module-level logger for webhook delivery errors. */
 const _log = pino({ name: "metrics-route" });

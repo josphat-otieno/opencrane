@@ -1,7 +1,7 @@
 import type * as k8s from "@kubernetes/client-node";
 import type { Logger } from "pino";
 
-import { _IsConflict, _IsCrdAbsent, __ReplaceCustomObjectWithLiveVersion } from "@opencrane/infra-api";
+import { _IsConflict, _IsCrdAbsent, __ReplaceCustomObjectWithLiveVersion } from "@opencrane/infra/api";
 import type { SiloLinkerdIdentityPolicy } from "../deploy/silo-linkerd-identity.types.js";
 
 /** Linkerd policy API group for the Server/AuthorizationPolicy/MeshTLSAuthentication CRDs. */

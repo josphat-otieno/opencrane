@@ -1,6 +1,6 @@
 import type * as k8s from "@kubernetes/client-node";
 
-import { _IsConflict, _IsCrdAbsent, _IsNotFound, __ReplaceCustomObjectWithLiveVersion } from "@opencrane/infra-api";
+import { _IsConflict, _IsCrdAbsent, _IsNotFound, __ReplaceCustomObjectWithLiveVersion } from "@opencrane/infra/api";
 import type { DnsEndpointOperations, DnsEndpointReadiness } from "./org-domain-provisioner.types.js";
 
 /** external-dns API group for the DNSEndpoint custom resource. */

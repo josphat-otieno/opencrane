@@ -1,6 +1,6 @@
 import type * as k8s from "@kubernetes/client-node";
 
-import type { ClusterTenantQuotaView } from "@opencrane/infra-api";
+import type { ClusterTenantQuotaView } from "@opencrane/infra/api";
 
 /** Resource name the GPU quota/limit is expressed under (NVIDIA device plugin convention). */
 const GPU_RESOURCE_NAME = "requests.nvidia.com/gpu";

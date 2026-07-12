@@ -2,8 +2,8 @@ import { Router } from "express";
 import { ModelRoutingScope, type ModelDefinition, type ModelDefinitionWrite } from "@opencrane/contracts";
 import type { Prisma, PrismaClient, ModelDefinition as PrismaModelDefinition } from "@prisma/client";
 
-import { _ClusterTenantScopeGuard, type ClusterTenantScopedResource } from "@opencrane/domain-cluster-tenants";
-import { _RegisterLiteLlmModel } from "@opencrane/domain-model-routing";
+import { _ClusterTenantScopeGuard, type ClusterTenantScopedResource } from "@opencrane/domain/cluster-tenants";
+import { _RegisterLiteLlmModel } from "@opencrane/domain/model-routing";
 
 /**
  * Project a persisted model-definition row into its contract DTO. The Prisma enum values map

@@ -3,7 +3,7 @@ import { Router } from "express";
 import type { PrismaClient } from "@prisma/client";
 import pino from "pino";
 
-import { _BuildFleetParticipationReport, _LoadAwarenessRollout, _RenderAwarenessMetrics } from "@opencrane/domain-awareness";
+import { _BuildFleetParticipationReport, _LoadAwarenessRollout, _RenderAwarenessMetrics } from "@opencrane/domain/awareness";
 
 /** Module-level logger for Prometheus metrics error reporting. */
 const _log = pino({ name: "prometheus-metrics" });

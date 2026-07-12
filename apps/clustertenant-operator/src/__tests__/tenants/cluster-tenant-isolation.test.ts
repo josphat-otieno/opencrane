@@ -4,7 +4,7 @@ import pino from "pino";
 
 import { defaultConfig, onPremAdapter, _makeClusterTenant, _makeTenant } from "../fixtures.js";
 import { TenantOperator } from "../../reconcilers/tenants/operator.js";
-import type { ClusterTenantResource } from "@opencrane/infra-api";
+import type { ClusterTenantResource } from "@opencrane/infra/api";
 
 /** Silent logger so test output stays clean. */
 const log = pino({ level: "silent" });

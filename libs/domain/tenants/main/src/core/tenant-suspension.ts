@@ -1,6 +1,6 @@
 import * as k8s from "@kubernetes/client-node";
 
-import { OPENCRANE_API_GROUP, OPENCRANE_API_VERSION, TENANT_CRD_PLURAL } from "@opencrane/infra-api";
+import { OPENCRANE_API_GROUP, OPENCRANE_API_VERSION, TENANT_CRD_PLURAL } from "@opencrane/infra/api";
 
 /**
  * Set (or clear) a Tenant CR's `spec.suspended` flag via a JSON merge-patch — the shared

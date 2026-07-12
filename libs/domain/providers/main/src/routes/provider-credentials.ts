@@ -2,7 +2,7 @@ import { Router } from "express";
 import { ModelRoutingScope, type ProviderCredential, type ProviderCredentialWrite } from "@opencrane/contracts";
 import type { Prisma, PrismaClient, ProviderCredential as PrismaProviderCredential } from "@prisma/client";
 
-import { _ClusterTenantScopeGuard, type ClusterTenantScopedResource } from "@opencrane/domain-cluster-tenants";
+import { _ClusterTenantScopeGuard, type ClusterTenantScopedResource } from "@opencrane/domain/cluster-tenants";
 
 /** Raw-key field names that must never be accepted or stored (keys live in k8s Secrets). */
 const _RAW_KEY_FIELDS = ["apiKey", "keyValue", "key"] as const;

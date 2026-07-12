@@ -2,7 +2,7 @@ import { Router } from "express";
 import type { PrismaClient } from "@prisma/client";
 
 import { _log } from "../../log.js";
-import { compile, GrantCompilerAccess, GrantCompilerPayloadType } from "@opencrane/domain-grants";
+import { compile, GrantCompilerAccess, GrantCompilerPayloadType } from "@opencrane/domain/grants";
 import type { OciBundleStore } from "../../core/oci-bundle-store.js";
 
 /**

@@ -1,4 +1,4 @@
-import type { ClusterTenantResource } from "@opencrane/infra-api";
+import type { ClusterTenantResource } from "@opencrane/infra/api";
 
 import type { FleetOperatorConfig } from "../config.js";
 

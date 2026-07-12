@@ -6,7 +6,7 @@ import type { DocMergeReconciler } from "../core/reconciler.types.js";
 import { _GetCompanyDoc, _GetCompanyDocVersion, _ListCompanyDocVersions, _PublishCompanyDocVersion } from "../core/company-docs.logic.js";
 import { _DecideProposal, _ListProposals, _ReconcileTenantDoc } from "../core/reconciliation.logic.js";
 // Side-effect import: loads the express-session `SessionData.authUser` augmentation.
-import "@opencrane/infra-auth";
+import "@opencrane/infra/auth";
 
 /**
  * Resolve the acting identity from the session, falling back to `system` for

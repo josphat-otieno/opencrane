@@ -1,6 +1,6 @@
 import type * as k8s from "@kubernetes/client-node";
 
-import { CLUSTER_TENANT_CRD_PLURAL, OPENCRANE_API_GROUP, OPENCRANE_API_VERSION, type ClusterTenantResource, type ClusterTenantResolutionResult } from "@opencrane/infra-api";
+import { CLUSTER_TENANT_CRD_PLURAL, OPENCRANE_API_GROUP, OPENCRANE_API_VERSION, type ClusterTenantResource, type ClusterTenantResolutionResult } from "@opencrane/infra/api";
 import type { Tenant } from "../models/tenant.interface.js";
 
 /**

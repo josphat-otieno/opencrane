@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 
-import type { TenantDatasetMembership } from "@opencrane/domain-retrieval";
+import type { TenantDatasetMembership } from "@opencrane/domain/retrieval";
 
 /**
  * Dataset-membership key for each group scope. The vocabularies are 1:1 since S4c.1, so the

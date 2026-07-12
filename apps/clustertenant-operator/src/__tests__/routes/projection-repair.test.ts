@@ -4,9 +4,9 @@ import express from "express";
 import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
 
-import { tenantsRouter } from "@opencrane/domain-tenants";
-import { policiesRouter } from "@opencrane/domain-policies";
-import { _NoopGatewayAdmin } from "@opencrane/domain-connections";
+import { tenantsRouter } from "@opencrane/domain/tenants";
+import { policiesRouter } from "@opencrane/domain/policies";
+import { _NoopGatewayAdmin } from "@opencrane/domain/connections";
 
 /** Build a test app that mounts the tenants router with mocked dependencies. */
 function _BuildTenantRepairApp(customApi: k8s.CustomObjectsApi, prisma: PrismaClient)

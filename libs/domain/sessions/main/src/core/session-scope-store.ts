@@ -1,6 +1,6 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 
-import { compile, GrantCompilerPayloadType } from "@opencrane/domain-grants";
+import { compile, GrantCompilerPayloadType } from "@opencrane/domain/grants";
 import { _IntersectSessionScope } from "./session-scope.js";
 import type { BindSessionScopeResult, ScopeIntersection, ScopeSelector, SessionScopeBinding } from "./session-scope.types.js";
 

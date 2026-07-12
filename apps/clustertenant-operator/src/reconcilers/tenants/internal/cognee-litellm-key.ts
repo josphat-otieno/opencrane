@@ -4,7 +4,7 @@ import * as k8s from "@kubernetes/client-node";
 import type { Logger } from "pino";
 
 import type { OpenClawTenantOperatorConfig } from "../../../app/config.js";
-import { __K8sApplyResource } from "@opencrane/infra-api";
+import { __K8sApplyResource } from "@opencrane/infra/api";
 
 /**
  * The Secret name the Cognee Deployment's Helm template expects this key under. Fixed

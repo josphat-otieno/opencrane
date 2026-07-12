@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { _IntersectSessionScope, _NormalizeScopeSelectors, type ScopeSelector } from "@opencrane/domain-sessions";
-import { GrantCompilerAccess, GrantCompilerPayloadType, GrantCompilerScope, GrantCompilerSubjectType, type CompiledGrantDecision } from "@opencrane/domain-grants";
+import { _IntersectSessionScope, _NormalizeScopeSelectors, type ScopeSelector } from "@opencrane/domain/sessions";
+import { GrantCompilerAccess, GrantCompilerPayloadType, GrantCompilerScope, GrantCompilerSubjectType, type CompiledGrantDecision } from "@opencrane/domain/grants";
 
 /** Build a compiled awareness decision for the given payload/access/scope. */
 function _decision(payloadId: string, access: GrantCompilerAccess, scope: GrantCompilerScope): CompiledGrantDecision

@@ -5,7 +5,7 @@ import * as k8s from "@kubernetes/client-node";
 import type { Logger } from "pino";
 
 import type { OpenClawTenantOperatorConfig } from "../../../app/config.js";
-import { __K8sApplyResource } from "@opencrane/infra-api";
+import { __K8sApplyResource } from "@opencrane/infra/api";
 import { _BuildTenantLabels } from "../deploy/tenant-labels.js";
 import type { Tenant } from "../models/tenant.interface.js";
 import { _ReadSiloOwnerState } from "./cognee-silo-tenant.js";

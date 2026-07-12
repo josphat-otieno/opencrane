@@ -1,6 +1,6 @@
 import * as k8s from "@kubernetes/client-node";
 
-import { _IsK8sConflict, __ReplaceCustomObjectWithLiveVersion } from "@opencrane/infra-api";
+import { _IsK8sConflict, __ReplaceCustomObjectWithLiveVersion } from "@opencrane/infra/api";
 import { _RenderDns01Issuer, _RenderDnsCredentialsSecret } from "./cluster-issuer.js";
 import type { CertIssuerKind, DnsProviderConfig } from "./cluster-issuer.types.js";
 import type { ApplyDnsConfigResult } from "./apply-dns-config.types.js";

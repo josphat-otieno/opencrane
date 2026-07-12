@@ -1,6 +1,6 @@
 import type * as k8s from "@kubernetes/client-node";
 
-import type { ClusterTenantComputeView } from "@opencrane/infra-api";
+import type { ClusterTenantComputeView } from "@opencrane/infra/api";
 import type { ClusterTenantScheduling } from "./cluster-tenant-scheduling.types.js";
 
 /** Node label key a dedicated openclaw pod is pinned to (matches the node pool name). */

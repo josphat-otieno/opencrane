@@ -1,11 +1,11 @@
 import { Router } from "express";
 import * as k8s from "@kubernetes/client-node";
 import { ByokProvider, type ProviderKeyStatus } from "@opencrane/contracts";
-import { _RequireOrgAdmin } from "@opencrane/infra-auth";
+import { _RequireOrgAdmin } from "@opencrane/infra/auth";
 import type { PrismaClient, ProviderCredential as PrismaProviderCredential } from "@prisma/client";
 
 import { _log } from "../log.js";
-import { _DeprovisionByokKey, _ProvisionByokKey } from "@opencrane/domain-model-routing";
+import { _DeprovisionByokKey, _ProvisionByokKey } from "@opencrane/domain/model-routing";
 
 /** The providers a raw BYOK key may be set for; mirrors the {@link ByokProvider} contract union. */
 const _BYOK_PROVIDERS = Object.values(ByokProvider) as readonly string[];

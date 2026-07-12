@@ -4,15 +4,15 @@ import * as k8s from "@kubernetes/client-node";
 import { Router } from "express";
 import type { Prisma, PrismaClient } from "@prisma/client";
 
-import { compile, compileForPrincipals, GrantCompilerAccess, GrantCompilerPayloadType, _DeriveTenantDatasetMembership } from "@opencrane/domain-grants";
-import { _CutTenant, type OpenClawGatewayAdmin } from "@opencrane/domain-connections";
+import { compile, compileForPrincipals, GrantCompilerAccess, GrantCompilerPayloadType, _DeriveTenantDatasetMembership } from "@opencrane/domain/grants";
+import { _CutTenant, type OpenClawGatewayAdmin } from "@opencrane/domain/connections";
 import { _SetTenantSuspended } from "../core/tenant-suspension.js";
-import { _deleteLiteLlmKey } from "@opencrane/domain-spend";
+import { _deleteLiteLlmKey } from "@opencrane/domain/spend";
 import { _log } from "../log.js";
-import { OPENCRANE_API_GROUP, OPENCRANE_API_VERSION, TENANT_CRD_PLURAL, _IsK8sNotFound } from "@opencrane/infra-api";
+import { OPENCRANE_API_GROUP, OPENCRANE_API_VERSION, TENANT_CRD_PLURAL, _IsK8sNotFound } from "@opencrane/infra/api";
 
 import type { CreateTenantRequest, EffectiveContractResponse, TenantDatasetsResponse, TenantResponse, UpdateTenantDatasetsRequest } from "./tenants.types.js";
-import { _DetectTenantProjectionDrift, _RepairTenantProjection } from "@opencrane/domain-projection";
+import { _DetectTenantProjectionDrift, _RepairTenantProjection } from "@opencrane/domain/projection";
 
 /** Tenant CR appearance SLO constants. */
 const TENANT_CR_APPEARANCE_TIMEOUT_MS = 30_000;

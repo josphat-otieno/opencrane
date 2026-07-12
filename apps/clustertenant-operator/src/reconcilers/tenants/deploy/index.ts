@@ -8,7 +8,7 @@ export { _BuildService } from "./4-service.js";
 export { _BuildGatewayNetworkPolicy } from "./network-policy.js";
 export { _BuildSiloBaselineNetworkPolicy, _BuildSiloExternalEgressNetworkPolicy } from "./silo-baseline-network-policy.js";
 export { _BuildSiloLinkerdIdentityPolicy } from "./silo-linkerd-identity.js";
-export { _BuildClusterTenantNamespace } from "@opencrane/infra-api";
+export { _BuildClusterTenantNamespace } from "@opencrane/infra/api";
 export { _BuildClusterTenantResourceQuota, _BuildClusterTenantLimitRange } from "./7-resource-quota.js";
 export { _BuildClusterTenantScheduling } from "./cluster-tenant-scheduling.js";
 export { _BuildTenantLabels } from "./tenant-labels.js";

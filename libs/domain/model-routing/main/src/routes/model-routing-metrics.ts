@@ -2,8 +2,8 @@ import { Router, type Request } from "express";
 import type { PrismaClient } from "@prisma/client";
 
 import type { LangfuseConfig, MetricsCallerScope } from "./model-routing-metrics.types.js";
-import { _ResolveCallerClusterTenant as _resolveCallerClusterTenant } from "@opencrane/domain-cluster-tenants";
-import { _IsDevAuthMode } from "@opencrane/infra-auth";
+import { _ResolveCallerClusterTenant as _resolveCallerClusterTenant } from "@opencrane/domain/cluster-tenants";
+import { _IsDevAuthMode } from "@opencrane/infra/auth";
 
 /**
  * Default Langfuse v1 Metrics/Public API path. Confirmed against the Langfuse public-API docs
