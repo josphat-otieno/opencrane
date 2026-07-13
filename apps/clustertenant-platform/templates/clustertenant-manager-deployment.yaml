@@ -332,6 +332,14 @@ spec:
             #    ClusterRole in clustertenant-manager-rbac.yaml.
             - name: MANAGE_TENANT_NAMESPACES
               value: {{ .Values.clustertenantManager.manageTenantNamespaces | default false | quote }}
+            {{- if not (kindIs "invalid" .Values.clustertenantManager.manageOwnDomain) }}
+            # -- Explicit override for per-org domain ownership (#151 item 2). Left unset by
+            #    default so config.ts derives it itself from FLEET_INTERNAL_URL emptiness
+            #    (the single source of truth for the standalone-vs-fleet-managed default);
+            #    only rendered here when the chart value is deliberately set true/false.
+            - name: MANAGE_OWN_DOMAIN
+              value: {{ .Values.clustertenantManager.manageOwnDomain | quote }}
+            {{- end }}
             {{- if .Values.clustertenantManager.fleetInternalUrl }}
             # -- Fleet internal API (fleet-managed topology): the membership mirror pulls the
             #    authoritative OrgMembership set from here and first-login adoption writes

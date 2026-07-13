@@ -258,6 +258,14 @@ clustertenantManager:
   #    (clustertenant-manager-rbac.yaml) and injects MANAGE_TENANT_NAMESPACES=true.
   manageTenantNamespaces: false
 
+  # -- Explicit override for whether THIS silo owns per-org domain provisioning (#151 item
+  #    2: the DNSEndpoint + any vanity Certificate the operator's OrgDomainProvisioner
+  #    applies). Left `null` (unset) by default so the operator derives it itself from
+  #    `fleetInternalUrl` emptiness (standalone ⇒ true, fleet-managed ⇒ false) — the SAME
+  #    single source of truth as `MANAGE_OWN_DOMAIN` in apps/clustertenant-operator/src/app/config.ts.
+  #    Set true/false only to force one mode regardless of `fleetInternalUrl`.
+  manageOwnDomain: null
+
   # -- Fleet internal API base for the fleet-managed topology, e.g.
   #    http://<fleet-fullname>-fleet-manager.<fleet-namespace>.svc:8080. Empty = STANDALONE:
   #    the silo owns membership locally, and the fleet→silo membership mirror + first-login
@@ -840,6 +848,17 @@ externalDns:
 
 certManager:
   enabled: false
+  # -- Provision this chart's OWN Issuer/ClusterIssuer (#151 item 2, cluster-issuer.yaml) —
+  #    the cert-manager analogue of `crds.install` above: a standalone silo has no fleet to
+  #    pre-create `certManager.issuerName`, so it must own the Issuer itself. Default true =
+  #    self-contained (mirrors crds.install's standalone-first default). Set false in a
+  #    fleet-managed topology where an external fleet chart already creates the Issuer this
+  #    silo's Certificates (clustertenant-manager-certificate.yaml + the operator's runtime
+  #    per-org vanity Certificate) reference — so this release's install/upgrade does not
+  #    contend with the fleet's release for ownership of the same object (Helm annotates
+  #    managed resources with the owning release+namespace and refuses to adopt one owned
+  #    by another release).
+  selfManagedIssuer: true
   # -- Issuer mode: "acme" (production, public CA via DNS-01) or "selfSigned" (dev/local).
   mode: selfSigned
   # -- Include the bare `<ingress.domain>` apex as a SAN on the platform wildcard

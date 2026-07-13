@@ -200,3 +200,51 @@ describe("_LoadOperatorConfig auto trusted-proxy derivation (task_845dd617)", fu
 		expect(config.gatewayTrustedProxies).toEqual(["10.8.0.0/14"]);
 	});
 });
+
+describe("_LoadOperatorConfig manageOwnDomain standalone-domain-ownership default (#151 item 2)", function _domainSuite()
+{
+	let _saved: NodeJS.ProcessEnv;
+
+	beforeEach(function _save()
+	{
+		_saved = process.env;
+		process.env = { ..._BASE_ENV };
+	});
+
+	afterEach(function _restore()
+	{
+		process.env = _saved;
+	});
+
+	it("defaults manageOwnDomain to true when FLEET_INTERNAL_URL is unset (standalone: no fleet to own the domain)", function _standalone()
+	{
+		process.env.WATCH_NAMESPACE = "oc-acme";
+		const config = _LoadOperatorConfig();
+		expect(config.manageOwnDomain).toBe(true);
+	});
+
+	it("defaults manageOwnDomain to false when FLEET_INTERNAL_URL is set (fleet-managed: fleet owns the domain)", function _fleetManaged()
+	{
+		process.env.WATCH_NAMESPACE = "oc-acme";
+		process.env.FLEET_INTERNAL_URL = "http://fleet-manager.fleet.svc:8080";
+		const config = _LoadOperatorConfig();
+		expect(config.manageOwnDomain).toBe(false);
+	});
+
+	it("an explicit MANAGE_OWN_DOMAIN overrides the FLEET_INTERNAL_URL-derived default", function _explicitOverride()
+	{
+		process.env.WATCH_NAMESPACE = "oc-acme";
+		process.env.FLEET_INTERNAL_URL = "http://fleet-manager.fleet.svc:8080";
+		process.env.MANAGE_OWN_DOMAIN = "true";
+		const config = _LoadOperatorConfig();
+		expect(config.manageOwnDomain).toBe(true);
+	});
+
+	it("an explicit MANAGE_OWN_DOMAIN=false wins even when standalone (no FLEET_INTERNAL_URL)", function _explicitOverrideFalse()
+	{
+		process.env.WATCH_NAMESPACE = "oc-acme";
+		process.env.MANAGE_OWN_DOMAIN = "false";
+		const config = _LoadOperatorConfig();
+		expect(config.manageOwnDomain).toBe(false);
+	});
+});

@@ -5,6 +5,7 @@ import pino from "pino";
 import { defaultConfig, onPremAdapter, _makeClusterTenant, _makeTenant } from "../fixtures.js";
 import { TenantOperator } from "../../reconcilers/tenants/operator.js";
 import type { ClusterTenantResource } from "@opencrane/infra/api";
+import type { OrgDomainProvisioner, OrgDomainProvisionRequest, OrgDomainProvisionResult } from "@opencrane/domain/cluster-tenants";
 
 /** Silent logger so test output stays clean. */
 const log = pino({ level: "silent" });
@@ -107,6 +108,20 @@ function _makeCustomApi(clusterTenant?: ClusterTenantResource): k8s.CustomObject
   } as unknown as k8s.CustomObjectsApi;
 }
 
+/** Records every `provisionOrgDomain` call; never actually applies anything. */
+function _makeRecordingDomainProvisioner(result?: Partial<OrgDomainProvisionResult>): OrgDomainProvisioner & { calls: OrgDomainProvisionRequest[] }
+{
+  return {
+    calls: [],
+    async provisionOrgDomain(req: OrgDomainProvisionRequest): Promise<OrgDomainProvisionResult>
+    {
+      this.calls.push(req);
+      return { orgDomain: `${req.orgName}.${req.platformBaseDomain}`, ready: true, skipped: false, ...result };
+    },
+    async deprovisionOrgDomain(): Promise<void> {},
+  };
+}
+
 /**
  * Assemble a TenantOperator wired to recording Core/Apps/Networking clients and
  * a stub customApi. Helper collaborators (status writer, key managers, cleanup)
@@ -114,7 +129,7 @@ function _makeCustomApi(clusterTenant?: ClusterTenantResource): k8s.CustomObject
  */
 function _makeOperator(core: RecordingClient, apps: RecordingClient, networking: RecordingClient,
                        clusterTenant?: ClusterTenantResource, statusSink?: Record<string, unknown>[],
-                       configOverride?: Partial<typeof defaultConfig>): TenantOperator
+                       configOverride?: Partial<typeof defaultConfig>, domainProvisioner?: OrgDomainProvisioner): TenantOperator
 {
   const customApi = _makeCustomApi(clusterTenant);
   const statusWriter = { async patchStatus(_t: unknown, _ns: unknown, status: Record<string, unknown>): Promise<void> { statusSink?.push(status); } } as never;
@@ -140,6 +155,7 @@ function _makeOperator(core: RecordingClient, apps: RecordingClient, networking:
     encryptionKeys,
     liteLlmKeys,
     cogneeTenantIdentity,
+    domainProvisioner ?? _makeRecordingDomainProvisioner(),
   );
 }
 
@@ -306,5 +322,65 @@ describe("ClusterTenant isolation enforcement (CT.5 reconcile flow)", () =>
     await expect(operator.reconcileTenant(tenant)).rejects.toThrow();
     // The failure is surfaced as an Error status, not silently converged.
     expect(statuses.at(-1)?.phase).toBe("Error");
+  });
+
+  it("provisions the org domain when manageOwnDomain=true (standalone: no fleet to own it)", async () =>
+  {
+    const clusterTenant = _makeClusterTenant("acme", "ct-acme");
+    clusterTenant.spec.vanityDomain = "ai.client-co.com";
+    const tenant = _makeTenant("mike", { clusterTenantRef: "acme" });
+    const domainProvisioner = _makeRecordingDomainProvisioner();
+
+    const operator = _makeOperator(core, apps, networking, clusterTenant, undefined, { manageOwnDomain: true }, domainProvisioner);
+    await operator.reconcileTenant(tenant);
+
+    expect(domainProvisioner.calls).toEqual([{
+      orgName: "acme",
+      boundNamespace: "ct-acme",
+      platformBaseDomain: "opencrane.local",
+      vanityDomain: "ai.client-co.com",
+      ingressIp: undefined,
+    }]);
+  });
+
+  it("does NOT provision the org domain when manageOwnDomain=false (fleet-managed: fleet owns it)", async () =>
+  {
+    const clusterTenant = _makeClusterTenant("acme", "ct-acme");
+    const tenant = _makeTenant("mike", { clusterTenantRef: "acme" });
+    const domainProvisioner = _makeRecordingDomainProvisioner();
+
+    // Default config: manageOwnDomain=false.
+    const operator = _makeOperator(core, apps, networking, clusterTenant, undefined, undefined, domainProvisioner);
+    await operator.reconcileTenant(tenant);
+
+    expect(domainProvisioner.calls).toEqual([]);
+  });
+
+  it("does NOT provision the org domain for a ref-less openclaw even when manageOwnDomain=true", async () =>
+  {
+    const tenant = _makeTenant("plain");
+    const domainProvisioner = _makeRecordingDomainProvisioner();
+
+    const operator = _makeOperator(core, apps, networking, undefined, undefined, { manageOwnDomain: true }, domainProvisioner);
+    await operator.reconcileTenant(tenant);
+
+    // No parent ClusterTenant to provision a domain for.
+    expect(domainProvisioner.calls).toEqual([]);
+  });
+
+  it("swallows a domain-provisioner error so the tenant still reconciles to Running", async () =>
+  {
+    const clusterTenant = _makeClusterTenant("acme", "ct-acme");
+    const tenant = _makeTenant("mike", { clusterTenantRef: "acme" });
+    const throwingProvisioner: OrgDomainProvisioner = {
+      async provisionOrgDomain(): Promise<OrgDomainProvisionResult> { throw new Error("boom"); },
+      async deprovisionOrgDomain(): Promise<void> {},
+    };
+    const statuses: Record<string, unknown>[] = [];
+
+    const operator = _makeOperator(core, apps, networking, clusterTenant, statuses, { manageOwnDomain: true }, throwingProvisioner);
+    await expect(operator.reconcileTenant(tenant)).resolves.toBeUndefined();
+
+    expect(statuses.at(-1)?.phase).toBe("Running");
   });
 });

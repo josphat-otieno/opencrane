@@ -258,6 +258,54 @@ AND `multiInstance.certIssuer` is `namespaced`; legacy installs stay ClusterIssu
 {{- end }}
 
 {{/*
+Shared `spec:` body for a self-managed cert-manager Issuer/ClusterIssuer (#151 item 2),
+reused by cluster-issuer.yaml for BOTH the namespaced-Issuer and cluster-singleton-
+ClusterIssuer branches so the two can never drift. Takes a dict `{ cm, ingress }` (the
+`certManager` and `ingress` values blocks) since a named template only receives one arg.
+
+Every Certificate expected to reference this Issuer in a silo chart is a SINGLE,
+non-wildcard hostname (the control-plane's own host + an optional per-org vanity host —
+see docs/agents/cluster-architecture.md → "Tenancy Model"), so HTTP-01 through the ingress
+is sufficient on its own and is the default/only solver in acme mode. DNS-01 is layered in
+ADDITIONALLY (scoped to `ingress.domain`) only when `certManager.acme.dns01.provider` is
+set, for installs that prefer it.
+*/}}
+{{- define "opencrane.certIssuerSpec" -}}
+{{- $cm := .cm -}}
+{{- $ingress := .ingress -}}
+{{- if eq $cm.mode "selfSigned" }}
+selfSigned: {}
+{{- else }}
+acme:
+  server: {{ $cm.acme.server | quote }}
+  email: {{ $cm.acme.email | quote }}
+  privateKeySecretRef:
+    name: {{ $cm.acme.privateKeySecretName | quote }}
+  solvers:
+    {{- if $cm.acme.dns01.provider }}
+    # DNS-01, scoped to the platform base domain — opt-in (certManager.acme.dns01.provider).
+    - selector:
+        dnsZones:
+          - {{ $ingress.domain | quote }}
+      dns01:
+        {{- if eq $cm.acme.dns01.provider "clouddns" }}
+        cloudDNS:
+          {{- toYaml $cm.acme.dns01.config | nindent 10 }}
+        {{- else }}
+        {{ $cm.acme.dns01.provider }}:
+          {{- toYaml $cm.acme.dns01.config | nindent 10 }}
+        {{- end }}
+    {{- end }}
+    # HTTP-01 (default/catch-all) — every Certificate referencing this Issuer in this chart
+    # is a single, non-wildcard host reachable through the ingress, so no DNS-provider
+    # credentials are required for the common case.
+    - http01:
+        ingress:
+          ingressClassName: {{ $ingress.className | default "nginx" | quote }}
+{{- end }}
+{{- end }}
+
+{{/*
 Whether a namespaced (per-instance) SecretStore should be rendered instead of a
 cluster-singleton ClusterSecretStore (brief B4). Only true when multi-instance is
 on AND `multiInstance.secretStore` is `namespaced`; legacy stays ClusterSecretStore.

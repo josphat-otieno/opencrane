@@ -8,6 +8,7 @@ import type { Tenant } from "./models/tenant.interface.js";
 import { TenantPolicyResolutionState, TenantStatusPhase, type TenantDegradedReason } from "./models/tenant-status.interface.js";
 
 import { __K8sApplyResource, _IsK8sNotFound, _RunWatchLoop, K8sWatchEventType, OPENCRANE_API_GROUP, OPENCRANE_API_VERSION, TENANT_CRD_PLURAL, type ClusterTenantResource } from "@opencrane/infra/api";
+import { _BuildOrgDomainProvisioner, type OrgDomainProvisioner } from "@opencrane/domain/cluster-tenants";
 import { _BuildClusterTenantLimitRange, _BuildClusterTenantNamespace, _BuildClusterTenantResourceQuota, _BuildConfigMap, _BuildDeployment, _BuildGatewayNetworkPolicy, _BuildService, _BuildServiceAccount, _BuildSiloBaselineNetworkPolicy, _BuildSiloExternalEgressNetworkPolicy, _BuildSiloLinkerdIdentityPolicy, _BuildStatePvc, _ConfigChecksum, _ResolveTenantModelGate } from "./deploy/index.js";
 import { TenantCleanup } from "./destroy/tenant-cleanup.js";
 import { LinkerdIdentityClient } from "./internal/linkerd-identity.client.js";
@@ -71,6 +72,14 @@ export class TenantOperator
   private cogneeTenantIdentity: CogneeTenantIdentity;
 
   /**
+   * Per-org DNS/vanity-TLS provisioner (#151 item 2). Invoked from
+   * {@link enforceClusterTenantIsolation} ONLY when `config.manageOwnDomain` is true
+   * (standalone: no external fleet to own the org's domain); a no-op reference is still
+   * wired in fleet-managed mode, but never called.
+   */
+  private domainProvisioner: OrgDomainProvisioner;
+
+  /**
    * Per-tenant reconcile coalescing. The watch runner dispatches handlers fire-and-forget,
    * so a watch reconnect replays every Tenant as `ADDED` at once, and a persistently failing
    * reconcile (e.g. a quota 403) re-triggers itself via its own `Error` status write. Without
@@ -111,7 +120,8 @@ export class TenantOperator
               statusWriter: TenantStatusWriter,
               encryptionKeys: TenantEncryptionKeys,
               liteLlmKeys: TenantLiteLlmKeys,
-              cogneeTenantIdentity: CogneeTenantIdentity)
+              cogneeTenantIdentity: CogneeTenantIdentity,
+              domainProvisioner: OrgDomainProvisioner)
   {
     this.watch = watch;
     this.customApi = customApi;
@@ -126,6 +136,7 @@ export class TenantOperator
     this.encryptionKeys = encryptionKeys;
     this.liteLlmKeys = liteLlmKeys;
     this.cogneeTenantIdentity = cogneeTenantIdentity;
+    this.domainProvisioner = domainProvisioner;
     this.configChecksum = _OperatorConfigChecksum(config);
   }
 
@@ -621,6 +632,41 @@ export class TenantOperator
       //    supply per-container defaults so unannotated workloads still schedule.
       await __K8sApplyResource(this.coreApi, _BuildClusterTenantLimitRange(namespace, clusterTenantName), this.log);
     }
+
+    // 4. Org domain (DNS + vanity TLS) provisioning — STANDALONE ONLY (#151 item 2). In the
+    //    fleet-managed topology the external fleet's own ClusterTenantOperator already calls
+    //    the equivalent provisioner against its own CR watch, so this silo must stay a no-op
+    //    here or the two planes would double-apply (and disagree on ownership) the same
+    //    DNSEndpoint/Certificate. `manageOwnDomain` defaults to the same standalone signal as
+    //    `manageTenantNamespaces` (FLEET_INTERNAL_URL unset). Best-effort: the provisioner
+    //    itself never throws (fail-closed skip on absent cert-manager/external-dns), but the
+    //    call is still wrapped so an unexpected error never blocks the tenant pod from coming
+    //    up — the namespace boundary, not the domain record, is the openclaw-attachment gate.
+    if (this.config.manageOwnDomain)
+    {
+      try
+      {
+        const domain = await this.domainProvisioner.provisionOrgDomain({
+          orgName: clusterTenantName,
+          boundNamespace: namespace,
+          platformBaseDomain: this.config.ingressDomain,
+          vanityDomain: clusterTenant.spec.vanityDomain,
+          ingressIp: this.config.ingressIp || undefined,
+        });
+        if (domain.skipped)
+        {
+          this.log.warn({ namespace, clusterTenant: clusterTenantName, message: domain.message }, "org domain provisioning skipped (cert-manager/external-dns absent)");
+        }
+        else if (!domain.ready)
+        {
+          this.log.info({ namespace, clusterTenant: clusterTenantName, message: domain.message }, "org domain still settling");
+        }
+      }
+      catch (err)
+      {
+        this.log.warn({ err, namespace, clusterTenant: clusterTenantName }, "org domain provisioning failed; continuing reconcile");
+      }
+    }
   }
 
   /**
@@ -731,6 +777,14 @@ export function _CreateTenantOperator(kc: k8s.KubeConfig, config: OpenClawTenant
   const encryptionKeys = new TenantEncryptionKeys(coreApi, objectApi, log);
   const liteLlmKeys = new TenantLiteLlmKeys(config, coreApi, objectApi, log);
   const cogneeTenantIdentity = new CogneeTenantIdentity(config, coreApi, objectApi, log);
+  // 5. Org domain provisioner (#151 item 2) — always wired (cheap; each client fails closed
+  //    on an absent CRD at call time), but only ever invoked when config.manageOwnDomain is
+  //    true (standalone). Issuer name/kind come straight from this silo's own cert-manager
+  //    config, matching whatever apps/clustertenant-platform's own Issuer template renders.
+  const domainProvisioner = _BuildOrgDomainProvisioner(customApi, {
+    issuerName: config.certManagerIssuerName,
+    issuerKind: config.certManagerIssuerKind,
+  });
 
-  return new TenantOperator(watch, customApi, coreApi, appsApi, networkingApi, log, config, hosting, cleanup, statusWriter, encryptionKeys, liteLlmKeys, cogneeTenantIdentity);
+  return new TenantOperator(watch, customApi, coreApi, appsApi, networkingApi, log, config, hosting, cleanup, statusWriter, encryptionKeys, liteLlmKeys, cogneeTenantIdentity, domainProvisioner);
 }

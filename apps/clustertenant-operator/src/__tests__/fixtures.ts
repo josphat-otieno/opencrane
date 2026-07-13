@@ -55,6 +55,9 @@ export const defaultConfig: OpenClawTenantOperatorConfig = {
   // Production default: the fleet-manager owns per-org namespace creation, so the silo does not
   // attempt it. Tests exercising the standalone create path opt in via a config override.
   manageTenantNamespaces: false,
+  // Fleet-managed baseline: the external fleet owns per-org domain provisioning. Tests
+  // exercising the standalone domain-provisioning path opt in via a config override.
+  manageOwnDomain: false,
 };
 
 /**

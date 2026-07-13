@@ -227,6 +227,17 @@ export interface OpenClawTenantOperatorConfig
    * exist, so a genuinely-absent namespace still surfaces as NotFound there.
    */
   manageTenantNamespaces: boolean;
+
+  /**
+   * Whether THIS silo owns per-org domain provisioning (#151 item 2): applying the
+   * per-org DNSEndpoint + any vanity Certificate via the {@link OrgDomainProvisioner}.
+   * Default derives from the SAME standalone signal `index.ts` already reads directly
+   * for the membership projection (`FLEET_INTERNAL_URL` empty ⇒ standalone, no external
+   * fleet to own the domain) — set explicitly via `MANAGE_OWN_DOMAIN` to override. In
+   * fleet-managed mode (`FLEET_INTERNAL_URL` set) this defaults false and the reconcile
+   * step is a no-op: the external fleet owns domain provisioning for the org.
+   */
+  manageOwnDomain: boolean;
 }
 
 /**
@@ -254,6 +265,13 @@ export function _LoadOperatorConfig(): OpenClawTenantOperatorConfig
   const trustedProxies = _ParseTrustedProxies(_resolveTrustedProxiesInput(
     _readEnvValue<string>("GATEWAY_TRUSTED_PROXIES", "string", false, ""),
   ));
+
+  // 2c. Standalone-domain-ownership default (#151 item 2): the SAME standalone signal
+  //     `index.ts` already reads directly for the membership projection — empty
+  //     FLEET_INTERNAL_URL means there is no external fleet to own the org's domain, so
+  //     this silo must. Read directly (not via this config object) to mirror that existing
+  //     convention; MANAGE_OWN_DOMAIN lets an operator override the derived default.
+  const standaloneDomainDefault = !(process.env["FLEET_INTERNAL_URL"]?.trim());
 
   // 3. Build the typed config from env, applying namespace-derived fallbacks for the
   //    runtime-plane URLs so no value silently points at another instance.
@@ -308,6 +326,7 @@ export function _LoadOperatorConfig(): OpenClawTenantOperatorConfig
     projectedTokenTtlSeconds: _readEnvValue<number>("PROJECTED_TOKEN_TTL_SECONDS", "number", false, 600),
     linkerdMeshEnabled: _readEnvValue<boolean>("LINKERD_MESH_ENABLED", "boolean", false, false),
     manageTenantNamespaces: _readEnvValue<boolean>("MANAGE_TENANT_NAMESPACES", "boolean", false, false),
+    manageOwnDomain: _readEnvValue<boolean>("MANAGE_OWN_DOMAIN", "boolean", false, standaloneDomainDefault),
   };
 
   // 4. Fail closed in multi-instance mode: refuse to watch the whole cluster when
