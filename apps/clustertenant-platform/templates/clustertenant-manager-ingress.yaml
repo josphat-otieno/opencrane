@@ -53,11 +53,21 @@ spec:
                 port:
                   number: {{ .Values.gatewayProxy.port }}
           {{- end }}
+          # `/` → the org-admin SPA when one is configured (WeOwnAI/frontend deploys),
+          # else the control plane itself — so a standalone/headless silo with no SPA
+          # still serves `/` instead of 502ing. `/api` + `/gateway` are unconditional
+          # either way; the removed legacy path was the `*.<domain>` wildcard, not this.
           - path: /
             pathType: Prefix
             backend:
               service:
+                {{- if .Values.ingress.sameOrigin.spaService }}
                 name: {{ .Values.ingress.sameOrigin.spaService }}
                 port:
                   number: {{ .Values.ingress.sameOrigin.spaPort }}
+                {{- else }}
+                name: {{ include "opencrane.fullname" . }}-clustertenant-manager
+                port:
+                  number: {{ .Values.clustertenantManager.service.port }}
+                {{- end }}
 {{- end }}

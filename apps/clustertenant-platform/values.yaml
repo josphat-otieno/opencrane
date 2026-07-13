@@ -683,9 +683,12 @@ ingress:
   #    already same-origin (fleet-manager-ingress renders /api+/auth unconditionally).
   sameOrigin:
     # -- Name of the same-origin SPA Service that owns `/` (applied by the frontend layer, e.g.
-    #    weownai's platform/k8s/frontend-control-plane.yaml).
+    #    weownai's platform/k8s/frontend-control-plane.yaml). Set to "" for a standalone /
+    #    headless silo with no SPA: `/` then falls back to the control-plane backend (the pre-
+    #    same-origin `/`→control-plane behaviour) instead of routing to an absent Service (502).
+    #    `/api` and `/gateway` are served regardless.
     spaService: weownai-control-plane
-    # -- Port on the SPA Service.
+    # -- Port on the SPA Service (ignored when spaService is "").
     spaPort: 80
   tls:
     enabled: false
