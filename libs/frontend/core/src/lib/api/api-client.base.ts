@@ -1,7 +1,7 @@
 import createClient, { Client, Middleware } from "openapi-fetch";
 
 /**
- * Shared base for WeOwnAI's typed OpenCrane clients.
+ * Shared base for the frontend's typed OpenCrane clients.
  *
  * OpenCrane exposes two control-plane surfaces (Control Plane API + Fleet Manager
  * API), each served at its own origin and each owning its own OIDC `/auth`

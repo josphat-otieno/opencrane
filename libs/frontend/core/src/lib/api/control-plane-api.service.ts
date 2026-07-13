@@ -1,6 +1,6 @@
 import { Injectable, inject } from "@angular/core";
 
-import type { paths } from "./generated/control-plane";
+import type { paths } from "@opencrane/contracts";
 import { CONTROL_PLANE_BASE_URL } from "./api-client.types";
 import { OpenCraneApiClientBase } from "./api-client.base";
 
@@ -8,10 +8,12 @@ import { OpenCraneApiClientBase } from "./api-client.base";
  * Typed HTTP client for the OpenCrane **Control Plane** API (per-tenant/org
  * surface: `/auth`, `/tenants`, `/mcp`, `/models`, `/policies`, …).
  *
- * Generated from the pinned OpenAPI contract in
- * `openapi/opencrane-control-plane.json` (see `pnpm sync-spec`); WeOwnAI never
- * imports OpenCrane application code — the network contract is the only coupling.
- * All feature data access must flow through services in `core/api`.
+ * Intra-repo contract: `paths` is the SAME generated type the backend's own
+ * `@opencrane/contracts` package exports, built directly from
+ * `apps/clustertenant-operator/openapi.json` via `nx run contracts:generate`
+ * (`openapi-typescript`). No cross-repo spec pin — frontend and backend share
+ * one generated source of truth. All feature data access must flow through
+ * services in `core/api`.
  *
  * Auth helpers (`signIn`/`signInUrl`, the 401→login middleware) and the untyped
  * `request()` escape hatch come from {@link OpenCraneApiClientBase}; this surface

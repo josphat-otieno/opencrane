@@ -24,6 +24,7 @@
     "docker:build:tenant": "docker build -f apps/tenant/deploy/Dockerfile -t ghcr.io/italanta/opencrane-tenant:latest .",
     "docker:build:control-plane": "docker build -f apps/clustertenant-operator/deploy/Dockerfile -t ghcr.io/italanta/opencrane-clustertenant-manager:latest .",
     "docker:build:docs": "docker build -f website/Dockerfile -t ghcr.io/italanta/docs:latest .",
+    "docker:build:control-plane-spa": "docker build -f apps/control-plane/deploy/Dockerfile -t ghcr.io/italanta/opencrane-control-plane-spa:latest .",
     "build:control-plane-ui": "nx build control-plane",
     "serve:control-plane-ui": "nx serve control-plane"
   },

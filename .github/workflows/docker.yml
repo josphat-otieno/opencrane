@@ -18,6 +18,7 @@ env:
   CONTROL_PLANE_IMAGE: ghcr.io/${{ github.repository_owner }}/opencrane-clustertenant-manager
   TENANT_IMAGE: ghcr.io/${{ github.repository_owner }}/opencrane-tenant
   SKILL_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/opencrane-skill-registry
+  CONTROL_PLANE_SPA_IMAGE: ghcr.io/${{ github.repository_owner }}/opencrane-control-plane-spa
 
 jobs:
   test:
@@ -158,5 +159,25 @@ jobs:
           push: ${{ github.event_name == 'push' }}
           tags: ${{ steps.meta-skill-registry.outputs.tags }}
           labels: ${{ steps.meta-skill-registry.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Extract image metadata (control-plane-spa)
+        id: meta-control-plane-spa
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.CONTROL_PLANE_SPA_IMAGE }}
+          tags: |
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build and push control-plane-spa
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/control-plane/deploy/Dockerfile
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.meta-control-plane-spa.outputs.tags }}
+          labels: ${{ steps.meta-control-plane-spa.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

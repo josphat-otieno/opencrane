@@ -701,6 +701,53 @@ ingress:
     #    docs/agents/cluster-architecture.md → "Wildcard TLS".
     secretName: opencrane-wildcard-tls
 
+# -- Chart-native org-admin SPA (control-plane frontend, italanta/opencrane#152). Serves
+# the built `apps/control-plane` Angular bundle from an in-cluster, unprivileged nginx —
+# the same seam as `docs` below, applied to the org-admin console instead of the docs site.
+#
+# This REPLACES the external WeOwnAI-applied Deployment/Service
+# (weownai's platform/k8s/frontend-control-plane.yaml + deploy-org-frontend.sh) with a
+# release-local one that Helm owns end-to-end, so the frontend layer never has to
+# out-of-band-patch this chart's Ingress (see ingress.sameOrigin's history).
+#
+# OFF by default: the image is only published once this chart change has gone through CI
+# (.github/workflows/docker.yml) at least once, and existing installs already work via
+# ingress.sameOrigin.spaService="weownai-control-plane" (the external Service) — flipping
+# this on is an explicit per-install cutover, not a silent default change. When true, this
+# chart's own Deployment + Service render AND the ingress `/` route targets them
+# automatically, overriding ingress.sameOrigin.spaService/spaPort (see
+# clustertenant-manager-ingress.yaml).
+controlPlaneSpa:
+  enabled: false
+  image:
+    # Built by .github/workflows/docker.yml (CONTROL_PLANE_SPA_IMAGE) from
+    # apps/control-plane/deploy/Dockerfile — a static `nx build control-plane` bundle
+    # served by nginxinc/nginx-unprivileged.
+    repository: ghcr.io/italanta/opencrane-control-plane-spa
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicas: 1
+  service:
+    # -- nginx-unprivileged's default listen port (matches the Dockerfile + probes).
+    port: 8080
+  podSecurityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: false
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
 # -- Documentation site (optional). When enabled, serves the VitePress docs build
 # from an in-cluster, unprivileged nginx. OFF by default, so existing installs are
 # unchanged. Build/push the image with `npm run docker:build:docs`.
