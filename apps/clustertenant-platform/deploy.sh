@@ -104,13 +104,8 @@ PROFILE_SET=(
   --set "fleetManager.clusterTenantApi.enabled=false"
   --set "billing.enabled=false"
   --set "multiInstance.enabled=false"
-  # Same-origin org-host Ingress rules (Helm-owned /, /api, /gateway on the org apex). The chart
-  # default stays `false` for byte-identical single-silo renders, but the legacy alternative
-  # renders a cluster-WIDE wildcard Ingress (`*.<domain>` + /api,/gateway) that the ingress
-  # admission webhook rejects as a duplicate in any multi-silo cluster — which is the only
-  # topology this script deploys. Proven 2026-07-12: a freshly onboarded org (tarv-org) failed
-  # its first deploy on exactly this collision until sameOrigin was set.
-  --set "ingress.sameOrigin.enabled=true"
+  # NOTE: same-origin org hosting is now the chart's only mode (the legacy `*.<domain>` wildcard
+  # gateway-ingress was removed) — no --set needed here to select it.
   --set "ingress.tls.enabled=true"
   # Issue the silo's OWN TLS cert (clustertenant-manager-certificate.yaml) via the cluster-wide
   # ClusterIssuer the central release created. A k8s Ingress can only reference a TLS secret in its
