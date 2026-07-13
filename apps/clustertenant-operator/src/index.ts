@@ -1,7 +1,7 @@
 // OpenTelemetry must be initialised before any instrumented module is imported,
 // so this side-effecting import stays first in the file (and is also preloaded
 // via NODE_OPTIONS=--import in the container).
-import "./instrument.js";
+import "./app/instrument.js";
 
 import { randomUUID } from "node:crypto";
 
@@ -12,34 +12,32 @@ import express, { type Express } from "express";
 import type { PrismaClient } from "@prisma/client";
 
 import { ___BindConsole, ___GetContext, ___RequestContext, ___ShutdownTelemetry, ___DoWithTrace } from "@opencrane/observability";
-import { ___AuthMiddleware } from "@opencrane/infra-auth";
-import { _ErrorHandler, _RateLimit } from "@opencrane/infra-http";
+import { ___AuthMiddleware } from "@opencrane/infra/auth";
+import { _ErrorHandler, _RateLimit } from "@opencrane/infra/http";
 
 import { ___AuthRouter } from "./infra/auth/auth.router.js";
-import { _BuildGatewayAdmin } from "./core/connections/gateway-admin.js";
+import { _BuildGatewayAdmin } from "@opencrane/domain/connections";
 import { ___CreateOidcAuthService } from "./infra/auth/oidc.service.js";
 import { ___CreatePrismaClient } from "./infra/db/db.js";
 import { _TransportSecurity } from "./infra/middleware/transport-security.middleware.js";
-import { _log as log } from "./log.js";
-import { _RegisterInternalRoutes, _RegisterRoutes } from "./routes.js";
-import { TenantProjectionRepairer } from "./infra/tenant-projection-repairer.js";
-import { MembershipProjectionRepairer, _BuildHttpFleetMembershipReader, _BuildHttpFleetMembershipWriter } from "./infra/membership-projection-repairer.js";
-import { _ResolveOwnClusterTenantName } from "./core/cluster-tenants/resolve-own-cluster-tenant.js";
-import { CogneeLiteLlmKey } from "./tenants/internal/cognee-litellm-key.js";
-import { CogneeSiloTenant } from "./tenants/internal/cognee-silo-tenant.js";
+import { _log as log } from "./app/log.js";
+import { _RegisterInternalRoutes, _RegisterRoutes } from "./app/routes.js";
+import { TenantProjectionRepairer } from "./infra/projection/tenant-projection-repairer.js";
+import { MembershipProjectionRepairer, _BuildHttpFleetMembershipReader, _BuildHttpFleetMembershipWriter } from "./infra/projection/membership-projection-repairer.js";
+import { _ResolveOwnClusterTenantName, _SeedOwnDefaultTenant } from "@opencrane/domain/cluster-tenants";
+import { CogneeLiteLlmKey } from "./reconcilers/tenants/internal/cognee-litellm-key.js";
+import { CogneeSiloTenant } from "./reconcilers/tenants/internal/cognee-silo-tenant.js";
 
 // In-silo controllers (Stage 5). The silo runs every in-silo reconcile loop over its OWN
 // namespace, so a silo stands on its own; the fleet-manager watches only the cluster-scoped
 // ClusterTenant CR and nothing inside a silo.
-import { _LoadOperatorConfig } from "./config.js";
-import type { OpenClawTenantOperatorConfig } from "./config.js";
-import { _ProvisionByokKey } from "./core/model-routing/provision-byok-key.js";
-import { _CreateTenantOperator, IdleChecker } from "./tenants/index.js";
-import { PolicyOperator } from "./policies/operator.js";
-import { _ReadTenantRolloutConfig, TenantUpdateWithCanaryStrategyController } from "./tenant-rollout/tenant-update-with-canary-strategy.controller.js";
-import { GatewayProxyServer } from "./gateway-proxy/server.js";
-import { ObotHealthChecker } from "./mcp-gateway/obot-health-checker.js";
-import { _SeedOwnDefaultTenant } from "./core/cluster-tenants/seed-own-default-tenant.js";
+import { _LoadOperatorConfig, type OpenClawTenantOperatorConfig } from "./app/config.js";
+import { _ProvisionByokKey } from "@opencrane/domain/model-routing";
+import { _CreateTenantOperator, IdleChecker } from "./reconcilers/tenants/index.js";
+import { PolicyOperator } from "./reconcilers/policies/operator.js";
+import { _ReadTenantRolloutConfig, TenantUpdateWithCanaryStrategyController } from "./reconcilers/tenant-rollout/tenant-update-with-canary-strategy.controller.js";
+import { GatewayProxyServer } from "./gateways/gateway-proxy/server.js";
+import { ObotHealthChecker } from "./gateways/mcp-gateway/obot-health-checker.js";
 
 // Route any stray console.* call (first-party or third-party) through the
 // structured logger so nothing reaches stdout unstructured / uncorrelated.

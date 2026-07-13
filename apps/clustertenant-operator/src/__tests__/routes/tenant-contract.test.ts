@@ -5,23 +5,25 @@ import type { PrismaClient } from "@prisma/client";
 import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
 
-import { _RegisterInternalTenantContract } from "../../routes/internal/tenant-contract.js";
-import { compileForPrincipals } from "../../core/grants/grant-compiler.js";
-import { GrantCompilerAccess } from "../../core/grants/grant-compiler.types.js";
+import { _RegisterInternalTenantContract } from "@opencrane/domain/contract";
+import { compileForPrincipals, GrantCompilerAccess } from "@opencrane/domain/grants";
 
 // Mock the grant compiler at the module boundary so tests can drive Allow/Deny
 // decisions directly without constructing grant rows. Default: no entitlements,
 // which keeps every existing test's empty-contract expectations intact.
-vi.mock("../../core/grants/grant-compiler.js", () => ({
-  compile: vi.fn().mockResolvedValue([]),
-  compileForPrincipals: vi.fn().mockResolvedValue([]),
-}));
+vi.mock("@opencrane/domain/grants", async function _mockGrants(importOriginal)
+{
+  const actual = await importOriginal<typeof import("@opencrane/domain/grants")>();
+  return { ...actual, compile: vi.fn().mockResolvedValue([]), compileForPrincipals: vi.fn().mockResolvedValue([]) };
+});
 
 // Per-skill model resolution is exercised by its own suite; stub it to [] here so
 // the contract-shaping assertions stay focused on entitlement enrichment.
-vi.mock("../../core/model-routing/resolve-contract-skill-models.js", () => ({
-  _ResolveContractSkillModels: vi.fn().mockResolvedValue([]),
-}));
+vi.mock("@opencrane/domain/model-routing", async function _mockModelRouting(importOriginal)
+{
+  const actual = await importOriginal<typeof import("@opencrane/domain/model-routing")>();
+  return { ...actual, _ResolveContractSkillModels: vi.fn().mockResolvedValue([]) };
+});
 
 /** Build a mock AuthenticationV1Api that returns a controlled TokenReview response. */
 function _buildAuthApi(opts: {

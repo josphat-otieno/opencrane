@@ -3,33 +3,26 @@
 # Build stage
 FROM node:22-bookworm-slim AS build
 
-RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
-
 WORKDIR /app
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
-COPY tsconfig.base.json ./
-COPY libs/observability/package.json libs/observability/tsconfig.json libs/observability/
+COPY package.json package-lock.json tsconfig.base.json nx.json ./
+COPY libs libs
 COPY apps/harvesting-agent/package.json apps/harvesting-agent/tsconfig.json apps/harvesting-agent/
-RUN pnpm install --frozen-lockfile --filter @opencrane/observability --filter @opencrane/harvesting-agent
+# npm workspaces install: root package.json's "workspaces" field includes apps/* and website
+RUN npm ci
 
-COPY libs/observability/src libs/observability/src
 COPY apps/harvesting-agent/src apps/harvesting-agent/src
-RUN pnpm --filter @opencrane/observability build
-RUN pnpm --filter @opencrane/harvesting-agent build
+RUN npm run build -w @opencrane/harvesting-agent
 
 # Runtime stage
 FROM node:22-bookworm-slim
 
-RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
-
 WORKDIR /app
 ENV NODE_ENV=production
-COPY --from=build /app/package.json /app/pnpm-workspace.yaml /app/pnpm-lock.yaml ./
-COPY --from=build /app/libs/observability/package.json libs/observability/
-COPY --from=build /app/apps/harvesting-agent/package.json apps/harvesting-agent/
-RUN pnpm install --frozen-lockfile --filter @opencrane/observability --filter @opencrane/harvesting-agent --prod
+COPY package.json package-lock.json ./
+COPY apps/harvesting-agent/package.json apps/harvesting-agent/
+# Install only the app workspace's runtime dependencies
+RUN npm ci --omit=dev --workspace=apps/harvesting-agent
 
-COPY --from=build /app/libs/observability/dist libs/observability/dist
 COPY --from=build /app/apps/harvesting-agent/dist apps/harvesting-agent/dist
 
 USER node

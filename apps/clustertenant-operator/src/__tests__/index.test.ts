@@ -4,7 +4,7 @@ import type { Express } from "express";
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import request from "supertest";
 
-import { _CheckDbHealth, _RateLimit } from "@opencrane/infra-http";
+import { _CheckDbHealth, _RateLimit } from "@opencrane/infra/http";
 
 /**
  * Build a minimal Express app with a mocked database health handler.
@@ -34,7 +34,7 @@ async function _buildAuthApp(): Promise<Express>
 {
   vi.resetModules();
 
-  const { ___AuthMiddleware } = await import("@opencrane/infra-auth");
+  const { ___AuthMiddleware } = await import("@opencrane/infra/auth");
   const app = express();
   app.use(express.json());
   // Mirror production middleware order: the per-IP limiter is mounted before auth + routes.
@@ -159,7 +159,7 @@ describe("Control Plane", () =>
       // public ingress-facing listener so they can't be reached from the internet. We mirror
       // createInternalApp's wiring here (importing ../index.js would boot the real servers) and
       // assert /api/internal is reachable tokenless AND that a would-be auth gate never runs.
-      const { _RegisterInternalRoutes } = await import("../routes.js");
+      const { _RegisterInternalRoutes } = await import("../app/routes.js");
 
       const prisma = {
         tenant: { findUnique: vi.fn().mockResolvedValue(null) },

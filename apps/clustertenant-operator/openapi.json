@@ -2957,59 +2957,6 @@
         }
       }
     },
-    "/tenants/drift": {
-      "get": {
-        "operationId": "getTenantProjectionDrift",
-        "summary": "Detect drift between Tenant CRDs and PostgreSQL projection rows",
-        "tags": [
-          "Tenants"
-        ],
-        "responses": {
-          "200": {
-            "description": "Drift report.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/tenants/repair": {
-      "post": {
-        "operationId": "repairTenantProjection",
-        "summary": "Repair Tenant projection rows from CRD source of truth",
-        "tags": [
-          "Tenants"
-        ],
-        "parameters": [
-          {
-            "name": "dryRun",
-            "in": "query",
-            "schema": {
-              "type": "boolean",
-              "default": true
-            },
-            "description": "When true (default), report planned changes without applying them."
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Repair report.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/tenants/{name}": {
       "get": {
         "operationId": "getTenant",
@@ -3413,6 +3360,111 @@
         }
       }
     },
+    "/tenants/drift": {
+      "get": {
+        "operationId": "getTenantProjectionDrift",
+        "summary": "Detect drift between Tenant CRDs and PostgreSQL projection rows",
+        "tags": [
+          "Tenants"
+        ],
+        "responses": {
+          "200": {
+            "description": "Drift report.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tenants/repair": {
+      "post": {
+        "operationId": "repairTenantProjection",
+        "summary": "Repair Tenant projection rows from CRD source of truth",
+        "tags": [
+          "Tenants"
+        ],
+        "parameters": [
+          {
+            "name": "dryRun",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": true
+            },
+            "description": "When true (default), report planned changes without applying them."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Repair report.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/policies/drift": {
+      "get": {
+        "operationId": "getPolicyProjectionDrift",
+        "summary": "Detect drift between AccessPolicy CRDs and PostgreSQL projection rows",
+        "tags": [
+          "Policies"
+        ],
+        "responses": {
+          "200": {
+            "description": "Drift report.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/policies/repair": {
+      "post": {
+        "operationId": "repairPolicyProjection",
+        "summary": "Repair AccessPolicy projection rows from CRD source of truth",
+        "tags": [
+          "Policies"
+        ],
+        "parameters": [
+          {
+            "name": "dryRun",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Repair report.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/policies": {
       "get": {
         "operationId": "listPolicies",
@@ -3467,58 +3519,6 @@
                       "type": "string"
                     }
                   }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/policies/drift": {
-      "get": {
-        "operationId": "getPolicyProjectionDrift",
-        "summary": "Detect drift between AccessPolicy CRDs and PostgreSQL projection rows",
-        "tags": [
-          "Policies"
-        ],
-        "responses": {
-          "200": {
-            "description": "Drift report.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/policies/repair": {
-      "post": {
-        "operationId": "repairPolicyProjection",
-        "summary": "Repair AccessPolicy projection rows from CRD source of truth",
-        "tags": [
-          "Policies"
-        ],
-        "parameters": [
-          {
-            "name": "dryRun",
-            "in": "query",
-            "schema": {
-              "type": "boolean",
-              "default": true
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Repair report.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
                 }
               }
             }
@@ -5645,6 +5645,188 @@
         }
       }
     },
+    "/skills/posture": {
+      "get": {
+        "operationId": "listSkillModelPostures",
+        "summary": "List all skills with their model posture",
+        "tags": [
+          "Skills"
+        ],
+        "responses": {
+          "200": {
+            "description": "Skill posture list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SkillModelPosture"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/skills/posture/skill": {
+      "get": {
+        "operationId": "getSkillModelPosture",
+        "summary": "Get a single skill's model posture by its compound key",
+        "tags": [
+          "Skills"
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Skill name."
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Skill scope."
+          },
+          {
+            "name": "team",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Owning team; empty string when not team-scoped."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Skill posture detail.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillModelPosture"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "name and scope query params are required (code VALIDATION_ERROR).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Skill not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "setSkillModelPosture",
+        "summary": "Set (or clear) a skill's model posture",
+        "tags": [
+          "Skills"
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Skill name."
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Skill scope."
+          },
+          {
+            "name": "team",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Owning team; empty string when not team-scoped."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillModelPostureWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Skill posture updated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillModelPosture"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Request body or query failed validation (code VALIDATION_ERROR).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller is not authorized for the resource scope (code FORBIDDEN_SCOPE). Org/global skills are operator-only.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Skill not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/third-party-sources": {
       "get": {
         "operationId": "listThirdPartySources",
@@ -6835,188 +7017,6 @@
         }
       }
     },
-    "/skills/posture": {
-      "get": {
-        "operationId": "listSkillModelPostures",
-        "summary": "List all skills with their model posture",
-        "tags": [
-          "Skills"
-        ],
-        "responses": {
-          "200": {
-            "description": "Skill posture list.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/SkillModelPosture"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/skills/posture/skill": {
-      "get": {
-        "operationId": "getSkillModelPosture",
-        "summary": "Get a single skill's model posture by its compound key",
-        "tags": [
-          "Skills"
-        ],
-        "parameters": [
-          {
-            "name": "name",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Skill name."
-          },
-          {
-            "name": "scope",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Skill scope."
-          },
-          {
-            "name": "team",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Owning team; empty string when not team-scoped."
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Skill posture detail.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SkillModelPosture"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "name and scope query params are required (code VALIDATION_ERROR).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Skill not found.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "operationId": "setSkillModelPosture",
-        "summary": "Set (or clear) a skill's model posture",
-        "tags": [
-          "Skills"
-        ],
-        "parameters": [
-          {
-            "name": "name",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Skill name."
-          },
-          {
-            "name": "scope",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Skill scope."
-          },
-          {
-            "name": "team",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Owning team; empty string when not team-scoped."
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SkillModelPostureWrite"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Skill posture updated.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SkillModelPosture"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Request body or query failed validation (code VALIDATION_ERROR).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Caller is not authorized for the resource scope (code FORBIDDEN_SCOPE). Org/global skills are operator-only.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Skill not found.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/model-routing/eval-cases": {
       "get": {
         "operationId": "listRoutingEvalCases",
@@ -8195,47 +8195,6 @@
         }
       }
     },
-    "/token-usage": {
-      "get": {
-        "operationId": "listTokenUsage",
-        "summary": "List token usage records",
-        "tags": [
-          "Token Usage"
-        ],
-        "parameters": [
-          {
-            "name": "tenant",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "default": 100
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Token usage records.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/TokenUsage"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/metrics/server": {
       "get": {
         "operationId": "getServerMetrics",
@@ -8309,6 +8268,47 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProjectionDrift"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/token-usage": {
+      "get": {
+        "operationId": "listTokenUsage",
+        "summary": "List token usage records",
+        "tags": [
+          "Token Usage"
+        ],
+        "parameters": [
+          {
+            "name": "tenant",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Token usage records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TokenUsage"
+                  }
                 }
               }
             }

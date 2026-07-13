@@ -6,7 +6,7 @@ import { defaultConfig, _makeClusterTenant } from "../fixtures.js";
 import { ClusterTenantOperator } from "../../cluster-tenants/operator.js";
 import { ClusterTenantStatusWriter } from "../../cluster-tenants/internal/cluster-tenant-status-writer.js";
 import type { OrgDomainProvisioner, OrgDomainProvisionRequest, OrgDomainProvisionResult } from "../../cluster-tenants/internal/org-domain-provisioner.types.js";
-import type { ClusterTenantResource } from "@opencrane/infra-api";
+import type { ClusterTenantResource } from "@opencrane/infra/api";
 import type { PrismaClient } from "../../generated/prisma/index.js";
 
 const log = pino({ level: "silent" });

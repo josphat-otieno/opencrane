@@ -9,12 +9,13 @@ const { _repair } = vi.hoisted(function _h()
 {
   return { _repair: vi.fn().mockResolvedValue({ entity: "tenant", repairedCount: 0, skippedCount: 0, entries: [] }) };
 });
-vi.mock("../../routes/internal/projection-repair.js", function _mock()
+vi.mock("@opencrane/domain/projection", async function _mock(importOriginal)
 {
-  return { _RepairTenantProjection: _repair };
+  const actual = await importOriginal<typeof import("@opencrane/domain/projection")>();
+  return { ...actual, _RepairTenantProjection: _repair };
 });
 
-import { TenantProjectionRepairer } from "../../infra/tenant-projection-repairer.js";
+import { TenantProjectionRepairer } from "../../infra/projection/tenant-projection-repairer.js";
 
 const _log = pino({ enabled: false });
 const _customApi = {} as k8s.CustomObjectsApi;

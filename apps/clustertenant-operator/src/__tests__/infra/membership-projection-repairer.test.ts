@@ -3,9 +3,9 @@ import type { PrismaClient } from "@prisma/client";
 import pino from "pino";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { MembershipProjectionRepairer, _BuildHttpFleetMembershipReader } from "../../infra/membership-projection-repairer.js";
-import type { FleetMembershipReader, FleetMembershipRow, MembershipEnforcementDeps } from "../../infra/membership-projection-repairer.types.js";
-import type { OpenClawGatewayAdmin } from "../../core/connections/gateway-admin.types.js";
+import { MembershipProjectionRepairer, _BuildHttpFleetMembershipReader } from "../../infra/projection/membership-projection-repairer.js";
+import type { FleetMembershipReader, FleetMembershipRow, MembershipEnforcementDeps } from "../../infra/projection/membership-projection-repairer.types.js";
+import type { OpenClawGatewayAdmin } from "@opencrane/domain/connections";
 
 const _log = pino({ enabled: false });
 

@@ -1,7 +1,7 @@
 import pino from "pino";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
-import { _FetchTenantModels } from "../../tenants/internal/tenant-models.js";
+import { _FetchTenantModels } from "../../reconcilers/tenants/internal/tenant-models.js";
 
 const _log = pino({ level: "silent" });
 const _controlPlaneUrl = "http://opencrane-clustertenant-manager.default.svc:3000";

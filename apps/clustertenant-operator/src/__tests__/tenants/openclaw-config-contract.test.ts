@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { defaultConfig, _makeTenant } from "../fixtures.js";
-import { _BuildConfigMap } from "../../tenants/deploy/index.js";
-import { _OpenclawConfigSchema } from "../../tenants/deploy/openclaw-config.schema.js";
+import { _BuildConfigMap } from "../../reconcilers/tenants/deploy/index.js";
+import { _OpenclawConfigSchema } from "../../reconcilers/tenants/deploy/openclaw-config.schema.js";
 
 /**
  * Mirrors `hasConfigMeta$1` EXACTLY as verified in the installed openclaw@2026.6.11 binary

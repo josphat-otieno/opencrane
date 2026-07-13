@@ -1,0 +1,36 @@
+{
+  "name": "contracts",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "libs/contracts/src",
+  "tags": [
+    "scope:shared"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc -p tsconfig.json --noEmit",
+        "cwd": "libs/contracts"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --passWithNoTests",
+        "cwd": "libs/contracts"
+      }
+    },
+    "generate": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "openapi-typescript ../../apps/clustertenant-operator/openapi.json -o src/generated/api.ts",
+          "openapi-typescript ../../apps/fleet-operator/openapi.json -o src/generated/fleet-api.ts"
+        ],
+        "cwd": "libs/contracts",
+        "parallel": false
+      }
+    }
+  }
+}

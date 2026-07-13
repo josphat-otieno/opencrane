@@ -8,32 +8,60 @@
   "engines": {
     "node": ">=22"
   },
-  "packageManager": "pnpm@10.11.0",
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "prisma",
-      "@prisma/client",
-      "@prisma/engines",
-      "esbuild"
-    ],
-    "ignoredBuiltDependencies": []
-  },
   "scripts": {
-    "build": "pnpm --filter @opencrane/clustertenant-operator db:generate && pnpm -r build",
-    "dev": "pnpm -r --parallel dev",
-    "test": "pnpm -r test",
+    "build": "npm run db:generate -w @opencrane/clustertenant-operator && nx run-many -t build",
+    "dev": "nx run-many -t dev --parallel=10",
+    "test": "nx run-many -t test",
     "test:e2e:k3d": "./libs/k8s-platform/tests/k3d-e2e.sh",
-    "test:phase1": "pnpm --filter @opencrane/fleet-operator test && pnpm --filter @opencrane/clustertenant-operator test && ./libs/k8s-platform/tests/k3d-e2e.sh",
+    "test:phase1": "nx run fleet-operator:test && nx run clustertenant-operator:test && ./libs/k8s-platform/tests/k3d-e2e.sh",
     "install:phase1:local": "KEEP_CLUSTER=1 ./libs/k8s-platform/tests/k3d-local.sh",
     "install:phase1:gcp": "./apps/fleet-platform/deploy.sh --provision gke",
-    "lint": "pnpm -r lint",
-    "docs:sync-openapi": "pnpm --filter @opencrane/website sync-openapi",
-    "docs:dev": "pnpm --filter @opencrane/website dev",
-    "docs:build": "pnpm --filter @opencrane/website build",
-    "docs:preview": "pnpm --filter @opencrane/website preview",
+    "lint": "nx run-many -t lint",
+    "lint:boundaries": "eslint .",
+    "docs:sync-openapi": "npm run sync-openapi -w website",
+    "docs:dev": "npm run dev -w website",
+    "docs:build": "npm run build -w website",
+    "docs:preview": "npm run preview -w website",
     "docker:build:tenant": "docker build -f apps/tenant/deploy/Dockerfile -t ghcr.io/italanta/opencrane-tenant:latest .",
     "docker:build:operator": "docker build -f apps/fleet-operator/deploy/Dockerfile -t ghcr.io/italanta/opencrane-fleet-manager:latest .",
     "docker:build:control-plane": "docker build -f apps/clustertenant-operator/deploy/Dockerfile -t ghcr.io/italanta/opencrane-clustertenant-manager:latest .",
     "docker:build:docs": "docker build -f website/Dockerfile -t ghcr.io/italanta/docs:latest ."
+  },
+  "devDependencies": {
+    "@nx/eslint-plugin": "^23.0.2",
+    "@opentelemetry/sdk-trace-base": "^1.30.0",
+    "@types/express": "^5.0.0",
+    "@types/express-session": "^1.18.0",
+    "@types/node": "^22.0.0",
+    "@types/supertest": "^6.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.63.0",
+    "@typescript-eslint/parser": "^8.63.0",
+    "esbuild": "^0.25.0",
+    "eslint": "^10.7.0",
+    "express-session": "^1.19.0",
+    "nx": "^23.0.2",
+    "openapi-typescript": "^7.13.0",
+    "supertest": "^7.0.0",
+    "typescript": "^5.7.0",
+    "vite-tsconfig-paths": "^5.1.0",
+    "vitest": "^3.1.0"
+  },
+  "workspaces": [
+    "apps/*",
+    "website"
+  ],
+  "dependencies": {
+    "@kubernetes/client-node": "^1.0.0",
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.56.0",
+    "@opentelemetry/exporter-trace-otlp-proto": "^0.57.0",
+    "@opentelemetry/sdk-node": "^0.57.0",
+    "@prisma/client": "^6.0.0",
+    "express": "^5.1.0",
+    "express-rate-limit": "^7.4.0",
+    "express-session": "^1.19.0",
+    "openapi-fetch": "^0.17.0",
+    "openid-client": "^6.8.4",
+    "pino": "^9.6.0"
   }
 }

@@ -19,7 +19,7 @@ function _runMigrations(): void
     execSync("npx prisma migrate deploy", {
       stdio: "inherit",
       // dist/scripts/migrate.js → up two levels to the control-plane package root,
-      // where prisma/schema.prisma lives (the cwd `prisma migrate deploy` expects).
+      // where the per-domain `prisma/schema/` directory lives (the cwd `prisma migrate deploy` expects).
       cwd: new URL("../../", import.meta.url).pathname,
     });
     _log.info("migrations complete");

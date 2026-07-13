@@ -4,7 +4,7 @@ import type { Logger } from "pino";
 import { describe, expect, it, vi } from "vitest";
 
 import { _AdoptMemberOnLogin } from "../../infra/auth/adopt-member.js";
-import { _MemberTenantName } from "../../core/cluster-tenants/default-tenant.js";
+import { _MemberTenantName } from "@opencrane/domain/cluster-tenants";
 
 /**
  * First-login member adoption (#126 S4). A per-org login proves org membership (its

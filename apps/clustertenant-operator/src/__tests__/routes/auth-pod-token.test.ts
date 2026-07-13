@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ___AuthRouter } from "../../infra/auth/auth.router.js";
 import type { OidcAuthService } from "../../infra/auth/oidc.service.js";
-import { _NoopGatewayAdmin } from "../../core/connections/gateway-admin.js";
+import { _NoopGatewayAdmin } from "@opencrane/domain/connections";
 
 /** Session shape the pod-token route reads. */
 interface TestSession

@@ -3,13 +3,12 @@ import type { Logger } from "pino";
 import type * as k8s from "@kubernetes/client-node";
 import type { PrismaClient } from "@prisma/client";
 
-import { OidcAuthServiceBase, _RequestHost } from "@opencrane/infra-auth";
-import type { AuthUser, LoginClient } from "@opencrane/infra-auth";
+import { OidcAuthServiceBase, _RequestHost, type AuthUser, type LoginClient } from "@opencrane/infra/auth";
 
-import type { FleetMembershipWriter } from "../membership-projection-repairer.js";
+import type { FleetMembershipWriter } from "../projection/membership-projection-repairer.js";
 import { _AdoptMemberOnLogin } from "./adopt-member.js";
 import { _MirrorGroupsOnLogin } from "./mirror-groups.js";
-import { _ResolveCallerClusterTenant } from "./resolve-caller-cluster-tenant.js";
+import { _ResolveCallerClusterTenant } from "@opencrane/domain/cluster-tenants";
 import { _ClusterTenantFromHost } from "./request-silo.js";
 import { _OrgScope, _ResolvePerOrgClient } from "./per-org-client.js";
 

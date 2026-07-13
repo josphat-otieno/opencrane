@@ -28,21 +28,24 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v6
-
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-          cache: pnpm
+          cache: npm
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: npm ci
+
+      # NX Cloud remote caching & distributed task execution
+      # Uncomment to enable after running `npx nx connect` locally (writes nxCloudId to nx.json).
+      # For PR events, this runs `npx nx affected` to test only changed packages.
+      # - name: Initialize NX Cloud CI
+      #   run: npx nx-cloud start-ci-run --distribute-on="3 linux-medium-js"
 
       - name: Build
-        run: pnpm build
+        run: npm run build
 
-      # `pnpm build` regenerates the emitted OpenAPI specs and the typed
+      # `npm run build` regenerates the emitted OpenAPI specs and the typed
       # clients from source, then typechecks against the fresh output — so a
       # stale committed spec/client never fails the typecheck on its own.
       # Diff the regenerated artifacts to fail fast when codegen wasn't re-run
@@ -54,16 +57,10 @@ jobs:
             apps/fleet-operator/openapi.json \
             libs/contracts/src/generated/api.ts \
             libs/contracts/src/generated/fleet-api.ts \
-          || { echo "::error::Generated OpenAPI specs/clients are stale. Run 'pnpm build' (or 'pnpm --filter @opencrane/contracts generate') and commit the result."; exit 1; }
+          || { echo "::error::Generated OpenAPI specs/clients are stale. Run 'npm run build' (or 'npm run generate -w @opencrane/contracts') and commit the result."; exit 1; }
 
-      - name: Test operator
-        run: pnpm --filter @opencrane/fleet-operator test
-
-      - name: Test control-plane
-        run: pnpm --filter @opencrane/clustertenant-operator test
-
-      - name: Test skill-registry
-        run: pnpm --filter @opencrane/skill-registry test
+      - name: Test all projects
+        run: npx nx run-many -t test lint
 
 
   e2e-k3d:

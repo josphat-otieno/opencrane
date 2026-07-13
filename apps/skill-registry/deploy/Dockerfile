@@ -3,33 +3,26 @@
 # Build stage
 FROM node:22-bookworm-slim AS build
 
-RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
-
 WORKDIR /app
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
-COPY tsconfig.base.json ./
-COPY libs/observability/package.json libs/observability/tsconfig.json libs/observability/
+COPY package.json package-lock.json tsconfig.base.json nx.json ./
+COPY libs libs
 COPY apps/skill-registry/package.json apps/skill-registry/tsconfig.json apps/skill-registry/
-RUN pnpm install --frozen-lockfile --filter @opencrane/observability --filter @opencrane/skill-registry
+# npm workspaces install: root package.json's "workspaces" field includes apps/* and website
+RUN npm ci
 
-COPY libs/observability/src libs/observability/src
 COPY apps/skill-registry/src apps/skill-registry/src
-RUN pnpm --filter @opencrane/observability build
-RUN pnpm --filter @opencrane/skill-registry build
+RUN npm run build -w @opencrane/skill-registry
 
 # Runtime stage
 FROM node:22-bookworm-slim
 
-RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
-
 WORKDIR /app
 ENV NODE_ENV=production
-COPY --from=build /app/package.json /app/pnpm-workspace.yaml /app/pnpm-lock.yaml ./
-COPY --from=build /app/libs/observability/package.json libs/observability/
-COPY --from=build /app/apps/skill-registry/package.json apps/skill-registry/
-RUN pnpm install --frozen-lockfile --filter @opencrane/observability --filter @opencrane/skill-registry --prod
+COPY package.json package-lock.json ./
+COPY apps/skill-registry/package.json apps/skill-registry/
+# Install only the app workspace's runtime dependencies
+RUN npm ci --omit=dev --workspace=apps/skill-registry
 
-COPY --from=build /app/libs/observability/dist libs/observability/dist
 COPY --from=build /app/apps/skill-registry/dist apps/skill-registry/dist
 
 USER node

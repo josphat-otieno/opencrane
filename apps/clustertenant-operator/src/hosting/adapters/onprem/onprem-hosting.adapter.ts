@@ -1,5 +1,4 @@
-import { HostingProvider } from "../../hosting-adapter.types.js";
-import type { HostingAdapter, TenantStateVolume, TenantStorageBinding, TenantStorageRequest } from "../../hosting-adapter.types.js";
+import { HostingProvider, type HostingAdapter, type TenantStateVolume, type TenantStorageBinding, type TenantStorageRequest } from "../../hosting-adapter.types.js";
 import { _BuildPvcStateVolume } from "../../core/pvc-state-volume.js";
 
 /** Default hosting adapter: vanilla Kubernetes, no cloud dependency. */

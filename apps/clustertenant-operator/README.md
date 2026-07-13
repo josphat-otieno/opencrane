@@ -16,26 +16,45 @@ All mutations are dual-written: changes are applied to both Kubernetes CRDs (the
 
 ## Source layout
 
+The operator is composition + reconciler wiring: it mounts domain routers, manages reconcile loops, and proxies identity and MCP connections.
+
 ```
 src/
-├── index.ts              # Express app factory + server bootstrap
-├── db.ts                 # Prisma client factory + health check
-├── types.ts              # Shared request/response interfaces, AppDependencies
-├── middleware/
-│   └── auth.ts           # Bearer token auth middleware
-├── routes/
-│   ├── tenants.ts        # Tenant CRUD + dual-write
-│   ├── policies.ts       # AccessPolicy CRUD + dual-write
-│   ├── skills.ts         # Skills filesystem scan + Prisma upsert
-│   └── audit.ts          # Audit log query from Prisma
+├── index.ts              # Express app factory + Kubernetes reconcile loops
+├── routes.ts             # Route composition: mounts routers from @opencrane/domain-* packages
+├── config.ts             # Configuration + environment variables
+├── log.ts                # Logging setup
+├── instrument.ts         # OpenTelemetry instrumentation
+├── trusted-proxies.ts    # Trusted proxy configuration (CONN.9)
+├── infra/
+│   ├── membership-projection-repairer.ts  # Reconcile OrgMembership→ClusterTenant mapping
+│   └── tenant-projection-repairer.ts      # Reconcile ClusterTenant spec→status
+├── tenants/              # Tenant CRD reconciler
+│   ├── operator.ts       # Main watch + reconcile loop
+│   ├── deploy/           # Deployment builder for tenant pods
+│   └── internal/         # Resolution + isolation helpers
+├── policies/             # AccessPolicy CRD reconciler
+│   └── operator.ts       # Watch + reconcile loop
+├── tenant-rollout/       # Tenant pod rollout strategies (canary, rolling)
+├── gateway-proxy/        # Identity-routing proxy (OIDC session → tenant context)
+│   ├── auth-client.ts    # OIDC session validation
+│   └── origin.ts         # Request routing by org host
+├── mcp-gateway/          # MCP gateway deployment + health checks
+├── hosting/              # Hosting adapter (cloud metadata / secret provisioning)
+├── openapi/
+│   └── spec.ts           # OpenAPI schema generation for all domain routers
 ├── scripts/
-│   └── migrate.ts        # Standalone migration runner (prisma migrate deploy)
-└── index.test.ts         # Integration tests with supertest
+│   └── migrate.ts        # Prisma migration runner (prisma migrate deploy)
+└── __tests__/            # Integration + reconciliation tests
 ```
 
 ```
 prisma/
-└── schema.prisma         # PostgreSQL schema: Tenant, AccessPolicy, AuditEntry, Skill
+├── schema/
+│   ├── base.prisma       # Datasource + generator config
+│   ├── <domain>.prisma   # Per-domain models (tenants, policies, awareness, mcp, skills, etc.)
+│   └── […18 domain files…]
+└── migrations/           # Prisma migration history
 ```
 
 ## Configuration (environment variables)
@@ -61,17 +80,19 @@ Skill           — discovered skills registry (name, scope, team, contentHash)
 Run migrations:
 
 ```bash
-pnpm db:migrate   # prisma migrate deploy (production)
-pnpm db:generate  # regenerate Prisma client after schema changes
-pnpm db:push      # push schema without migrations (dev only)
+npm run db:migrate -w @opencrane/clustertenant-operator   # prisma migrate deploy (production)
+npm run db:generate -w @opencrane/clustertenant-operator  # regenerate Prisma client after schema changes
+npm run db:push -w @opencrane/clustertenant-operator      # push schema without migrations (dev only)
 ```
 
 ## Development
 
 ```bash
 # From repo root
-pnpm build          # compile TypeScript + generate Prisma client
-pnpm test           # run vitest integration tests
+npm run build                                    # compile TypeScript + generate Prisma client
+npm run build -w @opencrane/clustertenant-operator  # build only this package
+npm run test                                    # run vitest integration tests
+npx nx run clustertenant-operator:test          # alternative NX command
 ```
 
 ## Docker

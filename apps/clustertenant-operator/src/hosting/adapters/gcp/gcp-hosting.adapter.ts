@@ -1,7 +1,6 @@
 import type * as k8s from "@kubernetes/client-node";
 
-import { HostingProvider } from "../../hosting-adapter.types.js";
-import type { GcpHostingConfig, HostingAdapter, TenantStateVolume, TenantStorageBinding, TenantStorageRequest } from "../../hosting-adapter.types.js";
+import { HostingProvider, type GcpHostingConfig, type HostingAdapter, type TenantStateVolume, type TenantStorageBinding, type TenantStorageRequest } from "../../hosting-adapter.types.js";
 import type { GcsBucketOperations } from "./gcp-bucket.client.js";
 
 /** Hosting adapter for GKE: Workload Identity + GCS Fuse CSI + in-operator bucket provisioning. */

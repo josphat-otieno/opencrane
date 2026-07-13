@@ -1,6 +1,6 @@
 import type { Logger } from "pino";
 
-import { OidcAuthServiceBase } from "@opencrane/infra-auth";
+import { OidcAuthServiceBase } from "@opencrane/infra/auth";
 
 import type { PrismaClient } from "../../generated/prisma/index.js";
 

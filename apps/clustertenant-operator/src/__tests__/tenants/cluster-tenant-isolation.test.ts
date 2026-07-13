@@ -3,8 +3,8 @@ import * as k8s from "@kubernetes/client-node";
 import pino from "pino";
 
 import { defaultConfig, onPremAdapter, _makeClusterTenant, _makeTenant } from "../fixtures.js";
-import { TenantOperator } from "../../tenants/operator.js";
-import type { ClusterTenantResource } from "@opencrane/infra-api";
+import { TenantOperator } from "../../reconcilers/tenants/operator.js";
+import type { ClusterTenantResource } from "@opencrane/infra/api";
 
 /** Silent logger so test output stays clean. */
 const log = pino({ level: "silent" });

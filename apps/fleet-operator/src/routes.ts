@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import * as k8s from "@kubernetes/client-node";
 
-import { _CheckDbHealth, _OpenapiRouter } from "@opencrane/infra-http";
+import { _CheckDbHealth, _OpenapiRouter } from "@opencrane/infra/http";
 
 import type { PrismaClient } from "./generated/prisma/index.js";
 import { spec } from "./openapi/spec.js";

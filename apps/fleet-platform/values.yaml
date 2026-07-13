@@ -595,7 +595,7 @@ ingress:
 
 # -- Documentation site (optional). When enabled, serves the VitePress docs build
 # from an in-cluster, unprivileged nginx. OFF by default, so existing installs are
-# unchanged. Build/push the image with `pnpm docker:build:docs`.
+# unchanged. Build/push the image with `npm run docker:build:docs`.
 docs:
   enabled: false
   image:

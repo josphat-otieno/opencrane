@@ -2,7 +2,7 @@ import { Router } from "express";
 import type { Request } from "express";
 import { Prisma, type PrismaClient } from "../generated/prisma/index.js";
 
-import { _RequireOrgManager } from "@opencrane/infra-auth";
+import { _RequireOrgManager } from "@opencrane/infra/auth";
 import { _log } from "../log.js";
 import type { ZitadelManagementClient } from "../infra/zitadel/zitadel-client.types.js";
 

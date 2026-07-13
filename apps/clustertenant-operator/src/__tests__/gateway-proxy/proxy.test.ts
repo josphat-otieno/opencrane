@@ -3,10 +3,9 @@ import type { Duplex } from "node:stream";
 import pino from "pino";
 import { describe, expect, it, vi } from "vitest";
 
-import { _HandleUpgrade, _StripGatewayPrefix } from "../../gateway-proxy/proxy.js";
-import type { UpgradeDeps, WsProxy, GatewayProxyRuntime } from "../../gateway-proxy/proxy.js";
-import type { ResolveOutcome } from "../../gateway-proxy/auth-client.js";
-import { FixedWindowRateLimiter } from "../../gateway-proxy/rate-limit.js";
+import { _HandleUpgrade, _StripGatewayPrefix, type UpgradeDeps, type WsProxy, type GatewayProxyRuntime } from "../../gateways/gateway-proxy/proxy.js";
+import type { ResolveOutcome } from "../../gateways/gateway-proxy/auth-client.js";
+import { FixedWindowRateLimiter } from "../../gateways/gateway-proxy/rate-limit.js";
 
 const log = pino({ level: "silent" });
 

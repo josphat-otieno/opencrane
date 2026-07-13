@@ -5,8 +5,8 @@ import pino from "pino";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
 import { _makeTenant, defaultConfig } from "../fixtures.js";
-import { TenantLiteLlmKeys } from "../../tenants/internal/tenant-litellm-keys.js";
-import type { OpenClawTenantOperatorConfig } from "../../config.js";
+import { TenantLiteLlmKeys } from "../../reconcilers/tenants/internal/tenant-litellm-keys.js";
+import type { OpenClawTenantOperatorConfig } from "../../app/config.js";
 
 const _log = pino({ level: "silent" });
 

@@ -7,8 +7,8 @@ import { Prisma, type PrismaClient } from "../generated/prisma/index.js";
 
 import type { ClusterTenantCreateRequest, ClusterTenantUpdateRequest } from "./cluster-tenants.models.js";
 import { _IsIsolationTier, _ObservedStatusToContract, _SyncObservedStatusToDb, _ToContract, _ToPrismaCompute, _ToPrismaTier, _ValidateCompute, _ValidateResources, _ValidateSeatCap } from "./cluster-tenants.service.js";
-import { _IsDevAuthMode } from "@opencrane/infra-auth";
-import { _RequireBillingAccountForOrgCreate, _RequireOrgManager } from "@opencrane/infra-auth";
+import { _IsDevAuthMode } from "@opencrane/infra/auth";
+import { _RequireBillingAccountForOrgCreate, _RequireOrgManager } from "@opencrane/infra/auth";
 import { _ApplyClusterTenantCr, _DeleteClusterTenantCr } from "../core/cluster-tenants/cr-bridge.js";
 import { _ReadClusterTenantObservedStatus } from "../core/cluster-tenants/cr-status-reader.js";
 import { _DeriveOrgRedirectUri, _DeriveVanityRedirectUri } from "../infra/zitadel/zitadel-client.js";

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import type { PrismaClient } from "../generated/prisma/index.js";
 
-import { _IsDevAuthMode } from "@opencrane/infra-auth";
+import { _IsDevAuthMode } from "@opencrane/infra/auth";
 
 /** Shape accepted on `POST /` — only an optional human-readable billing name. */
 interface BillingAccountCreateRequest

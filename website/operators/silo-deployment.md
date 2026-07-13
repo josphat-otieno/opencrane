@@ -4,6 +4,7 @@ OpenCrane splits a platform installation into a single **fleet release** (cluste
 
 > See also:
 > [Fleet and silo operating model](/operators/fleet-silo-model) — how the fleet-manager and clustertenant-manager differ, what each owns, and how to configure fleet OIDC and Zitadel management.
+> [ClusterTenant manager configuration](/operators/clustertenantmanager-config) — Helm values reference for every silo-control-plane setting.
 > [Networking & isolation](/operators/networking) — the NetworkPolicy floor and the silo boundary.
 > [Identity & network isolation (Cilium + SPIFFE)](/operators/cilium-spiffe-identity) — the identity-keyed mTLS layer that rides on top of the silo boundary.
 > [Silo IAM: inheritance & sharing](/integrators/silo-iam) — how IAM policies, skills, and resource shares are scoped per silo.
@@ -167,9 +168,11 @@ Two significant pieces of automation are **not yet shipped** and must be done ma
 
 ---
 
-## Environment variables set by the chart
+## Configuration & environment variables
 
-### Fleet-manager
+All clustertenant-manager configuration is supplied via Helm values in `clustertenantManager.*` and rendered into environment variables at pod start. See [ClusterTenant manager configuration](/operators/clustertenantmanager-config) for the complete reference — image tags, database, OIDC, Cognee, resource requests/limits, fleet integration, and more.
+
+### Fleet-manager variables
 
 | Variable | Description |
 |---|---|
@@ -179,12 +182,3 @@ Two significant pieces of automation are **not yet shipped** and must be done ma
 | `ZITADEL_MGMT_SA_KEY` | Service-account key JSON for Zitadel (JWT bearer). Set from `fleetManager.zitadel.existingSecret`. |
 | `ZITADEL_MGMT_SECRET_NAME` | Kubernetes Secret name the fleet-manager patches during key rotation. Derived from `fleetManager.zitadel.existingSecret`. |
 | `PLATFORM_BASE_DOMAIN` | Base domain for per-org Zitadel redirect URI provisioning. Set from `--base-domain`. |
-
-### Clustertenant-manager (silo)
-
-| Variable | Description |
-|---|---|
-| `DATABASE_URL` | Per-silo Postgres connection string. Set from `clustertenantManager.database.existingSecret` or `url`. |
-| `OIDC_ISSUER_URL` | Per-org OIDC issuer for user login. Set from `clustertenantManager.oidc.issuerUrl`. |
-
-Set these via Helm values or the deploy scripts; do not set them by hand.

@@ -107,6 +107,7 @@ export default defineConfig({
           { text: 'Hosting & deployment', link: '/operators/hosting' },
           { text: 'Fleet and silo operating model', link: '/operators/fleet-silo-model' },
           { text: 'Silo deployment model', link: '/operators/silo-deployment' },
+          { text: 'ClusterTenant manager configuration', link: '/operators/clustertenantmanager-config' },
           { text: 'DNS configuration', link: '/operators/dns-config' },
           { text: 'Networking & isolation', link: '/operators/networking' },
           { text: 'Identity & network isolation (Cilium + SPIFFE)', link: '/operators/cilium-spiffe-identity' },

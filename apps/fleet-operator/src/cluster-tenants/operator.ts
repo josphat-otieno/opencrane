@@ -10,7 +10,7 @@ import {
   __K8sApplyResource,
   _BuildClusterTenantNamespace,
   type ClusterTenantResource,
-} from "@opencrane/infra-api";
+} from "@opencrane/infra/api";
 
 import type { FleetOperatorConfig } from "../config.js";
 import { Prisma, type PrismaClient } from "../generated/prisma/index.js";

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { _OriginAllowed } from "../../gateway-proxy/origin.js";
+import { _OriginAllowed } from "../../gateways/gateway-proxy/origin.js";
 
 describe("_OriginAllowed (CSWSH guard)", () =>
 {

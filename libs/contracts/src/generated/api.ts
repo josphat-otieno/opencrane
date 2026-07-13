@@ -130,40 +130,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/tenants/drift": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Detect drift between Tenant CRDs and PostgreSQL projection rows */
-        get: operations["getTenantProjectionDrift"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/tenants/repair": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Repair Tenant projection rows from CRD source of truth */
-        post: operations["repairTenantProjection"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/tenants/{name}": {
         parameters: {
             query?: never;
@@ -252,18 +218,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/policies": {
+    "/tenants/drift": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** List all access policies */
-        get: operations["listPolicies"];
+        /** Detect drift between Tenant CRDs and PostgreSQL projection rows */
+        get: operations["getTenantProjectionDrift"];
         put?: never;
-        /** Create an access policy (dual-write: K8s CRD + database) */
-        post: operations["createPolicy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tenants/repair": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Repair Tenant projection rows from CRD source of truth */
+        post: operations["repairTenantProjection"];
         delete?: never;
         options?: never;
         head?: never;
@@ -298,6 +280,24 @@ export interface paths {
         put?: never;
         /** Repair AccessPolicy projection rows from CRD source of truth */
         post: operations["repairPolicyProjection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all access policies */
+        get: operations["listPolicies"];
+        put?: never;
+        /** Create an access policy (dual-write: K8s CRD + database) */
+        post: operations["createPolicy"];
         delete?: never;
         options?: never;
         head?: never;
@@ -767,6 +767,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/skills/posture": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all skills with their model posture */
+        get: operations["listSkillModelPostures"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/skills/posture/skill": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a single skill's model posture by its compound key */
+        get: operations["getSkillModelPosture"];
+        /** Set (or clear) a skill's model posture */
+        put: operations["setSkillModelPosture"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/third-party-sources": {
         parameters: {
             query?: never;
@@ -1014,41 +1049,6 @@ export interface paths {
         post?: never;
         /** Delete a model-routing default */
         delete: operations["deleteModelRoutingDefault"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/skills/posture": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List all skills with their model posture */
-        get: operations["listSkillModelPostures"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/skills/posture/skill": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get a single skill's model posture by its compound key */
-        get: operations["getSkillModelPosture"];
-        /** Set (or clear) a skill's model posture */
-        put: operations["setSkillModelPosture"];
-        post?: never;
-        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1365,23 +1365,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/token-usage": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List token usage records */
-        get: operations["listTokenUsage"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/metrics/server": {
         parameters: {
             query?: never;
@@ -1408,6 +1391,23 @@ export interface paths {
         };
         /** Get projection drift metrics with threshold evaluation and alert state */
         get: operations["getProjectionDriftMetrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/token-usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List token usage records */
+        get: operations["listTokenUsage"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2868,49 +2868,6 @@ export interface operations {
             };
         };
     };
-    getTenantProjectionDrift: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Drift report. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>;
-                };
-            };
-        };
-    };
-    repairTenantProjection: {
-        parameters: {
-            query?: {
-                /** @description When true (default), report planned changes without applying them. */
-                dryRun?: boolean;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Repair report. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>;
-                };
-            };
-        };
-    };
     getTenant: {
         parameters: {
             query?: never;
@@ -3191,6 +3148,91 @@ export interface operations {
             };
         };
     };
+    getTenantProjectionDrift: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Drift report. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+        };
+    };
+    repairTenantProjection: {
+        parameters: {
+            query?: {
+                /** @description When true (default), report planned changes without applying them. */
+                dryRun?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Repair report. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+        };
+    };
+    getPolicyProjectionDrift: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Drift report. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+        };
+    };
+    repairPolicyProjection: {
+        parameters: {
+            query?: {
+                dryRun?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Repair report. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+        };
+    };
     listPolicies: {
         parameters: {
             query?: never;
@@ -3234,48 +3276,6 @@ export interface operations {
                         name?: string;
                         status?: string;
                     };
-                };
-            };
-        };
-    };
-    getPolicyProjectionDrift: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Drift report. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>;
-                };
-            };
-        };
-    };
-    repairPolicyProjection: {
-        parameters: {
-            query?: {
-                dryRun?: boolean;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Repair report. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>;
                 };
             };
         };
@@ -4789,6 +4789,129 @@ export interface operations {
             };
         };
     };
+    listSkillModelPostures: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Skill posture list. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillModelPosture"][];
+                };
+            };
+        };
+    };
+    getSkillModelPosture: {
+        parameters: {
+            query: {
+                /** @description Skill name. */
+                name: string;
+                /** @description Skill scope. */
+                scope: string;
+                /** @description Owning team; empty string when not team-scoped. */
+                team?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Skill posture detail. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillModelPosture"];
+                };
+            };
+            /** @description name and scope query params are required (code VALIDATION_ERROR). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Skill not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    setSkillModelPosture: {
+        parameters: {
+            query: {
+                /** @description Skill name. */
+                name: string;
+                /** @description Skill scope. */
+                scope: string;
+                /** @description Owning team; empty string when not team-scoped. */
+                team?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SkillModelPostureWrite"];
+            };
+        };
+        responses: {
+            /** @description Skill posture updated. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillModelPosture"];
+                };
+            };
+            /** @description Request body or query failed validation (code VALIDATION_ERROR). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Caller is not authorized for the resource scope (code FORBIDDEN_SCOPE). Org/global skills are operator-only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Skill not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     listThirdPartySources: {
         parameters: {
             query?: never;
@@ -5677,129 +5800,6 @@ export interface operations {
             };
         };
     };
-    listSkillModelPostures: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Skill posture list. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SkillModelPosture"][];
-                };
-            };
-        };
-    };
-    getSkillModelPosture: {
-        parameters: {
-            query: {
-                /** @description Skill name. */
-                name: string;
-                /** @description Skill scope. */
-                scope: string;
-                /** @description Owning team; empty string when not team-scoped. */
-                team?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Skill posture detail. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SkillModelPosture"];
-                };
-            };
-            /** @description name and scope query params are required (code VALIDATION_ERROR). */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Skill not found. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    setSkillModelPosture: {
-        parameters: {
-            query: {
-                /** @description Skill name. */
-                name: string;
-                /** @description Skill scope. */
-                scope: string;
-                /** @description Owning team; empty string when not team-scoped. */
-                team?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SkillModelPostureWrite"];
-            };
-        };
-        responses: {
-            /** @description Skill posture updated. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SkillModelPosture"];
-                };
-            };
-            /** @description Request body or query failed validation (code VALIDATION_ERROR). */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Caller is not authorized for the resource scope (code FORBIDDEN_SCOPE). Org/global skills are operator-only. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Skill not found. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
     listRoutingEvalCases: {
         parameters: {
             query?: {
@@ -6604,29 +6604,6 @@ export interface operations {
             };
         };
     };
-    listTokenUsage: {
-        parameters: {
-            query?: {
-                tenant?: string;
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Token usage records. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TokenUsage"][];
-                };
-            };
-        };
-    };
     getServerMetrics: {
         parameters: {
             query?: never;
@@ -6677,6 +6654,29 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProjectionDrift"];
+                };
+            };
+        };
+    };
+    listTokenUsage: {
+        parameters: {
+            query?: {
+                tenant?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Token usage records. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TokenUsage"][];
                 };
             };
         };

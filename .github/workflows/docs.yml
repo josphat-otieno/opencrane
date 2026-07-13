@@ -33,13 +33,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v6
-
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-          cache: pnpm
+          cache: npm
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
@@ -49,14 +46,14 @@ jobs:
           enablement: true
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: npm ci
 
       - name: Build site
         # Served at the opencrane.ai custom domain (website/public/CNAME), so base
         # stays '/' — no DOCS_BASE override. (prebuild syncs the OpenAPI spec.)
         # Build the website package directly so this doesn't depend on a root
         # `docs:build` alias being present. (prebuild syncs the OpenAPI spec.)
-        run: pnpm --filter @opencrane/website build
+        run: npm run build -w @opencrane/website
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

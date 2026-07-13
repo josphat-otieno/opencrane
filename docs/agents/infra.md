@@ -4,11 +4,24 @@
 
 ## Build And Test
 
-- Install deps: `pnpm install`
-- Build all: `pnpm build`
-- Test all: `pnpm test`
-- Build single package: `pnpm --filter @opencrane/fleet-operator build`
-- Test single package: `pnpm --filter @opencrane/clustertenant-operator test`
+The workspace uses npm workspaces with integrated NX for task coordination.
+
+- Install deps: `npm ci`
+- Build all: `npm run build` (runs `npx nx run-many -t build`)
+- Test all: `npm run test` (runs `npx nx run-many -t test`)
+- Build single app: `npm run build -w @opencrane/fleet-operator` (or `npx nx run fleet-operator:build`)
+- Test single app: `npm run test -w @opencrane/clustertenant-operator` (or `npx nx run clustertenant-operator:test`)
+- Test only affected packages (PR): `npx nx affected -t test build lint --base=origin/main`
+
+### NX Cloud (Remote Caching & Distributed CI)
+
+NX Cloud provides remote task caching and optional CI task distribution (test/lint/build parallelization across runners).
+
+- **Local setup:** Run `npx nx connect` to authenticate and write `nxCloudId` to `nx.json`.
+- **CI enablement:** Uncomment the `Initialize NX Cloud CI` step in `.github/workflows/docker.yml` to activate remote caching + distributed task execution on PRs.
+- **Benefits:** CI build/test times drop sharply on PRs when only a subset of packages changed (the `nx affected` check re-runs only affected projects + their dependents).
+
+See `nx.json` for caching policies (inputs, namedInputs) and target defaults (dependsOn, cache settings).
 
 ## Infrastructure Architecture Context
 

@@ -30,6 +30,4 @@ coverage/
 # Claude Code local review-gate state
 .claude/.last-review-hash
 .claude/.review-context.md
-
-.nx
-.nx/*
+.nx/
