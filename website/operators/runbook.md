@@ -94,7 +94,7 @@ Set these via Helm values — the deploy scripts wire them automatically. The va
 | Variable | Required | Helm key | Description |
 |----------|----------|----------|-------------|
 | `DATABASE_URL` | Yes | `fleetManager.database.existingSecret` | Fleet registry PostgreSQL connection string |
-| `OPENCRANE_CLUSTER_TENANT_MANAGER_ENABLED` | Yes | `clusterTenantManagement.enabled` | Gates the ClusterTenant lifecycle and Zitadel-admin routes |
+| `OPENCRANE_CLUSTER_TENANT_MANAGER_ENABLED` | Yes | `fleetManager.clusterTenantApi.enabled` | Gates the ClusterTenant lifecycle and Zitadel-admin routes |
 | `ZITADEL_MGMT_API_URL` | When CT management on | `fleetManager.zitadel.mgmtApiUrl` | Zitadel Management API URL |
 | `ZITADEL_MGMT_SA_KEY` | When CT management on | `fleetManager.zitadel.existingSecret` | Zitadel SA key JSON |
 

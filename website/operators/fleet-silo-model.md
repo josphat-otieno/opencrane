@@ -123,7 +123,7 @@ fleetManager:
     serviceAccountKeyKey: service-account-key
 ```
 
-When `existingSecret` is set and `clusterTenantManagement.enabled` is true, the chart renders a namespaced `Role` + `RoleBinding` granting the fleet-manager's ServiceAccount `patch` on that single named Secret — the minimum RBAC surface for in-place key rotation. Source: [`apps/fleet-platform/templates/fleet-manager-zitadel-rotation-rbac.yaml`](https://github.com/italanta/opencrane/blob/main/apps/fleet-platform/templates/fleet-manager-zitadel-rotation-rbac.yaml).
+When `existingSecret` is set and `fleetManager.clusterTenantApi.enabled` is true, the chart renders a namespaced `Role` + `RoleBinding` granting the fleet-manager's ServiceAccount `patch` on that single named Secret — the minimum RBAC surface for in-place key rotation. Source: [`apps/fleet-platform/templates/fleet-manager-zitadel-rotation-rbac.yaml`](https://github.com/italanta/opencrane/blob/main/apps/fleet-platform/templates/fleet-manager-zitadel-rotation-rbac.yaml).
 
 ### Per-silo OIDC (clustertenant-manager)
 
@@ -150,11 +150,12 @@ Per-org subdomain login is **not active** until the fleet provisions that organi
 
 ### Self-service gate
 
-The ClusterTenant management API, Zitadel-admin routes, and platform-DNS RBAC on the fleet-manager are all gated by `clusterTenantManagement.enabled` (the flag `apps/fleet-platform/deploy.sh` sets to `true`; `apps/clustertenant-platform/deploy.sh` sets it to `false`):
+The ClusterTenant management API, Zitadel-admin routes, and platform-DNS RBAC on the fleet-manager are all gated by `fleetManager.clusterTenantApi.enabled` (the flag `apps/fleet-platform/deploy.sh` sets to `true`; `apps/clustertenant-platform/deploy.sh` sets it to `false`):
 
 ```yaml
-clusterTenantManagement:
-  enabled: true   # true on the fleet/multi-tenant install; false on each silo
+fleetManager:
+  clusterTenantApi:
+    enabled: true   # true on the fleet/multi-tenant install; false on each silo
 billing:
   enabled: true   # true on the fleet install; false on each silo
 ```
@@ -167,7 +168,7 @@ The Helm chart sets these on the fleet-manager pod; you do not set them directly
 
 | Variable | Set when | Description |
 |---|---|---|
-| `OPENCRANE_CLUSTER_TENANT_MANAGER_ENABLED` | `clusterTenantManagement.enabled` | Mounts the ClusterTenant lifecycle, Zitadel-admin, and platform-DNS routes |
+| `OPENCRANE_CLUSTER_TENANT_MANAGER_ENABLED` | `fleetManager.clusterTenantApi.enabled` | Mounts the ClusterTenant lifecycle, Zitadel-admin, and platform-DNS routes |
 | `OPENCRANE_BILLING_ENABLED` | `billing.enabled` | Mounts the billing-accounts routes |
 | `ZITADEL_MGMT_API_URL` | `fleetManager.zitadel.mgmtApiUrl` | Zitadel Management API base URL |
 | `ZITADEL_MGMT_SA_KEY` | from `fleetManager.zitadel.existingSecret` | SA key JSON (JWT bearer) at pod start |

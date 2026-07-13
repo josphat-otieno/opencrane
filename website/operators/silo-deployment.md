@@ -37,7 +37,7 @@ The silo model eliminates both problems in the same move: each ClusterTenant get
 │  ┌─────────────┐                                              │
 │  │  Zitadel    │  (trusted OIDC IdP for both planes)          │
 │  └─────────────┘                                              │
-│  clusterTenantManagement.enabled: true                        │
+│  fleetManager.clusterTenantApi.enabled: true                  │
 │  billing.enabled: true                                        │
 │  Cluster-wide infra: ingress-nginx, external-dns,             │
 │    CloudNativePG operator, cert-manager                       │
@@ -61,7 +61,7 @@ The silo model eliminates both problems in the same move: each ClusterTenant get
 │  │   this NS only)   │               ┌─────────────────┐    │
 │  └───────────────────┘               │ Cognee          │    │
 │                                      └─────────────────┘    │
-│  clusterTenantManagement.enabled: false                       │
+│  fleetManager.clusterTenantApi.enabled: false                 │
 │  billing.enabled: false                                       │
 │  Reuses cluster-wide infra installed by the fleet release     │
 └───────────────────────────────────────────────────────────────┘
@@ -72,7 +72,7 @@ The silo model eliminates both problems in the same move: each ClusterTenant get
 | Primary manager | `fleet-manager` | `clustertenant-manager` |
 | Helm image key | `fleetManager.image` | `clustertenantManager.image` |
 | Namespace | `opencrane-system` | `opencrane-<cluster-tenant>` |
-| ClusterTenant lifecycle + billing | Yes (`clusterTenantManagement.enabled: true`) | No |
+| ClusterTenant lifecycle + billing | Yes (`fleetManager.clusterTenantApi.enabled: true`) | No |
 | Zitadel IAM admin + SA key | Yes (`fleetManager.zitadel.*`) | No |
 | Per-org user login (OIDC) | Fleet OIDC (`fleetManager.oidc.*`) | Silo OIDC (`clustertenantManager.oidc.*`) |
 | Fleet registry DB | Yes (`fleetManager.database.*`) | No |
@@ -121,7 +121,7 @@ Repeat this command for each ClusterTenant. Each invocation:
 - installs into the silo namespace (`opencrane-<cluster-tenant>` by default);
 - passes `--no-ingress-nginx --no-external-dns --no-db-operator` so the cluster-wide singletons are not re-installed;
 - applies a dedicated CNPG `Cluster` CR in the silo namespace — one Postgres per silo, reconciled by the cluster-wide CNPG operator;
-- sets `clusterTenantManagement.enabled=false` and `billing.enabled=false`.
+- sets `fleetManager.clusterTenantApi.enabled=false` and `billing.enabled=false`.
 
 ::: info One Postgres per silo
 Each silo gets its own CNPG `Cluster` in its own namespace. The silo's clustertenant-manager connects to its own database — there is no shared database and no cross-tenant query path. The cluster-wide CloudNativePG operator (installed by the fleet release) watches all namespaces and reconciles every silo's `Cluster` CR.
@@ -149,7 +149,7 @@ The operator in each silo is namespace-scoped (`requireWatchNamespace`). It owns
 
 Both the fleet-manager and clustertenant-manager deployments are always rendered by the chart. What differs is which features each exposes:
 
-- **Fleet-manager** renders its ClusterTenant lifecycle, billing, Zitadel-admin, and platform-DNS routes only when `clusterTenantManagement.enabled=true`. The fleet-manager's cluster-scoped RBAC and the Zitadel rotation `Role`/`RoleBinding` are gated on the same flag.
+- **Fleet-manager** renders its ClusterTenant lifecycle, billing, Zitadel-admin, and platform-DNS routes only when `fleetManager.clusterTenantApi.enabled=true`. The fleet-manager's cluster-scoped RBAC and the Zitadel rotation `Role`/`RoleBinding` are gated on the same flag.
 - **Clustertenant-manager** renders the tenant-facing surface (tenants, policies, groups, budgets, model routing, sessions) and holds ClusterTenant/OrgMembership as local read-models projected from the fleet.
 
 Source: [`apps/fleet-platform/templates/fleet-manager-deployment.yaml`](https://github.com/italanta/opencrane/blob/main/apps/fleet-platform/templates/fleet-manager-deployment.yaml) and [`apps/clustertenant-platform/templates/clustertenant-manager-deployment.yaml`](https://github.com/italanta/opencrane/blob/main/apps/clustertenant-platform/templates/clustertenant-manager-deployment.yaml).
@@ -176,7 +176,7 @@ All clustertenant-manager configuration is supplied via Helm values in `clustert
 
 | Variable | Description |
 |---|---|
-| `OPENCRANE_CLUSTER_TENANT_MANAGER_ENABLED` | Mounts the ClusterTenant lifecycle, Zitadel-admin, and platform-DNS routes. Set from `clusterTenantManagement.enabled`. |
+| `OPENCRANE_CLUSTER_TENANT_MANAGER_ENABLED` | Mounts the ClusterTenant lifecycle, Zitadel-admin, and platform-DNS routes. Set from `fleetManager.clusterTenantApi.enabled`. |
 | `OPENCRANE_BILLING_ENABLED` | Mounts the billing-accounts routes. Set from `billing.enabled`. |
 | `ZITADEL_MGMT_API_URL` | Zitadel instance base URL for the Management API. Set from `fleetManager.zitadel.mgmtApiUrl`. |
 | `ZITADEL_MGMT_SA_KEY` | Service-account key JSON for Zitadel (JWT bearer). Set from `fleetManager.zitadel.existingSecret`. |
