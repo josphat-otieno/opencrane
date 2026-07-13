@@ -39,10 +39,10 @@
   independently and provide the per-component ingress allow-list. This template
   adds the missing egress and the catch-all default-deny on top of them.
 */}}
-{{- if and .Values.multiCt.enabled (not .Values.networkPolicy.mainNetworkDefaultDeny.enabled) }}
+{{- if and (.Values.multiCt).enabled (not (.Values.networkPolicy).mainNetworkDefaultDeny.enabled) }}
 {{- fail "multiCt.enabled=true requires networkPolicy.mainNetworkDefaultDeny.enabled=true: the platform-namespace default-deny is mandatory for a multi-ClusterTenant install. Set networkPolicy.mainNetworkDefaultDeny.enabled=true, or drop the --multi-ct profile for a single-tenant box." }}
 {{- end }}
-{{- if or .Values.networkPolicy.mainNetworkDefaultDeny.enabled .Values.multiCt.enabled }}
+{{- if or (.Values.networkPolicy).mainNetworkDefaultDeny.enabled (.Values.multiCt).enabled }}
 ---
 # ──────────────────────────────────────────────────────────────────────────────
 # 1. DEFAULT-DENY: drop all ingress+egress for every pod in the platform

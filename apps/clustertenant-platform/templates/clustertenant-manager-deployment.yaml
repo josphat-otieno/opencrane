@@ -260,7 +260,7 @@ spec:
                 fieldRef:
                   fieldPath: metadata.namespace
             - name: REQUIRE_WATCH_NAMESPACE
-              value: {{ .Values.multiInstance.requireWatchNamespace | quote }}
+              value: {{ (.Values.multiInstance).requireWatchNamespace | quote }}
             - name: TENANT_DEFAULT_IMAGE
               value: "{{ .Values.tenant.defaultImage.repository }}:{{ .Values.tenant.defaultImage.tag }}"
             - name: DEFAULT_OPENCLAW_VERSION

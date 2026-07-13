@@ -3,17 +3,17 @@
 # Cluster: gke_weownai-proto_europe-west1-b_opencrane-dev  (project weownai-proto)
 # Base domain: dev.opencrane.ai
 #
-# Usage (via the multi-tenant profile). --reuse-values inherits every value already
-# on the live release (GCP SA, cert-manager, external-dns, OIDC, …); this overlay only
-# overrides the three knobs that were left at their (off) defaults and disabled the
-# per-org hosting path entirely (see below). k8s-deploy.sh takes a single --values file,
-# so reuse-values (not a second -f) is how the prior config is preserved.
+# Usage (via the multi-tenant profile). The deploy script uses --reset-then-reuse-values:
+# it merges chart defaults (new keys like multiCt) with the prior release values, so the
+# overlay only needs to override non-default keys. Since reset re-applies chart defaults
+# for all keys the invocation doesn't supply, per-component image tags (--control-plane-tag,
+# --operator-tag, etc.) must be restated explicitly with --tag flags (they are not carried
+# from --values files).
 #
 #   apps/fleet-platform/deploy.sh \
 #     --base-domain dev.opencrane.ai \
 #     --ingress-ip 34.22.213.142 \
 #     --operator-tag <new-operator-image-tag> \
-#     --reuse-values \
 #     --values libs/k8s-platform/values/opencrane-dev.yaml
 
 global:
