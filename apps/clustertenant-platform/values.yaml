@@ -31,6 +31,26 @@ global:
 multiCt:
   enabled: false
 
+# -- Chart self-sufficiency (#151 item 3): install the CRDs this silo needs to function on
+#    its own — ClusterTenant (cluster-scoped, read-only), Tenant + AccessPolicy (namespaced,
+#    full CRUD by the in-silo operators) — via templates/crds/ rather than assuming a fleet
+#    has already installed them cluster-wide. Bodies are copied verbatim from
+#    apps/fleet-platform/crds/ (now in the WeOwnAI repo). Deliberately NOT the native Helm
+#    `crds/` directory: that mechanism cannot be gated by a value, is never updated by
+#    `helm upgrade`, and is removed on `helm uninstall` — none of which fit a CRD that may be
+#    shared by several silo releases in one cluster.
+crds:
+  # -- Default true = self-contained install (a standalone silo with no fleet needs these
+  #    CRDs to exist somewhere). Set false in a fleet-managed topology where the fleet has
+  #    already installed the SAME CRDs cluster-wide, so this release's `helm install`/
+  #    `upgrade` does not contend with the fleet's release for ownership of the same
+  #    cluster-scoped objects (Helm annotates managed resources with the owning
+  #    release+namespace and refuses to adopt one owned by another release).
+  #    `helm.sh/resource-policy: keep` is set on every CRD regardless of this flag, so even a
+  #    silo that DID install them keeps them on `helm uninstall` — deleting a CRD other silos'
+  #    CRs still depend on would be catastrophic.
+  install: true
+
 # -- Native multi-instance mode (run N strictly-isolated OpenCrane instances in
 #    one cluster). Off by default → the legacy single-install path is unchanged.
 #    When enabled, the chart flips the isolation-safe defaults below.
