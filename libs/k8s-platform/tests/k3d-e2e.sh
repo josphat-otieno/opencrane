@@ -1,26 +1,69 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# ============================================================================
+# Standalone-silo k3d e2e smoke test.
+#
+# Exercises the SILO chart (apps/opencrane-infra) on its own, in STANDALONE mode
+# (deploymentMode=standalone) — no external fleet-manager anywhere. The fleet
+# artifacts (apps/fleet-operator + apps/fleet-platform) moved to the WeOwnAI repo
+# (italanta/opencrane#150) and no longer ship here, so the old fleet+silo
+# integration test moved with them; the cross-plane "fleet provisions/manages a
+# silo" assertions now live in WeOwnAI. This test proves opencrane's own
+# standalone story stands up unassisted:
+#
+#   1. install apps/opencrane-infra alone, standalone mode;
+#   2. the operator self-seeds its OWN ClusterTenant CR on boot and binds it to
+#      this namespace (no fleet to do it) — `_SeedOwnClusterTenant`;
+#   3. it then seeds that org's `<org>-default` workspace Tenant — the ≥1-model
+#      onboarding gate is satisfied by the bootstrap provider key below, which
+#      seeds a model at boot — `_SeedOwnDefaultTenant`;
+#   4. the in-silo TenantOperator reconciles that Tenant CR into its openclaw
+#      child resources and writes status back.
+#
+# The chart owns its own CRDs (crds.install) so a bare k3d cluster needs no
+# pre-installed OpenCrane CRDs. cert-manager is disabled here (the CI cluster has
+# no cert-manager controller); per-org domain provisioning is best-effort and
+# fail-closes cleanly without cert-manager/external-dns, so manageOwnDomain stays
+# on as in a real standalone install.
+# ============================================================================
+
 ROOT_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
 CLUSTER_NAME="${CLUSTER_NAME:-opencrane-e2e}"
 NAMESPACE="${NAMESPACE:-opencrane-system}"
-RELEASE_NAME="${RELEASE_NAME:-opencrane}"
+# Single release now — the standalone silo IS the whole install (no fleet release
+# beside it). Kept as "opencrane-silo" so the silo's fullname-prefixed resources
+# stay <release>-<component> (nameOverride "opencrane" is a prefix of the release
+# name, so opencrane.fullname == the release name).
+RELEASE_NAME="${RELEASE_NAME:-opencrane-silo}"
 KEEP_CLUSTER="${KEEP_CLUSTER:-0}"
 TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-240}"
 DB_STORAGE_GB="${DB_STORAGE_GB:-10}"
 DISK_HEADROOM_GB="${DISK_HEADROOM_GB:-2}"
 MIN_FREE_GB="${MIN_FREE_GB:-$(( DB_STORAGE_GB + DISK_HEADROOM_GB ))}"
 DB_RELEASE_NAME="${DB_RELEASE_NAME:-opencrane-db}"
-DB_SECRET_NAME="${DB_SECRET_NAME:-opencrane-db}"
 DB_PASSWORD="${DB_PASSWORD:-opencrane-e2e-password}"
-LOCAL_PROFILE="${LOCAL_PROFILE:-}"
-LITELLM_SECRET_NAME="${LITELLM_SECRET_NAME:-opencrane-litellm}"
-LITELLM_MASTER_KEY="${LITELLM_MASTER_KEY:-}"
-# The fleet-operator app and fleet-platform chart moved to the WeOwnAI repo
-# (italanta/opencrane#150) and no longer ship in this repo. Point these at a checked-out
-# copy of WeOwnAI's apps/fleet-operator and apps/fleet-platform to run this smoke test.
-FLEET_OPERATOR_DIR="${FLEET_OPERATOR_DIR:-}"
-FLEET_CHART_DIR="${FLEET_CHART_DIR:-}"
+
+# Standalone self-seed identity (#151 item 4). The operator creates + binds THIS
+# ClusterTenant on boot, then seeds its `<org>-default` workspace Tenant.
+ORG_NAME="${ORG_NAME:-e2e-org}"
+ORG_DISPLAY_NAME="${ORG_DISPLAY_NAME:-E2E Org}"
+OWNER_EMAIL="${OWNER_EMAIL:-e2e@example.com}"
+ORG_TIER="${ORG_TIER:-shared}"
+# The seeded workspace Tenant is `<org>-default` (see `_DEFAULT_TENANT_SUFFIX`).
+TENANT_NAME="${ORG_NAME}-default"
+# Serving host for a tenant WITH a clusterTenantRef is `<org>.<base>` (see
+# `_ResolveOrgServingDomain`); ingress.domain is opencrane.local in the e2e values.
+INGRESS_DOMAIN="${INGRESS_DOMAIN:-opencrane.local}"
+EXPECTED_INGRESS_HOST="${ORG_NAME}.${INGRESS_DOMAIN}"
+
+# Boot-time BYOK bootstrap (apps/opencrane-infra `bootstrap.providerKey`): the
+# operator provisions this OpenAI key on boot and SEEDS A MODEL, which satisfies
+# the default-tenant seed's ≥1-model onboarding gate. The key never has to be
+# valid — the model row is written locally regardless of whether LiteLLM/OpenAI
+# are reachable, which is all the gate checks.
+BOOTSTRAP_SECRET_NAME="${BOOTSTRAP_SECRET_NAME:-opencrane-bootstrap-provider-key}"
+BOOTSTRAP_OPENAI_KEY="${BOOTSTRAP_OPENAI_KEY:-sk-e2e-dummy-key}"
 
 function _require_cmd()
 {
@@ -85,6 +128,8 @@ function _cleanup()
   if [[ "$exit_code" -ne 0 ]]; then
     echo "[e2e] ===== FAILURE (exit $exit_code): cluster diagnostics ====="
     kubectl get pods,jobs -n "$NAMESPACE" -o wide 2>/dev/null || true
+    echo "[e2e] --- clustertenants / tenants ---"
+    kubectl get clustertenants,tenants -A 2>/dev/null || true
     echo "[e2e] --- recent events ---"
     kubectl get events -n "$NAMESPACE" --sort-by=.lastTimestamp 2>/dev/null | tail -40 || true
     for p in $(kubectl get pods -n "$NAMESPACE" -o name 2>/dev/null); do
@@ -106,21 +151,45 @@ function _cleanup()
   k3d cluster delete "$CLUSTER_NAME" >/dev/null 2>&1 || true
 }
 
+# Poll until the operator has self-seeded its own ClusterTenant CR and bound it to this
+# namespace (`status.boundNamespace`). This is the standalone-only step a fleet-manager
+# would otherwise own; it must complete before the default-workspace seed can find an org.
+function _wait_for_clustertenant_bound()
+{
+  local deadline=$(( $(date +%s) + TIMEOUT_SECONDS ))
+
+  while [[ $(date +%s) -lt $deadline ]]; do
+    local bound
+    bound="$(kubectl get clustertenant "$ORG_NAME" -o jsonpath='{.status.boundNamespace}' 2>/dev/null || true)"
+    if [[ "$bound" == "$NAMESPACE" ]]; then
+      return 0
+    fi
+    sleep 2
+  done
+
+  echo "[e2e] Timed out waiting for ClusterTenant '$ORG_NAME' to bind namespace '$NAMESPACE'"
+  kubectl get clustertenant "$ORG_NAME" -o yaml 2>/dev/null || true
+  return 1
+}
+
+# Poll until the seeded `<org>-default` Tenant reaches status.phase=Running. The Tenant CR
+# is seeded asynchronously on boot (after the ClusterTenant binds and a model is seeded), so
+# this tolerates it not existing yet — jsonpath on an absent CR is empty and the loop retries.
 function _wait_for_tenant_running()
 {
   local deadline=$(( $(date +%s) + TIMEOUT_SECONDS ))
 
   while [[ $(date +%s) -lt $deadline ]]; do
     local phase
-    phase="$(kubectl get tenant e2e -n "$NAMESPACE" -o jsonpath='{.status.phase}' 2>/dev/null || true)"
+    phase="$(kubectl get tenant "$TENANT_NAME" -n "$NAMESPACE" -o jsonpath='{.status.phase}' 2>/dev/null || true)"
     if [[ "$phase" == "Running" ]]; then
       return 0
     fi
     sleep 2
   done
 
-  echo "[e2e] Timed out waiting for Tenant status.phase=Running"
-  kubectl get tenant e2e -n "$NAMESPACE" -o yaml || true
+  echo "[e2e] Timed out waiting for Tenant '$TENANT_NAME' status.phase=Running"
+  kubectl get tenant "$TENANT_NAME" -n "$NAMESPACE" -o yaml 2>/dev/null || true
   return 1
 }
 
@@ -134,17 +203,8 @@ _require_cmd k3d
 _require_docker_healthy
 _require_free_space
 
-if [[ -z "$FLEET_OPERATOR_DIR" || ! -f "$FLEET_OPERATOR_DIR/deploy/Dockerfile" || -z "$FLEET_CHART_DIR" || ! -d "$FLEET_CHART_DIR" ]]; then
-  echo "[e2e] The fleet-operator app and fleet-platform chart moved to the WeOwnAI repo (italanta/opencrane#150) and no longer ship in this repo."
-  echo "[e2e] Set FLEET_OPERATOR_DIR and FLEET_CHART_DIR to a checked-out copy of WeOwnAI's apps/fleet-operator and apps/fleet-platform, then re-run."
-  exit 1
-fi
-
 # 2. Build local images so e2e does not depend on pre-published GHCR tags. Each build is
 #    retried — the base-image pull from Docker Hub flakes intermittently on CI runners.
-echo "[e2e] Building fleet-operator image"
-_retry 3 docker build -f "$FLEET_OPERATOR_DIR/deploy/Dockerfile" -t opencrane/operator:e2e "$ROOT_DIR"
-
 echo "[e2e] Building opencrane-server (silo) image"
 _retry 3 docker build -f "$ROOT_DIR/apps/opencrane/deploy/Dockerfile" -t opencrane/opencrane-server:e2e "$ROOT_DIR"
 
@@ -162,12 +222,11 @@ _retry 3 docker pull ghcr.io/cloudnative-pg/postgresql:16
 
 # 4b. Import images into the k3d cluster runtime.
 echo "[e2e] Importing images into k3d"
-k3d image import opencrane/operator:e2e --cluster "$CLUSTER_NAME"
 k3d image import opencrane/opencrane-server:e2e --cluster "$CLUSTER_NAME"
 k3d image import opencrane/tenant:e2e --cluster "$CLUSTER_NAME"
 k3d image import ghcr.io/cloudnative-pg/postgresql:16 --cluster "$CLUSTER_NAME"
 
-# 5. Install in-cluster PostgreSQL and publish the DATABASE_URL secret expected by the chart.
+# 5. Install in-cluster PostgreSQL and publish the DATABASE_URL secrets expected by the chart.
 echo "[e2e] Installing CloudNativePG Engine Operator into control plane"
 helm repo add cnpg https://cloudnative-pg.github.io/charts --force-update >/dev/null
 helm upgrade --install cnpg cnpg/cloudnative-pg \
@@ -204,130 +263,108 @@ spec:
       memory: 256Mi
   bootstrap:
     initdb:
-      database: opencrane
+      # The silo (clustertenant) opencrane-ui owns its own Prisma database. Its
+      # runtime planes each get a sibling DB on the same server (own _prisma_migrations).
+      database: silo
       secret:
         name: ${DB_RELEASE_NAME}-creds
       postInitApplicationSQL:
         - CREATE DATABASE obot OWNER opencrane;
         - CREATE DATABASE litellm OWNER opencrane;
-        # The silo (clustertenant) opencrane-ui is a SEPARATE Prisma client from the fleet
-        # registry — they cannot share a database (each owns its own _prisma_migrations), so
-        # the silo gets its own DB on the same server.
-        - CREATE DATABASE silo OWNER opencrane;
 EOF
 
 echo "[e2e] Waiting for Control-Plane Database Engine to stabilize..."
 kubectl wait --for=condition=Ready cluster/"${DB_RELEASE_NAME}" -n "$NAMESPACE" --timeout="${TIMEOUT_SECONDS}s"
 
-# Note: CNPG creates a service structured as [cluster-name]-rw for write/read routes
-kubectl create secret generic "$DB_SECRET_NAME" \
-  -n "$NAMESPACE" \
-  --from-literal=DATABASE_URL="postgresql://opencrane:${DB_PASSWORD}@${DB_RELEASE_NAME}-rw.${NAMESPACE}.svc.cluster.local:5432/opencrane" \
-  --dry-run=client \
-  -o yaml | kubectl apply -f -
-
-# Silo opencrane-ui DB secret (separate database; see CREATE DATABASE silo above).
+# Note: CNPG creates a service structured as [cluster-name]-rw for write/read routes.
+# Silo opencrane-ui DB secret (clustertenantManager.database.existingSecret).
 kubectl create secret generic "opencrane-silo-db" \
   -n "$NAMESPACE" \
   --from-literal=DATABASE_URL="postgresql://opencrane:${DB_PASSWORD}@${DB_RELEASE_NAME}-rw.${NAMESPACE}.svc.cluster.local:5432/silo" \
   --dry-run=client \
   -o yaml | kubectl apply -f -
 
-kubectl create secret generic "opencrane-obot" \
+# Obot dsn secret — the obot-mcp-gateway reads OBOT_SERVER_DSN from the release-prefixed
+# `<release>-obot` Secret (opencrane.obotSecretName), provisioned out-of-band, not by the chart.
+kubectl create secret generic "${RELEASE_NAME}-obot" \
   -n "$NAMESPACE" \
   --from-literal=dsn="postgresql://opencrane:${DB_PASSWORD}@${DB_RELEASE_NAME}-rw.${NAMESPACE}.svc.cluster.local:5432/obot" \
   --dry-run=client \
   -o yaml | kubectl apply -f -
 
+# LiteLLM DB secret (litellm.existingDatabaseSecret).
 kubectl create secret generic "opencrane-litellm-db" \
   -n "$NAMESPACE" \
   --from-literal=DATABASE_URL="postgresql://opencrane:${DB_PASSWORD}@${DB_RELEASE_NAME}-rw.${NAMESPACE}.svc.cluster.local:5432/litellm" \
   --dry-run=client \
   -o yaml | kubectl apply -f -
 
+# Boot-time BYOK bootstrap key — seeds a model so the default-tenant seed's ≥1-model gate passes.
+kubectl create secret generic "$BOOTSTRAP_SECRET_NAME" \
+  -n "$NAMESPACE" \
+  --from-literal=openaiApiKey="$BOOTSTRAP_OPENAI_KEY" \
+  --dry-run=client \
+  -o yaml | kubectl apply -f -
 
-if [[ "$LOCAL_PROFILE" == "strict" ]]; then
-  if [[ -z "$LITELLM_MASTER_KEY" ]]; then
-    echo "[e2e] LOCAL_PROFILE=strict requires LITELLM_MASTER_KEY to be set and non-empty"
-    echo "[e2e] Example: LOCAL_PROFILE=strict LITELLM_MASTER_KEY=dev-e2e-key platform/tests/k3d-e2e.sh"
-    exit 1
-  fi
-
-  kubectl create secret generic "$LITELLM_SECRET_NAME" \
-    -n "$NAMESPACE" \
-    --from-literal=LITELLM_MASTER_KEY="$LITELLM_MASTER_KEY" \
-    --dry-run=client \
-    -o yaml | kubectl apply -f -
-fi
-
-# 6. Install Helm chart with k3d-safe overrides wired to the in-cluster database.
-echo "[e2e] Installing Helm release '$RELEASE_NAME'"
-helm upgrade --install "$RELEASE_NAME" "$FLEET_CHART_DIR" \
+# 6. Install ONLY the standalone silo chart, wired to the in-cluster database and images.
+#    cert-manager is disabled: the CI cluster has no cert-manager controller, so the
+#    chart-rendered self-managed Issuer/Certificate (certManager.enabled in standalone.yaml)
+#    would reference CRDs that are absent. Per-org domain provisioning stays on
+#    (manageOwnDomain, from standalone.yaml) — it fail-closes cleanly without cert-manager.
+echo "[e2e] Installing standalone silo release '$RELEASE_NAME'"
+helm upgrade --install "$RELEASE_NAME" "$ROOT_DIR/apps/opencrane-infra" \
   --namespace "$NAMESPACE" \
   --create-namespace \
+  --values "$ROOT_DIR/apps/opencrane-infra/values/standalone.yaml" \
   --values "$ROOT_DIR/libs/k8s-platform/tests/values-k3d-e2e.yaml" \
-  --set "fleetManager.database.existingSecret=$DB_SECRET_NAME" \
-  --set "fleetManager.clusterTenantApi.enabled=false"
-
-# Wait for the fleet-manager (skip helm --wait because local-path PVCs don't bind until a pod
-# mounts them, creating a chicken-and-egg with Helm's readiness checks).
-kubectl rollout status deployment/opencrane-fleet-manager -n "$NAMESPACE" --timeout=120s
-
-# 6b. Install the SILO chart (opencrane-server + the in-silo TenantOperator + planes) into the
-#     SAME namespace for this single-namespace smoke test. The Tenant CR below is reconciled by the
-#     silo's TenantOperator — the fleet chart has none (it stops at ClusterTenant lifecycle). The
-#     two charts' resource sets are disjoint, so co-installing them in one namespace is safe.
-echo "[e2e] Installing silo release 'opencrane-silo'"
-helm upgrade --install opencrane-silo "$ROOT_DIR/apps/opencrane-infra" \
-  --namespace "$NAMESPACE" \
-  --values "$ROOT_DIR/libs/k8s-platform/tests/values-k3d-e2e.yaml" \
+  --set "deploymentMode=standalone" \
+  --set "clustertenantManager.standaloneSeed.name=$ORG_NAME" \
+  --set "clustertenantManager.standaloneSeed.displayName=$ORG_DISPLAY_NAME" \
+  --set "clustertenantManager.standaloneSeed.ownerEmail=$OWNER_EMAIL" \
+  --set "clustertenantManager.standaloneSeed.tier=$ORG_TIER" \
   --set "clustertenantManager.database.existingSecret=opencrane-silo-db" \
-  --set "litellm.existingDatabaseSecret=opencrane-litellm-db"
+  --set "litellm.existingDatabaseSecret=opencrane-litellm-db" \
+  --set "bootstrap.providerKey.existingSecret=$BOOTSTRAP_SECRET_NAME" \
+  --set "certManager.enabled=false"
 
-# Silo resources are prefixed by the silo RELEASE name (opencrane-silo) because nameOverride
-# (opencrane) is a prefix of it, so Helm's fullname == the release name → opencrane-silo-<component>
-# (the fleet release is plain "opencrane", hence opencrane-fleet-manager above).
-kubectl rollout status deployment/opencrane-silo-opencrane-server -n "$NAMESPACE" --timeout=180s
+# Wait for the opencrane-server (skip helm --wait because local-path PVCs don't bind until a pod
+# mounts them, creating a chicken-and-egg with Helm's readiness checks). Resources are prefixed
+# by the release name because nameOverride (opencrane) is a prefix of it, so
+# opencrane.fullname == the release name → <release>-<component>.
+kubectl rollout status "deployment/${RELEASE_NAME}-opencrane-server" -n "$NAMESPACE" --timeout=180s
 
 # Wait for LiteLLM (a silo plane) when cost routing is enabled by chart values.
-if kubectl get deployment/opencrane-silo-litellm -n "$NAMESPACE" >/dev/null 2>&1; then
-  kubectl rollout status deployment/opencrane-silo-litellm -n "$NAMESPACE" --timeout=240s
+if kubectl get "deployment/${RELEASE_NAME}-litellm" -n "$NAMESPACE" >/dev/null 2>&1; then
+  kubectl rollout status "deployment/${RELEASE_NAME}-litellm" -n "$NAMESPACE" --timeout=240s
 fi
 
-# 7. Create a Tenant CR and let the operator reconcile child resources.
-echo "[e2e] Creating Tenant CR"
-cat <<EOF | kubectl apply -f -
-apiVersion: opencrane.io/v1alpha1
-kind: Tenant
-metadata:
-  name: e2e
-  namespace: ${NAMESPACE}
-spec:
-  displayName: E2E Tenant
-  email: e2e@example.com
-  team: engineering
-EOF
+# 7. Assert the standalone boot seeds ran: the operator created + bound its OWN ClusterTenant
+#    (no fleet), then seeded the org's `<org>-default` workspace Tenant, which the in-silo
+#    TenantOperator reconciles to Running.
+echo "[e2e] Waiting for the self-seeded ClusterTenant '$ORG_NAME' to bind"
+_wait_for_clustertenant_bound
 
+echo "[e2e] Waiting for the seeded default Tenant '$TENANT_NAME' to reconcile"
 _wait_for_tenant_running
 
-# 8. Assert core reconciled resources exist. No per-user Ingress is asserted: the
-#    operator retired per-user Ingresses (apps/fleet-operator/src/tenants/operator.ts) — every
-#    user reaches the pod through the org host, reverse-proxied to this pod's Service, so
-#    only the SA/ConfigMap/Deployment/Service/encryption-key Secret are minted per tenant.
-kubectl get serviceaccount openclaw-e2e -n "$NAMESPACE" >/dev/null
-kubectl get configmap openclaw-e2e-config -n "$NAMESPACE" >/dev/null
-kubectl get deployment openclaw-e2e -n "$NAMESPACE" >/dev/null
-kubectl get service openclaw-e2e -n "$NAMESPACE" >/dev/null
-kubectl get secret openclaw-e2e-encryption-key -n "$NAMESPACE" >/dev/null
+# 8. Assert core reconciled resources exist. No per-user Ingress is asserted: the operator
+#    retired per-user Ingresses — every user reaches the pod through the org host,
+#    reverse-proxied to this pod's Service, so only the SA/ConfigMap/Deployment/Service/
+#    encryption-key Secret are minted per tenant.
+kubectl get serviceaccount "openclaw-${TENANT_NAME}" -n "$NAMESPACE" >/dev/null
+kubectl get configmap "openclaw-${TENANT_NAME}-config" -n "$NAMESPACE" >/dev/null
+kubectl get deployment "openclaw-${TENANT_NAME}" -n "$NAMESPACE" >/dev/null
+kubectl get service "openclaw-${TENANT_NAME}" -n "$NAMESPACE" >/dev/null
+kubectl get secret "openclaw-${TENANT_NAME}-encryption-key" -n "$NAMESPACE" >/dev/null
 
-# 9. Assert status fields were written by the operator. This Tenant has no
-#    clusterTenantRef, so its serving host is the bare platform base domain
-#    (_ResolveOrgServingDomain → platformBaseDomain); a tenant under an org would be
-#    served at `<org>.<base>`. ingress.domain is set to opencrane.local in the e2e values.
-INGRESS_HOST="$(kubectl get tenant e2e -n "$NAMESPACE" -o jsonpath='{.status.ingressHost}')"
-if [[ "$INGRESS_HOST" != "opencrane.local" ]]; then
-  echo "[e2e] Unexpected ingress host: $INGRESS_HOST (expected the ref-less base domain opencrane.local)"
+# 9. Assert status fields were written by the operator. This Tenant carries a
+#    clusterTenantRef (its seeded org), so its serving host is the org apex
+#    `<org>.<base>` (_ResolveOrgServingDomain). ingress.domain is opencrane.local in the
+#    e2e values.
+INGRESS_HOST="$(kubectl get tenant "$TENANT_NAME" -n "$NAMESPACE" -o jsonpath='{.status.ingressHost}')"
+if [[ "$INGRESS_HOST" != "$EXPECTED_INGRESS_HOST" ]]; then
+  echo "[e2e] Unexpected ingress host: $INGRESS_HOST (expected the org apex $EXPECTED_INGRESS_HOST)"
   exit 1
 fi
 
-echo "[e2e] PASS: fleet + silo charts install; silo TenantOperator reconciles the Tenant CR"
+echo "[e2e] PASS: standalone silo installs; operator self-seeds its ClusterTenant + default Tenant; TenantOperator reconciles it"

@@ -1,10 +1,7 @@
-# Fleet chart image (fleet-manager = ClusterTenantOperator + fleet API). Built as
-# opencrane/operator:e2e from apps/fleet-operator.
-fleetManager:
-  image:
-    repository: opencrane/operator
-    tag: e2e
-    pullPolicy: IfNotPresent
+# Standalone silo overrides for the k3d e2e smoke test (libs/k8s-platform/tests/k3d-e2e.sh),
+# layered on top of apps/opencrane-infra/values/standalone.yaml. Only the locally-built
+# images and k3d-safe ingress/litellm knobs are set here; the standalone topology
+# (deploymentMode, self-seed, CRDs) lives in standalone.yaml + the script's --set flags.
 
 # Silo chart image (opencrane-server = the in-silo controllers incl. the TenantOperator
 # that reconciles the Tenant CR, plus the opencrane-ui API). Built as
