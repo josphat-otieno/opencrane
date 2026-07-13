@@ -1,7 +1,7 @@
 import type * as k8s from "@kubernetes/client-node";
 import type { PrismaClient } from "@prisma/client";
 import type { Logger } from "pino";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, type Mock, vi } from "vitest";
 
 import { _AdoptMemberOnLogin } from "../../infra/auth/adopt-member.js";
 import { _MemberTenantName } from "@opencrane/domain/cluster-tenants";
@@ -38,8 +38,8 @@ function _mockApi(orgCr: Record<string, unknown>, tenantCreate: ReturnType<typeo
 
 function _mockPrisma(opts: {
   modelCount: number;
-  upsert: ReturnType<typeof vi.fn>;
-  tenantCreate: ReturnType<typeof vi.fn>;
+  upsert: Mock;
+  tenantCreate: Mock;
   existingForEmail?: { name: string } | null;
 }): PrismaClient
 {

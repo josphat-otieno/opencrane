@@ -2,7 +2,7 @@
 FROM node:22-bookworm-slim AS build
 
 WORKDIR /app
-COPY package.json package-lock.json .npmrc tsconfig.base.json nx.json ./
+COPY package.json package-lock.json tsconfig.base.json nx.json ./
 # All workspace libs (shared libs + libs/domain/*/main) come in wholesale so the image never
 # needs editing when a domain package is added; the root .dockerignore keeps
 # node_modules/dist out of the context.
@@ -27,7 +27,7 @@ RUN find /app -path '*/node_modules/.prisma/client' -type d | head -1 | \
 FROM node:22-bookworm-slim
 
 WORKDIR /app
-COPY package.json package-lock.json .npmrc ./
+COPY package.json package-lock.json ./
 # Copy app package.json and prisma directory for runtime installation
 COPY apps/clustertenant-operator/package.json apps/clustertenant-operator/
 COPY apps/clustertenant-operator/prisma apps/clustertenant-operator/prisma
