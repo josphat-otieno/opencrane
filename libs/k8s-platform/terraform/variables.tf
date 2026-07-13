@@ -93,6 +93,16 @@ variable "enable_app_deploy"
   default     = false
 }
 
+variable "fleet_chart_path"
+{
+  # The fleet-operator/fleet-platform surface moved to the WeOwnAI repo (italanta/opencrane#150)
+  # and no longer ships in this repo. Required only when enable_app_deploy=true — point it at a
+  # checked-out copy of WeOwnAI's apps/fleet-platform chart.
+  description = "Path to the fleet-platform Helm chart (now maintained in the WeOwnAI repo). Required when enable_app_deploy=true."
+  type        = string
+  default     = ""
+}
+
 # GKE
 variable "cluster_name"
 {

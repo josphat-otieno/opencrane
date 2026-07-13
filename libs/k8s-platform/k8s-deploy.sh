@@ -10,8 +10,9 @@
 # This is the shared core. the deploy scripts' --provision (provision.sh) provisions a cluster
 # and then call this script.
 #
-# Usage (normally invoked via a profile — apps/fleet-platform/deploy.sh or
-# apps/clustertenant-platform/deploy.sh — which preset the value flags and exec this core):
+# Usage (normally invoked via a profile — the fleet-platform chart's deploy.sh (now in the
+# WeOwnAI repo, italanta/opencrane#150) or apps/clustertenant-platform/deploy.sh — which preset
+# the value flags and exec this core):
 #   libs/k8s-platform/k8s-deploy.sh [--base-domain DOMAIN] [--namespace NS] [--release NAME]
 #                            [--image-tag TAG] [--storage-class SC]
 #                            [--control-plane-tag TAG] [--operator-tag TAG]
@@ -112,12 +113,13 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # The Helm chart no longer sits beside this engine — it is per-role and lives in the calling
-# app (apps/fleet-platform = the fleet chart, apps/clustertenant-platform = the silo chart).
-# Each app's deploy.sh wrapper exports OPENCRANE_CHART_DIR to its own chart dir before exec'ing
-# this engine; running k8s-deploy.sh directly without it fails loud rather than guessing.
+# app (the fleet chart, now in the WeOwnAI repo per italanta/opencrane#150; apps/clustertenant-platform
+# = the silo chart, still here). Each app's deploy.sh wrapper exports OPENCRANE_CHART_DIR to its
+# own chart dir before exec'ing this engine; running k8s-deploy.sh directly without it fails loud
+# rather than guessing.
 CHART_DIR="${OPENCRANE_CHART_DIR:-}"
 if [[ -z "$CHART_DIR" ]]; then
-  echo "[k8s-deploy] OPENCRANE_CHART_DIR is unset. Run a role wrapper deploy.sh — apps/fleet-platform/deploy.sh or apps/clustertenant-platform/deploy.sh — not k8s-deploy.sh directly." >&2
+  echo "[k8s-deploy] OPENCRANE_CHART_DIR is unset. Run a role wrapper deploy.sh — the fleet-platform chart's deploy.sh (now in WeOwnAI) or apps/clustertenant-platform/deploy.sh — not k8s-deploy.sh directly." >&2
   exit 1
 fi
 
@@ -235,8 +237,9 @@ PREFLIGHT="${OPENCRANE_PREFLIGHT:-0}"
 # (ClusterTenants) or many isolated instances in one cluster, so cross-tenant isolation is
 # mandatory rather than advisory. It is a deliberate flag (never inferred), so the fail-closed
 # checks below can trust it: preflight makes the NetworkPolicy-enforcing-CNI check FATAL (not
-# advisory) under multi-CT, and the fleet profile passes it so `apps/fleet-platform/deploy.sh`
-# runs a mandatory preflight. Also via OPENCRANE_MULTI_CT=1.
+# advisory) under multi-CT, and the fleet profile passes it so the fleet-platform chart's
+# deploy.sh (now in the WeOwnAI repo, italanta/opencrane#150) runs a mandatory preflight.
+# Also via OPENCRANE_MULTI_CT=1.
 MULTI_CT="${OPENCRANE_MULTI_CT:-0}"
 
 # --auto-ingress-ip derives ingress.externalIp from the ingress-nginx LoadBalancer after

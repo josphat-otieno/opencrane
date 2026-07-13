@@ -9,7 +9,8 @@
 # serving the silo control-plane + its planes), with self-service manager/billing OFF.
 #
 # The CLUSTER-WIDE infra (ingress-nginx, external-dns, the CloudNativePG operator,
-# cert-manager) is installed ONCE by the CENTRAL release (apps/fleet-platform/deploy.sh); a
+# cert-manager) is installed ONCE by the CENTRAL release (the fleet-platform chart's deploy.sh,
+# now in the WeOwnAI repo per italanta/opencrane#150); a
 # silo reuses it, so this profile passes --no-ingress-nginx --no-external-dns
 # --no-db-operator and does not re-install cert-manager. The silo's own namespaced
 # resources (its CNPG Cluster CR, planes, per-org ingress + Certificate) are still
@@ -69,7 +70,7 @@ done
 # enforces the central-before-silo sequencing the prereq note describes.
 command -v kubectl >/dev/null 2>&1 || { err "kubectl not found."; exit 1; }
 if ! kubectl get crd clusters.postgresql.cnpg.io >/dev/null 2>&1; then
-  err "CloudNativePG operator not found (CRD clusters.postgresql.cnpg.io absent). Install the central release first (apps/fleet-platform/deploy.sh) — it brings up the cluster-wide CNPG operator a silo reuses."
+  err "CloudNativePG operator not found (CRD clusters.postgresql.cnpg.io absent). Install the central release first (the fleet-platform chart's deploy.sh, now in the WeOwnAI repo per italanta/opencrane#150) — it brings up the cluster-wide CNPG operator a silo reuses."
   exit 1
 fi
 
@@ -99,7 +100,8 @@ PROFILE_SET=(
   --no-external-dns
   --no-db-operator
   # A silo NEVER runs the cluster-wide fleet-manager — that singleton lives in the fleet install
-  # (apps/fleet-platform/deploy.sh). Two fleet-managers would contend over the ClusterTenant CRs + IAM.
+  # (the fleet-platform chart's deploy.sh, now in the WeOwnAI repo per italanta/opencrane#150).
+  # Two fleet-managers would contend over the ClusterTenant CRs + IAM.
   --set "fleetManager.enabled=false"
   --set "fleetManager.clusterTenantApi.enabled=false"
   --set "billing.enabled=false"

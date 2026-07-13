@@ -15,7 +15,6 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  OPERATOR_IMAGE: ghcr.io/${{ github.repository_owner }}/opencrane-fleet-manager
   CONTROL_PLANE_IMAGE: ghcr.io/${{ github.repository_owner }}/opencrane-clustertenant-manager
   TENANT_IMAGE: ghcr.io/${{ github.repository_owner }}/opencrane-tenant
   SKILL_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/opencrane-skill-registry
@@ -49,14 +48,12 @@ jobs:
       # clients from source, then typechecks against the fresh output — so a
       # stale committed spec/client never fails the typecheck on its own.
       # Diff the regenerated artifacts to fail fast when codegen wasn't re-run
-      # after a source change (see the /auth/* fleet-api.ts drift).
+      # after a source change.
       - name: Verify generated specs and clients are up to date
         run: |
           git diff --exit-code -- \
             apps/clustertenant-operator/openapi.json \
-            apps/fleet-operator/openapi.json \
             libs/contracts/src/generated/api.ts \
-            libs/contracts/src/generated/fleet-api.ts \
           || { echo "::error::Generated OpenAPI specs/clients are stale. Run 'npm run build' (or 'npm run generate -w @opencrane/contracts') and commit the result."; exit 1; }
 
       - name: Test all projects
@@ -103,26 +100,6 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
-
-      - name: Extract image metadata (operator)
-        id: meta-operator
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.OPERATOR_IMAGE }}
-          tags: |
-            type=sha,prefix=sha-
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-
-      - name: Build and push operator
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: apps/fleet-operator/deploy/Dockerfile
-          push: ${{ github.event_name == 'push' }}
-          tags: ${{ steps.meta-operator.outputs.tags }}
-          labels: ${{ steps.meta-operator.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: Extract image metadata (control-plane)
         id: meta-control-plane

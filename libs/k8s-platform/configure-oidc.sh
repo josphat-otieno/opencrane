@@ -56,7 +56,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CHART_DIR="${OPENCRANE_CHART_DIR:-$SCRIPT_DIR/../../apps/fleet-platform}"
+# The fleet-platform chart moved to the WeOwnAI repo (italanta/opencrane#150) and no longer
+# ships in this repo — OPENCRANE_CHART_DIR / --chart MUST point at a checked-out copy of it
+# (or at apps/clustertenant-platform for a silo release) when reconfiguring OIDC.
+CHART_DIR="${OPENCRANE_CHART_DIR:-}"
 
 NAMESPACE="opencrane-system"
 RELEASE="opencrane"
@@ -116,7 +119,12 @@ _active_context="${KUBE_CONTEXT:-$(kubectl config current-context 2>/dev/null ||
 # Confirm the release exists — this is a CONFIGURATOR, not an installer.
 if ! helm ${KCTX[@]+"${KCTX[@]}"} -n "$NAMESPACE" status "$RELEASE" >/dev/null 2>&1; then
   err "Release '$RELEASE' not found in namespace '$NAMESPACE' (context: $_active_context)."
-  err "This script configures OIDC on an EXISTING install. Deploy first (apps/fleet-platform/deploy.sh)."
+  err "This script configures OIDC on an EXISTING install. Deploy first — the fleet-platform chart's deploy.sh (now in the WeOwnAI repo, italanta/opencrane#150) or apps/clustertenant-platform/deploy.sh."
+  exit 1
+fi
+
+if [[ -z "$CHART_DIR" ]]; then
+  err "--chart (or OPENCRANE_CHART_DIR) is required. The fleet-platform chart no longer ships in this repo — pass a checked-out copy of WeOwnAI's apps/fleet-platform, or apps/clustertenant-platform for a silo release."
   exit 1
 fi
 

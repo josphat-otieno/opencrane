@@ -21,7 +21,8 @@ global:
 # -- Multi-ClusterTenant profile switch (issue #127). The EXPLICIT predicate (never
 #    inferred) that this install hosts MANY tenants — many orgs (ClusterTenants) and/or
 #    many isolated instances — in one cluster, so cross-tenant isolation is MANDATORY.
-#    The fleet profile (`apps/fleet-platform/deploy.sh`) sets this true. When true, the
+#    The fleet profile (the fleet-platform chart's deploy.sh, now in the WeOwnAI repo per
+#    italanta/opencrane#150) sets this true. When true, the
 #    platform-namespace default-deny and the cross-instance deny render UNCONDITIONALLY,
 #    and a Helm `fail` guard REJECTS the render if their opt-out knobs are switched off
 #    (fail-closed: an install flagged multi-CT can never silently ship without the deny
@@ -126,7 +127,8 @@ sharedPlatform:
 fleetManager:
   # -- Render the cluster-wide fleet-manager (the singleton operator + fleet/super-admin API +
   #    registry DB + Zitadel IAM). MUST be true in exactly ONE release per cluster (the fleet
-  #    install via apps/fleet-platform/deploy.sh) and FALSE in every per-silo install (apps/clustertenant-platform/deploy.sh) —
+  #    install via the fleet-platform chart's deploy.sh, now in the WeOwnAI repo per
+  #    italanta/opencrane#150) and FALSE in every per-silo install (apps/clustertenant-platform/deploy.sh) —
   #    two fleet-managers would contend over the cluster-scoped ClusterTenant CRs + IAM ownership.
   #    Default true so a single-box `helm install` runs both managers co-located.
   enabled: true

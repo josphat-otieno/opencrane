@@ -14,6 +14,11 @@ DB_SECRET_NAME="${DB_SECRET_NAME:-opencrane-db}"
 DB_PASSWORD="${DB_PASSWORD:-opencrane-local-password}"
 LITELLM_SECRET_NAME="${LITELLM_SECRET_NAME:-opencrane-litellm}"
 LITELLM_MASTER_KEY="${LITELLM_MASTER_KEY:-opencrane-local-master-key}"
+# The fleet-operator app and fleet-platform chart moved to the WeOwnAI repo
+# (italanta/opencrane#150) and no longer ship in this repo. Point these at a checked-out
+# copy of WeOwnAI's apps/fleet-operator and apps/fleet-platform to run this local cluster.
+FLEET_OPERATOR_DIR="${FLEET_OPERATOR_DIR:-}"
+FLEET_CHART_DIR="${FLEET_CHART_DIR:-}"
 
 function _require_cmd()
 {
@@ -101,9 +106,15 @@ _require_cmd k3d
 _require_docker_healthy
 _require_free_space
 
+if [[ -z "$FLEET_OPERATOR_DIR" || ! -f "$FLEET_OPERATOR_DIR/deploy/Dockerfile" || -z "$FLEET_CHART_DIR" || ! -d "$FLEET_CHART_DIR" ]]; then
+  echo "[local] The fleet-operator app and fleet-platform chart moved to the WeOwnAI repo (italanta/opencrane#150) and no longer ship in this repo."
+  echo "[local] Set FLEET_OPERATOR_DIR and FLEET_CHART_DIR to a checked-out copy of WeOwnAI's apps/fleet-operator and apps/fleet-platform, then re-run."
+  exit 1
+fi
+
 # 2. Build local images so the cluster does not depend on published registries.
 echo "[local] Building operator image"
-docker build -f "$ROOT_DIR/apps/fleet-operator/deploy/Dockerfile" -t opencrane/operator:local "$ROOT_DIR"
+docker build -f "$FLEET_OPERATOR_DIR/deploy/Dockerfile" -t opencrane/operator:local "$ROOT_DIR"
 
 echo "[local] Building tenant image"
 docker build -f "$ROOT_DIR/apps/tenant/deploy/Dockerfile" -t opencrane/tenant:local "$ROOT_DIR"
@@ -234,7 +245,7 @@ helm_args=(
   upgrade
   --install
   "$RELEASE_NAME"
-  "$ROOT_DIR/apps/fleet-platform"
+  "$FLEET_CHART_DIR"
   --namespace
   "$NAMESPACE"
   --create-namespace

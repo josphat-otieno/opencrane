@@ -27,18 +27,15 @@ import { Command } from "commander";
 import { ___ShutdownTelemetry } from "@opencrane/observability";
 
 import { type CliConfig, _ResolveConfig } from "./config.js";
-import { _RegisterAdmin } from "./commands/admin.js";
 import { _RegisterAudit } from "./commands/audit.js";
 import { _RegisterAuth } from "./commands/auth.js";
 import { _RegisterAwareness } from "./commands/awareness.js";
 import { _RegisterBudget } from "./commands/budget.js";
-import { _RegisterClusterTenants } from "./commands/cluster-tenants.js";
 import { _RegisterCredential } from "./commands/credential.js";
 import { _RegisterMcpServers } from "./commands/mcp-servers.js";
 import { _RegisterModel } from "./commands/model.js";
 import { _RegisterModelDefault } from "./commands/model-default.js";
 import { _RegisterMetrics } from "./commands/metrics.js";
-import { _RegisterPlatform } from "./commands/platform.js";
 import { _RegisterPolicies } from "./commands/policies.js";
 import { _RegisterProviders } from "./commands/providers.js";
 import { _RegisterRouting } from "./commands/routing.js";
@@ -56,8 +53,7 @@ program
   .name("oc")
   .description("OpenCrane platform CLI — manage tenants, policies, budgets, MCP servers, and skills")
   .version("0.1.0")
-  .option("--url <url>", "Silo control-plane base URL (overrides OPENCRANE_URL)", undefined)
-  .option("--fleet-url <url>", "Fleet-manager base URL for fleet/admin commands (overrides OPENCRANE_FLEET_URL; defaults to --url)", undefined);
+  .option("--url <url>", "Silo control-plane base URL (overrides OPENCRANE_URL)", undefined);
 
 /** Lazily resolved config — deferred so --help works without credentials. */
 let _resolvedConfig: CliConfig | undefined;
@@ -77,9 +73,7 @@ function _getConfig(): CliConfig
 }
 
 // Register all command groups against the root program.
-_RegisterAdmin(program, _getConfig);
 _RegisterTenants(program, _getConfig);
-_RegisterClusterTenants(program, _getConfig);
 _RegisterPolicies(program, _getConfig);
 _RegisterMcpServers(program, _getConfig);
 _RegisterSkills(program, _getConfig);
@@ -94,7 +88,6 @@ _RegisterSkillPosture(program, _getConfig);
 _RegisterRouting(program, _getConfig);
 _RegisterCredential(program, _getConfig);
 _RegisterMetrics(program, _getConfig);
-_RegisterPlatform(program, _getConfig);
 _RegisterAwareness(program, _getConfig);
 _RegisterSessions(program, _getConfig);
 _RegisterAuth(program, _getConfig);

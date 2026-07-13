@@ -16,6 +16,11 @@ DB_PASSWORD="${DB_PASSWORD:-opencrane-e2e-password}"
 LOCAL_PROFILE="${LOCAL_PROFILE:-}"
 LITELLM_SECRET_NAME="${LITELLM_SECRET_NAME:-opencrane-litellm}"
 LITELLM_MASTER_KEY="${LITELLM_MASTER_KEY:-}"
+# The fleet-operator app and fleet-platform chart moved to the WeOwnAI repo
+# (italanta/opencrane#150) and no longer ship in this repo. Point these at a checked-out
+# copy of WeOwnAI's apps/fleet-operator and apps/fleet-platform to run this smoke test.
+FLEET_OPERATOR_DIR="${FLEET_OPERATOR_DIR:-}"
+FLEET_CHART_DIR="${FLEET_CHART_DIR:-}"
 
 function _require_cmd()
 {
@@ -129,10 +134,16 @@ _require_cmd k3d
 _require_docker_healthy
 _require_free_space
 
+if [[ -z "$FLEET_OPERATOR_DIR" || ! -f "$FLEET_OPERATOR_DIR/deploy/Dockerfile" || -z "$FLEET_CHART_DIR" || ! -d "$FLEET_CHART_DIR" ]]; then
+  echo "[e2e] The fleet-operator app and fleet-platform chart moved to the WeOwnAI repo (italanta/opencrane#150) and no longer ship in this repo."
+  echo "[e2e] Set FLEET_OPERATOR_DIR and FLEET_CHART_DIR to a checked-out copy of WeOwnAI's apps/fleet-operator and apps/fleet-platform, then re-run."
+  exit 1
+fi
+
 # 2. Build local images so e2e does not depend on pre-published GHCR tags. Each build is
 #    retried — the base-image pull from Docker Hub flakes intermittently on CI runners.
 echo "[e2e] Building fleet-operator image"
-_retry 3 docker build -f "$ROOT_DIR/apps/fleet-operator/deploy/Dockerfile" -t opencrane/operator:e2e "$ROOT_DIR"
+_retry 3 docker build -f "$FLEET_OPERATOR_DIR/deploy/Dockerfile" -t opencrane/operator:e2e "$ROOT_DIR"
 
 echo "[e2e] Building clustertenant-operator (silo) image"
 _retry 3 docker build -f "$ROOT_DIR/apps/clustertenant-operator/deploy/Dockerfile" -t opencrane/clustertenant-manager:e2e "$ROOT_DIR"
@@ -251,7 +262,7 @@ fi
 
 # 6. Install Helm chart with k3d-safe overrides wired to the in-cluster database.
 echo "[e2e] Installing Helm release '$RELEASE_NAME'"
-helm upgrade --install "$RELEASE_NAME" "$ROOT_DIR/apps/fleet-platform" \
+helm upgrade --install "$RELEASE_NAME" "$FLEET_CHART_DIR" \
   --namespace "$NAMESPACE" \
   --create-namespace \
   --values "$ROOT_DIR/libs/k8s-platform/tests/values-k3d-e2e.yaml" \
