@@ -47,8 +47,8 @@ Angular libraries feeding `apps/opencrane-ui`, ported in from WeOwnAI (#152): `c
 `features/{welcome,customer-admin,tools,workspace,settings,conversation,context,notifications,metrics}`,
 and `state/{core,gateways,conversation/*,settings/adapter,mcp/adapter,provider-key/adapter,tenant/adapter,onboarding,utils/storage}`.
 Project names are `frontend-<lib>` (`scope:web` tag, may only depend on `scope:web`/`scope:shared`);
-aliases are `@opencrane/*` in `tsconfig.base.json`, resolved via `tsconfig.frontend.json` (Angular's
-module/decorator settings layered over the shared `tsconfig.base.json` — never edit the base config's
+aliases are `@opencrane/*` in `tsconfig.json`, resolved via `tsconfig.frontend.json` (Angular's
+module/decorator settings layered over the shared `tsconfig.json` — never edit the base config's
 `module`/`moduleResolution` for Angular's sake). `state/gateways` is opencrane-ui-only here — the
 fleet-only `provideFleetGateways` wiring (cluster-tenant/billing/onboarding gateways) stays in WeOwnAI,
 not ported. See [`angular.md`](./angular.md) for layering/style rules.

@@ -5,5 +5,45 @@
 		"types": []
 	},
 	"files": ["src/main.ts"],
-	"include": ["src/**/*.d.ts"]
+  "include": [
+    "src/**/*.d.ts"
+  ],
+  "references": [
+    {
+      "path": "../../libs/frontend/state/onboarding"
+    },
+    {
+      "path": "../../libs/frontend/features/workspace"
+    },
+    {
+      "path": "../../libs/frontend/features/tools"
+    },
+    {
+      "path": "../../libs/frontend/features/customer-admin"
+    },
+    {
+      "path": "../../libs/frontend/features/welcome"
+    },
+    {
+      "path": "../../libs/frontend/platform"
+    },
+    {
+      "path": "../../libs/frontend/state/gateways"
+    },
+    {
+      "path": "../../libs/frontend/state/utils/storage"
+    },
+    {
+      "path": "../../libs/frontend/state/tenant/adapter"
+    },
+    {
+      "path": "../../libs/frontend/state/conversation/cache"
+    },
+    {
+      "path": "../../libs/frontend/state/core"
+    },
+    {
+      "path": "../../libs/frontend/core"
+    }
+  ]
 }

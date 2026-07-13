@@ -5,5 +5,36 @@
 		"types": []
 	},
 	"include": ["src/**/*.ts"],
-	"exclude": ["src/**/*.spec.ts"]
+  "exclude": [
+    "src/**/*.spec.ts"
+  ],
+  "references": [
+    {
+      "path": "../tools"
+    },
+    {
+      "path": "../settings"
+    },
+    {
+      "path": "../../elements/a2ui"
+    },
+    {
+      "path": "../notifications"
+    },
+    {
+      "path": "../context"
+    },
+    {
+      "path": "../conversation"
+    },
+    {
+      "path": "../../elements/ui"
+    },
+    {
+      "path": "../../core"
+    },
+    {
+      "path": "../../state/core"
+    }
+  ]
 }

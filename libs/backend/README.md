@@ -36,9 +36,9 @@ can join it later without restructuring (e.g. `libs/backend/mcp/main` next to
 1. `libs/backend/<d>/main` with the layout above (copy a small package such as
    `libs/backend/audit/main` as a template); name it `@opencrane/backend-<d>`, tag `scope:backend`.
    - Create `package.json` with `"name": "@opencrane/backend-<d>"`, `"type": "module"`, no dependencies.
-   - Create `tsconfig.json` that extends `../../tsconfig.base.json` and sets `compilerOptions.baseUrl` to the package root.
+   - Create `tsconfig.json` that extends `../../../../tsconfig.json`, sets `compilerOptions.noEmit` to `true`, and includes `src/**/*`.
    - Create `vitest.config.ts` for test configuration (copy from an existing domain package).
-2. Add path alias to `tsconfig.base.json`: `"@opencrane/backend-<d>": ["libs/backend/<d>/main/src"]`.
+2. Add path alias to `tsconfig.json`: `"@opencrane/backend-<d>": ["./libs/backend/<d>/main/src/index.ts"]`.
 3. Mount the router in `apps/opencrane/src/routes.ts` and add the
    path alias import in the operator's `src/routes.ts`.
 4. Add `prisma/schema/<d>.prisma` if the domain owns models.

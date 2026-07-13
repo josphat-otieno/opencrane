@@ -2,6 +2,7 @@
  * (Usability design guides). PrimeNG theming is provided through the Aura
  * preset in app.config.ts; these tokens drive the editorial "paper" look. */
 
+@import "./fonts/opencrane-fonts.css";
 @import "primeicons/primeicons.css";
 
 :root {

@@ -5,7 +5,7 @@
 # the site's prebuild copies apps/opencrane/openapi.json for the API reference.
 FROM node:22-alpine AS builder
 WORKDIR /repo
-COPY package.json package-lock.json tsconfig.base.json nx.json ./
+COPY package.json package-lock.json tsconfig.json nx.json ./
 COPY libs libs
 COPY apps/opencrane/openapi.json apps/opencrane/
 COPY website website

@@ -4,7 +4,7 @@
 FROM node:22-bookworm-slim AS build
 
 WORKDIR /app
-COPY package.json package-lock.json tsconfig.base.json nx.json ./
+COPY package.json package-lock.json tsconfig.json nx.json ./
 COPY libs libs
 COPY apps/feat-central-agents/package.json apps/feat-central-agents/tsconfig.json apps/feat-central-agents/
 # npm workspaces install: root package.json's "workspaces" field includes apps/* and website
