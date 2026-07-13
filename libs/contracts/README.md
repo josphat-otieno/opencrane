@@ -2,7 +2,7 @@
 
 The public SDK and API contract for the OpenCrane Control Plane. It contains a
 typed TypeScript client (`openapi-fetch`) and DTOs generated from the Control
-Plane OpenAPI 3.1 specification (`apps/opencrane/openapi.json`).
+Plane OpenAPI 3.1 specification emitted to `dist/apps/opencrane/openapi.json`.
 
 ## Licensing
 

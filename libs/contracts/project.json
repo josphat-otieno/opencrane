@@ -25,7 +25,8 @@
       "executor": "nx:run-commands",
       "options": {
         "commands": [
-          "openapi-typescript ../../apps/opencrane/openapi.json -o src/generated/api.ts"
+          "npm run emit-openapi -w @opencrane/server",
+          "openapi-typescript ../../dist/apps/opencrane/openapi.json -o src/generated/api.ts"
         ],
         "cwd": "libs/contracts",
         "parallel": false

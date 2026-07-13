@@ -16,8 +16,8 @@ COPY package.json package-lock.json tsconfig.json tsconfig.frontend.json nx.json
 # All workspace libs (frontend/*, backend/*/main, contracts, state/*) come in wholesale so
 # the image never needs editing when a lib is added; the root .dockerignore keeps
 # node_modules/dist out of the context. The Angular app types against @opencrane/contracts'
-# ALREADY-GENERATED src/generated/api.ts (committed source, generated intra-repo from
-# apps/opencrane/openapi.json) — no OpenAPI spec or codegen step needed here.
+# ALREADY-GENERATED src/generated/api.ts (committed source, generated intra-repo from the
+# dist OpenAPI artifact) — no OpenAPI spec or codegen step needed here.
 COPY libs libs
 COPY apps/opencrane-ui apps/opencrane-ui
 # npm workspaces install: root package.json's "workspaces" field includes apps/* and website

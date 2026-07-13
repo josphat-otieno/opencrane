@@ -1,18 +1,15 @@
 /**
- * Emit the OpenAPI 3.1 spec to openapi.json in the package root.
+ * Emit the OpenAPI 3.1 spec to the workspace dist folder.
  *
  * Run via:  pnpm --filter @opencrane/server emit-openapi
  *
- * CI drift gate:
+ * Contract drift gate:
  *   pnpm --filter @opencrane/server emit-openapi
- *   git diff --exit-code apps/opencrane/openapi.json
- *
- * If the diff is non-empty, the committed openapi.json is stale.
- * Update the spec in src/openapi/spec.ts and re-run this script,
- * then commit both files together.
+ *   nx run contracts:generate
+ *   git diff --exit-code libs/contracts/src/generated/api.ts
  */
 
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -21,7 +18,8 @@ import { fileURLToPath } from "node:url";
 import { spec } from "../src/openapi/spec.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const outputPath = resolve(__dirname, "../openapi.json");
+const outputPath = resolve(__dirname, "../../../dist/apps/opencrane/openapi.json");
 
+mkdirSync(dirname(outputPath), { recursive: true });
 writeFileSync(outputPath, JSON.stringify(spec, null, 2) + "\n", "utf8");
 console.log(`OpenAPI spec written to ${outputPath}`);

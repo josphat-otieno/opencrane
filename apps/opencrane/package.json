@@ -51,7 +51,20 @@
     "name": "opencrane",
     "tags": [
       "scope:app"
-    ]
+    ],
+    "targets": {
+      "build": {
+        "outputs": [
+          "{projectRoot}/dist",
+          "{workspaceRoot}/dist/apps/opencrane/openapi.json"
+        ]
+      },
+      "emit-openapi": {
+        "outputs": [
+          "{workspaceRoot}/dist/apps/opencrane/openapi.json"
+        ]
+      }
+    }
   },
   "prisma": {
     "schema": "prisma/schema"

@@ -27,16 +27,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Regenerate the spec from source so the asset always matches the tagged
-      # commit, even if the committed openapi.json had drifted.
+      # Build emits the OpenAPI spec under dist so the release asset always
+      # matches the tagged source.
       - name: Emit OpenAPI spec
         run: npm run build
-
-      - name: Verify committed spec is up to date
-        run: git diff --exit-code apps/opencrane/openapi.json
 
       - name: Attach openapi.json to the release
         uses: softprops/action-gh-release@v2
         with:
-          files: apps/opencrane/openapi.json
+          files: dist/apps/opencrane/openapi.json
           fail_on_unmatched_files: true

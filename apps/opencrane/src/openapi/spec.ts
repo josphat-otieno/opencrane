@@ -4,9 +4,10 @@
  * This is the single source of truth for the HTTP API contract.
  * Edit this file when you add or change routes, then run:
  *   pnpm --filter @opencrane/server emit-openapi
- * and commit the regenerated openapi.json alongside the code change.
+ *   nx run contracts:generate
+ * and commit the regenerated contracts client alongside the code change.
  *
- * The CI drift gate runs `emit-openapi` and fails if openapi.json is stale.
+ * The generated openapi.json is a dist artifact, not source.
  */
 
 // ---------------------------------------------------------------------------
@@ -794,6 +795,7 @@ function paginated(itemSchema: object)
 // Spec document — Composed from domain path fragments
 // ---------------------------------------------------------------------------
 
+/** OpenAPI 3.1 document served by the control plane and emitted for SDK generation. */
 export const spec = {
   openapi: "3.1.0",
   info: {

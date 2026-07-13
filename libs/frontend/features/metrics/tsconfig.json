@@ -1,9 +1,20 @@
 {
-	"extends": "../../../../tsconfig.frontend.json",
-	"compilerOptions": {
-		"outDir": "../../../../dist/out-tsc",
-		"types": []
-	},
-	"include": ["src/**/*.ts"],
-	"exclude": ["**/*.spec.ts"]
+  "extends": "../../../../tsconfig.frontend.json",
+  "compilerOptions": {
+    "outDir": "../../../../dist/out-tsc",
+    "types": [],
+    "composite": true,
+    "tsBuildInfoFile": "../../../../dist/out-tsc/libs/frontend/features/metrics/tsconfig.tsbuildinfo"
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "**/*.spec.ts"
+  ],
+  "references": [
+    {
+      "path": "../../core"
+    }
+  ]
 }

@@ -27,12 +27,9 @@ export function ___CreateControlPlaneClient(baseUrl: string, token?: string)
   // 2. Attach the bearer token when one is available; omit the header for public endpoints.
   if (token)
   {
-    headers.authorization = `Bearer ${token}`;
+    headers["authorization"] = `Bearer ${token}`;
   }
 
   // 3. Return a fully-typed fetch client bound to the versioned base URL.
   return createFetchClient<paths>({ baseUrl, headers });
 }
-
-/** Type alias for the client returned by `___CreateControlPlaneClient`. */
-export type ControlPlaneClient = ReturnType<typeof ___CreateControlPlaneClient>;

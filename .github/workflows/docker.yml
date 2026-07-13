@@ -45,17 +45,14 @@ jobs:
       - name: Build
         run: npm run build
 
-      # `npm run build` regenerates the emitted OpenAPI specs and the typed
-      # clients from source, then typechecks against the fresh output — so a
-      # stale committed spec/client never fails the typecheck on its own.
-      # Diff the regenerated artifacts to fail fast when codegen wasn't re-run
-      # after a source change.
-      - name: Verify generated specs and clients are up to date
+      # Regenerate the typed client from the freshly emitted OpenAPI dist
+      # artifact, then diff the committed generated client to catch drift.
+      - name: Verify generated client is up to date
         run: |
+          npx nx run contracts:generate
           git diff --exit-code -- \
-            apps/opencrane/openapi.json \
             libs/contracts/src/generated/api.ts \
-          || { echo "::error::Generated OpenAPI specs/clients are stale. Run 'npm run build' (or 'npm run generate -w @opencrane/contracts') and commit the result."; exit 1; }
+          || { echo "::error::Generated OpenAPI client is stale. Run 'npx nx run contracts:generate' and commit the result."; exit 1; }
 
       - name: Test all projects
         run: npx nx run-many -t test lint
