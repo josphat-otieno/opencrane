@@ -793,10 +793,10 @@ ingress:
 controlPlaneSpa:
   enabled: false
   image:
-    # Built by .github/workflows/docker.yml (CONTROL_PLANE_SPA_IMAGE) from
+    # Built by .github/workflows/docker.yml (OPENCRANE_UI_SPA_IMAGE) from
     # apps/opencrane-ui/deploy/Dockerfile — a static `nx build opencrane-ui` bundle
     # served by nginxinc/nginx-unprivileged.
-    repository: ghcr.io/italanta/opencrane-opencrane-ui-spa
+    repository: ghcr.io/italanta/opencrane-ui-spa
     tag: latest
     pullPolicy: IfNotPresent
   replicas: 1

@@ -4,7 +4,7 @@ FROM node:22-bookworm-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json tsconfig.base.json nx.json ./
 # All workspace libs (shared libs + libs/backend/*/main) come in wholesale so the image never
-# needs editing when a domain package is added; the root .dockerignore keeps
+# needs editing when a backend package is added; the root .dockerignore keeps
 # node_modules/dist out of the context.
 COPY libs libs
 COPY apps/opencrane-api/scripts apps/opencrane-api/scripts

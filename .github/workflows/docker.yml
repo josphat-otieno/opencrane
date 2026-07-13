@@ -15,10 +15,10 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  CONTROL_PLANE_IMAGE: ghcr.io/${{ github.repository_owner }}/opencrane-clustertenant-manager
+  OPENCRANE_API_IMAGE: ghcr.io/${{ github.repository_owner }}/opencrane-clustertenant-manager
   TENANT_IMAGE: ghcr.io/${{ github.repository_owner }}/opencrane-tenant
   SKILL_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/opencrane-feat-skill-registry
-  CONTROL_PLANE_SPA_IMAGE: ghcr.io/${{ github.repository_owner }}/opencrane-opencrane-ui-spa
+  OPENCRANE_UI_SPA_IMAGE: ghcr.io/${{ github.repository_owner }}/opencrane-ui-spa
 
 jobs:
   test:
@@ -102,23 +102,23 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Extract image metadata (opencrane-ui)
-        id: meta-opencrane-ui
+      - name: Extract image metadata (opencrane-api)
+        id: meta-opencrane-api
         uses: docker/metadata-action@v6
         with:
-          images: ${{ env.CONTROL_PLANE_IMAGE }}
+          images: ${{ env.OPENCRANE_API_IMAGE }}
           tags: |
             type=sha,prefix=sha-
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
-      - name: Build and push opencrane-ui
+      - name: Build and push opencrane-api
         uses: docker/build-push-action@v7
         with:
           context: .
           file: apps/opencrane-api/deploy/Dockerfile
           push: ${{ github.event_name == 'push' }}
-          tags: ${{ steps.meta-opencrane-ui.outputs.tags }}
-          labels: ${{ steps.meta-opencrane-ui.outputs.labels }}
+          tags: ${{ steps.meta-opencrane-api.outputs.tags }}
+          labels: ${{ steps.meta-opencrane-api.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -166,7 +166,7 @@ jobs:
         id: meta-opencrane-ui-spa
         uses: docker/metadata-action@v6
         with:
-          images: ${{ env.CONTROL_PLANE_SPA_IMAGE }}
+          images: ${{ env.OPENCRANE_UI_SPA_IMAGE }}
           tags: |
             type=sha,prefix=sha-
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}

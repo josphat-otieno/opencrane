@@ -22,7 +22,7 @@
     "docs:build": "npm run build -w website",
     "docs:preview": "npm run preview -w website",
     "docker:build:tenant": "docker build -f apps/feat-openclaw-tenant/deploy/Dockerfile -t ghcr.io/italanta/opencrane-tenant:latest .",
-    "docker:build:control-plane": "docker build -f apps/opencrane-api/deploy/Dockerfile -t ghcr.io/italanta/opencrane-clustertenant-manager:latest .",
+    "docker:build:opencrane-api": "docker build -f apps/opencrane-api/deploy/Dockerfile -t ghcr.io/italanta/opencrane-clustertenant-manager:latest .",
     "docker:build:docs": "docker build -f website/Dockerfile -t ghcr.io/italanta/docs:latest .",
     "docker:build:opencrane-ui-spa": "docker build -f apps/opencrane-ui/deploy/Dockerfile -t ghcr.io/italanta/opencrane-ui-spa:latest .",
     "build:opencrane-ui": "nx build opencrane-ui",

@@ -13,7 +13,7 @@ FROM node:22-bookworm-slim AS build
 
 WORKDIR /app
 COPY package.json package-lock.json tsconfig.json tsconfig.base.json tsconfig.frontend.json nx.json ./
-# All workspace libs (frontend/*, domain/*/main, contracts, state/*) come in wholesale so
+# All workspace libs (frontend/*, backend/*/main, contracts, state/*) come in wholesale so
 # the image never needs editing when a lib is added; the root .dockerignore keeps
 # node_modules/dist out of the context. The Angular app types against @opencrane/contracts'
 # ALREADY-GENERATED src/generated/api.ts (committed source, generated intra-repo from
