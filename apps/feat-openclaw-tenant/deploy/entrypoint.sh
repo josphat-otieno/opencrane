@@ -21,7 +21,7 @@ OPENCLAW_VERSION="${OPENCLAW_VERSION:-2026.6.11}"
 COGNEE_PLUGIN_VERSION="${COGNEE_PLUGIN_VERSION:-2026.7.9}"
 # Control-plane re-pull configuration (injected by operator into every tenant Deployment).
 OPENCRANE_CONTROL_PLANE_URL="${OPENCRANE_CONTROL_PLANE_URL:-}"
-OPENCRANE_CONTRACT_TOKEN_PATH="${OPENCRANE_CONTRACT_TOKEN_PATH:-/var/run/opencrane/tokens/opencrane-ui.token}"
+OPENCRANE_CONTRACT_TOKEN_PATH="${OPENCRANE_CONTRACT_TOKEN_PATH:-/var/run/opencrane/tokens/opencrane-server.token}"
 OPENCLAW_TENANT_NAME="${OPENCLAW_TENANT_NAME:-}"
 # Poll interval in seconds for the background contract re-pull loop.
 CONTRACT_POLL_INTERVAL="${OPENCRANE_CONTRACT_POLL_INTERVAL:-30}"

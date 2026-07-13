@@ -15,7 +15,7 @@
 # the value flags and exec this core):
 #   libs/k8s-platform/k8s-deploy.sh [--base-domain DOMAIN] [--namespace NS] [--release NAME]
 #                            [--image-tag TAG] [--storage-class SC]
-#                            [--opencrane-ui-tag TAG] [--operator-tag TAG]
+#                            [--opencrane-server-tag TAG] [--operator-tag TAG]
 #                            [--tenant-tag TAG]
 #                            [--oidc-issuer-url URL] [--oidc-client-id ID]
 #                            [--oidc-redirect-uri URI] [--oidc-client-secret SECRET]
@@ -39,7 +39,7 @@
 #
 # Image-tag float guard: after a prior release's --reset-then-reuse-values upgrade, component
 # images may be pinned to a specific tag (e.g. sha-5036a0a). If this invocation does not restate
-# those tags (no --opencrane-ui-tag/--operator-tag/--tenant-tag) and does not explicitly float
+# those tags (no --opencrane-server-tag/--operator-tag/--tenant-tag) and does not explicitly float
 # (OPENCRANE_ALLOW_TAG_FLOAT=1), the script detects the prior pin, warns loudly, and
 # automatically re-pins from the last release so pinned tags float silently (a live gotcha from
 # 2026-07-12 deploy). Pass OPENCRANE_ALLOW_TAG_FLOAT=1 to intentionally float tags to chart-default.
@@ -101,7 +101,7 @@
 #
 # --image-tag pins all three platform images (opencrane-ui, operator, tenant)
 # to the same tag. To roll a SINGLE component to a different build, pass the
-# matching per-component flag (e.g. --opencrane-ui-tag sha-abc123); it overrides
+# matching per-component flag (e.g. --opencrane-server-tag sha-abc123); it overrides
 # --image-tag for that component only. ALWAYS bump component images this way —
 # never `kubectl set image` / `kubectl patch` a managed deployment. An imperative
 # patch creates a `kubectl-*` field manager that owns the image field on the live
@@ -267,7 +267,8 @@ while [[ $# -gt 0 ]]; do
     --namespace)     NAMESPACE="$2"; shift 2 ;;
     --release)       RELEASE="$2"; shift 2 ;;
     --image-tag)        IMAGE_TAG="$2"; shift 2 ;;
-    --opencrane-ui-tag) CONTROL_PLANE_TAG="$2"; shift 2 ;;
+    --opencrane-server-tag) CONTROL_PLANE_TAG="$2"; shift 2 ;;
+    --opencrane-ui-tag)     CONTROL_PLANE_TAG="$2"; shift 2 ;;  # backwards-compatible alias (pins the opencrane-server image)
     --operator-tag)     OPERATOR_TAG="$2"; shift 2 ;;
     --tenant-tag)       TENANT_TAG="$2"; shift 2 ;;
     --storage-class) STORAGE_CLASS="$2"; shift 2 ;;
@@ -937,7 +938,7 @@ helm_args=(upgrade --install "$RELEASE" "$CHART_DIR" --namespace "$NAMESPACE" --
   --set "litellm.storeModelInDb=true")
 
 # Pinned-tag float guard: detect if the prior release pinned component images to a specific
-# tag. If this invocation does not restate them (no --opencrane-ui-tag/--operator-tag/--tenant-tag),
+# tag. If this invocation does not restate them (no --opencrane-server-tag/--operator-tag/--tenant-tag),
 # re-pin from the prior release so they don't silently float to chart-default (a 2026-07-12 live gotcha).
 # Escape: OPENCRANE_ALLOW_TAG_FLOAT=1 to intentionally float tags.
 _enforce_tag_pins() {
@@ -1062,7 +1063,7 @@ helm_args+=("${EXTRA_SET[@]}")
 [[ ${#EXTRA_HELM_ARGS[@]} -gt 0 ]] && helm_args+=("${EXTRA_HELM_ARGS[@]}")
 # Value-preservation mode. Helm's DEFAULT on upgrade drops any value a prior release set
 # via --set/-f that this invocation does not restate, silently reverting it to the chart
-# default — a footgun that broke a live silo once (a pure `--opencrane-ui-tag` bump reverted
+# default — a footgun that broke a live silo once (a pure `--opencrane-server-tag` bump reverted
 # ingress.sameOrigin/tls.secretName/gatewayProxy/tenant.gateway.trustedProxies/resource limits;
 # see the field-manager warning above). So for an UPGRADE (the release already exists) we
 # default to `--reset-then-reuse-values`: reset to the chart's built-in values (picking up any

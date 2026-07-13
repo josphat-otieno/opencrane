@@ -12,7 +12,7 @@ function _authApi(username: string, authenticated = true): k8s.AuthenticationV1A
 {
 	return {
 		createTokenReview: vi.fn().mockResolvedValue({
-			status: { authenticated, audiences: ["opencrane-ui"], user: { username } },
+			status: { authenticated, audiences: ["opencrane-server"], user: { username } },
 		}),
 	} as unknown as k8s.AuthenticationV1Api;
 }

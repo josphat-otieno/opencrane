@@ -34,7 +34,7 @@ function _buildAuthApi(opts: {
 {
   const status: k8s.V1TokenReviewStatus = {
     authenticated: opts.authenticated,
-    audiences: opts.audiences ?? ["opencrane-ui"],
+    audiences: opts.audiences ?? ["opencrane-server"],
     user: opts.subject ? { username: opts.subject } : undefined,
   };
   return {
@@ -92,7 +92,7 @@ function _buildApp(prisma: PrismaClient, authApi: k8s.AuthenticationV1Api): Expr
 const _validAuthApi = _buildAuthApi({
   authenticated: true,
   subject: "system:serviceaccount:opencrane:team-alpha",
-  audiences: ["opencrane-ui"],
+  audiences: ["opencrane-server"],
 });
 
 describe("_RegisterInternalTenantContract GET /:name", () =>

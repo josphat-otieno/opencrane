@@ -6,7 +6,7 @@ import { _RecordParticipationEvent } from "../../core/participation.js";
 import type { ParticipationEventInput } from "../../core/participation.types.js";
 
 /** Expected audience on the projected token tenant pods use to call this endpoint. */
-const _EXPECTED_AUDIENCE = "opencrane-ui";
+const _EXPECTED_AUDIENCE = "opencrane-server";
 
 /** Accepted participation event kinds. */
 const _KINDS = new Set(["agent_card", "skill_execution", "heartbeat"]);
@@ -30,7 +30,7 @@ function _ParseTenantNameFromSubject(subject: string): string | null
  * Internal endpoint for fleet participation events (P4B.5).
  *
  * Claws POST participation events (Agent Card advertisement, skill-execution
- * outcomes, heartbeats) from the `libs/awareness` SDK using the `opencrane-ui`
+ * outcomes, heartbeats) from the `libs/awareness` SDK using the `opencrane-server`
  * projected ServiceAccount token. Transport is at-least-once with an
  * idempotency key (no new bus); duplicates are deduped server-side.
  *
