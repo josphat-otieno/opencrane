@@ -4,7 +4,7 @@ OpenCrane splits a platform installation into a single **fleet release** (cluste
 
 > See also:
 > [Fleet and silo operating model](/operators/fleet-silo-model) — how the fleet-manager and clustertenant-manager differ, what each owns, and how to configure fleet OIDC and Zitadel management.
-> [ClusterTenant manager configuration](/operators/clustertenantmanager-config) — Helm values reference for every silo-opencrane-ui setting.
+> [ClusterTenant manager configuration](/operators/clustertenantmanager-config) — Helm values reference for every silo opencrane-api setting.
 > [Networking & isolation](/operators/networking) — the NetworkPolicy floor and the silo boundary.
 > [Identity & network isolation (Cilium + SPIFFE)](/operators/cilium-spiffe-identity) — the identity-keyed mTLS layer that rides on top of the silo boundary.
 > [Silo IAM: inheritance & sharing](/integrators/silo-iam) — how IAM policies, skills, and resource shares are scoped per silo.

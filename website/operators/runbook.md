@@ -37,7 +37,7 @@ This document covers the essential operational procedures for deploying, verifyi
 # 1. Start k3d cluster
 k3d cluster create opencrane --agents 1 --port "8080:80@loadbalancer"
 
-# 2. Bootstrap the full local stack (PostgreSQL + LiteLLM + opencrane-ui + operator)
+# 2. Bootstrap the full local stack (PostgreSQL + LiteLLM + opencrane-api + operator)
 libs/k8s-platform/tests/k3d-local.sh
 
 # 3. Verify all pods are running
@@ -104,7 +104,7 @@ Set these via Helm values — the deploy scripts wire them automatically. The va
 |----------|----------|----------|-------------|
 | `DATABASE_URL` | Yes | `clustertenantManager.database.existingSecret` | Per-silo PostgreSQL connection string |
 | `LITELLM_MASTER_KEY` | Yes (if LiteLLM enabled) | `litellm.existingSecret` | LiteLLM master API key |
-| `OPENCRANE_API_TOKEN` | Yes | — | Bearer token for opencrane-ui API auth |
+| `OPENCRANE_API_TOKEN` | Yes | — | Bearer token for opencrane-api auth |
 | `OPENCRANE_PROJECTION_DRIFT_ALERT_THRESHOLD` | No | — | Drift count before alert fires (0 = disabled) |
 | `OPENCRANE_DRIFT_WEBHOOK_URL` | No | — | Webhook URL for projection-drift alert delivery |
 
@@ -328,14 +328,14 @@ kubectl delete pod -n opencrane-<ct> -l opencrane.io/tenant=acme
 **Symptoms**: `kubectl get tenants -n opencrane-<ct>` shows tenants stuck in `Pending` or `Error` phase.
 
 **Response**:
-1. Check operator logs: `kubectl logs -n opencrane-<ct> deployment/opencrane-opencrane-api --tail 100`
-2. Verify RBAC: `kubectl auth can-i get tenants.opencrane.io --as system:serviceaccount:opencrane-<ct>:opencrane-opencrane-api -n opencrane-<ct>`
+1. Check operator logs: `kubectl logs -n opencrane-<ct> deployment/opencrane-operator --tail 100`
+2. Verify RBAC: `kubectl auth can-i get tenants.opencrane.io --as system:serviceaccount:opencrane-<ct>:opencrane-operator -n opencrane-<ct>`
 3. Check Kubernetes API server reachability from the operator pod
 4. Force reconcile by annotating the tenant:
    ```bash
    kubectl annotate tenant acme opencrane.io/reconcile-at=$(date -u +%s) -n opencrane-<ct>
    ```
-5. Restart the operator if needed: `kubectl rollout restart deployment/opencrane-opencrane-api -n opencrane-<ct>`
+5. Restart the operator if needed: `kubectl rollout restart deployment/opencrane-operator -n opencrane-<ct>`
 
 ### P1: LiteLLM is unreachable
 
@@ -371,7 +371,7 @@ kubectl delete pod -n opencrane-<ct> -l opencrane.io/tenant=acme
    curl -X POST ".../api/tenants/repair?dryRun=false"
    curl -X POST ".../api/policies/repair?dryRun=false"
    ```
-4. If drift persists, check for split-brain between operator and opencrane-ui write paths
+4. If drift persists, check for split-brain between operator and opencrane-api write paths
 
 ### P2: Budget overage (tenant exceeds 100% of monthly budget)
 

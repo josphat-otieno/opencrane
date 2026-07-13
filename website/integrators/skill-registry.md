@@ -99,7 +99,7 @@ runtime contract governs whether the skill mechanism is active at all — see
   backfill tool for existing bundles all exist behind
   `skillRegistry.ociStore.enabled` (default `false` — see
   [skill-oci-store.yaml](https://github.com/italanta/opencrane/blob/main/apps/opencrane-infra/templates/skill-oci-store.yaml)),
-  so today bundle `content` is still served from the opencrane-ui DB through the
+  so today bundle `content` is still served from the opencrane-api DB through the
   registry. The `digest` field already pins identity, so flipping the flag changes
   only the storage backend, not the delivery contract. Tracked in
   [issue #133](https://github.com/italanta/opencrane/issues/133).

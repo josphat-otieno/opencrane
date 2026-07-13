@@ -2,8 +2,8 @@
 
 > Deep-dive for `libs/contracts`. Index: [`../app-specific.md`](../app-specific.md). Verified June 2026.
 
-**The keystone.** Single source of truth for cross-package types and the typed opencrane-ui client.
-Consumed by the CLI, opencrane-ui, operator, and awareness SDK. Import from the barrel only.
+**The keystone.** Single source of truth for cross-package types and the typed opencrane-api client.
+Consumed by the CLI, opencrane-api, operator, and awareness SDK. Import from the barrel only.
 
 ## What's in `src/`
 
@@ -14,10 +14,10 @@ Consumed by the CLI, opencrane-ui, operator, and awareness SDK. Import from the 
 
 ## The type-generation pipeline
 
-The opencrane-ui emits `apps/opencrane-api/openapi.json`; the contracts `generate` script runs
+The opencrane-api emits `apps/opencrane-api/openapi.json`; the contracts `generate` script runs
 `openapi-typescript apps/opencrane-api/openapi.json -o src/generated/api.ts`, and `build` is
 `npm run generate -w @opencrane/contracts && tsc`. So **the OpenAPI spec drives the client types** — after changing a
-opencrane-ui route's request/response shape, regenerate here rather than hand-typing. Runtime client
+opencrane-api route's request/response shape, regenerate here rather than hand-typing. Runtime client
 is `openapi-fetch` (tiny, typed `GET`/`POST`/… over `paths`).
 
 ## CRD-mirroring enums (the canonical values)

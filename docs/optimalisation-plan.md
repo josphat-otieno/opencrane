@@ -177,7 +177,7 @@ Phases 1 and 2 compound (tighter packing on fewer nodes) and are the cheapest ne
     - the **fleet** host was already folded — `fleet-manager-ingress.yaml` renders `/api` + `/auth`
       unconditionally (the SPA's own Ingress owns `/`);
     - the **org** host is now folded behind an opt-in `ingress.sameOrigin` (default OFF → the
-      historical `/`→opencrane-ui render is byte-identical). Set `ingress.sameOrigin.enabled=true`
+      historical `/`→opencrane-api render is byte-identical). Set `ingress.sameOrigin.enabled=true`
       on the silo chart and Helm renders `/api` + `/gateway` + `/`→SPA natively.
     - both weownai deploy scripts' kubectl patches are now **idempotent** — they skip when the
       ingress already carries `/api` (chart-owned) and only fall back to a patch on the legacy

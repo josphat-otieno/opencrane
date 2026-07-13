@@ -81,7 +81,7 @@ See [`CHANGELOG.md`](CHANGELOG.md) for the capabilities shipped so far and [`pla
 OpenCrane is **Kubernetes-native** and **API-first**. A central **fleet** manages
 organisation lifecycle (ClusterTenant provisioning, CRDs, platform DNS, and identity
 brokering). Each customer organisation runs its own **silo**: a dedicated operator,
-opencrane-ui API, LiteLLM proxy, MCP gateway (Obot), knowledge base (Cognee), skill
+opencrane-api, LiteLLM proxy, MCP gateway (Obot), knowledge base (Cognee), skill
 registry, and database — all in an isolated namespace, with no shared data between orgs.
 
 Within each silo:
@@ -143,7 +143,7 @@ Legend:   [live] live today      [partial] partial / gated      [desired] desire
 | Silo operator | `apps/opencrane-api/` | Per-silo control plane: headless Express REST API (`/api/v1`) + in-silo controllers; emits `openapi.json` at build time |
 | Silo chart | `apps/opencrane-infra/` | Helm chart `opencrane-silo` — per-org silo: silo operator + planes (Cognee, LiteLLM, Obot, skill registry) + Langfuse + gateway. Deploy with `apps/opencrane-infra/deploy.sh`. |
 | Platform library | `libs/k8s-platform/` | Helm library chart (shared named templates), shared deploy engine (`k8s-deploy.sh`, `configure-oidc.sh`) + cluster provisioning (`provision.sh`, behind `--provision`), Terraform, migrations, tests, and `deploy-single-tenant.sh` |
-| CLI | `apps/cli/` | `oc` binary — administrative surface over the per-silo opencrane-ui API |
+| CLI | `apps/cli/` | `oc` binary — administrative surface over the per-silo opencrane-api |
 | Contracts | `libs/contracts/` | Generated TypeScript client + DTOs from `openapi.json`; consumed by CLI and external surfaces |
 | Docker | `apps/*/deploy/Dockerfile` | Per-app Dockerfiles (silo operator, tenant runtime, skill registry), built and published by `.github/workflows/docker.yml` |
 | Skills | `skills/shared/` | Org/team shared skill library |

@@ -2,7 +2,7 @@
 
 > Part of the OpenCrane agent guidance. See [`AGENTS.md`](../../AGENTS.md) for the index.
 
-The opencrane-ui database schema is owned **per domain**, mirroring the
+The opencrane-api database schema is owned **per domain**, mirroring the
 `libs/backend/<domain>/main` package layout (#153). One physical PostgreSQL database and one
 migration history remain, but every model/enum has exactly one owning domain.
 

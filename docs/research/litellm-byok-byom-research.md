@@ -1,6 +1,6 @@
 # Maximizing LiteLLM for OpenRouter-Style BYOK + BYOM on OpenCrane
 
-*Decision-ready architecture report — replacing the orphaned `ProviderApiKey` table and the `org-shared-secrets` broadcast with a opencrane-ui/cluster-scoped, DB-backed model registry, while keeping provider credentials central and per-tenant identity on LiteLLM virtual keys.*
+*Decision-ready architecture report — replacing the orphaned `ProviderApiKey` table and the `org-shared-secrets` broadcast with an opencrane-api/cluster-scoped, DB-backed model registry, while keeping provider credentials central and per-tenant identity on LiteLLM virtual keys.*
 
 ---
 
@@ -11,7 +11,7 @@ These were settled in discussion and supersede any inline text that predates the
 1. **Full AGPL, forever.** OpenRouter is **UI/CLI inspiration only** — we borrow the concepts (unified model catalog, per-key budgets, model-in-request), **not** the wire format. No OpenRouter client-slug/`provider`-object compatibility layer. Triangulate the surface with the WeOwnAI frontend, not openrouter.ai.
 2. **No fee — meter and manage only.** Drop the 5% BYOK fee / prepaid-credit wallet entirely. Budgets are pure cost controls; spend is reporting. 100% of any routing savings flow to the customer's / our provider bill.
 3. **No LiteLLM Enterprise license.** Enterprise code is proprietary and cannot ship in a distributed AGPL artifact regardless; the OSS workarounds below are therefore *permanent architecture*, not stopgaps.
-4. **BYOK is at the opencrane-ui / ClusterTenant level — never per-openclaw-tenant.** There are **two distinct key types** and only one is per-tenant:
+4. **BYOK is at the opencrane-api / ClusterTenant level — never per-openclaw-tenant.** There are **two distinct key types** and only one is per-tenant:
    - **Upstream provider key** (OpenAI/Anthropic/…): **central** (platform default) or **per-ClusterTenant** (a customer's own account, optional). Held by LiteLLM; tenants never see it.
    - **LiteLLM virtual key**: **per-openclaw-tenant**, minted by LiteLLM, carries budget + model allowlist + identity. The tenant calls LiteLLM with it and names the model in the request. *(Already built — `tenant-litellm-keys.ts`.)*
 5. **Secrets are k8s-native.** Provider keys ride the existing **GCP Secret Manager → External Secrets Operator (Workload Identity) → k8s Secret** pipeline (`external-secrets-store.yaml`, `external-secrets.yaml`). The "secret-manager backends are Enterprise" caveat was **narrower than first stated** — it refers only to LiteLLM *natively* reading from Vault/GCP-SM at runtime, which we don't need because we use ESO. **GKE application-layer Secrets encryption with Cloud KMS (CMEK) must be ON by default** (currently a Terraform gap — see §7).
@@ -129,7 +129,7 @@ Per decision #1, this is a **concept map**, not a compatibility target.
 | Per-model fallbacks | `router_settings.fallbacks` | OSS | ✅ |
 | Budgets / spend caps | `max_budget` + `budget_duration` | OSS | ✅ as cost controls |
 | Variant suffixes (`:nitro`/`:floor`), auto-router, presets, `provider` prefs object | partial / none | — | ❌ not pursued (UX sugar; would need a translation layer) |
-| **BYOK with passthrough fee** | `/credentials` or env-referenced models | OSS | ⚠️ **key yes, fee NO** — meter only (decision #2), and key is **opencrane-ui/ClusterTenant level** (decision #4) |
+| **BYOK with passthrough fee** | `/credentials` or env-referenced models | OSS | ⚠️ **key yes, fee NO** — meter only (decision #2), and key is **opencrane-api/ClusterTenant level** (decision #4) |
 | Credits / prepaid wallet, web-search plugin | — | — | ❌ not pursued |
 
 **Takeaway:** the load-bearing 80% (model registry + budgets + virtual keys + metering) is OSS and directly buildable; the routing-heuristic sugar is out of scope.
@@ -184,7 +184,7 @@ There is **no per-openclaw-tenant provider credential.** Re-key `GlobalBudgetSet
 
 > **Driven by Enterprise gating:** register models **global** (OSS) and restrict access via each virtual key's `models[]`, enforced by the control plane — because LiteLLM does not reliably enforce subset rules.
 
-### How "a key" and "a model" get added — end to end (opencrane-ui / cluster scope)
+### How "a key" and "a model" get added — end to end (opencrane-api / cluster scope)
 
 **Add a provider account (BYOK — platform or ClusterTenant admin, never openclaw):**
 1. `oc provider add --provider openai --token-file ./key` *(global)* or `... --cluster-tenant acme --token-file ./key`.
@@ -200,7 +200,7 @@ There is **no per-openclaw-tenant provider credential.** Re-key `GlobalBudgetSet
 
 ### Model selection precedence (explicit > skill > auto > default)
 
-Which model serves a call is resolved in precedence order, **bounded in every case by the virtual key's `models[]` allowlist** (opencrane-ui-enforced):
+Which model serves a call is resolved in precedence order, **bounded in every case by the virtual key's `models[]` allowlist** (opencrane-api-enforced):
 
 1. **Explicit model in the request** (user picks it in UI/CLI) → **used verbatim; no routing.**
 2. **Skill-pinned model** (a skill self-defines its model in the feat-skill-registry metadata) → used for that skill.
@@ -254,7 +254,7 @@ flowchart TD
 
 ## 6. API-first + `oc` CLI surface
 
-Honor the repo rule (`docs/agents/app-specific.md:30-34`): *"Every opencrane-ui capability must be API-first and expose a matching `oc` CLI command… a UI is just another client, never a privileged path."* New paths → `apps/opencrane-api/src/openapi/spec.ts` → regenerate `libs/contracts/src/generated/api.ts` → `oc` subcommands in `apps/cli/src/commands/`.
+Honor the repo rule (`docs/agents/app-specific.md:30-34`): *"Every opencrane-api capability must be API-first and expose a matching `oc` CLI command… a UI is just another client, never a privileged path."* New paths → `apps/opencrane-api/src/openapi/spec.ts` → regenerate `libs/contracts/src/generated/api.ts` → `oc` subcommands in `apps/cli/src/commands/`.
 
 | Concern | OpenAPI path | `oc` command | Notes |
 |---|---|---|---|
@@ -297,7 +297,7 @@ Caveats: the KMS key must be in the **same location** as the cluster; CMEK prote
 
 **Inject end-user id server-side.** A client can self-declare the `user` body field; set `x-litellm-end-user-id` at the gateway (headers win) and ensure no client path overrides it.
 
-**The "auth is OPEN on dev" prerequisite.** `apps/opencrane-api/src/infra/middleware/auth.middleware.ts:117` falls through to a dev bypass when no OIDC/`OPENCRANE_API_TOKEN`, and there is **no per-route RBAC** (`docs/agents/architecture.md:35`). The credential/model mutation routes handle live secrets and **must get ClusterTenant-scoped route authz before BYOK ships** — the single most important security prerequisite, and it's an OpenCrane opencrane-ui change.
+**The "auth is OPEN on dev" prerequisite.** `apps/opencrane-api/src/infra/middleware/auth.middleware.ts:117` falls through to a dev bypass when no OIDC/`OPENCRANE_API_TOKEN`, and there is **no per-route RBAC** (`docs/agents/architecture.md:35`). The credential/model mutation routes handle live secrets and **must get ClusterTenant-scoped route authz before BYOK ships** — the single most important security prerequisite, and it's an OpenCrane opencrane-api change.
 
 **If using the optional `/credentials` DB store:** set `LITELLM_SALT_KEY` **before** adding anything and **never rotate it** (rows become unrecoverable). Cached prompts/DB logs are **not** encrypted — fine here, since keys are resolved server-side and never appear in bodies.
 
@@ -332,7 +332,7 @@ Caveats: the KMS key must be in the **same location** as the cluster; CMEK prote
 
 **AGPL × LiteLLM (verified against repo `LICENSE`):** everything outside `enterprise/` is **MIT**; inside is proprietary. MIT is GPL/AGPL-compatible, and LiteLLM already runs as a **separate container** (`:4000`), so the combination is clean. **Never copy from `enterprise/`.** No Enterprise license (decision #3). Not legal advice — have counsel confirm.
 
-**Enterprise-gated → permanent OSS substitutes:** JWT/SSO → identity at OpenCrane; Organizations → Teams; team-scoped models → global + opencrane-ui allowlist; secret-manager connectors → ESO/GCP-SM; built-in guardrails → external guardrail service / `CustomGuardrail`; per-key-per-model budget → key/team/customer budgets + per-model RPM/TPM; audit/RBAC → OpenCrane's own.
+**Enterprise-gated → permanent OSS substitutes:** JWT/SSO → identity at OpenCrane; Organizations → Teams; team-scoped models → global + opencrane-api allowlist; secret-manager connectors → ESO/GCP-SM; built-in guardrails → external guardrail service / `CustomGuardrail`; per-key-per-model budget → key/team/customer budgets + per-model RPM/TPM; audit/RBAC → OpenCrane's own.
 
 **Version-pinning volatility:** pin a LiteLLM version and re-grep `premium_user` gating on every upgrade — the gate has misfired on basic OSS ops across releases. Resolve the Prometheus tier ambiguity by grepping the pinned source. Include LiteLLM's auth-path security history in the self-hosting review (shared Postgres surface).
 
@@ -342,4 +342,4 @@ Caveats: the KMS key must be in the **same location** as the cluster; CMEK prote
 
 ---
 
-*Grounding: OpenCrane claims cite `apps/opencrane-api/`, `apps/fleet-operator/`, `apps/cli/`, `platform/helm/`, `platform/terraform/`, `docs/agents/`. LiteLLM claims use the verified (post-fact-check) form. Reflects the locked decisions of 2026-06-18: full AGPL, no fee, no Enterprise license, BYOK at opencrane-ui/ClusterTenant level only, k8s-native secrets (GCP-SM + ESO + CMEK).*
+*Grounding: OpenCrane claims cite `apps/opencrane-api/`, `apps/fleet-operator/`, `apps/cli/`, `platform/helm/`, `platform/terraform/`, `docs/agents/`. LiteLLM claims use the verified (post-fact-check) form. Reflects the locked decisions of 2026-06-18: full AGPL, no fee, no Enterprise license, BYOK at opencrane-api/ClusterTenant level only, k8s-native secrets (GCP-SM + ESO + CMEK).*

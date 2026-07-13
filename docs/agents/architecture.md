@@ -22,13 +22,13 @@ The non-obvious shape of the system (verified June 2026). Read this before touch
 
 | Plane | Role | Talks to |
 |-------|------|----------|
-| **opencrane-ui** | API-first management surface (`/api/v1`), OIDC broker, source of truth for Tenants/AccessPolicies/Grants/MCP/Skills. Dual-writes CRDs + Postgres. | everything |
+| **opencrane-api** | API-first management surface (`/api/v1`), OIDC broker, source of truth for Tenants/AccessPolicies/Grants/MCP/Skills. Dual-writes CRDs + Postgres. | everything |
 | **operator** | Reconciles UserTenant (`Tenant`)/ClusterTenant/AccessPolicy CRs → namespaces, pods, Ingresses, NetworkPolicies, buckets. | Kubernetes API |
-| **Obot MCP gateway** | Config-slaved runtime gateway; **polls** opencrane-ui `GET /api/internal/obot-registry`. Tenant pods reach MCP servers *through* Obot. | opencrane-ui (poll), tenant pods |
-| **feat-skill-registry** | Entitlement-gated skill-bundle delivery; validates pod identity via TokenReview, proxies to opencrane-ui. Non-entitled → **404** (existence-hiding). | opencrane-ui, tenant pods |
+| **Obot MCP gateway** | Config-slaved runtime gateway; **polls** opencrane-api `GET /api/internal/obot-registry`. Tenant pods reach MCP servers *through* Obot. | opencrane-api (poll), tenant pods |
+| **feat-skill-registry** | Entitlement-gated skill-bundle delivery; validates pod identity via TokenReview, proxies to opencrane-api. Non-entitled → **404** (existence-hiding). | opencrane-api, tenant pods |
 | **feat-central-agents** | Background ingestion worker (Slack connector → Postgres `OrgDocument`). Not API-first. | external sources, Postgres |
 
-**Identity is multi-credential** — five non-interchangeable types: (1) OIDC session cookie (human operators), (2) OpenClaw bootstrap token (short-lived, one-device pairing), (3) OpenClaw device token (gateway-issued), (4) **projected SA token** (audience-bound: `aud=obot-gateway|feat-skill-registry|opencrane-ui`, ~600s rotated, in-cluster only, never handed to a browser), (5) static `OPENCRANE_API_TOKEN` (automation fallback, explicit migration target). One human OIDC login brokers the pod pairing — `POST /api/v1/auth/pod-token` resolves tenant **solely from the verified session email** (fail-closed `409 AMBIGUOUS_TENANT`), never from request input.
+**Identity is multi-credential** — five non-interchangeable types: (1) OIDC session cookie (human operators), (2) OpenClaw bootstrap token (short-lived, one-device pairing), (3) OpenClaw device token (gateway-issued), (4) **projected SA token** (audience-bound: `aud=obot-gateway|feat-skill-registry|opencrane-api`, ~600s rotated, in-cluster only, never handed to a browser), (5) static `OPENCRANE_API_TOKEN` (automation fallback, explicit migration target). One human OIDC login brokers the pod pairing — `POST /api/v1/auth/pod-token` resolves tenant **solely from the verified session email** (fail-closed `409 AMBIGUOUS_TENANT`), never from request input.
 
 **Two facts that catch agents out:**
 
@@ -65,5 +65,5 @@ Identity and authorization must be described centrally.
 ## OpenCrane-Specific Direction
 
 - Tenant workloads should use per-tenant Workload Identity for cloud storage and other tenant-scoped cloud resources.
-- Operator and opencrane-ui services should move toward explicit workload identities instead of implicit cluster-only trust.
+- Operator and opencrane-api services should move toward explicit workload identities instead of implicit cluster-only trust.
 - Network reachability does not imply authorization; authorization should come from IAM and RBAC, not location on the cluster network.

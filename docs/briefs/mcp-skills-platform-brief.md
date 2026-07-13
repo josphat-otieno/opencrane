@@ -4,7 +4,7 @@
 
 ## Goal
 
-Replace the policy-only "MCP Server Plane" and the shared-PVC skill mount with **two config-slaved ingress service planes**, both governed by a single opencrane-ui authority:
+Replace the policy-only "MCP Server Plane" and the shared-PVC skill mount with **two config-slaved ingress service planes**, both governed by a single opencrane-api authority:
 
 - **Obot MCP Gateway** — in-cluster MCP registry + gateway (runtime tool broker).
 - **Skill Registry & Delivery** — our org-aligned ClawHub alternative for skills management & sharing (content registry + scoped delivery).
@@ -48,7 +48,7 @@ Full cluster context lives in `README.md`; this brief covers the two service pla
 
 ## Authorization model (canonical — groups, not tiers)
 
-**The compiler is tier-agnostic.** It knows only **principals, groups, and grants** — it has no concept of "department", "team", or "project". Org structure is a opencrane-ui concern. This is deliberate: a fixed scope-tier enum would be baked into the compiler, CRDs, the versioned contract, the DB, and the UI, so adding or changing a level later would mean a migration across all of them **plus a fleet contract-version rollout**. Groups make the level set free to evolve with zero compiler/contract change. **Do not introduce a scope-tier enum anywhere downstream.**
+**The compiler is tier-agnostic.** It knows only **principals, groups, and grants** — it has no concept of "department", "team", or "project". Org structure is an opencrane-api concern. This is deliberate: a fixed scope-tier enum would be baked into the compiler, CRDs, the versioned contract, the DB, and the UI, so adding or changing a level later would mean a migration across all of them **plus a fleet contract-version rollout**. Groups make the level set free to evolve with zero compiler/contract change. **Do not introduce a scope-tier enum anywhere downstream.**
 
 **Primitives:**
 
@@ -85,7 +85,7 @@ The compiler never interprets what a group *means*.
 
 - **(0) config** — control plane → operator → plane: registries, IdP binding, gateway/auth, lifecycle. Drift-repaired.
 - **(1) grants** — control plane → plane: per-tenant compiled scope, pushed live.
-- **(2) contract** — opencrane-ui effective-contract endpoint → pod: versioned, pulled at loop boundaries.
+- **(2) contract** — opencrane-api effective-contract endpoint → pod: versioned, pulled at loop boundaries.
 - **(3) JWT** — pod → plane: short-lived, audience-bound identity.
 
 ## Skill registry & delivery (build thin, reuse the rest)
@@ -95,7 +95,7 @@ Build our own registry, but stand it on existing substrate — do **not** rebuil
 - **Reuse — storage + immutable digests:** The Zot OCI registry via **ORAS**. This realises the plan's "OCI digest-pinned bundles."
 - **Reuse — scanning:** Trivy/Grype on ingest.
 - **Reuse — discovery search:** Cognee dataset (no second vector index).
-- **Build (thin, ours in control plane):** scope tagging; promotion/demotion workflow (opencrane-ui-gated ingest, incl. mirroring curated bundles from upstream ClawHub / `anthropics/skills`); entitlement resolution (shared compiler); the delivery endpoint. 
+- **Build (thin, ours in control plane):** scope tagging; promotion/demotion workflow (opencrane-api-gated ingest, incl. mirroring curated bundles from upstream ClawHub / `anthropics/skills`); entitlement resolution (shared compiler); the delivery endpoint. 
 
 `SKILL.md` is the cross-vendor open standard (Anthropic + OpenAI, Dec 2025) — existing `skills/shared/**` files already conform.
 
@@ -109,7 +109,7 @@ Build our own registry, but stand it on existing substrate — do **not** rebuil
 
 The registry — not the contract — is the boundary. The pod can reach the ingress and is untrusted (prompt-injection), so enforce on **every read**, treating the verified `sub` as a mandatory filter:
 
-- **Split the surface by audience:** the pod-facing delivery endpoint supports *only* scoped `get-by-entitled-digest` — **no list/search verb**. Catalog/search is reachable only by the opencrane-ui / human UI.
+- **Split the surface by audience:** the pod-facing delivery endpoint supports *only* scoped `get-by-entitled-digest` — **no list/search verb**. Catalog/search is reachable only by the opencrane-api / human UI.
 - **Content-addressable pull is still entitlement-checked:** knowing a digest must not grant the blob.
 - **Existence-hiding:** non-entitled lookups return `404`/empty, not `403`.
 - **NetworkPolicy:** pods reach only the delivery ingress, never the backing OCI store.
@@ -127,7 +127,7 @@ Extend the control plane to own the full lifecycle of MCP servers available to t
 
 - `McpServer` — canonical registry entry: `{ id, name, description, transport (stdio | sse | streamable-http), image?, url?, envSchema, configSchema, tags[], sourceRef?, createdAt, updatedAt }`.
 - `McpServerGrant` — an instance of the canonical `Grant`: `{ mcpServerId, targetGroupId, effect (allow | deny), priority, grantedBy, createdAt }`. The group-based compiler rolls these into the effective set (deny-wins → priority).
-- `McpServerCredential` — pointer to the Obot token store entry (never stored in the opencrane-ui DB directly): `{ mcpServerId, obotCredentialRef, rotatedAt }`.
+- `McpServerCredential` — pointer to the Obot token store entry (never stored in the opencrane-api DB directly): `{ mcpServerId, obotCredentialRef, rotatedAt }`.
 
 **Routes** (`libs/backend/mcp/main/src/routes/mcp-servers.ts`):
 
@@ -191,7 +191,7 @@ Support installing MCP servers and skills from external registries and curated u
 | [Anthropic skills](https://github.com/anthropics/skills) | Skills | Mirror `SKILL.md` bundles into OCI/ORAS via ORAS push |
 | ClawHub (future) | Skills + MCPs | OCI pull from upstream registry |
 | Custom URL / Git repo | Either | Clone + ingest pipeline |
-| Manual upload | Either | Direct upload via opencrane-ui UI/API |
+| Manual upload | Either | Direct upload via opencrane-ui / opencrane-api |
 
 **Third-party source data model** (Prisma):
 
@@ -266,7 +266,7 @@ Split by ownership:
 6. **Skill registry service:** new ingress service over OCI/ORAS; scoped `get-by-entitled-digest`; entitlement enforcement; ingest/scan pipeline.
 7. **Helm/network:** deploy Obot headless (admin disabled, IdP bound to central OIDC); deploy skill registry + OCI store; NetworkPolicies restricting tenant → plane ingress only (no path to Obot DB or OCI store).
 8. **Scheduler:** central per-tenant scheduler that owns schedules and dispatches into claws as the tenant.
-9. **UI** (`apps/opencrane-api-ui`): MCP install, skill catalog/install, permission-set management, schedule management (PrimeNG, shared components per `AGENTS.md`).
+9. **UI** (`apps/opencrane-ui`): MCP install, skill catalog/install, permission-set management, schedule management (PrimeNG, shared components per `AGENTS.md`).
 
 ## Acceptance criteria (testable)
 
@@ -292,4 +292,4 @@ Split by ownership:
 
 - Obot's bundled chat client (discarded).
 - Contract *schema* version bumps ride the existing canary rollout, not this work.
-- Public-registry browsing inside the agent runtime (humans browse/request via the opencrane-ui UI only).
+- Public-registry browsing inside the agent runtime (humans browse/request via the opencrane-ui only).

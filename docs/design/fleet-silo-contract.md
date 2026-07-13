@@ -56,7 +56,7 @@ Current CRD fields (`spec`), each grounded in the CRD YAML and the `ClusterTenan
 | `isolationTier` | enum `shared \| dedicatedNodes \| dedicatedCluster` | yes (default `shared`) | Isolation strength. `dedicatedCluster` requires a registered external provisioner (surface 4). |
 | `compute` | `{ mode: shared \| dedicated, nodePool? }` | no (default `shared`) | Bin-pack on shared nodes vs. pin to a dedicated pool. `nodePool` required when `mode=dedicated`. |
 | `resources.quota` | `{ cpu?, memory?, pods?, storage?, gpu? }` | no | Aggregate ceiling enforced as `ResourceQuota`/`LimitRange` over the org namespace. |
-| `owner` | `{ subject, email? }` | yes at create (opencrane-ui-enforced, not CRD-enforced) | The org root owner's OIDC `sub` (+ IdP-verified email). The **only channel** for owner identity — the operator has no DB access and attributes the auto-seeded default `Tenant` from this field. |
+| `owner` | `{ subject, email? }` | yes at create (opencrane-api-enforced, not CRD-enforced) | The org root owner's OIDC `sub` (+ IdP-verified email). The **only channel** for owner identity — the operator has no DB access and attributes the auto-seeded default `Tenant` from this field. |
 
 **Contract gap — `spec.zitadel` (see surface 3).** The shared TypeScript type
 (`ClusterTenantZitadel` in `libs/contracts/src/cluster-tenant.types.ts`), the fleet writer
