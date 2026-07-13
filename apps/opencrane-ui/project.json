@@ -1,0 +1,103 @@
+{
+	"name": "opencrane-ui",
+	"$schema": "../../node_modules/nx/schemas/project-schema.json",
+	"projectType": "application",
+	"sourceRoot": "apps/opencrane-ui/src",
+	"prefix": "wo",
+	"tags": [
+		"scope:app",
+		"type:app"
+	],
+	"targets": {
+		"build": {
+			"executor": "@angular-devkit/build-angular:application",
+			"outputs": [
+				"{options.outputPath}"
+			],
+			"options": {
+				"outputPath": "dist/apps/opencrane-ui",
+				"index": "apps/opencrane-ui/src/index.html",
+				"browser": "apps/opencrane-ui/src/main.ts",
+				"polyfills": [],
+				"tsConfig": "apps/opencrane-ui/tsconfig.app.json",
+				"inlineStyleLanguage": "scss",
+				"assets": [
+					{
+						"glob": "**/*",
+						"input": "apps/opencrane-ui/public"
+					}
+				],
+				"styles": [
+					"apps/opencrane-ui/src/styles.scss"
+				],
+				"scripts": [],
+				"allowedCommonJsDependencies": [
+					"markdown-it-task-lists"
+				]
+			},
+			"configurations": {
+				"production": {
+					"budgets": [
+						{
+							"type": "initial",
+							"maximumWarning": "1MB",
+							"maximumError": "2MB"
+						},
+						{
+							"type": "anyComponentStyle",
+							"maximumWarning": "10kB",
+							"maximumError": "14kB"
+						}
+					],
+					"outputHashing": "all",
+					"fileReplacements": [
+						{
+							"replace": "apps/opencrane-ui/src/environments/environment.ts",
+							"with": "apps/opencrane-ui/src/environments/environment.prod.ts"
+						}
+					]
+				},
+				"development": {
+					"optimization": false,
+					"extractLicenses": false,
+					"sourceMap": true
+				},
+				"development-live": {
+					"optimization": false,
+					"extractLicenses": false,
+					"sourceMap": true,
+					"fileReplacements": [
+						{
+							"replace": "apps/opencrane-ui/src/environments/environment.ts",
+							"with": "apps/opencrane-ui/src/environments/environment.dev-live.ts"
+						}
+					]
+				}
+			},
+			"defaultConfiguration": "production"
+		},
+		"serve": {
+			"executor": "@angular-devkit/build-angular:dev-server",
+			"options": {
+				"proxyConfig": "apps/opencrane-ui/proxy.conf.json",
+				"allowedHosts": [
+					"dev.opencrane.ai",
+					".dev.opencrane.ai"
+				]
+			},
+			"configurations": {
+				"production": {
+					"buildTarget": "opencrane-ui:build:production"
+				},
+				"development": {
+					"buildTarget": "opencrane-ui:build:development"
+				},
+				"development-live": {
+					"buildTarget": "opencrane-ui:build:development-live",
+					"proxyConfig": "apps/opencrane-ui/proxy.dev-live.conf.json"
+				}
+			},
+			"defaultConfiguration": "development"
+		}
+	}
+}

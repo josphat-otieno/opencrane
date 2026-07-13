@@ -3,7 +3,8 @@
 #
 # DEFAULT FLOW (plain-k8s on GKE): a single `terraform apply` provisions just a
 # GKE cluster on the project's default VPC — nothing else required. You then
-# install OpenCrane the standard way: the per-role charts (apps/fleet-platform, apps/clustertenant-platform).
+# install OpenCrane the standard way: the per-role charts (the fleet-platform chart, now in
+# the WeOwnAI repo per italanta/opencrane#150, and apps/opencrane-infra here).
 # Custom VPC/NAT, Artifact Registry, Cloud DNS, GCS-backed storage, and even
 # installing the Helm chart via Terraform (enable_app_deploy) are all OPT-IN
 # (see variables.tf).
@@ -109,6 +110,7 @@ module "app_deploy"
   domain             = var.domain
   namespace          = "opencrane"
   enable_gcs_storage = var.enable_gcs_storage
+  fleet_chart_path   = var.fleet_chart_path
 
   depends_on = [module.gke]
 }
@@ -117,7 +119,7 @@ module "app_deploy"
 #
 # Default flow prints the ingress IP and you point DNS at it manually. Enable to have
 # Terraform manage the Cloud DNS zone, the install-time platform records (apex, `*.<base>`,
-# control-plane host), and the shared `roles/dns.admin` Workload-Identity binding that BOTH
+# opencrane-ui host), and the shared `roles/dns.admin` Workload-Identity binding that BOTH
 # external-dns and the cert-manager DNS-01 solver impersonate. Per-org/per-host records are
 # NOT written here — external-dns reconciles them at runtime from the operator's DNSEndpoint
 # CRs.

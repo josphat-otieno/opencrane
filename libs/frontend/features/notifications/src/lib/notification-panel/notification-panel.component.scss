@@ -1,0 +1,166 @@
+.wo-notif {
+	position: absolute;
+	left: 100%;
+	top: 0;
+	margin-left: 8px;
+	z-index: 50;
+	display: flex;
+	flex-direction: column;
+	width: 320px;
+	background: var(--card);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+	max-height: calc(100vh - 32px);
+	overflow: hidden;
+
+	&__header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 12px 16px;
+		border-bottom: 1px solid var(--border);
+	}
+
+	&__title {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 14px;
+	}
+
+	&__count {
+		font-size: 10px;
+		background: var(--accent);
+		color: var(--accent-foreground);
+		border-radius: 10px;
+		padding: 1px 6px;
+	}
+
+	&__header-actions {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+	}
+
+	&__mark-read {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		padding: 4px 8px;
+		border-radius: var(--radius);
+		font-size: 11px;
+		color: var(--muted-foreground);
+
+		&:hover {
+			background: var(--secondary);
+		}
+
+		i {
+			font-size: 10px;
+		}
+	}
+
+	&__close {
+		padding: 4px;
+		margin-left: 4px;
+		color: var(--muted-foreground);
+
+		&:hover {
+			color: var(--foreground);
+		}
+
+		i {
+			font-size: 13px;
+		}
+	}
+
+	&__list {
+		overflow-y: auto;
+	}
+
+	&__row {
+		display: flex;
+		gap: 12px;
+		padding: 12px 16px;
+		border-bottom: 1px solid var(--border);
+		cursor: pointer;
+		transition: background 120ms ease;
+
+		&:hover {
+			background: color-mix(in srgb, var(--secondary) 40%, transparent);
+		}
+	}
+
+	&__icon {
+		width: 28px;
+		height: 28px;
+		border-radius: var(--radius);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		margin-top: 2px;
+
+		i {
+			font-size: 12px;
+		}
+	}
+
+	&__body {
+		flex: 1;
+		min-width: 0;
+	}
+
+	&__row-head {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 8px;
+	}
+
+	&__row-title {
+		font-size: 12px;
+		line-height: 1.4;
+		margin: 0;
+
+		&--unread {
+			font-weight: 500;
+		}
+	}
+
+	&__dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		flex-shrink: 0;
+		margin-top: 6px;
+	}
+
+	&__row-body {
+		font-size: 11px;
+		line-height: 1.5;
+		color: var(--muted-foreground);
+		margin: 2px 0 0;
+	}
+
+	&__row-meta {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		margin-top: 8px;
+
+		span {
+			font-size: 10px;
+			color: var(--muted-foreground);
+		}
+
+		button {
+			font-size: 11px;
+
+			&:hover {
+				opacity: 0.7;
+			}
+		}
+	}
+}

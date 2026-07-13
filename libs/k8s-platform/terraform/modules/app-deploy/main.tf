@@ -89,7 +89,7 @@ resource "kubernetes_manifest" "postgresql_cluster"
   ]
 }
 
-# ---- Kubernetes Secret with DATABASE_URL for the control-plane ----
+# ---- Kubernetes Secret with DATABASE_URL for the opencrane-ui ----
 
 resource "kubernetes_secret" "database_url"
 {
@@ -180,7 +180,9 @@ resource "helm_release" "opencrane"
   create_namespace = true
   # Chart split (Option 2): the once-per-cluster FLEET chart (bootstrap + fleet-manager).
   # Per-org SILO charts deploy dynamically out-of-band, not as a static terraform release.
-  chart            = "${path.module}/../../../../../apps/fleet-platform"
+  # The fleet-platform chart itself moved to the WeOwnAI repo (italanta/opencrane#150); pass its
+  # local path via var.fleet_chart_path.
+  chart            = var.fleet_chart_path
   wait             = true
   timeout          = 600
 
@@ -313,10 +315,10 @@ resource "kubernetes_job" "db_migrate"
         containers
         {
           name    = "migrate"
-          image   = "${var.registry_url}/control-plane:${var.image_tag}"
+          image   = "${var.registry_url}/opencrane-ui:${var.image_tag}"
           command = ["npx", "prisma", "migrate", "deploy"]
 
-          working_dir = "/app/apps/clustertenant-operator"
+          working_dir = "/app/apps/opencrane"
 
           env
           {

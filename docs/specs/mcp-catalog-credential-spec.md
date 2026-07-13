@@ -71,7 +71,7 @@ Admin (Obot Admin role) adds/publishes a server (UI or **GitOps catalogue**, see
 User (Basic User) sees only servers an access policy grants them (via Obot's **registry API** `/v0.1/servers`, Auth mode → per-user). Install = connect/enable; Obot prepares a per-user connection (+ prompts for credentials, §5.3).
 
 ### 5.3 User — connect a credential (secure, out-of-band — never through the LLM)
-Entry channel is **human → (WeOwnAI/control-plane) → Obot**, OIDC-authenticated, separate from the agent's chat/LLM/MCP channel.
+Entry channel is **human → (WeOwnAI/opencrane-ui) → Obot**, OIDC-authenticated, separate from the agent's chat/LLM/MCP channel.
 - **Single-user (per-user key):** user enters the server's `sensitive` `env` params in Obot when enabling → Obot stores + injects them as env into that user's server instance. Write-only; audit the event, not the value.
 - **Multi-user (shared key):** admin pre-configures one key for all users.
 - **Remote / self-auth (OAuth):** browser OAuth per the MCP spec; Obot does the exchange.

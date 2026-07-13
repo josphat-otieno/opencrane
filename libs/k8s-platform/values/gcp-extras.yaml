@@ -4,7 +4,8 @@
 # beyond a plain-Kubernetes deploy. None of these are required for a working
 # GKE install — the baseline in values/gcp.yaml runs as standard k8s.
 #
-# Usage:
+# Usage (assumes a checked-out copy of the fleet-platform chart, which moved to the
+# WeOwnAI repo per italanta/opencrane#150):
 #   helm install opencrane apps/fleet-platform \
 #     -f libs/k8s-platform/values/gcp.yaml \
 #     -f libs/k8s-platform/values/gcp-extras.yaml \

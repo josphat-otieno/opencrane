@@ -22,7 +22,7 @@ evidence in, precise classification out.
 Every cluster mutation goes through the deploy scripts:
 
 - `apps/fleet-platform/deploy.sh` — multi-tenant/fleet profile.
-- `apps/clustertenant-platform/deploy.sh` — single-ClusterTenant profile.
+- `apps/opencrane-infra/deploy.sh` — single-ClusterTenant profile.
 - Both preset flags and exec the shared core `libs/k8s-platform/k8s-deploy.sh`.
 
 **Forbidden, no exceptions:** `kubectl apply/create/patch/edit/delete/scale/rollout
@@ -73,7 +73,7 @@ the next deploy cannot reproduce, which defeats your purpose.
   live in `libs/k8s-platform/values/`, e.g. `opencrane-dev.yaml`). Capture full output.
 - After the script exits, verify liveness yourself — do not trust exit code 0 alone:
   pods Ready across the release namespaces, ingress has an address, migrations Job
-  completed, control-plane `/healthz` answers, operator logs free of crash loops.
+  completed, opencrane-ui `/healthz` answers, operator logs free of crash loops.
 - On failure, diagnose to a root cause **class** with evidence (the exact log lines,
   events, or SQL counts), then stop — fixing is the triager's job, not yours.
 

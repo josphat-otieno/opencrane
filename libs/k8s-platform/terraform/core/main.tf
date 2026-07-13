@@ -54,6 +54,15 @@ variable "helm_values_file"
   default     = ""
 }
 
+variable "fleet_chart_path"
+{
+  # The fleet-operator/fleet-platform surface moved to the WeOwnAI repo (italanta/opencrane#150)
+  # and no longer ships in this repo. Point this at a checked-out copy of WeOwnAI's
+  # apps/fleet-platform chart (local path, or a `helm pull`-ed archive dir).
+  description = "Path to the fleet-platform Helm chart (now maintained in the WeOwnAI repo)"
+  type        = string
+}
+
 resource "kubernetes_namespace" "opencrane"
 {
   metadata
@@ -66,10 +75,12 @@ resource "helm_release" "opencrane"
 {
   name       = "opencrane"
   # Chart split (Option 2): terraform provisions the cluster + the once-per-cluster FLEET chart
-  # (bootstrap + fleet-manager). Per-org SILO charts (apps/clustertenant-platform) are deployed
-  # DYNAMICALLY out-of-band (apps/clustertenant-platform/deploy.sh today; the fleet operator auto-stamps them in S2),
+  # (bootstrap + fleet-manager). Per-org SILO charts (apps/opencrane-infra) are deployed
+  # DYNAMICALLY out-of-band (apps/opencrane-infra/deploy.sh today; the fleet operator auto-stamps them in S2),
   # so they are intentionally NOT a static terraform release.
-  chart      = "${path.module}/../../../../apps/fleet-platform"
+  # The fleet-platform chart itself moved to the WeOwnAI repo (italanta/opencrane#150); pass its
+  # local path via var.fleet_chart_path.
+  chart      = var.fleet_chart_path
   namespace  = kubernetes_namespace.opencrane.metadata[0].name
   wait       = true
   timeout    = 600

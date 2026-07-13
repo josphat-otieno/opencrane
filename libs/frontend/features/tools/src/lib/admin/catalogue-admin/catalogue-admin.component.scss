@@ -1,0 +1,33 @@
+:host {
+	display: block;
+	height: 100%;
+	overflow-y: auto;
+	scrollbar-width: none;
+}
+
+.wo-admin__name {
+	font-size: 13px;
+}
+
+.wo-admin__desc {
+	font-size: 11px;
+	color: var(--muted-foreground);
+	margin-top: 2px;
+}
+
+.wo-admin__muted {
+	color: var(--muted-foreground);
+}
+
+.wo-admin__actions {
+	text-align: right;
+	white-space: nowrap;
+
+	.wo-tools__act + .wo-tools__act {
+		margin-left: 14px;
+	}
+}
+
+.wo-admin__row--off {
+	opacity: 0.55;
+}

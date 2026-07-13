@@ -6,17 +6,21 @@
 # Since the chart split (Option 2) there is no single co-located chart — a single-tenant
 # install is the FLEET chart + ONE SILO chart, driven here in two passes:
 #
-#   1. FLEET chart (apps/fleet-platform): cluster bootstrap (CRDs, cert-manager issuer,
+#   1. FLEET chart (fleet-platform): cluster bootstrap (CRDs, cert-manager issuer,
 #      external-secrets, otel, monitoring, docs, main-network default-deny) + the
 #      fleet-manager, with self-service OFF and exactly ONE ClusterTenant SEEDED. The
 #      fleet operator reconciles that CR and binds the org namespace `opencrane-<org>`.
-#   2. SILO chart (apps/clustertenant-platform): the org's control-plane + runtime planes,
+#      The fleet-operator/fleet-platform surface moved to the WeOwnAI repo (see
+#      italanta/opencrane#150) — point FLEET_CHART_DIR at a checked-out copy of that
+#      repo's fleet-platform chart (e.g. ../weownai/apps/fleet-platform).
+#   2. SILO chart (apps/opencrane-infra): the org's opencrane-ui + runtime planes,
 #      installed into `opencrane-<org>` (delegated to that app's deploy.sh).
 #
 # Both passes run through the shared engine (libs/k8s-platform/k8s-deploy.sh) so cluster
 # work cannot diverge; this script only presets the single-tenant value flags + ordering.
 #
 # Usage:
+#   FLEET_CHART_DIR=/path/to/weownai/apps/fleet-platform \
 #   libs/k8s-platform/deploy-single-tenant.sh \
 #       --base-domain dev.opencrane.ai \
 #       --org-name acme --org-owner-email owner@acme.example \
@@ -26,15 +30,22 @@
 # --base-domain, --org-name and --org-owner-email are required (the org cannot be seeded
 # without an identity + a name + a domain to serve it at).
 #
-# Prereqs: kubectl (pointed at the target cluster) and helm.
+# Prereqs: kubectl (pointed at the target cluster), helm, and a checked-out fleet-platform
+# chart (FLEET_CHART_DIR) — that chart no longer lives in this repo.
 # =============================================================================
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CORE="$SCRIPT_DIR/k8s-deploy.sh"
-FLEET_CHART="$REPO_ROOT/apps/fleet-platform"
-SILO_DEPLOY="$REPO_ROOT/apps/clustertenant-platform/deploy.sh"
+FLEET_CHART="${FLEET_CHART_DIR:-}"
+SILO_DEPLOY="$REPO_ROOT/apps/opencrane-infra/deploy.sh"
+
+if [[ -z "$FLEET_CHART" || ! -d "$FLEET_CHART" ]]; then
+  echo -e "\033[0;31m[single-tenant]\033[0m The fleet-platform chart moved to the WeOwnAI repo (italanta/opencrane#150) and no longer ships in opencrane." >&2
+  echo -e "\033[0;31m[single-tenant]\033[0m Set FLEET_CHART_DIR to a checked-out copy of WeOwnAI's apps/fleet-platform and re-run." >&2
+  exit 1
+fi
 
 ORG_NAME=""
 ORG_DISPLAY_NAME=""
@@ -93,8 +104,8 @@ FLEET_SET=(
 [[ -n "$ORG_DISPLAY_NAME" ]] && FLEET_SET+=(--set "clusterTenant.seed.displayName=$ORG_DISPLAY_NAME")
 OPENCRANE_CHART_DIR="$FLEET_CHART" "$CORE" "${FLEET_SET[@]}" "${PASSTHROUGH[@]}"
 
-# --- Pass 2: the SILO chart for that one org (its control-plane + planes in opencrane-<org>). ---
+# --- Pass 2: the SILO chart for that one org (its opencrane-ui + planes in opencrane-<org>). ---
 # The fleet operator (pass 1) binds opencrane-<org>; the silo install converges into it (the
 # operator's namespace apply is idempotent, so either ordering of the namespace settles).
-log "Pass 2/2: silo chart for org '$ORG_NAME' (control-plane + planes in opencrane-$ORG_NAME)"
+log "Pass 2/2: silo chart for org '$ORG_NAME' (opencrane-ui + planes in opencrane-$ORG_NAME)"
 exec "$SILO_DEPLOY" --base-domain "$BASE_DOMAIN" --cluster-tenant "$ORG_NAME" "${PASSTHROUGH[@]}"

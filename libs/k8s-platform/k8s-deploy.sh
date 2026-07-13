@@ -10,11 +10,12 @@
 # This is the shared core. the deploy scripts' --provision (provision.sh) provisions a cluster
 # and then call this script.
 #
-# Usage (normally invoked via a profile — apps/fleet-platform/deploy.sh or
-# apps/clustertenant-platform/deploy.sh — which preset the value flags and exec this core):
+# Usage (normally invoked via a profile — the fleet-platform chart's deploy.sh (now in the
+# WeOwnAI repo, italanta/opencrane#150) or apps/opencrane-infra/deploy.sh — which preset
+# the value flags and exec this core):
 #   libs/k8s-platform/k8s-deploy.sh [--base-domain DOMAIN] [--namespace NS] [--release NAME]
 #                            [--image-tag TAG] [--storage-class SC]
-#                            [--control-plane-tag TAG] [--operator-tag TAG]
+#                            [--opencrane-ui-tag TAG] [--operator-tag TAG]
 #                            [--tenant-tag TAG]
 #                            [--oidc-issuer-url URL] [--oidc-client-id ID]
 #                            [--oidc-redirect-uri URI] [--oidc-client-secret SECRET]
@@ -38,7 +39,7 @@
 #
 # Image-tag float guard: after a prior release's --reset-then-reuse-values upgrade, component
 # images may be pinned to a specific tag (e.g. sha-5036a0a). If this invocation does not restate
-# those tags (no --control-plane-tag/--operator-tag/--tenant-tag) and does not explicitly float
+# those tags (no --opencrane-ui-tag/--operator-tag/--tenant-tag) and does not explicitly float
 # (OPENCRANE_ALLOW_TAG_FLOAT=1), the script detects the prior pin, warns loudly, and
 # automatically re-pins from the last release so pinned tags float silently (a live gotcha from
 # 2026-07-12 deploy). Pass OPENCRANE_ALLOW_TAG_FLOAT=1 to intentionally float tags to chart-default.
@@ -98,9 +99,9 @@
 # nobody (fail-closed). Also accepted via the OPENCRANE_PLATFORM_OPERATOR_SEED_EMAIL
 # env var. Never commit a real owner email into the repo.
 #
-# --image-tag pins all three platform images (control-plane, operator, tenant)
+# --image-tag pins all three platform images (opencrane-ui, operator, tenant)
 # to the same tag. To roll a SINGLE component to a different build, pass the
-# matching per-component flag (e.g. --control-plane-tag sha-abc123); it overrides
+# matching per-component flag (e.g. --opencrane-ui-tag sha-abc123); it overrides
 # --image-tag for that component only. ALWAYS bump component images this way —
 # never `kubectl set image` / `kubectl patch` a managed deployment. An imperative
 # patch creates a `kubectl-*` field manager that owns the image field on the live
@@ -112,12 +113,13 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # The Helm chart no longer sits beside this engine — it is per-role and lives in the calling
-# app (apps/fleet-platform = the fleet chart, apps/clustertenant-platform = the silo chart).
-# Each app's deploy.sh wrapper exports OPENCRANE_CHART_DIR to its own chart dir before exec'ing
-# this engine; running k8s-deploy.sh directly without it fails loud rather than guessing.
+# app (the fleet chart, now in the WeOwnAI repo per italanta/opencrane#150; apps/opencrane-infra
+# = the silo chart, still here). Each app's deploy.sh wrapper exports OPENCRANE_CHART_DIR to its
+# own chart dir before exec'ing this engine; running k8s-deploy.sh directly without it fails loud
+# rather than guessing.
 CHART_DIR="${OPENCRANE_CHART_DIR:-}"
 if [[ -z "$CHART_DIR" ]]; then
-  echo "[k8s-deploy] OPENCRANE_CHART_DIR is unset. Run a role wrapper deploy.sh — apps/fleet-platform/deploy.sh or apps/clustertenant-platform/deploy.sh — not k8s-deploy.sh directly." >&2
+  echo "[k8s-deploy] OPENCRANE_CHART_DIR is unset. Run a role wrapper deploy.sh — the fleet-platform chart's deploy.sh (now in WeOwnAI) or apps/opencrane-infra/deploy.sh — not k8s-deploy.sh directly." >&2
   exit 1
 fi
 
@@ -157,7 +159,7 @@ OIDC_REDIRECT_URI="${OIDC_REDIRECT_URI:-}"
 # env so it never has to sit in a values file. When OIDC is configured this installer
 # CREATES the K8s Secret the chart references (client secret + an auto-generated session
 # secret) and wires clustertenantManager.oidc.existingSecret — previously the secret was ASSUMED
-# to already exist, so a fresh OIDC install rendered a control-plane that crash-looped on a
+# to already exist, so a fresh OIDC install rendered a opencrane-ui that crash-looped on a
 # missing Secret. The session secret signs login cookies; we generate one when not supplied.
 OIDC_CLIENT_SECRET="${OPENCRANE_OIDC_CLIENT_SECRET:-${OIDC_CLIENT_SECRET:-}}"
 OIDC_SESSION_SECRET="${OPENCRANE_OIDC_SESSION_SECRET:-${OIDC_SESSION_SECRET:-}}"
@@ -208,7 +210,7 @@ INGRESS_NGINX_NAMESPACE="ingress-nginx"
 INSTALL_EXTERNAL_DNS="${OPENCRANE_INSTALL_EXTERNAL_DNS:-1}"
 EXTERNAL_DNS_NAMESPACE="external-dns"
 # The CloudNativePG operator is a CLUSTER-WIDE singleton (one deployment watches every
-# namespace). The central install brings it up once; a per-silo install (apps/clustertenant-platform/deploy.sh) must
+# namespace). The central install brings it up once; a per-silo install (apps/opencrane-infra/deploy.sh) must
 # NOT re-install it — a second cluster-wide operator would fight the first over the same CRs.
 # `--no-db-operator` (or OPENCRANE_INSTALL_DB_OPERATOR=0) skips the operator install while STILL
 # applying this release's own per-namespace CNPG `Cluster` CR + secrets (reconciled by the
@@ -235,8 +237,9 @@ PREFLIGHT="${OPENCRANE_PREFLIGHT:-0}"
 # (ClusterTenants) or many isolated instances in one cluster, so cross-tenant isolation is
 # mandatory rather than advisory. It is a deliberate flag (never inferred), so the fail-closed
 # checks below can trust it: preflight makes the NetworkPolicy-enforcing-CNI check FATAL (not
-# advisory) under multi-CT, and the fleet profile passes it so `apps/fleet-platform/deploy.sh`
-# runs a mandatory preflight. Also via OPENCRANE_MULTI_CT=1.
+# advisory) under multi-CT, and the fleet profile passes it so the fleet-platform chart's
+# deploy.sh (now in the WeOwnAI repo, italanta/opencrane#150) runs a mandatory preflight.
+# Also via OPENCRANE_MULTI_CT=1.
 MULTI_CT="${OPENCRANE_MULTI_CT:-0}"
 
 # --auto-ingress-ip derives ingress.externalIp from the ingress-nginx LoadBalancer after
@@ -244,7 +247,7 @@ MULTI_CT="${OPENCRANE_MULTI_CT:-0}"
 # Opt-in; an explicit ingress.externalIp --set always wins. Also via OPENCRANE_AUTO_INGRESS_IP=1.
 AUTO_INGRESS_IP="${OPENCRANE_AUTO_INGRESS_IP:-0}"
 # --verify runs an advisory post-deploy check (pods Running, DNSEndpoints present, external-dns
-# error-free, control-plane host resolves). Never fails the install. Also via OPENCRANE_VERIFY=1.
+# error-free, opencrane-ui host resolves). Never fails the install. Also via OPENCRANE_VERIFY=1.
 VERIFY="${OPENCRANE_VERIFY:-0}"
 
 DB_CLUSTER="opencrane-db"
@@ -264,7 +267,7 @@ while [[ $# -gt 0 ]]; do
     --namespace)     NAMESPACE="$2"; shift 2 ;;
     --release)       RELEASE="$2"; shift 2 ;;
     --image-tag)        IMAGE_TAG="$2"; shift 2 ;;
-    --control-plane-tag) CONTROL_PLANE_TAG="$2"; shift 2 ;;
+    --opencrane-ui-tag) CONTROL_PLANE_TAG="$2"; shift 2 ;;
     --operator-tag)     OPERATOR_TAG="$2"; shift 2 ;;
     --tenant-tag)       TENANT_TAG="$2"; shift 2 ;;
     --storage-class) STORAGE_CLASS="$2"; shift 2 ;;
@@ -533,7 +536,7 @@ if [[ "$INSTALL_DB_OPERATOR" == "1" ]]; then
     --namespace "$NAMESPACE" --create-namespace --wait \
     --set-string monitoring.podMonitor.enabled=false
 else
-  log "CloudNativePG operator: install skipped (--no-db-operator) — ASSUMING a cluster-wide operator is already running (installed by the central release). This release's per-namespace Cluster CR is applied and only reconciles if that operator exists; apps/clustertenant-platform/deploy.sh preflights for it."
+  log "CloudNativePG operator: install skipped (--no-db-operator) — ASSUMING a cluster-wide operator is already running (installed by the central release). This release's per-namespace Cluster CR is applied and only reconciles if that operator exists; apps/opencrane-infra/deploy.sh preflights for it."
 fi
 
 log "Creating database credentials…"
@@ -934,7 +937,7 @@ helm_args=(upgrade --install "$RELEASE" "$CHART_DIR" --namespace "$NAMESPACE" --
   --set "litellm.storeModelInDb=true")
 
 # Pinned-tag float guard: detect if the prior release pinned component images to a specific
-# tag. If this invocation does not restate them (no --control-plane-tag/--operator-tag/--tenant-tag),
+# tag. If this invocation does not restate them (no --opencrane-ui-tag/--operator-tag/--tenant-tag),
 # re-pin from the prior release so they don't silently float to chart-default (a 2026-07-12 live gotcha).
 # Escape: OPENCRANE_ALLOW_TAG_FLOAT=1 to intentionally float tags.
 _enforce_tag_pins() {
@@ -1016,8 +1019,8 @@ helm_args+=(--set "langfuse.clickhouse.auth.password=$LANGFUSE_CH_PASSWORD")
 # a stale true from a previous in-cluster install.
 helm_args+=(--set "langfuse.inCluster.enabled=false")
 [[ -n "$BASE_DOMAIN" ]] && helm_args+=(--set-string "langfuse.langfuse.nextauth.url=https://langfuse.${BASE_DOMAIN}")
-# OIDC human-login (control-plane silo). Rendered iff an issuer URL is given; otherwise
-# the chart emits no OIDC env and the control-plane stays in token/development mode.
+# OIDC human-login (opencrane-ui silo). Rendered iff an issuer URL is given; otherwise
+# the chart emits no OIDC env and the opencrane-ui stays in token/development mode.
 # --set-string (NOT --set): a large numeric Zitadel clientId passed via --set is YAML-parsed
 # as a float and rendered in scientific notation (e.g. 3.78…e+17) → Zitadel App.NotFound and
 # all login breaks. Strings stay strings (issue #100).
@@ -1028,7 +1031,7 @@ helm_args+=(--set "langfuse.inCluster.enabled=false")
 # its inline values empty — keeps secrets out of Helm values + the rendered manifest.
 [[ -n "$OIDC_ISSUER_URL" ]]   && helm_args+=(--set-string "clustertenantManager.oidc.existingSecret=$OIDC_SECRET_NAME")
 # Platform-operator bootstrap (seed email AND/OR IdP group mapping). The operator identity
-# is PLANE-AGNOSTIC, so forward it to BOTH the fleet plane and the control-plane silo —
+# is PLANE-AGNOSTIC, so forward it to BOTH the fleet plane and the opencrane-ui silo —
 # previously only the silo received it, so the fleet (super-admin) UI was inaccessible to
 # everyone even with a seed set (issue #100). Set ONLY when non-empty; empty → fail-closed.
 if [[ -n "$PLATFORM_OPERATOR_SEED_EMAIL" ]]; then
@@ -1059,7 +1062,7 @@ helm_args+=("${EXTRA_SET[@]}")
 [[ ${#EXTRA_HELM_ARGS[@]} -gt 0 ]] && helm_args+=("${EXTRA_HELM_ARGS[@]}")
 # Value-preservation mode. Helm's DEFAULT on upgrade drops any value a prior release set
 # via --set/-f that this invocation does not restate, silently reverting it to the chart
-# default — a footgun that broke a live silo once (a pure `--control-plane-tag` bump reverted
+# default — a footgun that broke a live silo once (a pure `--opencrane-ui-tag` bump reverted
 # ingress.sameOrigin/tls.secretName/gatewayProxy/tenant.gateway.trustedProxies/resource limits;
 # see the field-manager warning above). So for an UPGRADE (the release already exists) we
 # default to `--reset-then-reuse-values`: reset to the chart's built-in values (picking up any
@@ -1079,9 +1082,9 @@ fi
 helm "${helm_args[@]}"
 
 # 4. Wait for the core workloads.
-# Database migrations run via the control-plane's pre-upgrade hook Job
+# Database migrations run via the opencrane-ui's pre-upgrade hook Job
 # (prisma migrate deploy), which `helm upgrade` above blocks on before the
-# rollout — so EVERY deploy reconciles the schema, even when the control-plane
+# rollout — so EVERY deploy reconciles the schema, even when the opencrane-ui
 # pod template is unchanged (a plain `helm upgrade` won't roll an unchanged pod,
 # so the db-migrate initContainer alone could leave the schema behind when the
 # database was recreated under a running pod). The initContainer remains a
@@ -1096,7 +1099,7 @@ for _comp in fleet-manager clustertenant-manager; do
   fi
 done
 
-# Read the ACTUAL control-plane host(s) off the deployed ingress(es). Never assume platform.<base>:
+# Read the ACTUAL opencrane-ui host(s) off the deployed ingress(es). Never assume platform.<base>:
 # the fleet may serve the apex (controlPlaneHost=<base>), a silo serves <org>.<base>, and only the
 # unset default is platform.<base>. Ask the cluster what was rendered; fall back to platform.<base>
 # when no ingress exposes a host (e.g. ingress disabled) so callers still get a sensible hint.

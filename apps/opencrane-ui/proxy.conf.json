@@ -1,0 +1,10 @@
+{
+  "/api/v1": {
+    "target": "https://platform.dev.opencrane.ai",
+    "secure": false,
+    "changeOrigin": true,
+    "cookieDomainRewrite": "localhost",
+    "xfwd": true,
+    "logLevel": "debug"
+  }
+}

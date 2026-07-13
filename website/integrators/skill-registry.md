@@ -17,7 +17,7 @@ author/promote ──▶ Control plane (SkillBundle rows, scan, grants)
                         ▼  (scanStatus=passed + live entitlement check)
                    Skill Registry app  ──serves /bundles/:digest──▶ tenant pod
                         ▲                                            (OpenClaw)
-   aud=skill-registry projected token ─────────────────────────────┘
+   aud=feat-skill-registry projected token ─────────────────────────────┘
 ```
 
 The agent pulls **only entitled, scan-passed** bundle content over HTTP, per read.
@@ -26,7 +26,7 @@ existence-hiding (a non-entitled or unknown digest returns `404`, never `403`).
 
 ## The catalog (control plane)
 
-`SkillBundle` Prisma model (`apps/clustertenant-operator/prisma/schema.prisma`): `id`, `name`,
+`SkillBundle` Prisma model (`apps/opencrane-api/prisma/schema.prisma`): `id`, `name`,
 `description`, `version`, `digest` (unique on `name+version+digest`), `content` (the
 raw skill markdown), `scope` (org/department/project/personal), `status`
 (Draft/Review/Published), `tags`, optional `sourceId`, and the scan fields
@@ -34,7 +34,7 @@ raw skill markdown), `scope` (org/department/project/personal), `status`
 (grant-backed access), `SkillPromotion` (scope-transition history).
 
 CRUD + lifecycle live at `/api/v1/skills/catalog`
-([skill-catalog.ts](https://github.com/italanta/opencrane/blob/main/libs/domain/skills/main/src/routes/skill-catalog.ts)) and via
+([skill-catalog.ts](https://github.com/italanta/opencrane/blob/main/libs/backend/skills/main/src/routes/skill-catalog.ts)) and via
 `oc skills …`.
 
 ## Lifecycle: scan → validate → register → entitle → promote
@@ -43,7 +43,7 @@ CRUD + lifecycle live at `/api/v1/skills/catalog`
    skills, git, manual) ingest through the same pipeline. Creating a bundle directly
    as `published` is rejected — it must be scanned first.
 2. **Scan.** `POST /api/v1/skills/catalog/:id/scan` runs a vulnerability scan
-   ([scan-bundle.ts](https://github.com/italanta/opencrane/blob/main/libs/domain/skills/main/src/core/scan-bundle.ts)): probes
+   ([scan-bundle.ts](https://github.com/italanta/opencrane/blob/main/libs/backend/skills/main/src/core/scan-bundle.ts)): probes
    the PATH for **Grype**, then **Trivy**; if neither is present it returns
    `scanner-unavailable` (graceful — does not crash). Findings of **critical/high**
    severity fail the scan. Outcome persists to `scanStatus` / `scanFindings` /
@@ -59,19 +59,19 @@ CRUD + lifecycle live at `/api/v1/skills/catalog`
 
 ## Delivery (how a bundle reaches a pod)
 
-1. The operator injects a projected token with **audience `skill-registry`** at
-   `/var/run/opencrane/tokens/skill-registry.token`, plus
+1. The operator injects a projected token with **audience `feat-skill-registry`** at
+   `/var/run/opencrane/tokens/feat-skill-registry.token`, plus
    `OPENCRANE_SKILL_REGISTRY_URL`
    ([3-deployment.ts](https://github.com/italanta/opencrane/blob/main/apps/fleet-operator/src/tenants/deploy/3-deployment.ts)). **There is
    no shared-skills volume** — the entrypoint's old `_link_shared_skills` symlink path
    is inert legacy; the live mechanism is the per-entitlement HTTP pull below.
 2. The pod calls **`GET /bundles/:digest`** on the Skill Registry service with that
-   token ([apps/skill-registry/src](https://github.com/italanta/opencrane/blob/main/apps/skill-registry/src)).
+   token ([apps/feat-skill-registry/src](https://github.com/italanta/opencrane/blob/main/apps/feat-skill-registry/src)).
 3. The Skill Registry validates the token via Kubernetes **TokenReview** (audience
-   `skill-registry`, tenant name parsed from the
+   `feat-skill-registry`, tenant name parsed from the
    `system:serviceaccount:<ns>:<tenant>` subject), then proxies to the control plane.
 4. The control plane's **`GET /api/internal/bundles/:digest/content?tenantName=…`**
-   ([skill-bundles.ts](https://github.com/italanta/opencrane/blob/main/libs/domain/skills/main/src/routes/internal/skill-bundles.ts))
+   ([skill-bundles.ts](https://github.com/italanta/opencrane/blob/main/libs/backend/skills/main/src/routes/internal/skill-bundles.ts))
    gates on: bundle exists → `scanStatus = passed` (else `422 SCAN_FAILED`) → a **live
    grant-compiler allow** for that tenant (else `404`, existence-hiding) → returns the
    content with `X-Skill-Name` / `X-Skill-Digest` headers.
@@ -98,8 +98,8 @@ runtime contract governs whether the skill mechanism is active at all — see
   progress.** The store, dual-write on publish, digest-verified delivery, and a
   backfill tool for existing bundles all exist behind
   `skillRegistry.ociStore.enabled` (default `false` — see
-  [skill-oci-store.yaml](https://github.com/italanta/opencrane/blob/main/apps/clustertenant-platform/templates/skill-oci-store.yaml)),
-  so today bundle `content` is still served from the control-plane DB through the
+  [skill-oci-store.yaml](https://github.com/italanta/opencrane/blob/main/apps/opencrane-infra/templates/skill-oci-store.yaml)),
+  so today bundle `content` is still served from the opencrane-api DB through the
   registry. The `digest` field already pins identity, so flipping the flag changes
   only the storage backend, not the delivery contract. Tracked in
   [issue #133](https://github.com/italanta/opencrane/issues/133).

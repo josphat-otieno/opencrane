@@ -25,8 +25,7 @@
       "executor": "nx:run-commands",
       "options": {
         "commands": [
-          "openapi-typescript ../../apps/clustertenant-operator/openapi.json -o src/generated/api.ts",
-          "openapi-typescript ../../apps/fleet-operator/openapi.json -o src/generated/fleet-api.ts"
+          "openapi-typescript ../../apps/opencrane/openapi.json -o src/generated/api.ts"
         ],
         "cwd": "libs/contracts",
         "parallel": false

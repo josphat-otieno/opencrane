@@ -60,7 +60,7 @@ export OPENCRANE_SHARED_SKILLS_DIR="$SHARED_DIR"
 export OPENCRANE_CONFIG_SOURCE_PATH="$CONFIG_DIR/openclaw.json"
 export OPENCRANE_RUNTIME_CONTRACT_PATH="$CONFIG_DIR/opencrane-managed-runtime.json"
 export OPENCRANE_TEAM="engineering"
-source "$ROOT_DIR/apps/tenant/deploy/entrypoint.sh"
+source "$ROOT_DIR/apps/feat-openclaw-tenant/deploy/entrypoint.sh"
 set +e
 _load_mcp_policy
 _mcp_server_is_enabled "skills"

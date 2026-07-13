@@ -1,0 +1,132 @@
+<aside class="wo-ctx">
+	<div class="wo-ctx__tabs">
+		<div class="wo-ctx__tab-group">
+			<button type="button" class="wo-ctx__tab" [class.wo-ctx__tab--active]="tab() === 'context'" (click)="tab.set('context')">
+				<i class="pi pi-shield"></i>
+				Context
+			</button>
+			<button type="button" class="wo-ctx__tab" [class.wo-ctx__tab--active]="tab() === 'ledger'" (click)="tab.set('ledger')">
+				<i class="pi pi-book"></i>
+				Ledger
+			</button>
+			<button type="button" class="wo-ctx__tab" [class.wo-ctx__tab--active]="tab() === 'canvas'" (click)="tab.set('canvas')">
+				<i class="pi pi-table"></i>
+				Canvas
+			</button>
+		</div>
+		<button type="button" class="wo-ctx__close" (click)="closed.emit()"><i class="pi pi-times"></i></button>
+	</div>
+
+	@if (tab() === "context") {
+		<div class="wo-ctx__pod">
+			<div>
+				<p class="wo-mono">alex.oc <span class="wo-ctx__sep">·</span> Product <span class="wo-ctx__sep">·</span> acme-corp</p>
+				<p class="wo-ctx__pod-sub">OpenClaw session · isolated pod</p>
+			</div>
+			<button type="button"><i class="pi pi-refresh"></i></button>
+		</div>
+	}
+
+	<div class="wo-ctx__body wo-scrollable">
+		@if (tab() === "context") {
+			<wo-collapsible-section title="Awareness Contract">
+				<div class="wo-ctx__contract">
+					<div class="wo-ctx__contract-card">
+						<div>
+							<p class="wo-ctx__contract-version">contract v2.3.1</p>
+							<p class="wo-ctx__contract-scopes wo-mono">scopes: org · dept · project · personal</p>
+						</div>
+						<div class="wo-ctx__contract-status">
+							<span class="wo-ctx__contract-dot"></span>
+							<span class="wo-mono">active</span>
+						</div>
+					</div>
+					<div class="wo-ctx__scope-strip">
+						@for (level of scopeLevels; track level) {
+							<div class="wo-ctx__scope-cell" [style.background]="scopeColors[level] + '15'" [style.border-color]="scopeColors[level] + '40'">
+								<p class="wo-mono" [style.color]="scopeColors[level]">{{ level }}</p>
+							</div>
+						}
+					</div>
+				</div>
+			</wo-collapsible-section>
+
+			<wo-collapsible-section title="Retrieved Scope Context">
+				<div class="wo-ctx__scopes">
+					@for (entry of scopeEntries; track entry.level) {
+						<div>
+							<button type="button" class="wo-ctx__scope-row" [class.wo-ctx__scope-row--active]="expandedScope() === entry.level" (click)="toggleScope(entry.level)">
+								<span class="wo-ctx__scope-dot" [style.background]="entry.active ? entry.color : 'var(--muted-foreground)'" [style.opacity]="entry.active ? 1 : 0.4"></span>
+								<span class="wo-ctx__scope-body">
+									<span class="wo-ctx__scope-title">
+										<span>{{ entry.label }}</span>
+										<span class="wo-mono" [style.color]="entry.color">{{ entry.level }}</span>
+									</span>
+									<span class="wo-ctx__scope-sub">{{ entry.sublabel }}</span>
+								</span>
+								@if (entry.citationCount > 0) {
+									<span class="wo-ctx__scope-count wo-mono" [style.color]="entry.color" [style.border-color]="entry.color">{{ entry.citationCount }}</span>
+								}
+								<span class="wo-ctx__scope-fresh wo-mono">{{ entry.freshness }}</span>
+								<i class="pi pi-chevron-right wo-ctx__scope-chevron" [class.wo-ctx__scope-chevron--open]="expandedScope() === entry.level"></i>
+							</button>
+							@if (expandedScope() === entry.level) {
+								<div class="wo-ctx__citations">
+									@for (citation of citationsFor(entry.level); track citation.id) {
+										<div class="wo-ctx__citation" [style.background]="entry.color + '12'" [style.border-left-color]="entry.color">
+											<p class="wo-mono" [style.color]="entry.color">{{ citation.source }}</p>
+											<p>{{ citation.snippet }}</p>
+										</div>
+									}
+								</div>
+							}
+						</div>
+					}
+				</div>
+			</wo-collapsible-section>
+
+			<wo-collapsible-section title="Active Skills" [defaultOpen]="false">
+				<div class="wo-ctx__skills">
+					@for (skill of skills; track skill.name) {
+						<div class="wo-ctx__skill">
+							<i class="pi pi-bolt" [style.color]="scopeColors[skill.scope]"></i>
+							<span class="wo-ctx__skill-name">{{ skill.name }}</span>
+							<span class="wo-mono wo-ctx__skill-scope" [style.color]="scopeColors[skill.scope]">{{ skill.scope }}</span>
+							<span class="wo-mono wo-ctx__skill-version">{{ skill.version }}</span>
+						</div>
+					}
+				</div>
+			</wo-collapsible-section>
+		}
+
+		@if (tab() === "ledger") {
+			<div class="wo-ctx__ledger">
+				<div class="wo-ctx__ledger-head">
+					<p>Grounded in 1 trace</p>
+					<div class="wo-ctx__ledger-kinds">
+						<span class="wo-mono" style="color: #4a6b8a; border-color: #4a6b8a"><i class="pi pi-info-circle"></i></span>
+						<span class="wo-mono" style="color: #a0855a; border-color: #a0855a"><i class="pi pi-exclamation-triangle"></i></span>
+						<span class="wo-mono" style="color: #5a8a5a; border-color: #5a8a5a"><i class="pi pi-bolt"></i></span>
+					</div>
+				</div>
+				<div class="wo-ctx__ledger-list">
+					@for (entry of ledger; track entry.id) {
+						<wo-ledger-card
+							[entryId]="entry.id"
+							[kind]="entry.type"
+							[label]="entry.label"
+							[scope]="entry.scope"
+							[entryRef]="entry.ref"
+							[status]="entry.status"
+							[dimmed]="entry.status === 'resolved'"
+						/>
+					}
+				</div>
+			</div>
+		}
+
+		@if (tab() === "canvas") {
+			<wo-canvas-doc />
+		}
+	</div>
+</aside>

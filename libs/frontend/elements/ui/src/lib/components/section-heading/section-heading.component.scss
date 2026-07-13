@@ -1,0 +1,15 @@
+.wo-heading {
+	margin-bottom: 24px;
+
+	&__title {
+		font-size: 20px;
+		font-weight: 400;
+		margin: 0;
+	}
+
+	&__subtitle {
+		font-size: 13px;
+		color: var(--muted-foreground);
+		margin: 4px 0 0;
+	}
+}

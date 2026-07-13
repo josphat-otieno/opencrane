@@ -1,7 +1,7 @@
 /**
  * Access outcome attached to a compiled authorization grant.
  *
- * The control-plane persists these values, returns them through its HTTP APIs,
+ * The opencrane-ui persists these values, returns them through its HTTP APIs,
  * and the operator UI renders the same values without redefining them locally.
  */
 export enum GrantAccess
@@ -41,7 +41,7 @@ export enum GrantSubjectType
  * Shared transport contract for an evaluated grant row.
  *
  * This type is intentionally defined outside the UI because it is not a
- * presentation-only concern: the control-plane emits it and the UI consumes it
+ * presentation-only concern: the opencrane-ui emits it and the UI consumes it
  * as-is when rendering effective entitlements.
  */
 export interface Grant

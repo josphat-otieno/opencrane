@@ -5,7 +5,7 @@ import { GrantScope } from "./grant.types.js";
  * Transport contract exposed by an MCP server registration.
  *
  * MCP refers to the Model Context Protocol: https://modelcontextprotocol.io/introduction
- * OpenCrane stores these values centrally so the control-plane can describe
+ * OpenCrane stores these values centrally so the opencrane-ui can describe
  * what the gateway plane should broker on behalf of tenants.
  */
 export enum McpServerTransport
@@ -19,7 +19,7 @@ export enum McpServerTransport
  * Lifecycle state shown for a registered MCP server.
  *
  * The UI uses this to summarize rollout health, while the backend emits the
- * exact same values from the control-plane inventory APIs.
+ * exact same values from the opencrane-ui inventory APIs.
  */
 export enum McpServerStatus
 {
@@ -57,7 +57,7 @@ export enum McpCredentialBrokeringMode
 /**
  * Credential metadata linked to an MCP server.
  *
- * The control-plane owns this inventory record; the runtime gateway plane may
+ * The opencrane-ui owns this inventory record; the runtime gateway plane may
  * be implemented by Obot, but it consumes the rendered catalog rather than
  * replacing this contract.
  */
@@ -78,11 +78,11 @@ export interface McpServerCredential
 }
 
 /**
- * Shared contract for an MCP server exposed through the control-plane API.
+ * Shared contract for an MCP server exposed through the opencrane-ui API.
  *
  * The record represents OpenCrane's source-of-truth catalog entry: endpoint,
  * transport, grants, credentials, and rollout status. Downstream gateway
- * implementations such as Obot consume this control-plane-managed inventory.
+ * implementations such as Obot consume this opencrane-ui-managed inventory.
  */
 export interface McpServer
 {

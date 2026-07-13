@@ -35,7 +35,7 @@ export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 apps/fleet-platform/deploy.sh --base-domain <your-domain>
 
 # 3. Install a silo release for your organisation
-apps/clustertenant-platform/deploy.sh \
+apps/opencrane-infra/deploy.sh \
   --base-domain <your-domain> \
   --cluster-tenant <org-name>
 ```

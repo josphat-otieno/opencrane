@@ -43,7 +43,7 @@ variable "vpc_name"
 
 # Cloud DNS is optional. By default the deploy prints the ingress IP and you set
 # DNS manually at your registrar. Set enable_cloud_dns=true to have Terraform create
-# the managed zone, the install-time platform records (apex, *.<base>, control-plane
+# the managed zone, the install-time platform records (apex, *.<base>, opencrane-ui
 # host), and the shared roles/dns.admin Workload-Identity binding. Per-org records are
 # reconciled at runtime by external-dns from the operator's DNSEndpoint CRs.
 variable "enable_cloud_dns"
@@ -91,6 +91,16 @@ variable "enable_app_deploy"
   description = "Also install the OpenCrane Helm chart via Terraform. When false (default), Terraform creates the cluster only — run `helm install` afterwards."
   type        = bool
   default     = false
+}
+
+variable "fleet_chart_path"
+{
+  # The fleet-operator/fleet-platform surface moved to the WeOwnAI repo (italanta/opencrane#150)
+  # and no longer ships in this repo. Required only when enable_app_deploy=true — point it at a
+  # checked-out copy of WeOwnAI's apps/fleet-platform chart.
+  description = "Path to the fleet-platform Helm chart (now maintained in the WeOwnAI repo). Required when enable_app_deploy=true."
+  type        = string
+  default     = ""
 }
 
 # GKE

@@ -1,0 +1,90 @@
+<div class="wo-admin">
+	<div class="wo-admin__inner">
+		@if (canAdminister()) {
+			<wo-section-heading
+				title="Model Keys"
+				[subtitle]="configuredCount() + ' of ' + rows().length + ' providers configured. Bring your own provider keys to power this silo\'s models.'"
+			/>
+
+			<p class="wo-keys__note">
+				Keys are stored encrypted server-side and used only by this silo's models — they are never shown back here.
+				Setting the first key lights up a default model.
+			</p>
+
+			@if (error(); as message) {
+				<p class="wo-keys__error">{{ message }}</p>
+			}
+
+			<table class="wo-table">
+				<thead>
+					<tr>
+						<th>Provider</th>
+						<th>Status</th>
+						<th>LiteLLM</th>
+						<th>Last updated</th>
+						<th>Set / refresh key</th>
+						<th></th>
+					</tr>
+				</thead>
+				<tbody>
+					@for (row of rows(); track row.provider) {
+						<tr [class.wo-admin__row--off]="!row.configured">
+							<td>
+								<div class="wo-keys__name">{{ row.label }}</div>
+								<div class="wo-mono wo-admin__muted">{{ row.provider }}</div>
+							</td>
+							<td>
+								@if (row.configured) {
+									<wo-scope-chip label="configured" color="#5A8A5A" />
+								} @else {
+									<wo-scope-chip label="not set" color="#7A766D" />
+								}
+							</td>
+							<td><wo-scope-chip [label]="badgeStyle(row).label" [color]="badgeStyle(row).color" [bordered]="false" /></td>
+							<td class="wo-admin__muted">{{ row.updatedAtLabel }}</td>
+							<td>
+								<input
+									class="wo-text-input wo-keys__input"
+									type="password"
+									autocomplete="off"
+									placeholder="Paste API key"
+									[disabled]="isBusy(row.provider)"
+									[ngModel]="draft(row.provider)"
+									(ngModelChange)="setDraft(row.provider, $event)"
+									(keyup.enter)="submit(row.provider)"
+								/>
+							</td>
+							<td class="wo-admin__actions">
+								<button
+									type="button"
+									class="wo-tools__act"
+									[disabled]="isBusy(row.provider) || draft(row.provider).trim().length === 0"
+									(click)="submit(row.provider)"
+								>
+									{{ row.configured ? "Refresh" : "Save" }}
+								</button>
+								@if (row.configured) {
+									<button
+										type="button"
+										class="wo-tools__act wo-tools__act--muted"
+										[disabled]="isBusy(row.provider)"
+										(click)="confirmRemove(row)"
+									>
+										Remove
+									</button>
+								}
+							</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+
+			<p-confirmDialog />
+		} @else {
+			<div class="wo-admin__denied">
+				<h2 class="wo-serif">Admins only</h2>
+				<p>Model provider keys are managed by your organisation's administrators.</p>
+			</div>
+		}
+	</div>
+</div>

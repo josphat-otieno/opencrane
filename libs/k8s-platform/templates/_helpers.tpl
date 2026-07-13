@@ -95,11 +95,11 @@ Control-plane RBAC rules that target NAMESPACED resources only — shared by the
 cluster-scoped (legacy) ClusterRole and the namespaced (multi-instance) Role so
 both grant identical verbs over identical resources. The cluster-scoped
 `clusterissuers` grant is deliberately NOT here: it cannot live in a namespaced
-Role, so it stays in a minimal residual ClusterRole (see control-plane-rbac.yaml)
+Role, so it stays in a minimal residual ClusterRole (see opencrane-ui-rbac.yaml)
 and is folded into the per-namespace Role by MI.4's namespaced cert Issuer.
 */}}
 {{- define "opencrane.clustertenantManagerRbacRules" -}}
-# Tenant + AccessPolicy CRDs — the control-plane API dual-writes them (alongside PostgreSQL)
+# Tenant + AccessPolicy CRDs — the opencrane-ui API dual-writes them (alongside PostgreSQL)
 # AND the in-silo TenantOperator/PolicyOperator (Stage 5) watch + reconcile them in this
 # silo's own namespace.
 - apiGroups: ["opencrane.io"]
@@ -159,11 +159,11 @@ and is folded into the per-namespace Role by MI.4's namespaced cert Issuer.
 {{- end }}
 
 {{/*
-Cognee endpoint the control-plane permission-sync routes call.
+Cognee endpoint the opencrane-ui permission-sync routes call.
 
 With the bundled Cognee on (`controlPlane.cognee.install`), Cognee is a release-local plane:
 the Service is release-prefixed (`<fullname>-cognee`, B5) so two installs never collide on the
-legacy unprefixed `cognee` singleton, and this helper points the control-plane at it. Otherwise
+legacy unprefixed `cognee` singleton, and this helper points the opencrane-ui at it. Otherwise
 (BYO Cognee) the configured `controlPlane.cognee.endpoint` is used verbatim.
 */}}
 {{- define "opencrane.cogneeEndpoint" -}}
@@ -175,18 +175,18 @@ legacy unprefixed `cognee` singleton, and this helper points the control-plane a
 {{- end }}
 
 {{/*
-DATABASE_URL env entry for the control-plane (deployment initContainer, main container,
+DATABASE_URL env entry for the opencrane-ui (deployment initContainer, main container,
 and the migration Job all share it so they can never drift).
 
-Both roles wire the control-plane to the database the installer provisions via
+Both roles wire the opencrane-ui to the database the installer provisions via
 `controlPlane.database.existingSecret` (or `.url`). Per-ClusterTenant isolation (S6 / ADR 0002)
 comes from the SILO deploying a dedicated CNPG cluster IN ITS OWN NAMESPACE — one Postgres per
-silo serving that silo's control-plane + runtime planes — so the silo control-plane's DB already
+silo serving that silo's opencrane-ui + runtime planes — so the silo opencrane-ui's DB already
 holds exactly one ClusterTenant's data and never has to infer which tenant a row belongs to. The
-deploy scripts (`apps/clustertenant-platform/deploy.sh` → `k8s-deploy.sh`) provision that per-namespace cluster + secret;
+deploy scripts (`apps/opencrane-infra/deploy.sh` → `k8s-deploy.sh`) provision that per-namespace cluster + secret;
 this helper just consumes whatever secret the installer points at, identically for both roles.
 
-With no explicit DB this renders no DATABASE_URL (the control-plane stays in its no-DB mode); a
+With no explicit DB this renders no DATABASE_URL (the opencrane-ui stays in its no-DB mode); a
 real deploy always supplies one.
 */}}
 {{- define "opencrane.clustertenantManagerDatabaseEnv" -}}
@@ -258,6 +258,77 @@ AND `multiInstance.certIssuer` is `namespaced`; legacy installs stay ClusterIssu
 {{- end }}
 
 {{/*
+Resolve the single topology switch (#151 item 4): `"standalone"` (this silo owns ClusterTenant
+lifecycle/namespace/domain/membership itself, no external fleet anywhere) or `"fleet-managed"`
+(an external fleet-manager owns ClusterTenant lifecycle and this silo defers to it).
+
+Returns the explicit `deploymentMode` value when it is one of the two valid strings; otherwise
+derives it from the SAME fallback signal `apps/opencrane/src/app/config.ts` itself
+falls back to when `DEPLOYMENT_MODE` is unset — an empty `clustertenantManager.fleetInternalUrl`
+means standalone (no external fleet configured), a non-empty one means fleet-managed. Keeping
+this identical to the operator's own fallback means the chart's resolved value and what the
+operator would derive on its own can never disagree, whether or not `deploymentMode` is set.
+*/}}
+{{- define "opencrane.deploymentMode" -}}
+{{- $explicit := .Values.deploymentMode | default "" -}}
+{{- if or (eq $explicit "standalone") (eq $explicit "fleet-managed") -}}
+{{- $explicit -}}
+{{- else if (.Values.clustertenantManager.fleetInternalUrl | default "") -}}
+fleet-managed
+{{- else -}}
+standalone
+{{- end -}}
+{{- end }}
+
+{{/*
+Shared `spec:` body for a self-managed cert-manager Issuer/ClusterIssuer (#151 item 2),
+reused by cluster-issuer.yaml for BOTH the namespaced-Issuer and cluster-singleton-
+ClusterIssuer branches so the two can never drift. Takes a dict `{ cm, ingress }` (the
+`certManager` and `ingress` values blocks) since a named template only receives one arg.
+
+Every Certificate expected to reference this Issuer in a silo chart is a SINGLE,
+non-wildcard hostname (the opencrane-ui's own host + an optional per-org vanity host —
+see docs/agents/cluster-architecture.md → "Tenancy Model"), so HTTP-01 through the ingress
+is sufficient on its own and is the default/only solver in acme mode. DNS-01 is layered in
+ADDITIONALLY (scoped to `ingress.domain`) only when `certManager.acme.dns01.provider` is
+set, for installs that prefer it.
+*/}}
+{{- define "opencrane.certIssuerSpec" -}}
+{{- $cm := .cm -}}
+{{- $ingress := .ingress -}}
+{{- if eq $cm.mode "selfSigned" }}
+selfSigned: {}
+{{- else }}
+acme:
+  server: {{ $cm.acme.server | quote }}
+  email: {{ $cm.acme.email | quote }}
+  privateKeySecretRef:
+    name: {{ $cm.acme.privateKeySecretName | quote }}
+  solvers:
+    {{- if $cm.acme.dns01.provider }}
+    # DNS-01, scoped to the platform base domain — opt-in (certManager.acme.dns01.provider).
+    - selector:
+        dnsZones:
+          - {{ $ingress.domain | quote }}
+      dns01:
+        {{- if eq $cm.acme.dns01.provider "clouddns" }}
+        cloudDNS:
+          {{- toYaml $cm.acme.dns01.config | nindent 10 }}
+        {{- else }}
+        {{ $cm.acme.dns01.provider }}:
+          {{- toYaml $cm.acme.dns01.config | nindent 10 }}
+        {{- end }}
+    {{- end }}
+    # HTTP-01 (default/catch-all) — every Certificate referencing this Issuer in this chart
+    # is a single, non-wildcard host reachable through the ingress, so no DNS-provider
+    # credentials are required for the common case.
+    - http01:
+        ingress:
+          ingressClassName: {{ $ingress.className | default "nginx" | quote }}
+{{- end }}
+{{- end }}
+
+{{/*
 Whether a namespaced (per-instance) SecretStore should be rendered instead of a
 cluster-singleton ClusterSecretStore (brief B4). Only true when multi-instance is
 on AND `multiInstance.secretStore` is `namespaced`; legacy stays ClusterSecretStore.
@@ -306,7 +377,7 @@ consumers should use:
 {{- end }}
 
 {{/*
-LiteLLM base endpoint the operator and control-plane should call.
+LiteLLM base endpoint the operator and opencrane-ui should call.
 instance → release-local Service; shared → sharedPlatform.litellm.shared.endpoint.
 */}}
 {{- define "opencrane.litellmEndpoint" -}}
@@ -329,7 +400,7 @@ instance → release-local Service; shared → sharedPlatform.skillRegistry.shar
 {{- if not $u -}}{{- fail "sharedPlatform.skillRegistry.mode=shared requires sharedPlatform.skillRegistry.shared.url" -}}{{- end -}}
 {{- $u -}}
 {{- else -}}
-{{- printf "http://%s-skill-registry:%v" (include "opencrane.fullname" .) .Values.skillRegistry.service.port -}}
+{{- printf "http://%s-feat-skill-registry:%v" (include "opencrane.fullname" .) .Values.skillRegistry.service.port -}}
 {{- end -}}
 {{- end }}
 

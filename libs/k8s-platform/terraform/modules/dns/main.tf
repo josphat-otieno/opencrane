@@ -5,7 +5,7 @@
 # needs the moment it comes up:
 #   - `*.<domain>`          → ingress IP  (resolves every ORG APEX `<org>.<domain>`)
 #   - `<domain>` (apex)     → ingress IP
-#   - control-plane host    → ingress IP  (the fixed super-operator host, distinct
+#   - opencrane-ui host    → ingress IP  (the fixed super-operator host, distinct
 #                                           from the org wildcard)
 #
 # Per-host / per-org records are NOT written by Terraform. external-dns owns them at
@@ -14,7 +14,8 @@
 # with --source=crd, scoped to <domain>). Terraform therefore provisions only the zone,
 # the install-time platform records, and the zone-WRITE identity the controllers share —
 # it must NOT write per-org/per-host records itself (the old imperative Cloud DNS client
-# is gone). See apps/fleet-operator/src/cluster-tenants/internal/dns-endpoint.client.ts.
+# is gone). See dns-endpoint.client.ts in the fleet-operator app (now in the WeOwnAI repo,
+# italanta/opencrane#150).
 #
 # Identity vs records are DECOUPLED by dependency. The zone + the shared DNS-writer GSA
 # need nothing from the running app, so they are created whenever this module runs (i.e.
@@ -58,7 +59,7 @@ resource "google_dns_record_set" "apex"
   rrdatas      = [var.ingress_ip]
 }
 
-# Fixed super-operator / control-plane host (distinct from the org wildcard). Defaults
+# Fixed super-operator / opencrane-ui host (distinct from the org wildcard). Defaults
 # to `platform.<domain>`; matches ingress.controlPlaneHost in the chart.
 resource "google_dns_record_set" "control_plane"
 {

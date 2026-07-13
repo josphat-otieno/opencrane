@@ -2,7 +2,7 @@
  * Express middleware that seeds the per-request {@link RequestContext}.
  *
  * Structurally typed (no `express` import) so it works on both the Express 5
- * control-plane and the Express 4 skill-registry without coupling the lib to a
+ * opencrane-ui and the Express 4 feat-skill-registry without coupling the lib to a
  * framework version.
  */
 import { randomUUID } from "node:crypto";

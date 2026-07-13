@@ -37,8 +37,8 @@ GCP Cloud Logging + Cloud Trace (Helm `observability.otel`, default off), contex
 
 ### Logging (structured, correlated, safe)
 - A root logger built with the lib's `createLogger`-equivalent (read the barrel for the
-  current name), one per service. In the control-plane, core modules import the shared
-  logger from `apps/clustertenant-operator/src/log.ts` — reuse it, do not spin up new pino instances.
+  current name), one per service. In the opencrane-ui, core modules import the shared
+  logger from `apps/opencrane/src/log.ts` — reuse it, do not spin up new pino instances.
 - **No raw `console.*` in shipped code.** Convert each to a structured log call:
   `log.warn({ tenant, digest }, "message")` — structured fields, **never** string
   interpolation (`` `failed for ${x}` `` is wrong; `{ x }` is right). Errors go under the
@@ -103,7 +103,7 @@ Determine scope first: `git diff --stat HEAD` / `git diff HEAD`, or the files/PR
 ## Verify after applying (mandatory when you edit)
 - Run `scripts/agent-style-check.sh` — zero ERROR lines before you report done.
 - Typecheck/build the touched package(s): e.g. `pnpm --filter @opencrane/observability build`,
-  `pnpm --filter @opencrane/clustertenant-operator exec tsc --noEmit`.
+  `pnpm --filter @opencrane/server exec tsc --noEmit`.
 - Run the relevant tests: `pnpm --filter <pkg> test`. If you added a lib capability
   (redaction path, helper), add a vitest covering it.
 - If you touched Helm, `helm template` the chart in default-off and `observability.otel.enabled=true`.

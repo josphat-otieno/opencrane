@@ -5,13 +5,13 @@
 
 The **cluster-wide hub + super-admin** — a single fleet-wide singleton (`@opencrane/fleet-operator`,
 "fleet-manager") that owns ClusterTenant lifecycle for the whole fleet. It serves at the fleet
-control-plane host (the platform host / apex), runs against its **own registry DB**, and combines a
+opencrane-api host (the platform host / apex), runs against its **own registry DB**, and combines a
 **fleet HTTP API** (cross-silo super-admin surface) with **one reconcile loop**. Pure
 `@kubernetes/client-node` + a custom watch runner — no controller-runtime framework.
 
 It does **not** watch anything inside a silo — every per-org/in-silo controller (tenant runtime,
 policies, plane drift-repair, rollout canary, Obot health, gateway proxy) runs in the per-silo
-[`clustertenant-operator`](./clustertenant-operator.md). The fleet's only reconcile loop is the
+[`opencrane`](./opencrane.md). The fleet's only reconcile loop is the
 **ClusterTenantOperator** below.
 
 **Roles** (terminology per

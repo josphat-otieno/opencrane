@@ -39,7 +39,7 @@ export interface LoggerOptions
  */
 export interface TelemetryOptions
 {
-  /** Logical service name reported to the collector (e.g. `"control-plane"`). */
+  /** Logical service name reported to the collector (e.g. `"opencrane-ui"`). */
   serviceName: string;
   /** Service version stamped on every span; usually the package version. */
   serviceVersion?: string;

@@ -12,7 +12,7 @@ output "database_host"
 
 output "control_plane_url"
 {
-  description = "URL for the OpenCrane control-plane UI"
+  description = "URL for the OpenCrane opencrane-ui UI"
   value       = "https://${var.domain}"
 }
 

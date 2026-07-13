@@ -109,7 +109,7 @@ findings detected."
 
 Worked example of a reportable finding:
 
-> **High — `apps/control-plane/src/routes/tenant.ts:142`** — `_ResolveTenant` returns
+> **High — `apps/opencrane-ui/src/routes/tenant.ts:142`** — `_ResolveTenant` returns
 > the tenant row before checking `req.auth.orgId` against `tenant.orgId`; a caller
 > authenticated to org A can fetch org B's tenant by id. Verified: traced
 > `GET /tenants/:id` with an org-A token and an org-B id — no guard on the path.

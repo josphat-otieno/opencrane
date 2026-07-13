@@ -79,11 +79,12 @@ module "app_deploy"
 {
   source = "../../modules/app-deploy"
 
-  project_id   = var.project_id
-  registry_url = module.artifact_registry.repository_url
-  image_tag    = var.image_tag
-  domain       = var.domain
-  namespace    = "opencrane"
+  project_id       = var.project_id
+  registry_url     = module.artifact_registry.repository_url
+  image_tag        = var.image_tag
+  domain           = var.domain
+  namespace        = "opencrane"
+  fleet_chart_path = var.fleet_chart_path
 
   depends_on = [module.gke]
 }
@@ -91,7 +92,7 @@ module "app_deploy"
 # ---- Phase 5: Cloud DNS (zone + platform records + shared DNS-writer WI) ----
 #
 # Provisions the managed zone, the install-time platform records (apex, `*.<base>`,
-# control-plane host) and the shared `roles/dns.admin` Workload-Identity binding that
+# opencrane-ui host) and the shared `roles/dns.admin` Workload-Identity binding that
 # external-dns and the cert-manager DNS-01 solver impersonate. Per-org/per-host records
 # are reconciled at runtime by external-dns from the operator's DNSEndpoint CRs — never
 # written here.

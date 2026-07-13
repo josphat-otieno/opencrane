@@ -8,7 +8,7 @@ time to do it.
 ## Isolation tiers — dedicated compute (deferred from S6 / ADR 0002)
 
 S6 ([ADR 0002](docs/adr/0002-per-clustertenant-silo-architecture.md)) gives every ClusterTenant
-a dedicated per-CT stack (Obot, skill-registry, Cognee, LiteLLM, operator, networking, DB) **on
+a dedicated per-CT stack (Obot, feat-skill-registry, Cognee, LiteLLM, operator, networking, DB) **on
 shared nodes**. The tiers that change the *underlying compute* are deferred:
 
 - **`dedicatedNodes`** — pin a tenant's per-CT stack to its own node pool (taints/affinity).
@@ -23,14 +23,14 @@ shared nodes**. The tiers that change the *underlying compute* are deferred:
 Why deferred: shared nodes are sufficient for now; dedicated compute is a paid upgrade layered
 on the same per-CT topology, so it doesn't block S6.
 
-## Additional central components (beyond control-plane + Zitadel)
+## Additional central components (beyond opencrane-ui + Zitadel)
 
-Today the **only** central (shared, cross-silo) components are the **control-plane** and
+Today the **only** central (shared, cross-silo) components are the **opencrane-ui** and
 **Zitadel** (ADR 0002, decision 1). Future central components may be introduced as the platform
 grows, e.g.:
 
 - A **central skills catalog / registry** — a shared source catalog/marketplace, distinct from
-  the per-CT skill-registry *delivery* plane each tenant already runs. (Per-CT delivery stays;
+  the per-CT feat-skill-registry *delivery* plane each tenant already runs. (Per-CT delivery stays;
   this would be an upstream shared catalog tenants pull from.)
 
 Any new central component must justify why it is safe to share cross-silo (it sees no tenant

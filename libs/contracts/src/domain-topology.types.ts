@@ -5,7 +5,7 @@
  * The platform owns ONE wildcard base (`<base>`, e.g. `weownai.eu`) under which:
  *   - each org (ClusterTenant) is served at `<org>.<base>`     (the org apex)
  *   - each user (UserTenant) is served at `<user>.<org>.<base>` (the per-user gateway)
- * The fixed super-operator / control-plane host (e.g. `platform.weownai.eu`) is a
+ * The fixed super-operator / opencrane-ui host (e.g. `platform.weownai.eu`) is a
  * SEPARATE host, never derived from this base — it is the management API above every
  * org. A customer may optionally CNAME a vanity domain ONTO their `<org>.<base>` apex;
  * the vanity name is an overlay, not the canonical identity.

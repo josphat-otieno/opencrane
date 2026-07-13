@@ -14,6 +14,11 @@ DB_SECRET_NAME="${DB_SECRET_NAME:-opencrane-db}"
 DB_PASSWORD="${DB_PASSWORD:-opencrane-local-password}"
 LITELLM_SECRET_NAME="${LITELLM_SECRET_NAME:-opencrane-litellm}"
 LITELLM_MASTER_KEY="${LITELLM_MASTER_KEY:-opencrane-local-master-key}"
+# The fleet-operator app and fleet-platform chart moved to the WeOwnAI repo
+# (italanta/opencrane#150) and no longer ship in this repo. Point these at a checked-out
+# copy of WeOwnAI's apps/fleet-operator and apps/fleet-platform to run this local cluster.
+FLEET_OPERATOR_DIR="${FLEET_OPERATOR_DIR:-}"
+FLEET_CHART_DIR="${FLEET_CHART_DIR:-}"
 
 function _require_cmd()
 {
@@ -101,15 +106,21 @@ _require_cmd k3d
 _require_docker_healthy
 _require_free_space
 
+if [[ -z "$FLEET_OPERATOR_DIR" || ! -f "$FLEET_OPERATOR_DIR/deploy/Dockerfile" || -z "$FLEET_CHART_DIR" || ! -d "$FLEET_CHART_DIR" ]]; then
+  echo "[local] The fleet-operator app and fleet-platform chart moved to the WeOwnAI repo (italanta/opencrane#150) and no longer ship in this repo."
+  echo "[local] Set FLEET_OPERATOR_DIR and FLEET_CHART_DIR to a checked-out copy of WeOwnAI's apps/fleet-operator and apps/fleet-platform, then re-run."
+  exit 1
+fi
+
 # 2. Build local images so the cluster does not depend on published registries.
 echo "[local] Building operator image"
-docker build -f "$ROOT_DIR/apps/fleet-operator/deploy/Dockerfile" -t opencrane/operator:local "$ROOT_DIR"
+docker build -f "$FLEET_OPERATOR_DIR/deploy/Dockerfile" -t opencrane/operator:local "$ROOT_DIR"
 
 echo "[local] Building tenant image"
-docker build -f "$ROOT_DIR/apps/tenant/deploy/Dockerfile" -t opencrane/tenant:local "$ROOT_DIR"
+docker build -f "$ROOT_DIR/apps/feat-openclaw-tenant/deploy/Dockerfile" -t opencrane/tenant:local "$ROOT_DIR"
 
-echo "[local] Building control-plane image"
-docker build -f "$ROOT_DIR/apps/clustertenant-operator/deploy/Dockerfile" -t opencrane/clustertenant-manager:local "$ROOT_DIR"
+echo "[local] Building opencrane-ui image"
+docker build -f "$ROOT_DIR/apps/opencrane/deploy/Dockerfile" -t opencrane/opencrane-server:local "$ROOT_DIR"
 
 # 3. Create a fresh cluster for a deterministic full-stack install.
 echo "[local] Recreating k3d cluster '$CLUSTER_NAME'"
@@ -124,7 +135,7 @@ docker pull ghcr.io/cloudnative-pg/postgresql:16
 echo "[local] Importing images into k3d"
 k3d image import opencrane/operator:local --cluster "$CLUSTER_NAME"
 k3d image import opencrane/tenant:local --cluster "$CLUSTER_NAME"
-k3d image import opencrane/clustertenant-manager:local --cluster "$CLUSTER_NAME"
+k3d image import opencrane/opencrane-server:local --cluster "$CLUSTER_NAME"
 k3d image import ghcr.io/cloudnative-pg/postgresql:16 --cluster "$CLUSTER_NAME"
 
 echo "[local] Using profile '$LOCAL_PROFILE' with values '$VALUES_FILE'"
@@ -172,7 +183,7 @@ spec:
       postInitApplicationSQL:
         - CREATE DATABASE obot OWNER opencrane;
         - CREATE DATABASE litellm OWNER opencrane;
-        # The silo (clustertenant) control-plane is a SEPARATE Prisma client from the fleet
+        # The silo (clustertenant) opencrane-ui is a SEPARATE Prisma client from the fleet
         # registry — they cannot share a database (each owns its own _prisma_migrations).
         - CREATE DATABASE silo OWNER opencrane;
 EOF
@@ -187,7 +198,7 @@ kubectl create secret generic "$DB_SECRET_NAME" \
   --dry-run=client \
   -o yaml | kubectl apply -f -
 
-# Silo control-plane DB secret (separate database; see CREATE DATABASE silo above).
+# Silo opencrane-ui DB secret (separate database; see CREATE DATABASE silo above).
 kubectl create secret generic "opencrane-silo-db" \
   -n "$NAMESPACE" \
   --from-literal=DATABASE_URL="postgresql://opencrane:${DB_PASSWORD}@${DB_RELEASE_NAME}-rw.${NAMESPACE}.svc.cluster.local:5432/silo" \
@@ -234,7 +245,7 @@ helm_args=(
   upgrade
   --install
   "$RELEASE_NAME"
-  "$ROOT_DIR/apps/fleet-platform"
+  "$FLEET_CHART_DIR"
   --namespace
   "$NAMESPACE"
   --create-namespace
@@ -264,7 +275,7 @@ fi
 
 helm "${helm_args[@]}"
 
-# 6b. Install the SILO chart (clustertenant-manager + the in-silo TenantOperator + planes) into the
+# 6b. Install the SILO chart (opencrane-server + the in-silo TenantOperator + planes) into the
 #     SAME namespace for this single-machine full stack. The two charts' resource sets are disjoint,
 #     so co-installing them in one namespace is safe; each self-migrates its own DB via its db-migrate
 #     initContainer (fleet → registry DB, silo → the separate `silo` DB) — no manual migration Job.
@@ -273,7 +284,7 @@ silo_args=(
   upgrade
   --install
   opencrane-silo
-  "$ROOT_DIR/apps/clustertenant-platform"
+  "$ROOT_DIR/apps/opencrane-infra"
   --namespace
   "$NAMESPACE"
   --values
@@ -292,7 +303,7 @@ helm "${silo_args[@]}"
 
 # 7. Wait for the platform workloads that depend on the database.
 _wait_for_rollout "deployment/opencrane-fleet-manager"
-_wait_for_rollout "deployment/opencrane-silo-clustertenant-manager"
+_wait_for_rollout "deployment/opencrane-silo-opencrane-server"
 
 if kubectl get deployment/opencrane-silo-litellm -n "$NAMESPACE" >/dev/null 2>&1; then
   _wait_for_rollout "deployment/opencrane-silo-litellm"

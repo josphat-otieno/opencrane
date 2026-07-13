@@ -10,7 +10,7 @@ knowledge.** Each phase spends the cheapest resource that can do the job.
 
 Target from the caller: **$ARGUMENTS** (env defaults to `dev`, profile to `fleet` —
 `apps/fleet-platform/deploy.sh`; `clustertenant` means
-`apps/clustertenant-platform/deploy.sh`).
+`apps/opencrane-infra/deploy.sh`).
 
 ## Phase 0 — preflight (main session, no subagents)
 

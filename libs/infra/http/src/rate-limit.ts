@@ -15,7 +15,7 @@ export interface RateLimitOptions
  * app's middleware chain (before the routes) so every authz-gated / DB-backed endpoint is covered
  * — a DoS backstop that also satisfies the `js/missing-rate-limiting` scanning rule.
  *
- * The default cap is deliberately generous (1000/min/IP): real control-plane traffic stays well
+ * The default cap is deliberately generous (1000/min/IP): real opencrane-ui traffic stays well
  * under it, so this never shapes normal use — it only sheds a flood. Health probes (`/healthz`,
  * `/readyz`) and the high-frequency trusted internal pod-poll surface (`/api/internal/*`) are
  * exempt so liveness checks and operator loops are never throttled.

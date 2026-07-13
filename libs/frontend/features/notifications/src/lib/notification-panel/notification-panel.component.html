@@ -1,0 +1,40 @@
+<div class="wo-notif">
+	<div class="wo-notif__header">
+		<div class="wo-notif__title">
+			<span class="wo-serif">Notifications</span>
+			<span class="wo-notif__count wo-mono">{{ unreadCount() }}</span>
+		</div>
+		<div class="wo-notif__header-actions">
+			<button type="button" class="wo-notif__mark-read">
+				<i class="pi pi-check"></i>
+				Mark all read
+			</button>
+			<button type="button" class="wo-notif__close" (click)="closed.emit()"><i class="pi pi-times"></i></button>
+		</div>
+	</div>
+
+	<div class="wo-notif__list wo-scrollable">
+		@for (notification of notifications; track notification.id) {
+			<div class="wo-notif__row" [style.background]="notification.read ? 'transparent' : kindStyle(notification).color + '06'">
+				<div class="wo-notif__icon" [style.background]="kindStyle(notification).color + '15'" [style.color]="kindStyle(notification).color">
+					<i [class]="kindStyle(notification).icon"></i>
+				</div>
+				<div class="wo-notif__body">
+					<div class="wo-notif__row-head">
+						<p class="wo-notif__row-title" [class.wo-notif__row-title--unread]="!notification.read">{{ notification.title }}</p>
+						@if (!notification.read) {
+							<span class="wo-notif__dot" [style.background]="kindStyle(notification).color"></span>
+						}
+					</div>
+					<p class="wo-notif__row-body">{{ notification.body }}</p>
+					<div class="wo-notif__row-meta">
+						<span class="wo-mono">{{ notification.time }}</span>
+						@if (notification.action) {
+							<button type="button" [style.color]="kindStyle(notification).color">{{ notification.action }} →</button>
+						}
+					</div>
+				</div>
+			</div>
+		}
+	</div>
+</div>

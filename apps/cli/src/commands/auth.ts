@@ -26,7 +26,7 @@ const _MAX_POLL_ATTEMPTS = 60;
  * Creates the directory when it does not yet exist.
  *
  * @param token   - Plain-text access token from the device flow.
- * @param baseUrl - Raw control-plane URL (no /api/v1 suffix).
+ * @param baseUrl - Raw opencrane-ui URL (no /api/v1 suffix).
  */
 function _saveCredentials(token: string, baseUrl: string): void
 {

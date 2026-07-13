@@ -60,9 +60,9 @@ export interface ThirdPartySourceItem
 }
 
 /**
- * Shared contract for a third-party source returned by the control-plane.
+ * Shared contract for a third-party source returned by the opencrane-ui.
  *
- * The control-plane remains the source of truth for approval, scheduling, and
+ * The opencrane-ui remains the source of truth for approval, scheduling, and
  * audit state even when discovery is delegated to another registry or runtime.
  */
 export interface ThirdPartySource

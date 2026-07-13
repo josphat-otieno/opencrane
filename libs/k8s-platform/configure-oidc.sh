@@ -7,12 +7,12 @@
 #   1. creates/updates the `opencrane-oidc` Secret (client + session secret), and
 #   2. `helm upgrade --reuse-values` of the `opencrane` release, overriding ONLY
 #      the clustertenantManager.oidc.* values.
-# The control-plane pod template gains the OIDC env, so Kubernetes rolls just the
-# control-plane Deployment; everything else is left exactly as deployed.
+# The opencrane-ui pod template gains the OIDC env, so Kubernetes rolls just the
+# opencrane-ui Deployment; everything else is left exactly as deployed.
 #
 # ONE OIDC MANAGER, BOTH TENANCY SHAPES. The same invocation works whether the
 # install is single-ClusterTenant (one seeded org) or multi-ClusterTenant
-# (self-service, many orgs). OIDC lives at the PLATFORM/control-plane level, not
+# (self-service, many orgs). OIDC lives at the PLATFORM/opencrane-ui level, not
 # per ClusterTenant — there is exactly one trusted issuer for the whole install.
 # To configure several SEPARATE clusters, run this once per kube-context
 # (--context …); the OIDC settings are identical, only --base-domain (→ redirect
@@ -21,7 +21,7 @@
 # ───────────────────────────────────────────────────────────────────────────
 # ISOLATION GUARANTEE (read before granting anything cross-org).
 # A shared issuer is SSO for AUTHENTICATION only. Authenticating into one
-# ClusterTenant does NOT grant access to another: the control-plane authorises
+# ClusterTenant does NOT grant access to another: the opencrane-ui authorises
 # every org-scoped route against the caller's OrgMembership (verified OIDC `sub`),
 # and routes a human to their own pod by a fail-closed verified-email→tenant
 # lookup. Non-members get 403; an ambiguous/absent email match is denied.
@@ -56,7 +56,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CHART_DIR="${OPENCRANE_CHART_DIR:-$SCRIPT_DIR/../../apps/fleet-platform}"
+# The fleet-platform chart moved to the WeOwnAI repo (italanta/opencrane#150) and no longer
+# ships in this repo — OPENCRANE_CHART_DIR / --chart MUST point at a checked-out copy of it
+# (or at apps/opencrane-infra for a silo release) when reconfiguring OIDC.
+CHART_DIR="${OPENCRANE_CHART_DIR:-}"
 
 NAMESPACE="opencrane-system"
 RELEASE="opencrane"
@@ -116,7 +119,12 @@ _active_context="${KUBE_CONTEXT:-$(kubectl config current-context 2>/dev/null ||
 # Confirm the release exists — this is a CONFIGURATOR, not an installer.
 if ! helm ${KCTX[@]+"${KCTX[@]}"} -n "$NAMESPACE" status "$RELEASE" >/dev/null 2>&1; then
   err "Release '$RELEASE' not found in namespace '$NAMESPACE' (context: $_active_context)."
-  err "This script configures OIDC on an EXISTING install. Deploy first (apps/fleet-platform/deploy.sh)."
+  err "This script configures OIDC on an EXISTING install. Deploy first — the fleet-platform chart's deploy.sh (now in the WeOwnAI repo, italanta/opencrane#150) or apps/opencrane-infra/deploy.sh."
+  exit 1
+fi
+
+if [[ -z "$CHART_DIR" ]]; then
+  err "--chart (or OPENCRANE_CHART_DIR) is required. The fleet-platform chart no longer ships in this repo — pass a checked-out copy of WeOwnAI's apps/fleet-platform, or apps/opencrane-infra for a silo release."
   exit 1
 fi
 
@@ -139,7 +147,7 @@ if [[ -s "$VALUES_TMP" ]] && ! grep -qx 'null' "$VALUES_TMP"; then helm_args+=(-
 #    mode). The Secret is left in place (harmless, unreferenced) so re-enabling
 #    keeps the same session secret and existing cookies survive.
 if [[ "$DISABLE" -eq 1 ]]; then
-  warn "Disabling OIDC on release '$RELEASE' (context: $_active_context) — control-plane reverts to token/dev auth."
+  warn "Disabling OIDC on release '$RELEASE' (context: $_active_context) — opencrane-ui reverts to token/dev auth."
   helm_args+=(--set-string "clustertenantManager.oidc.issuerUrl=")
   helm "${helm_args[@]}"
   [[ "$DRY_RUN" -eq 0 ]] && kubectl ${KCTL[@]+"${KCTL[@]}"} -n "$NAMESPACE" rollout status deploy/"$RELEASE"-clustertenant-manager --timeout=180s
@@ -153,7 +161,7 @@ fi
 [[ -n "$CLIENT_SECRET" ]] || { err "A client secret is required: pass --client-secret or set OPENCRANE_OIDC_CLIENT_SECRET (a confidential client cannot authenticate without it)."; exit 1; }
 
 # ── Redirect URI: explicit flag wins; otherwise derive from --base-domain. The
-#    control-plane host is platform.<base-domain> and the OIDC callback route is
+#    opencrane-ui host is platform.<base-domain> and the OIDC callback route is
 #    mounted at /api/v1/auth/callback (auth router @ /api/v1/auth + GET /callback).
 if [[ -z "$REDIRECT_URI" ]]; then
   [[ -n "$BASE_DOMAIN" ]] || { err "Provide --redirect-uri, or --base-domain to derive https://platform.<base-domain>/api/v1/auth/callback."; exit 1; }
@@ -215,7 +223,7 @@ helm "${helm_args[@]}"
 if [[ "$DRY_RUN" -eq 0 ]]; then
   kubectl ${KCTL[@]+"${KCTL[@]}"} -n "$NAMESPACE" rollout status deploy/"$RELEASE"-clustertenant-manager --timeout=180s
   log "OIDC configured. Issuer: $ISSUER_URL  ·  redirect: $REDIRECT_URI  ·  context: $_active_context"
-  log "Verify discovery is reachable from the control-plane and that '${ISSUER_URL%/}/.well-known/openid-configuration' resolves."
+  log "Verify discovery is reachable from the opencrane-ui and that '${ISSUER_URL%/}/.well-known/openid-configuration' resolves."
 else
   log "[dry-run] complete — no changes applied."
 fi

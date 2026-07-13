@@ -26,7 +26,7 @@ There are two distinct overheads, and they scale on different axes:
 | Overhead | Magnitude | Scales with |
 |---|---|---|
 | **Per-node system tax** — `kube-proxy`, `fluentbit`, `kube-dns`, `node-local-dns`, CSI, `konnectivity`, metrics agents | **~2.34 vCPU (≈ half of all requests)** | **node count** |
-| **Per-tenant plane duplication** — each silo runs a full `litellm`+`cognee`+`mcp-gateway`+`skill-registry`+`clustertenant-manager`+Postgres | ~0.5 vCPU + ~1.5 GiB **× every tenant** | **tenant count** ← the real scale risk |
+| **Per-tenant plane duplication** — each silo runs a full `litellm`+`cognee`+`mcp-gateway`+`feat-skill-registry`+`clustertenant-manager`+Postgres | ~0.5 vCPU + ~1.5 GiB **× every tenant** | **tenant count** ← the real scale risk |
 
 ---
 
@@ -38,7 +38,7 @@ There are two distinct overheads, and they scale on different axes:
 | clustertenant-manager | 100m | 2m | 128Mi | 135Mi | mem **under** (above its request) |
 | cognee | 100m | 3m | 256Mi | 303Mi | mem **under** |
 | litellm | 100m | 6m | 256Mi | **584Mi** | mem **way under** — OOM/eviction risk |
-| skill-registry | 100m | 1m | 128Mi | 71Mi | CPU over |
+| feat-skill-registry | 100m | 1m | 128Mi | 71Mi | CPU over |
 | db (CNPG) | none | 28m | none | 147Mi | unreserved |
 | openclaw (agent) | none | 5m | none | 216Mi | unreserved; genuinely per-tenant |
 
@@ -105,7 +105,7 @@ choice at the policy/encryption/identity layer, where Cilium is sufficient for c
 
 ### D3 — Right-size resource requests (dev DONE; prod TODO)
 
-Shipped: a `--dev-resources` deploy flag + `apps/clustertenant-platform/values-dev.yaml` overlay
+Shipped: a `--dev-resources` deploy flag + `apps/opencrane-infra/values-dev.yaml` overlay
 (**PR #109**) that cuts plane CPU requests and raises memory requests to observed usage.
 
 | Plane | CPU req | Mem req |
@@ -114,7 +114,7 @@ Shipped: a `--dev-resources` deploy flag + `apps/clustertenant-platform/values-d
 | clustertenant-manager | 100m → **50m** | 128Mi → **256Mi** |
 | cognee | 100m → **25m** | 256Mi → **384Mi** |
 | litellm | 100m → **25m** | 256Mi → **768Mi** |
-| skill-registry | 100m → **25m** | 128Mi |
+| feat-skill-registry | 100m → **25m** | 128Mi |
 
 Applied live to all three silos → cluster CPU requests **4.82 → 3.99 vCPU**. The flag fails fast if a
 chart ships no overlay, so production never silently gets dev-sized requests. **Prod sizing is a
@@ -127,7 +127,7 @@ tenants that is hundreds of copies of services that need per-tenant *data/identi
 per-tenant *process*. Target architecture:
 
 - **Share the stateless control/registry planes** across a pool: `litellm` (already issues
-  per-tenant virtual keys — point them at one shared proxy), `mcp-gateway`, `skill-registry`, and a
+  per-tenant virtual keys — point them at one shared proxy), `mcp-gateway`, `feat-skill-registry`, and a
   namespace-scoped-but-shared operator + gateway-proxy (the operator already supports
   `WATCH_NAMESPACE`).
 - **Pool the data plane** — one Postgres with per-tenant databases/schemas instead of a CNPG cluster
@@ -177,7 +177,7 @@ Phases 1 and 2 compound (tighter packing on fewer nodes) and are the cheapest ne
     - the **fleet** host was already folded — `fleet-manager-ingress.yaml` renders `/api` + `/auth`
       unconditionally (the SPA's own Ingress owns `/`);
     - the **org** host is now folded behind an opt-in `ingress.sameOrigin` (default OFF → the
-      historical `/`→control-plane render is byte-identical). Set `ingress.sameOrigin.enabled=true`
+      historical `/`→opencrane-api render is byte-identical). Set `ingress.sameOrigin.enabled=true`
       on the silo chart and Helm renders `/api` + `/gateway` + `/`→SPA natively.
     - both weownai deploy scripts' kubectl patches are now **idempotent** — they skip when the
       ingress already carries `/api` (chart-owned) and only fall back to a patch on the legacy
@@ -186,10 +186,10 @@ Phases 1 and 2 compound (tighter packing on fewer nodes) and are the cheapest ne
   manager: run a single `helm upgrade --force` (or `kubectl … apply --server-side --force-conflicts`)
   with `ingress.sameOrigin.enabled=true` to hand ownership back to Helm; every subsequent upgrade is
   then clean.
-- **Deploy hygiene — skill-registry env (resolved, #134/#140).** The out-of-band writer was the
+- **Deploy hygiene — feat-skill-registry env (resolved, #134/#140).** The out-of-band writer was the
   operator's `RuntimePlaneDriftRepairer`, whose client-side apply landed as the `node-fetch` field
   manager and contested Helm's ownership. #140 deleted it; `CONTROL_PLANE_URL`, `PORT`, and the
-  observability env are all rendered by `skill-registry-deployment.yaml`, so a plain `helm upgrade`
+  observability env are all rendered by `feat-skill-registry-deployment.yaml`, so a plain `helm upgrade`
   no longer reverts the plane's env. (`k8s-deploy.sh` also runs `--force-conflicts` so a one-time
   recreate clears any stale `node-fetch` ownership left on a live silo — #146.)
 - **Suspend self-loop (resolved, #134).** The suspend path now carries an `observedGeneration` guard

@@ -1,6 +1,7 @@
 # Dev GKE overlay — layer on top of gcp.yaml.
 #
-# Usage:
+# Usage (assumes a checked-out copy of the fleet-platform chart, which moved to the
+# WeOwnAI repo per italanta/opencrane#150):
 #   helm upgrade --install opencrane apps/fleet-platform -n opencrane-system \
 #     -f libs/k8s-platform/values/gcp.yaml \
 #     -f libs/k8s-platform/values/gke-dev.yaml

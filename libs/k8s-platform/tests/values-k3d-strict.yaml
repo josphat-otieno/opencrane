@@ -8,10 +8,10 @@ fleetManager:
     tag: local
     pullPolicy: IfNotPresent
 
-# Silo chart image (clustertenant-manager = in-silo controllers incl. the TenantOperator + API).
+# Silo chart image (opencrane-server = in-silo controllers incl. the TenantOperator + API).
 clustertenantManager:
   image:
-    repository: opencrane/clustertenant-manager
+    repository: opencrane/opencrane-server
     tag: local
     pullPolicy: IfNotPresent
   replicas: 1

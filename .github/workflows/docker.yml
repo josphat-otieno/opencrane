@@ -15,10 +15,10 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  OPERATOR_IMAGE: ghcr.io/${{ github.repository_owner }}/opencrane-fleet-manager
-  CONTROL_PLANE_IMAGE: ghcr.io/${{ github.repository_owner }}/opencrane-clustertenant-manager
-  TENANT_IMAGE: ghcr.io/${{ github.repository_owner }}/opencrane-tenant
-  SKILL_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/opencrane-skill-registry
+  OPENCRANE_SERVER_IMAGE: ghcr.io/${{ github.repository_owner }}/opencrane-server
+  TENANT_IMAGE: ghcr.io/${{ github.repository_owner }}/opencrane-openclaw-tenant
+  SKILL_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/opencrane-skills-registry
+  OPENCRANE_UI_IMAGE: ghcr.io/${{ github.repository_owner }}/opencrane-ui
 
 jobs:
   test:
@@ -49,14 +49,12 @@ jobs:
       # clients from source, then typechecks against the fresh output — so a
       # stale committed spec/client never fails the typecheck on its own.
       # Diff the regenerated artifacts to fail fast when codegen wasn't re-run
-      # after a source change (see the /auth/* fleet-api.ts drift).
+      # after a source change.
       - name: Verify generated specs and clients are up to date
         run: |
           git diff --exit-code -- \
-            apps/clustertenant-operator/openapi.json \
-            apps/fleet-operator/openapi.json \
+            apps/opencrane/openapi.json \
             libs/contracts/src/generated/api.ts \
-            libs/contracts/src/generated/fleet-api.ts \
           || { echo "::error::Generated OpenAPI specs/clients are stale. Run 'npm run build' (or 'npm run generate -w @opencrane/contracts') and commit the result."; exit 1; }
 
       - name: Test all projects
@@ -104,48 +102,28 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Extract image metadata (operator)
-        id: meta-operator
+      - name: Extract image metadata (opencrane-server)
+        id: meta-opencrane-server
         uses: docker/metadata-action@v6
         with:
-          images: ${{ env.OPERATOR_IMAGE }}
+          images: ${{ env.OPENCRANE_SERVER_IMAGE }}
           tags: |
             type=sha,prefix=sha-
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
-      - name: Build and push operator
+      - name: Build and push opencrane-server
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: apps/fleet-operator/deploy/Dockerfile
+          file: apps/opencrane/deploy/Dockerfile
           push: ${{ github.event_name == 'push' }}
-          tags: ${{ steps.meta-operator.outputs.tags }}
-          labels: ${{ steps.meta-operator.outputs.labels }}
+          tags: ${{ steps.meta-opencrane-server.outputs.tags }}
+          labels: ${{ steps.meta-opencrane-server.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Extract image metadata (control-plane)
-        id: meta-control-plane
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.CONTROL_PLANE_IMAGE }}
-          tags: |
-            type=sha,prefix=sha-
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-
-      - name: Build and push control-plane
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: apps/clustertenant-operator/deploy/Dockerfile
-          push: ${{ github.event_name == 'push' }}
-          tags: ${{ steps.meta-control-plane.outputs.tags }}
-          labels: ${{ steps.meta-control-plane.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Extract image metadata (tenant)
-        id: meta-tenant
+      - name: Extract image metadata (opencrane-openclaw-tenant)
+        id: meta-opencrane-openclaw-tenant
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.TENANT_IMAGE }}
@@ -153,19 +131,19 @@ jobs:
             type=sha,prefix=sha-
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
-      - name: Build and push tenant
+      - name: Build and push opencrane-openclaw-tenant
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: apps/tenant/deploy/Dockerfile
+          file: apps/feat-openclaw-tenant/deploy/Dockerfile
           push: ${{ github.event_name == 'push' }}
-          tags: ${{ steps.meta-tenant.outputs.tags }}
-          labels: ${{ steps.meta-tenant.outputs.labels }}
+          tags: ${{ steps.meta-opencrane-openclaw-tenant.outputs.tags }}
+          labels: ${{ steps.meta-opencrane-openclaw-tenant.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Extract image metadata (skill-registry)
-        id: meta-skill-registry
+      - name: Extract image metadata (opencrane-skills-registry)
+        id: meta-opencrane-skills-registry
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.SKILL_REGISTRY_IMAGE }}
@@ -173,13 +151,33 @@ jobs:
             type=sha,prefix=sha-
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
-      - name: Build and push skill-registry
+      - name: Build and push opencrane-skills-registry
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: apps/skill-registry/deploy/Dockerfile
+          file: apps/feat-skill-registry/deploy/Dockerfile
           push: ${{ github.event_name == 'push' }}
-          tags: ${{ steps.meta-skill-registry.outputs.tags }}
-          labels: ${{ steps.meta-skill-registry.outputs.labels }}
+          tags: ${{ steps.meta-opencrane-skills-registry.outputs.tags }}
+          labels: ${{ steps.meta-opencrane-skills-registry.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Extract image metadata (opencrane-ui)
+        id: meta-opencrane-ui
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.OPENCRANE_UI_IMAGE }}
+          tags: |
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build and push opencrane-ui
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/opencrane-ui/deploy/Dockerfile
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.meta-opencrane-ui.outputs.tags }}
+          labels: ${{ steps.meta-opencrane-ui.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

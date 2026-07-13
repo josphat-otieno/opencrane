@@ -31,7 +31,7 @@ A working cluster requires **two Helm releases** installed in order:
 3. **Install the fleet release** (`apps/fleet-platform`, chart `opencrane-fleet`) — this
    installs the cluster-wide bootstrap (CRDs, cert-manager issuer, ingress-nginx,
    external-dns, CNPG operator) plus the fleet-manager.
-4. **Install one silo release per org** (`apps/clustertenant-platform`, chart
+4. **Install one silo release per org** (`apps/opencrane-infra`, chart
    `opencrane-silo`) — the per-org control plane and runtime planes.
 5. **Point your domain** at the ingress — see [Set up your domain](/guide/dns).
 
@@ -44,7 +44,7 @@ diverge:
 | Profile | Script | What you get |
 |---------|--------|--------------|
 | **Single-tenant** (default) | `libs/k8s-platform/deploy-single-tenant.sh` | One organisation, seeded at install. Self-service org creation + billing are **off**; the script runs the fleet pass then the silo pass in one call. |
-| **Multi-tenant fleet** | `apps/fleet-platform/deploy.sh` + `apps/clustertenant-platform/deploy.sh` | The full self-service platform — any signed-in user can create an org; fleet wildcard + the ClusterTenant manager are on; silo releases installed separately per org. |
+| **Multi-tenant fleet** | `apps/fleet-platform/deploy.sh` + `apps/opencrane-infra/deploy.sh` | The full self-service platform — any signed-in user can create an org; fleet wildcard + the ClusterTenant manager are on; silo releases installed separately per org. |
 
 ```bash
 # Single-tenant: one org served at <org-name>.<base-domain>
@@ -58,7 +58,7 @@ apps/fleet-platform/deploy.sh \
   --cert-manager --acme-email ops@example.com --dns01-provider clouddns
 
 # Multi-tenant fleet: step 2 — silo release per org (repeat for each ClusterTenant)
-apps/clustertenant-platform/deploy.sh \
+apps/opencrane-infra/deploy.sh \
   --base-domain opencrane.example.com \
   --cluster-tenant acme
 ```
@@ -93,7 +93,7 @@ gcloud container clusters get-credentials opencrane --region <region>
 apps/fleet-platform/deploy.sh --base-domain <your-domain>
 
 # 3. Install a silo release per org
-apps/clustertenant-platform/deploy.sh \
+apps/opencrane-infra/deploy.sh \
   --base-domain <your-domain> \
   --cluster-tenant <org-name>
 ```

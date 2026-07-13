@@ -1,0 +1,6 @@
+<span
+	class="wo-chip wo-mono"
+	[class.wo-chip--bordered]="bordered()"
+	[style.color]="color()"
+	[style.border-color]="bordered() ? color() : 'transparent'"
+>{{ label() }}</span>

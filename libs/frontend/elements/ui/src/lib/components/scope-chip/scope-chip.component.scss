@@ -1,0 +1,11 @@
+.wo-chip {
+	font-size: 9px;
+	border-radius: 3px;
+	padding: 1px 5px;
+	opacity: 0.8;
+	white-space: nowrap;
+
+	&--bordered {
+		border: 1px solid currentColor;
+	}
+}

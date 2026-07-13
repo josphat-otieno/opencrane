@@ -1,0 +1,33 @@
+:host {
+	display: block;
+	height: 100%;
+	overflow-y: auto;
+	scrollbar-width: none;
+}
+
+.wo-keys__note {
+	margin: 16px 0 8px;
+	font-size: 12px;
+	color: var(--muted-foreground);
+	max-width: 52rem;
+}
+
+.wo-keys__error {
+	margin: 8px 0 0;
+	font-size: 12px;
+	color: var(--destructive, #c84b31);
+}
+
+.wo-keys__name {
+	font-size: 13px;
+}
+
+.wo-keys__input {
+	width: 100%;
+	max-width: 18rem;
+	font-size: 12px;
+
+	&:disabled {
+		opacity: 0.55;
+	}
+}

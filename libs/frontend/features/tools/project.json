@@ -1,0 +1,27 @@
+{
+	"name": "frontend-features-tools",
+	"$schema": "../../../../node_modules/nx/schemas/project-schema.json",
+	"projectType": "library",
+	"sourceRoot": "libs/frontend/features/tools/src",
+	"prefix": "wo",
+	"tags": [
+		"scope:web",
+		"type:feature"
+	],
+	"targets": {
+		"lint": {
+			"executor": "nx:run-commands",
+			"options": {
+				"command": "tsc -p tsconfig.json --noEmit",
+				"cwd": "libs/frontend/features/tools"
+			}
+		},
+		"test": {
+			"executor": "nx:run-commands",
+			"options": {
+				"command": "vitest run --passWithNoTests",
+				"cwd": "libs/frontend/features/tools"
+			}
+		}
+	}
+}

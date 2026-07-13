@@ -1,0 +1,6 @@
+<div class="wo-toggle">
+	<p-toggleswitch [ngModel]="value()" (ngModelChange)="value.set($event)" />
+	@if (label(); as labelValue) {
+		<span class="wo-toggle__label">{{ labelValue }}</span>
+	}
+</div>

@@ -1,0 +1,27 @@
+{
+	"name": "frontend-provider-key-adapter",
+	"$schema": "../../../../../node_modules/nx/schemas/project-schema.json",
+	"projectType": "library",
+	"sourceRoot": "libs/frontend/state/provider-key/adapter/src",
+	"prefix": "wo",
+	"tags": [
+		"scope:web",
+		"type:state"
+	],
+	"targets": {
+		"lint": {
+			"executor": "nx:run-commands",
+			"options": {
+				"command": "tsc -p tsconfig.json --noEmit",
+				"cwd": "libs/frontend/state/provider-key/adapter"
+			}
+		},
+		"test": {
+			"executor": "nx:run-commands",
+			"options": {
+				"command": "vitest run --passWithNoTests",
+				"cwd": "libs/frontend/state/provider-key/adapter"
+			}
+		}
+	}
+}

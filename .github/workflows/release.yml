@@ -33,10 +33,10 @@ jobs:
         run: npm run build
 
       - name: Verify committed spec is up to date
-        run: git diff --exit-code apps/clustertenant-operator/openapi.json
+        run: git diff --exit-code apps/opencrane/openapi.json
 
       - name: Attach openapi.json to the release
         uses: softprops/action-gh-release@v2
         with:
-          files: apps/clustertenant-operator/openapi.json
+          files: apps/opencrane/openapi.json
           fail_on_unmatched_files: true

@@ -1,0 +1,27 @@
+{
+	"name": "frontend-platform",
+	"$schema": "../../../node_modules/nx/schemas/project-schema.json",
+	"projectType": "library",
+	"sourceRoot": "libs/frontend/platform/src",
+	"prefix": "wo",
+	"tags": [
+		"scope:web",
+		"type:platform"
+	],
+	"targets": {
+		"lint": {
+			"executor": "nx:run-commands",
+			"options": {
+				"command": "tsc -p tsconfig.json --noEmit",
+				"cwd": "libs/frontend/platform"
+			}
+		},
+		"test": {
+			"executor": "nx:run-commands",
+			"options": {
+				"command": "vitest run --passWithNoTests",
+				"cwd": "libs/frontend/platform"
+			}
+		}
+	}
+}

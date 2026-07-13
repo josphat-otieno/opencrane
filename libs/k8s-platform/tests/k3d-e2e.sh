@@ -16,6 +16,11 @@ DB_PASSWORD="${DB_PASSWORD:-opencrane-e2e-password}"
 LOCAL_PROFILE="${LOCAL_PROFILE:-}"
 LITELLM_SECRET_NAME="${LITELLM_SECRET_NAME:-opencrane-litellm}"
 LITELLM_MASTER_KEY="${LITELLM_MASTER_KEY:-}"
+# The fleet-operator app and fleet-platform chart moved to the WeOwnAI repo
+# (italanta/opencrane#150) and no longer ship in this repo. Point these at a checked-out
+# copy of WeOwnAI's apps/fleet-operator and apps/fleet-platform to run this smoke test.
+FLEET_OPERATOR_DIR="${FLEET_OPERATOR_DIR:-}"
+FLEET_CHART_DIR="${FLEET_CHART_DIR:-}"
 
 function _require_cmd()
 {
@@ -129,16 +134,22 @@ _require_cmd k3d
 _require_docker_healthy
 _require_free_space
 
+if [[ -z "$FLEET_OPERATOR_DIR" || ! -f "$FLEET_OPERATOR_DIR/deploy/Dockerfile" || -z "$FLEET_CHART_DIR" || ! -d "$FLEET_CHART_DIR" ]]; then
+  echo "[e2e] The fleet-operator app and fleet-platform chart moved to the WeOwnAI repo (italanta/opencrane#150) and no longer ship in this repo."
+  echo "[e2e] Set FLEET_OPERATOR_DIR and FLEET_CHART_DIR to a checked-out copy of WeOwnAI's apps/fleet-operator and apps/fleet-platform, then re-run."
+  exit 1
+fi
+
 # 2. Build local images so e2e does not depend on pre-published GHCR tags. Each build is
 #    retried — the base-image pull from Docker Hub flakes intermittently on CI runners.
 echo "[e2e] Building fleet-operator image"
-_retry 3 docker build -f "$ROOT_DIR/apps/fleet-operator/deploy/Dockerfile" -t opencrane/operator:e2e "$ROOT_DIR"
+_retry 3 docker build -f "$FLEET_OPERATOR_DIR/deploy/Dockerfile" -t opencrane/operator:e2e "$ROOT_DIR"
 
-echo "[e2e] Building clustertenant-operator (silo) image"
-_retry 3 docker build -f "$ROOT_DIR/apps/clustertenant-operator/deploy/Dockerfile" -t opencrane/clustertenant-manager:e2e "$ROOT_DIR"
+echo "[e2e] Building opencrane-server (silo) image"
+_retry 3 docker build -f "$ROOT_DIR/apps/opencrane/deploy/Dockerfile" -t opencrane/opencrane-server:e2e "$ROOT_DIR"
 
 echo "[e2e] Building tenant image"
-_retry 3 docker build -f "$ROOT_DIR/apps/tenant/deploy/Dockerfile" -t opencrane/tenant:e2e "$ROOT_DIR"
+_retry 3 docker build -f "$ROOT_DIR/apps/feat-openclaw-tenant/deploy/Dockerfile" -t opencrane/tenant:e2e "$ROOT_DIR"
 
 # 3. Create a fresh cluster for deterministic test runs.
 echo "[e2e] Recreating k3d cluster '$CLUSTER_NAME'"
@@ -152,7 +163,7 @@ _retry 3 docker pull ghcr.io/cloudnative-pg/postgresql:16
 # 4b. Import images into the k3d cluster runtime.
 echo "[e2e] Importing images into k3d"
 k3d image import opencrane/operator:e2e --cluster "$CLUSTER_NAME"
-k3d image import opencrane/clustertenant-manager:e2e --cluster "$CLUSTER_NAME"
+k3d image import opencrane/opencrane-server:e2e --cluster "$CLUSTER_NAME"
 k3d image import opencrane/tenant:e2e --cluster "$CLUSTER_NAME"
 k3d image import ghcr.io/cloudnative-pg/postgresql:16 --cluster "$CLUSTER_NAME"
 
@@ -199,7 +210,7 @@ spec:
       postInitApplicationSQL:
         - CREATE DATABASE obot OWNER opencrane;
         - CREATE DATABASE litellm OWNER opencrane;
-        # The silo (clustertenant) control-plane is a SEPARATE Prisma client from the fleet
+        # The silo (clustertenant) opencrane-ui is a SEPARATE Prisma client from the fleet
         # registry — they cannot share a database (each owns its own _prisma_migrations), so
         # the silo gets its own DB on the same server.
         - CREATE DATABASE silo OWNER opencrane;
@@ -215,7 +226,7 @@ kubectl create secret generic "$DB_SECRET_NAME" \
   --dry-run=client \
   -o yaml | kubectl apply -f -
 
-# Silo control-plane DB secret (separate database; see CREATE DATABASE silo above).
+# Silo opencrane-ui DB secret (separate database; see CREATE DATABASE silo above).
 kubectl create secret generic "opencrane-silo-db" \
   -n "$NAMESPACE" \
   --from-literal=DATABASE_URL="postgresql://opencrane:${DB_PASSWORD}@${DB_RELEASE_NAME}-rw.${NAMESPACE}.svc.cluster.local:5432/silo" \
@@ -251,7 +262,7 @@ fi
 
 # 6. Install Helm chart with k3d-safe overrides wired to the in-cluster database.
 echo "[e2e] Installing Helm release '$RELEASE_NAME'"
-helm upgrade --install "$RELEASE_NAME" "$ROOT_DIR/apps/fleet-platform" \
+helm upgrade --install "$RELEASE_NAME" "$FLEET_CHART_DIR" \
   --namespace "$NAMESPACE" \
   --create-namespace \
   --values "$ROOT_DIR/libs/k8s-platform/tests/values-k3d-e2e.yaml" \
@@ -262,12 +273,12 @@ helm upgrade --install "$RELEASE_NAME" "$ROOT_DIR/apps/fleet-platform" \
 # mounts them, creating a chicken-and-egg with Helm's readiness checks).
 kubectl rollout status deployment/opencrane-fleet-manager -n "$NAMESPACE" --timeout=120s
 
-# 6b. Install the SILO chart (clustertenant-manager + the in-silo TenantOperator + planes) into the
+# 6b. Install the SILO chart (opencrane-server + the in-silo TenantOperator + planes) into the
 #     SAME namespace for this single-namespace smoke test. The Tenant CR below is reconciled by the
 #     silo's TenantOperator — the fleet chart has none (it stops at ClusterTenant lifecycle). The
 #     two charts' resource sets are disjoint, so co-installing them in one namespace is safe.
 echo "[e2e] Installing silo release 'opencrane-silo'"
-helm upgrade --install opencrane-silo "$ROOT_DIR/apps/clustertenant-platform" \
+helm upgrade --install opencrane-silo "$ROOT_DIR/apps/opencrane-infra" \
   --namespace "$NAMESPACE" \
   --values "$ROOT_DIR/libs/k8s-platform/tests/values-k3d-e2e.yaml" \
   --set "clustertenantManager.database.existingSecret=opencrane-silo-db" \
@@ -276,7 +287,7 @@ helm upgrade --install opencrane-silo "$ROOT_DIR/apps/clustertenant-platform" \
 # Silo resources are prefixed by the silo RELEASE name (opencrane-silo) because nameOverride
 # (opencrane) is a prefix of it, so Helm's fullname == the release name → opencrane-silo-<component>
 # (the fleet release is plain "opencrane", hence opencrane-fleet-manager above).
-kubectl rollout status deployment/opencrane-silo-clustertenant-manager -n "$NAMESPACE" --timeout=180s
+kubectl rollout status deployment/opencrane-silo-opencrane-server -n "$NAMESPACE" --timeout=180s
 
 # Wait for LiteLLM (a silo plane) when cost routing is enabled by chart values.
 if kubectl get deployment/opencrane-silo-litellm -n "$NAMESPACE" >/dev/null 2>&1; then

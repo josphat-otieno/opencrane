@@ -7,9 +7,9 @@
 # `helm template` can prove without a cluster:
 #
 #   1. Each operator watches only its own namespace, fail-closed (B2).
-#   2. Operator + control-plane RBAC are namespaced Role/RoleBinding scoped to the
+#   2. Operator + opencrane-ui RBAC are namespaced Role/RoleBinding scoped to the
 #      instance's own namespace — no cross-instance ClusterRole grant (B1). The only
-#      ClusterRole permitted is the skill-registry TokenReview (legitimately
+#      ClusterRole permitted is the feat-skill-registry TokenReview (legitimately
 #      cluster-scoped; grants no cross-namespace data).
 #   3. No cluster-singleton ClusterIssuer / ClusterSecretStore (B4).
 #   4. A cross-instance default-deny NetworkPolicy is rendered, allowing only the
@@ -28,7 +28,7 @@ ROOT_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
 # Multi-instance isolation is a per-SILO property (each silo is namespaced + fail-closed); the
 # fleet is the cluster-wide singleton (intentionally cluster-scoped), so it is NOT a multi-
 # instance unit and is validated separately. Render the silo chart per instance.
-CHART_DIR="$ROOT_DIR/apps/clustertenant-platform"
+CHART_DIR="$ROOT_DIR/apps/opencrane-infra"
 VALUES_DIR="$ROOT_DIR/libs/k8s-platform/values/multi-instance"
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
@@ -92,7 +92,7 @@ check_instance()
     fail "found $clusterroles ClusterRoles (expected ≤1 TokenReview)"
   fi
   if grep -q "name: $name-opencrane-clustertenant-manager" "$manifest" && grep -B2 "name: $name-opencrane-clustertenant-manager" "$manifest" | grep -q 'kind: Role'; then
-    pass "silo control-plane RBAC is a namespaced Role"
+    pass "silo opencrane-ui RBAC is a namespaced Role"
   fi
 
   # 3. No cluster-singleton issuer / secret store.

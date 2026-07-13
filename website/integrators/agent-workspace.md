@@ -53,16 +53,16 @@ ownership layer, and the layer decides who may write it and whether it survives 
 | Layer | Owner | Files | Editable? | Survives restart? |
 |-------|-------|-------|-----------|-------------------|
 | **L0 Platform** | OpenCrane | `AGENTS.md`, `TOOLS.md` | No | Re-stamped every boot |
-| **L1 Company** | Organisation | company `SOUL.md` + policy/voice docs | Via control-plane API | Versioned v1…vN (immutable) |
+| **L1 Company** | Organisation | company `SOUL.md` + policy/voice docs | Via opencrane-api | Versioned v1…vN (immutable) |
 | **L2 Tenant** | Tenant / agent | `SOUL.md`, `IDENTITY.md`, `USER.md`, `MEMORY.md` | Yes, live in-pod | Yes (persistent volume) |
 
 - **L0** encodes system mechanics — managed mode, the fact that MCP calls route through
   the Obot gateway, that skills are pulled per-entitlement from the registry, and the
-  contract semantics. The entrypoint (`apps/tenant/deploy/entrypoint.sh`) rewrites these
+  contract semantics. The entrypoint (`apps/feat-openclaw-tenant/deploy/entrypoint.sh`) rewrites these
   files on **every pod start**, so any edit an agent makes to them is reverted within one
   boot.
 - **L1** is the company's persona, tone, values and policy language. It is edited through
-  the control-plane API, published as immutable versions, and by rule carries **no** system
+  the opencrane-api, published as immutable versions, and by rule carries **no** system
   mechanics (see [the L0 guard](#the-l0-guard) below).
 - **L2** is where an agent becomes a distinct individual: its name, working style, what it
   remembers, who it works with. It is seeded from L1 at create time, then edited live and
@@ -83,11 +83,11 @@ Instead the control plane runs a governed, reviewable **three-way merge**. This 
 closest thing to "conditioning" an agent, and it is deliberately consensual.
 
 1. **Company publishes a new L1 version.** An admin edits the company `SOUL.md` via
-   `PUT /api/v1/org/workspace-docs/:name` ([company-docs.ts](https://github.com/italanta/opencrane/blob/main/libs/domain/company-docs/main/src/routes/company-docs.ts)).
+   `PUT /api/v1/org/workspace-docs/:name` ([company-docs.ts](https://github.com/italanta/opencrane/blob/main/libs/backend/company-docs/main/src/routes/company-docs.ts)).
    It is stored as a new immutable version. Before storage, the **L0 guard** scans it and
    rejects anything asserting system mechanics.
 2. **Three-way merge is computed.** The reconciler
-   ([reconciliation.logic.ts](https://github.com/italanta/opencrane/blob/main/libs/domain/company-docs/main/src/core/reconciliation.logic.ts))
+   ([reconciliation.logic.ts](https://github.com/italanta/opencrane/blob/main/libs/backend/company-docs/main/src/core/reconciliation.logic.ts))
    reads **base** (the version the tenant last reconciled), **ours** (the new company
    version) and **theirs** (the agent's current live `SOUL.md`). Policy: company wins, but
    lines the tenant genuinely added are preserved under a clearly-labelled section — never
@@ -103,7 +103,7 @@ closest thing to "conditioning" an agent, and it is deliberately consensual.
 
 ::: tip Implementation status
 The merge engine today is a deterministic *company-wins, preserve-tenant-additions* merger
-(`_DeterministicReconciler` in [reconciler.ts](https://github.com/italanta/opencrane/blob/main/libs/domain/company-docs/main/src/core/reconciler.ts))
+(`_DeterministicReconciler` in [reconciler.ts](https://github.com/italanta/opencrane/blob/main/libs/backend/company-docs/main/src/core/reconciler.ts))
 — predictable and testable with no model in the loop. The locked design swaps a
 LiteLLM-backed, agent-driven merge in at a single seam (`_BuildDocMergeReconciler`); the
 orchestration around it is already final. 🔶
@@ -112,7 +112,7 @@ orchestration around it is already final. 🔶
 ## The L0 guard
 
 The model only works if company and tenant prose stays in its lane. The L0 guard
-([l0-guard.ts](https://github.com/italanta/opencrane/blob/main/libs/domain/company-docs/main/src/core/l0-guard.ts))
+([l0-guard.ts](https://github.com/italanta/opencrane/blob/main/libs/backend/company-docs/main/src/core/l0-guard.ts))
 is a hard gate on **both** the publish path and the reconciler output: if a document tries
 to assert platform mechanics, the write is rejected with a `422` before anything lands.
 

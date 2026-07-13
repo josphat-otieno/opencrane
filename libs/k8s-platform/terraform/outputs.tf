@@ -42,7 +42,7 @@ output "dns_name_servers"
 output "dns_setup_instructions"
 {
   description = "Manual DNS guidance when Cloud DNS is disabled."
-  value       = length(module.dns) > 0 ? "Cloud DNS zone + shared DNS-writer GSA managed by Terraform — delegate ${var.domain} to the dns_name_servers output at your registrar (NS delegation), and pass dns_writer_service_account_email to k8s-deploy.sh --dns-writer-gsa so cert-manager DNS-01 can issue. external-dns reconciles per-org records at runtime. The install-time platform A-records (apex, *.<domain>, control-plane host) are written only once the ingress IP is known (Terraform app-deploy, or re-apply after the LB IP is assigned); until then add them at your registrar pointing at the ingress IP (kubectl get svc -n ingress-nginx)." : "Point an A record for your domain and a wildcard *.<domain> at the ingress IP (run: kubectl get ingress -A) at your DNS provider."
+  value       = length(module.dns) > 0 ? "Cloud DNS zone + shared DNS-writer GSA managed by Terraform — delegate ${var.domain} to the dns_name_servers output at your registrar (NS delegation), and pass dns_writer_service_account_email to k8s-deploy.sh --dns-writer-gsa so cert-manager DNS-01 can issue. external-dns reconciles per-org records at runtime. The install-time platform A-records (apex, *.<domain>, opencrane-ui host) are written only once the ingress IP is known (Terraform app-deploy, or re-apply after the LB IP is assigned); until then add them at your registrar pointing at the ingress IP (kubectl get svc -n ingress-nginx)." : "Point an A record for your domain and a wildcard *.<domain> at the ingress IP (run: kubectl get ingress -A) at your DNS provider."
 }
 
 output "dns_writer_service_account_email"

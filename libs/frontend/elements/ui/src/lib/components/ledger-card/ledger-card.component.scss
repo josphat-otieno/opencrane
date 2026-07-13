@@ -1,0 +1,53 @@
+.wo-ledger {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	border-radius: var(--radius);
+	border-left: 2px solid;
+	padding: 9px 12px;
+	margin-bottom: 6px;
+
+	&__id {
+		font-size: 10px;
+		font-weight: 500;
+		min-width: 24px;
+		margin-top: 1px;
+	}
+
+	&__body {
+		flex: 1;
+		min-width: 0;
+	}
+
+	&__label {
+		font-size: 12px;
+		line-height: 1.4;
+		color: var(--foreground);
+		margin: 0;
+
+		&--dimmed {
+			opacity: 0.5;
+		}
+	}
+
+	&__meta {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin-top: 4px;
+	}
+
+	&__ref {
+		font-size: 10px;
+		color: var(--muted-foreground);
+	}
+
+	&__status {
+		font-size: 9px;
+		border: 1px solid;
+		border-radius: 3px;
+		padding: 1px 5px;
+		white-space: nowrap;
+		margin-top: 1px;
+	}
+}

@@ -1,0 +1,16 @@
+<div class="wo-section" [class.wo-section--rail]="variant() === 'rail'">
+	<button type="button" class="wo-section__header" (click)="toggle()">
+		@if (variant() === 'rail') {
+			<i class="pi pi-chevron-down wo-section__chevron" [class.wo-section__chevron--closed]="!open()"></i>
+			<span class="wo-section__title">{{ title() }}</span>
+		} @else {
+			<span class="wo-section__title">{{ title() }}</span>
+			<i class="pi pi-chevron-down wo-section__chevron" [class.wo-section__chevron--closed]="!open()"></i>
+		}
+	</button>
+	@if (open()) {
+		<div class="wo-section__body">
+			<ng-content />
+		</div>
+	}
+</div>

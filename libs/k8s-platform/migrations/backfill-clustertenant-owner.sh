@@ -8,7 +8,7 @@
 # operator skips seeding their default Tenant. This script stamps `spec.owner` onto
 # each such CR so the next reconcile seeds the workspace.
 #
-# The owner SUBJECT is authoritative in the control-plane database (`org_memberships`,
+# The owner SUBJECT is authoritative in the opencrane-ui database (`org_memberships`,
 # role = owner) and is read from there per org. The owner EMAIL was never persisted —
 # it only ever lived on the session/CR — so it must be supplied (--email), or per org
 # via --email-for <org>=<email> (repeatable). Without an email the operator still
@@ -61,7 +61,7 @@ done
 detected_version="$(kubectl get crd "${PLURAL}.${GROUP}" -o jsonpath='{.spec.versions[?(@.served==true)].name}' 2>/dev/null | awk '{print $1}')"
 [[ -n "$detected_version" ]] && VERSION="$detected_version"
 
-# Read the owner subject for an org from the control-plane DB (role = owner).
+# Read the owner subject for an org from the opencrane-ui DB (role = owner).
 owner_subject_for() {
   local org="$1"
   kubectl exec -n "$DB_NAMESPACE" "$DB_POD" -- \

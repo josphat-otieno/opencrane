@@ -8,7 +8,7 @@
 
 /**
  * Pino `redact.paths` entries covering the credential-bearing fields that flow
- * through the OpenCrane control-plane and its clients (auth headers, LiteLLM
+ * through the OpenCrane opencrane-ui and its clients (auth headers, LiteLLM
  * master keys, OIDC secrets, DB URLs, k8s secret payloads).
  */
 export const REDACT_PATHS: readonly string[] = [

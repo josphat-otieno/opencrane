@@ -6,10 +6,12 @@
 # Usage (via the multi-tenant profile). The deploy script uses --reset-then-reuse-values:
 # it merges chart defaults (new keys like multiCt) with the prior release values, so the
 # overlay only needs to override non-default keys. Since reset re-applies chart defaults
-# for all keys the invocation doesn't supply, per-component image tags (--control-plane-tag,
+# for all keys the invocation doesn't supply, per-component image tags (--opencrane-ui-tag,
 # --operator-tag, etc.) must be restated explicitly with --tag flags (they are not carried
 # from --values files).
 #
+# NOTE: the fleet-platform chart moved to the WeOwnAI repo (italanta/opencrane#150); the
+# deploy.sh below is a checked-out copy of it.
 #   apps/fleet-platform/deploy.sh \
 #     --base-domain dev.opencrane.ai \
 #     --ingress-ip 34.22.213.142 \

@@ -1,0 +1,19 @@
+@if (showShell()) {
+	<main class="wo-login">
+		<p-card styleClass="wo-login__card">
+			<p class="wo-login__eyebrow">OpenCrane Operator</p>
+			<h1 class="wo-login__brand wo-serif">Sign in to your workspace.</h1>
+			<p class="wo-login__sub">
+				Your sovereign AI workspace — isolated, governed, and fully under your control.
+			</p>
+			<div class="wo-login__paths">
+				<p-button
+					label="Log in"
+					styleClass="wo-login__btn"
+					size="large"
+					(onClick)="signIn()"
+				/>
+			</div>
+		</p-card>
+	</main>
+}

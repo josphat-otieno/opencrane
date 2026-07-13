@@ -14,7 +14,7 @@ This file is the canonical agent instruction file for the repository.
 | Topic | File | Read it when you are… |
 |-------|------|------------------------|
 | **TypeScript** | [`docs/agents/typescript.md`](docs/agents/typescript.md) | writing or editing any `.ts` file — bracket placement, arrow functions, JSDoc, naming, imports, type-file separation, self-review table. |
-| **Angular / Frontend** | [`docs/agents/angular.md`](docs/agents/angular.md) | working in the WeOwnAI Angular frontend — PrimeNG, layering, signals/resources, standalone components. |
+| **Angular / Frontend** | [`docs/agents/angular.md`](docs/agents/angular.md) | working in the `apps/opencrane-ui` Angular SPA or `libs/frontend/*` (ported from WeOwnAI, #152) — PrimeNG, layering, signals/resources, standalone components. |
 | **Architecture & Identity** | [`docs/agents/architecture.md`](docs/agents/architecture.md) | making IAM, identity, auth, or token-policy decisions (the IAM-first philosophy). |
 | **Kubernetes** | [`docs/agents/k8s.md`](docs/agents/k8s.md) | touching service accounts, RBAC, NetworkPolicy, or routes excluded from auth middleware. |
 | **Prisma & migrations** | [`docs/agents/prisma.md`](docs/agents/prisma.md) | adding/altering database models or writing a migration — per-domain schema files under `prisma/schema/`, migration naming. |
@@ -60,8 +60,10 @@ values keys; the `website` agent documents one batch per run) → ledger append
 
 **Built-in platform agent types** (available via the Agent tool, not repo-defined): `Explore`
 (read-only broad search — locating code across many files), `Plan` (design an implementation plan),
-`general-purpose` (multi-step research/execution). The `architecture` and `angular` types target the
-WeOwnAI frontend monorepo, not this AGPL platform repo.
+`general-purpose` (multi-step research/execution). The `architecture` and `angular` types also apply
+to the WeOwnAI repo, which still owns the fleet app and the FORK libs (`core`, `platform`,
+`state/core`, `state/gateways`, `state/utils/storage`, `state/tenant/adapter`) shared with
+`libs/frontend/*` here.
 
 When adding a new agent: put Claude Code subagents in `.claude/agents/` and add a row above — that is
 the single home for agent definitions (do not reintroduce a parallel `.github/agents/` copy). Add a

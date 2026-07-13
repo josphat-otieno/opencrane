@@ -4,7 +4,7 @@
  * A complete no-op unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set (the default on a
  * laptop), so normal CLI use carries zero overhead. When an endpoint *is*
  * configured (e.g. `oc` running in CI against the cluster), the auto HTTP
- * instrumentation propagates trace context to the control-plane so a command
+ * instrumentation propagates trace context to the opencrane-ui so a command
  * and the server work it triggers appear in one trace.
  *
  * Imported first in `index.ts` so instrumentation is installed before the

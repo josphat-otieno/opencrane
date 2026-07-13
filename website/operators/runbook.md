@@ -37,7 +37,7 @@ This document covers the essential operational procedures for deploying, verifyi
 # 1. Start k3d cluster
 k3d cluster create opencrane --agents 1 --port "8080:80@loadbalancer"
 
-# 2. Bootstrap the full local stack (PostgreSQL + LiteLLM + control-plane + operator)
+# 2. Bootstrap the full local stack (PostgreSQL + LiteLLM + opencrane-api + operator)
 libs/k8s-platform/tests/k3d-local.sh
 
 # 3. Verify all pods are running
@@ -59,7 +59,7 @@ apps/fleet-platform/deploy.sh \
     --cert-manager --acme-email ops@example.com --dns01-provider clouddns
 
 # Step 2: install one silo per ClusterTenant
-apps/clustertenant-platform/deploy.sh \
+apps/opencrane-infra/deploy.sh \
     --base-domain prod.example.com \
     --cluster-tenant acme
 ```
@@ -104,7 +104,7 @@ Set these via Helm values — the deploy scripts wire them automatically. The va
 |----------|----------|----------|-------------|
 | `DATABASE_URL` | Yes | `clustertenantManager.database.existingSecret` | Per-silo PostgreSQL connection string |
 | `LITELLM_MASTER_KEY` | Yes (if LiteLLM enabled) | `litellm.existingSecret` | LiteLLM master API key |
-| `OPENCRANE_API_TOKEN` | Yes | — | Bearer token for control-plane API auth |
+| `OPENCRANE_API_TOKEN` | Yes | — | Bearer token for opencrane-api auth |
 | `OPENCRANE_PROJECTION_DRIFT_ALERT_THRESHOLD` | No | — | Drift count before alert fires (0 = disabled) |
 | `OPENCRANE_DRIFT_WEBHOOK_URL` | No | — | Webhook URL for projection-drift alert delivery |
 
@@ -172,12 +172,12 @@ The harvesting agent is a per-silo component deployed in the silo namespace. Rep
 `<ct>` with the ClusterTenant name.
 
 ```bash
-# Check harvesting-agent metrics
-kubectl port-forward -n opencrane-<ct> deployment/harvesting-agent 9090:9090 &
+# Check feat-central-agents metrics
+kubectl port-forward -n opencrane-<ct> deployment/feat-central-agents 9090:9090 &
 curl http://localhost:9090/metrics
 
-# Check harvesting-agent logs
-kubectl logs -n opencrane-<ct> deployment/harvesting-agent --tail 50
+# Check feat-central-agents logs
+kubectl logs -n opencrane-<ct> deployment/feat-central-agents --tail 50
 ```
 
 ---
@@ -195,7 +195,7 @@ apps/fleet-platform/deploy.sh \
     --reuse-values
 
 # Upgrade a silo release
-apps/clustertenant-platform/deploy.sh \
+apps/opencrane-infra/deploy.sh \
     --base-domain prod.example.com \
     --cluster-tenant acme \
     --reuse-values
@@ -328,14 +328,14 @@ kubectl delete pod -n opencrane-<ct> -l opencrane.io/tenant=acme
 **Symptoms**: `kubectl get tenants -n opencrane-<ct>` shows tenants stuck in `Pending` or `Error` phase.
 
 **Response**:
-1. Check operator logs: `kubectl logs -n opencrane-<ct> deployment/opencrane-clustertenant-operator --tail 100`
-2. Verify RBAC: `kubectl auth can-i get tenants.opencrane.io --as system:serviceaccount:opencrane-<ct>:opencrane-clustertenant-operator -n opencrane-<ct>`
+1. Check operator logs: `kubectl logs -n opencrane-<ct> deployment/opencrane-operator --tail 100`
+2. Verify RBAC: `kubectl auth can-i get tenants.opencrane.io --as system:serviceaccount:opencrane-<ct>:opencrane-operator -n opencrane-<ct>`
 3. Check Kubernetes API server reachability from the operator pod
 4. Force reconcile by annotating the tenant:
    ```bash
    kubectl annotate tenant acme opencrane.io/reconcile-at=$(date -u +%s) -n opencrane-<ct>
    ```
-5. Restart the operator if needed: `kubectl rollout restart deployment/opencrane-clustertenant-operator -n opencrane-<ct>`
+5. Restart the operator if needed: `kubectl rollout restart deployment/opencrane-operator -n opencrane-<ct>`
 
 ### P1: LiteLLM is unreachable
 
@@ -348,7 +348,7 @@ kubectl delete pod -n opencrane-<ct> -l opencrane.io/tenant=acme
 4. Check database connectivity from LiteLLM
 5. If LiteLLM is permanently unavailable, disable it for recovery on the affected silo:
    ```bash
-   helm upgrade opencrane-<ct> apps/clustertenant-platform/ \
+   helm upgrade opencrane-<ct> apps/opencrane-infra/ \
      --namespace opencrane-<ct> \
      --reuse-values \
      --set litellm.enabled=false \
@@ -371,7 +371,7 @@ kubectl delete pod -n opencrane-<ct> -l opencrane.io/tenant=acme
    curl -X POST ".../api/tenants/repair?dryRun=false"
    curl -X POST ".../api/policies/repair?dryRun=false"
    ```
-4. If drift persists, check for split-brain between operator and control-plane write paths
+4. If drift persists, check for split-brain between operator and opencrane-api write paths
 
 ### P2: Budget overage (tenant exceeds 100% of monthly budget)
 
@@ -532,8 +532,8 @@ kubectl patch tenant acme -n opencrane-<ct> \
 | `GET /api/metrics/projection-drift` | CRD vs PostgreSQL mismatch counts and lag |
 | `GET /api/tenants/:name/datasets` | Tenant dataset membership projection |
 | `GET /api/ai-budget/:tenant/spend` | LiteLLM spend vs budget for a tenant |
-| `GET http://harvesting-agent:9090/metrics` | Ingest lag, success rates by source |
-| `GET http://harvesting-agent:9090/healthz` | Harvesting agent liveness |
+| `GET http://feat-central-agents:9090/metrics` | Ingest lag, success rates by source |
+| `GET http://feat-central-agents:9090/healthz` | Harvesting agent liveness |
 
 ### Structured log fields (pino)
 
@@ -541,7 +541,7 @@ All components emit structured JSON logs with these standard fields:
 
 | Field | Description |
 |-------|-------------|
-| `name` | Service name (e.g. `ctrl`, `operator`, `harvesting-agent`) |
+| `name` | Service name (e.g. `ctrl`, `operator`, `feat-central-agents`) |
 | `component` | Sub-component name |
 | `level` | Log level (10=trace, 20=debug, 30=info, 40=warn, 50=error) |
 | `name` | Tenant name when relevant |

@@ -2,7 +2,7 @@ import type { Grant } from "./grant.types.js";
 import { GrantScope } from "./grant.types.js";
 
 /**
- * Shared group contract returned by the control-plane group APIs.
+ * Shared group contract returned by the opencrane-ui group APIs.
  *
  * Groups model stable domain membership sets such as organization-,
  * department-, project-, or personal-scoped cohorts. The same shape is used by
@@ -23,6 +23,6 @@ export interface Group
   members: string[];
   /** Snapshot count derived from the normalized members list. */
   memberCount: number;
-  /** Grants that the control-plane links to the group. */
+  /** Grants that the opencrane-ui links to the group. */
   grants: Grant[];
 }

@@ -83,9 +83,9 @@ export interface ClusterTenantStatus
  *
  * Distinct from {@link ClusterTenantStatus}: `phase` is the raw CR string (not yet mapped
  * to the {@link ClusterTenantPhase} enum) and every field is optional, because a CR may be
- * observed mid-reconcile with only a partial status. The control-plane read path maps this
+ * observed mid-reconcile with only a partial status. The opencrane-ui read path maps this
  * into {@link ClusterTenantStatus} for the API response. Defined once here so the operator
- * writer and the control-plane reader cannot drift apart.
+ * writer and the opencrane-ui reader cannot drift apart.
  */
 export interface ClusterTenantObservedStatus
 {
@@ -165,7 +165,7 @@ export interface ClusterTenantZitadel
 
 /**
  * Generic provision request POSTed to an external provisioner webhook. Carries
- * no vendor-specific fields so any backend (e.g. a hosted-control-plane vendor)
+ * no vendor-specific fields so any backend (e.g. a hosted-opencrane-ui vendor)
  * can satisfy a `dedicatedCluster` request out-of-process, at arm's length.
  */
 export interface ClusterTenantProvisionRequest

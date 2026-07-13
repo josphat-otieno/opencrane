@@ -6,7 +6,8 @@
  * scope tags declared in each package.json (`nx.tags`):
  *
  *   - `scope:shared`  (libs/* infra + contracts) may only depend on other shared libs.
- *   - `scope:domain`  (libs/domain/*)            may depend on domain + shared libs.
+ *   - `scope:backend` (libs/backend/*)           may depend on backend + shared libs.
+ *   - `scope:web`     (libs/frontend/*)          may depend on web + shared libs.
  *   - `scope:app`     (apps/*)                   may depend on anything.
  *
  * Run via `pnpm lint:boundaries`.
@@ -41,7 +42,8 @@ export default [
           allow: [],
           depConstraints: [
             { sourceTag: "scope:shared", onlyDependOnLibsWithTags: ["scope:shared"] },
-            { sourceTag: "scope:domain", onlyDependOnLibsWithTags: ["scope:domain", "scope:shared"] },
+            { sourceTag: "scope:backend", onlyDependOnLibsWithTags: ["scope:backend", "scope:shared"] },
+            { sourceTag: "scope:web", onlyDependOnLibsWithTags: ["scope:web", "scope:shared"] },
             { sourceTag: "scope:app", onlyDependOnLibsWithTags: ["*"] },
           ],
         },

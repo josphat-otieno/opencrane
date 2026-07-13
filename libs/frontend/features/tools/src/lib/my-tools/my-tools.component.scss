@@ -1,0 +1,45 @@
+:host {
+	display: block;
+	flex: 1;
+	min-width: 0;
+	height: 100%;
+}
+
+.wo-mytools {
+	&__table {
+		margin-bottom: 18px;
+	}
+
+	&__name {
+		font-size: 13px;
+	}
+
+	&__muted {
+		color: var(--muted-foreground);
+	}
+
+	&__actions {
+		text-align: right;
+		white-space: nowrap;
+
+		.wo-tools__act + .wo-tools__act {
+			margin-left: 14px;
+		}
+	}
+
+	&__prompt {
+		.wo-tools__act {
+			margin-left: 6px;
+		}
+	}
+
+	&__empty {
+		padding: 24px 0;
+		font-size: 13px;
+		color: var(--muted-foreground);
+	}
+
+	&__browse {
+		margin-top: 18px;
+	}
+}
