@@ -266,11 +266,11 @@ spec:
       # The silo (clustertenant) opencrane-ui owns its own Prisma database. Its
       # runtime planes each get a sibling DB on the same server (own _prisma_migrations).
       database: silo
-      # Pin the owner role explicitly: CNPG defaults `owner` to the `database` name
-      # (here `silo`), but the creds secret's username is `opencrane` and the
-      # postInitApplicationSQL below + every DATABASE_URL use role `opencrane` — without
-      # this the `opencrane` role is never created and the CREATE DATABASE ... OWNER
-      # opencrane statements fail with "role opencrane does not exist".
+      # Owner role pinned to opencrane (NOT defaulted to the database name silo):
+      # the creds secret user, every DATABASE_URL, and the CREATE DATABASE OWNER
+      # statements below all use role opencrane. No backticks/dollar-refs in this
+      # heredoc comment -- it is unquoted for var expansion, so they would run as
+      # command substitution (bash: "owner: command not found").
       owner: opencrane
       secret:
         name: ${DB_RELEASE_NAME}-creds
