@@ -104,6 +104,8 @@ PROFILE_SET=(
   --set "fleetManager.clusterTenantApi.enabled=false"
   --set "billing.enabled=false"
   --set "multiInstance.enabled=false"
+  # NOTE: same-origin org hosting is now the chart's only mode (the legacy `*.<domain>` wildcard
+  # gateway-ingress was removed) — no --set needed here to select it.
   --set "ingress.tls.enabled=true"
   # Issue the silo's OWN TLS cert (clustertenant-manager-certificate.yaml) via the cluster-wide
   # ClusterIssuer the central release created. A k8s Ingress can only reference a TLS secret in its
