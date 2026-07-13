@@ -1,8 +1,8 @@
 import type { Logger } from "pino";
 import type { OrgMemberStatus, PrismaClient } from "@prisma/client";
 
-import { _CutTenant } from "@opencrane/domain/connections";
-import { _SetTenantSuspended } from "@opencrane/domain/tenants";
+import { _CutTenant } from "@opencrane/backend/connections";
+import { _SetTenantSuspended } from "@opencrane/backend/tenants";
 import type { FleetMembershipReader, FleetMembershipRow, MembershipEnforcementDeps } from "./membership-projection-repairer.types.js";
 
 /** Default interval (seconds) between membership-projection sweeps. */

@@ -2,7 +2,7 @@ import type * as k8s from "@kubernetes/client-node";
 import type { Logger } from "pino";
 import type { PrismaClient } from "@prisma/client";
 
-import { _RepairTenantProjection } from "@opencrane/domain/projection";
+import { _RepairTenantProjection } from "@opencrane/backend/projection";
 
 /** Default interval (seconds) between projection-repair sweeps. */
 const _DEFAULT_INTERVAL_SECONDS = 60;

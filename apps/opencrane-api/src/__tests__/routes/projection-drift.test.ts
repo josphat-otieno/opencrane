@@ -4,9 +4,9 @@ import express from "express";
 import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
 
-import { policiesRouter } from "@opencrane/domain/policies";
-import { tenantsRouter } from "@opencrane/domain/tenants";
-import { _NoopGatewayAdmin } from "@opencrane/domain/connections";
+import { policiesRouter } from "@opencrane/backend/policies";
+import { tenantsRouter } from "@opencrane/backend/tenants";
+import { _NoopGatewayAdmin } from "@opencrane/backend/connections";
 
 /**
  * Build a test app that mounts the tenant drift route with mocked dependencies.

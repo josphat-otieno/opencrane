@@ -16,7 +16,7 @@ import { ___AuthMiddleware } from "@opencrane/infra/auth";
 import { _ErrorHandler, _RateLimit } from "@opencrane/infra/http";
 
 import { ___AuthRouter } from "./infra/auth/auth.router.js";
-import { _BuildGatewayAdmin } from "@opencrane/domain/connections";
+import { _BuildGatewayAdmin } from "@opencrane/backend/connections";
 import { ___CreateOidcAuthService } from "./infra/auth/oidc.service.js";
 import { ___CreatePrismaClient } from "./infra/db/db.js";
 import { _TransportSecurity } from "./infra/middleware/transport-security.middleware.js";
@@ -24,7 +24,7 @@ import { _log as log } from "./app/log.js";
 import { _RegisterInternalRoutes, _RegisterRoutes } from "./app/routes.js";
 import { TenantProjectionRepairer } from "./infra/projection/tenant-projection-repairer.js";
 import { MembershipProjectionRepairer, _BuildHttpFleetMembershipReader, _BuildHttpFleetMembershipWriter } from "./infra/projection/membership-projection-repairer.js";
-import { _ResolveOwnClusterTenantName, _SeedOwnDefaultTenant, _SeedOwnClusterTenant } from "@opencrane/domain/cluster-tenants";
+import { _ResolveOwnClusterTenantName, _SeedOwnDefaultTenant, _SeedOwnClusterTenant } from "@opencrane/backend/cluster-tenants";
 import { CogneeLiteLlmKey } from "./reconcilers/tenants/internal/cognee-litellm-key.js";
 import { CogneeSiloTenant } from "./reconcilers/tenants/internal/cognee-silo-tenant.js";
 
@@ -32,7 +32,7 @@ import { CogneeSiloTenant } from "./reconcilers/tenants/internal/cognee-silo-ten
 // namespace, so a silo stands on its own; the fleet-manager watches only the cluster-scoped
 // ClusterTenant CR and nothing inside a silo.
 import { _LoadOperatorConfig, type OpenClawTenantOperatorConfig } from "./app/config.js";
-import { _ProvisionByokKey } from "@opencrane/domain/model-routing";
+import { _ProvisionByokKey } from "@opencrane/backend/model-routing";
 import { _CreateTenantOperator, IdleChecker } from "./reconcilers/tenants/index.js";
 import { PolicyOperator } from "./reconcilers/policies/operator.js";
 import { _ReadTenantRolloutConfig, TenantUpdateWithCanaryStrategyController } from "./reconcilers/tenant-rollout/tenant-update-with-canary-strategy.controller.js";

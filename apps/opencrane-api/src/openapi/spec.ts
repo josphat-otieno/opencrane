@@ -13,22 +13,22 @@
 // Domain path imports
 // ---------------------------------------------------------------------------
 
-import { _AwarenessOpenapiPaths } from "@opencrane/domain/awareness";
-import { _SessionsOpenapiPaths } from "@opencrane/domain/sessions";
-import { _TenantsOpenapiPaths } from "@opencrane/domain/tenants";
-import { _ProjectionOpenapiPaths } from "@opencrane/domain/projection";
-import { _PoliciesOpenapiPaths } from "@opencrane/domain/policies";
-import { _McpOpenapiPaths } from "@opencrane/domain/mcp";
-import { _GrantsOpenapiPaths } from "@opencrane/domain/grants";
-import { _GroupsOpenapiPaths } from "@opencrane/domain/groups";
-import { _SkillsOpenapiPaths } from "@opencrane/domain/skills";
-import { _RetrievalOpenapiPaths } from "@opencrane/domain/retrieval";
-import { _AccessTokensOpenapiPaths } from "@opencrane/domain/access-tokens";
-import { _ProvidersOpenapiPaths } from "@opencrane/domain/providers";
-import { _ModelRoutingOpenapiPaths } from "@opencrane/domain/model-routing";
-import { _SpendOpenapiPaths } from "@opencrane/domain/spend";
-import { _AuditOpenapiPaths } from "@opencrane/domain/audit";
-import { _MetricsOpenapiPaths } from "@opencrane/domain/metrics";
+import { _AwarenessOpenapiPaths } from "@opencrane/backend/awareness";
+import { _SessionsOpenapiPaths } from "@opencrane/backend/sessions";
+import { _TenantsOpenapiPaths } from "@opencrane/backend/tenants";
+import { _ProjectionOpenapiPaths } from "@opencrane/backend/projection";
+import { _PoliciesOpenapiPaths } from "@opencrane/backend/policies";
+import { _McpOpenapiPaths } from "@opencrane/backend/mcp";
+import { _GrantsOpenapiPaths } from "@opencrane/backend/grants";
+import { _GroupsOpenapiPaths } from "@opencrane/backend/groups";
+import { _SkillsOpenapiPaths } from "@opencrane/backend/skills";
+import { _RetrievalOpenapiPaths } from "@opencrane/backend/retrieval";
+import { _AccessTokensOpenapiPaths } from "@opencrane/backend/access-tokens";
+import { _ProvidersOpenapiPaths } from "@opencrane/backend/providers";
+import { _ModelRoutingOpenapiPaths } from "@opencrane/backend/model-routing";
+import { _SpendOpenapiPaths } from "@opencrane/backend/spend";
+import { _AuditOpenapiPaths } from "@opencrane/backend/audit";
+import { _MetricsOpenapiPaths } from "@opencrane/backend/metrics";
 
 // ---------------------------------------------------------------------------
 // Reusable schema components

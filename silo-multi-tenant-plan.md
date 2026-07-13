@@ -223,7 +223,7 @@ An `openclaw` Tenant is **1:1 with one ClusterTenant user** and must act with th
 entitlements across the silo's planes (Cognee datasets, Skills register, Obot/MCP, inter-user
 sharing). **The machinery already exists — it is keyed on the wrong principal.**
 
-*As-built (verified):* `libs/domain/grants/main/src/core/grant-compiler.ts:126` already unions `subjectType=User`
+*As-built (verified):* `libs/backend/grants/main/src/core/grant-compiler.ts:126` already unions `subjectType=User`
 + `Tenant` + every `Group` the principal is in, with **Deny>Allow → priority → recency**
 precedence; the contract (`/api/internal/contract/:name`) already projects `mcpServers.allow/deny`
 (Obot), `skills.entitled` (Skills register); the pod polls + hot-reloads

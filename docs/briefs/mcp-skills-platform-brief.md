@@ -36,7 +36,7 @@ Full cluster context lives in `README.md`; this brief covers the two service pla
 
 ## Non-negotiable invariants
 
-1. **Control plane is the only authority.** Neither plane holds authoritative config. Native admin UIs/APIs are disabled; both are operator-reconciled and drift-detected (reuse `libs/domain/projection/main/src/routes/internal/projection-drift.ts` pattern).
+1. **Control plane is the only authority.** Neither plane holds authoritative config. Native admin UIs/APIs are disabled; both are operator-reconciled and drift-detected (reuse `libs/backend/projection/main/src/routes/internal/projection-drift.ts` pattern).
 2. **Tenant→plane auth = projected ServiceAccount token**, audience-bound (`aud=obot-gateway` / `aud=feat-skill-registry`), ~600s TTL, kubelet-rotated. **Delete** the predictable `OPENCLAW_GATEWAY_TOKEN` (`apps/fleet-operator/src/tenants/deploy/3-deployment.ts:36`).
 3. **The serving plane is the live authority; the pod contract is advisory** and can never widen access.
 4. **Authorization is group-based, not tier-based.** The compiler knows only principals, groups, and grants (deny-wins → priority); the control plane owns the org→group mapping, sync, and nesting. Tiers are a UI affordance only. See *Authorization model* below — this is canonical.
@@ -129,7 +129,7 @@ Extend the control plane to own the full lifecycle of MCP servers available to t
 - `McpServerGrant` — an instance of the canonical `Grant`: `{ mcpServerId, targetGroupId, effect (allow | deny), priority, grantedBy, createdAt }`. The group-based compiler rolls these into the effective set (deny-wins → priority).
 - `McpServerCredential` — pointer to the Obot token store entry (never stored in the opencrane-ui DB directly): `{ mcpServerId, obotCredentialRef, rotatedAt }`.
 
-**Routes** (`libs/domain/mcp/main/src/routes/mcp-servers.ts`):
+**Routes** (`libs/backend/mcp/main/src/routes/mcp-servers.ts`):
 
 | Verb | Path | Purpose |
 |------|------|---------|
@@ -155,7 +155,7 @@ Build a registry-backed catalog that supports authoring, group-scoped sharing, a
 - `SkillEntitlement` — an instance of the canonical `Grant` (mirrors `McpServerGrant`): `{ skillBundleId, targetGroupId, effect (allow | deny), priority, grantedBy, createdAt }`.
 - `SkillPromotion` — audit trail for promotion/demotion: `{ id, skillBundleId, fromGroupId, toGroupId, promotedBy, reviewedBy?, decision (pending | approved | rejected), decidedAt? }`.
 
-**Routes** (`libs/domain/skills/main/src/routes/skill-catalog.ts`):
+**Routes** (`libs/backend/skills/main/src/routes/skill-catalog.ts`):
 
 | Verb | Path | Purpose |
 |------|------|---------|
@@ -198,7 +198,7 @@ Support installing MCP servers and skills from external registries and curated u
 - `ThirdPartySource` — upstream registry pointer: `{ id, name, type (mcp-registry | feat-skill-registry | git-repo | oci-registry), url, syncSchedule (cron), lastSyncAt?, authSecretRef?, enabled, createdAt, updatedAt }`.
 - `ThirdPartySourceItem` — tracked upstream item: `{ id, sourceId, externalId, name, description, latestVersion, localRef? (McpServer.id or SkillBundle.id), syncStatus (available | installed | outdated | removed), lastCheckedAt }`.
 
-**Routes** (`libs/domain/retrieval/main/src/routes/third-party-sources.ts`):
+**Routes** (`libs/backend/retrieval/main/src/routes/third-party-sources.ts`):
 
 | Verb | Path | Purpose |
 |------|------|---------|

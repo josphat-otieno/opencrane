@@ -5,8 +5,8 @@ import type { PrismaClient } from "@prisma/client";
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { tenantsRouter } from "@opencrane/domain/tenants";
-import { _NoopGatewayAdmin } from "@opencrane/domain/connections";
+import { tenantsRouter } from "@opencrane/backend/tenants";
+import { _NoopGatewayAdmin } from "@opencrane/backend/connections";
 
 /** Build an Express app containing only the tenants router. */
 function _buildTenantsApp(customApi: k8s.CustomObjectsApi, prisma: PrismaClient): Express

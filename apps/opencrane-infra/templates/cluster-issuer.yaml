@@ -12,7 +12,7 @@ with the fleet's release for ownership of the same object.
 Every Certificate that will reference this Issuer in THIS chart is a SINGLE, non-wildcard
 hostname (see docs/agents/cluster-architecture.md → "Tenancy Model"): the opencrane-ui's own
 host (clustertenant-manager-certificate.yaml) and the operator's optional per-org vanity
-Certificate (libs/domain/cluster-tenants/main/src/core/org-domain.provisioner.ts). Neither
+Certificate (libs/backend/cluster-tenants/main/src/core/org-domain.provisioner.ts). Neither
 needs a wildcard SAN, so — unlike the old fleet-wide platform-wildcard Issuer this was ported
 from — HTTP-01 through the ingress is sufficient on its own and is the default solver; DNS-01
 is layered in ADDITIONALLY (scoped to `ingress.domain`) only when `certManager.acme.dns01.provider`

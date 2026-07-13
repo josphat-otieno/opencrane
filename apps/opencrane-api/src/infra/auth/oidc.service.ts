@@ -8,7 +8,7 @@ import { OidcAuthServiceBase, _RequestHost, type AuthUser, type LoginClient } fr
 import type { FleetMembershipWriter } from "../projection/membership-projection-repairer.js";
 import { _AdoptMemberOnLogin } from "./adopt-member.js";
 import { _MirrorGroupsOnLogin } from "./mirror-groups.js";
-import { _ResolveCallerClusterTenant } from "@opencrane/domain/cluster-tenants";
+import { _ResolveCallerClusterTenant } from "@opencrane/backend/cluster-tenants";
 import { _ClusterTenantFromHost } from "./request-silo.js";
 import { _OrgScope, _ResolvePerOrgClient } from "./per-org-client.js";
 

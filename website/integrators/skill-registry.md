@@ -34,7 +34,7 @@ raw skill markdown), `scope` (org/department/project/personal), `status`
 (grant-backed access), `SkillPromotion` (scope-transition history).
 
 CRUD + lifecycle live at `/api/v1/skills/catalog`
-([skill-catalog.ts](https://github.com/italanta/opencrane/blob/main/libs/domain/skills/main/src/routes/skill-catalog.ts)) and via
+([skill-catalog.ts](https://github.com/italanta/opencrane/blob/main/libs/backend/skills/main/src/routes/skill-catalog.ts)) and via
 `oc skills …`.
 
 ## Lifecycle: scan → validate → register → entitle → promote
@@ -43,7 +43,7 @@ CRUD + lifecycle live at `/api/v1/skills/catalog`
    skills, git, manual) ingest through the same pipeline. Creating a bundle directly
    as `published` is rejected — it must be scanned first.
 2. **Scan.** `POST /api/v1/skills/catalog/:id/scan` runs a vulnerability scan
-   ([scan-bundle.ts](https://github.com/italanta/opencrane/blob/main/libs/domain/skills/main/src/core/scan-bundle.ts)): probes
+   ([scan-bundle.ts](https://github.com/italanta/opencrane/blob/main/libs/backend/skills/main/src/core/scan-bundle.ts)): probes
    the PATH for **Grype**, then **Trivy**; if neither is present it returns
    `scanner-unavailable` (graceful — does not crash). Findings of **critical/high**
    severity fail the scan. Outcome persists to `scanStatus` / `scanFindings` /
@@ -71,7 +71,7 @@ CRUD + lifecycle live at `/api/v1/skills/catalog`
    `feat-skill-registry`, tenant name parsed from the
    `system:serviceaccount:<ns>:<tenant>` subject), then proxies to the control plane.
 4. The control plane's **`GET /api/internal/bundles/:digest/content?tenantName=…`**
-   ([skill-bundles.ts](https://github.com/italanta/opencrane/blob/main/libs/domain/skills/main/src/routes/internal/skill-bundles.ts))
+   ([skill-bundles.ts](https://github.com/italanta/opencrane/blob/main/libs/backend/skills/main/src/routes/internal/skill-bundles.ts))
    gates on: bundle exists → `scanStatus = passed` (else `422 SCAN_FAILED`) → a **live
    grant-compiler allow** for that tenant (else `404`, existence-hiding) → returns the
    content with `X-Skill-Name` / `X-Skill-Digest` headers.

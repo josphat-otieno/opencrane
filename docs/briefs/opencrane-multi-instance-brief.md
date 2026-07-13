@@ -38,7 +38,7 @@ Credit where due: the data model does not block this. We found:
   (`apps/fleet-operator/src/config.ts:12`) drives `listNamespacedCustomObject` vs
   `listClusterCustomObject` (`apps/fleet-operator/src/tenants/runtime/idle-checker.ts:105-106`).
 - **The opencrane-ui already targets a configurable namespace** for CR writes
-  (`libs/domain/tenants/main/src/routes/tenants.ts` — `process.env.NAMESPACE ?? "default"`).
+  (`libs/backend/tenants/main/src/routes/tenants.ts` — `process.env.NAMESPACE ?? "default"`).
 - **Helm names are release-prefixed** via `opencrane.fullname`, so distinct releases
   produce distinct object names.
 

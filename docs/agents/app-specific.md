@@ -13,7 +13,7 @@ linked below** — read it before non-trivial work in that package. The whole-cl
 | Package | Deep-dive | One-liner |
 |---------|-----------|-----------|
 | `@opencrane/fleet-operator` | [apps/fleet-operator.md](./apps/fleet-operator.md) | K8s operator — resilient watch loops reconciling Tenant/ClusterTenant/AccessPolicy CRs into namespaces, pods, NetworkPolicies, storage. Pluggable hosting adapters (GCP/on-prem). |
-| `@opencrane/api` | [apps/opencrane-api.md](./apps/opencrane-api.md) | API-first hub (**Express 5** + Prisma + K8s client). Since #153 the app is **composition + reconciler wiring only** — every HTTP domain lives in `libs/domain/*` (below); the app mounts routers (`src/routes.ts`), brokers OIDC, owns the Prisma schema + reconcilers. Listens `:8080`. |
+| `@opencrane/api` | [apps/opencrane-api.md](./apps/opencrane-api.md) | API-first hub (**Express 5** + Prisma + K8s client). Since #153 the app is **composition + reconciler wiring only** — every HTTP domain lives in `libs/backend/*` (below); the app mounts routers (`src/routes.ts`), brokers OIDC, owns the Prisma schema + reconcilers. Listens `:8080`. |
 | `@opencrane/cli` | [apps/cli.md](./apps/cli.md) | The `oc` CLI — a **thin typed wrapper** over the contracts client, no business logic. OIDC device-flow login; `--output table|json`. |
 | `@opencrane/feat-skill-registry` | [apps/feat-skill-registry.md](./apps/feat-skill-registry.md) | Entitlement-gated skill delivery (`:5000`). TokenReview (`aud=feat-skill-registry`) → proxy to opencrane-ui; non-entitled **and** non-existent → `404` (existence-hiding). |
 | `@opencrane/feat-central-agents` | [apps/feat-central-agents.md](./apps/feat-central-agents.md) | Background ingestion worker (not API-first). Slack → normalise → Cognee; cursor in Postgres. `/healthz`, `/metrics`. |
@@ -29,15 +29,15 @@ linked below** — read it before non-trivial work in that package. The whole-cl
 | `@opencrane/util` | [libs/util/README.md](../../libs/util/README.md) | Dependency-free pure helpers shared across domain packages (`scope:shared`). |
 | _(libs/onboarding)_ | — | **Empty placeholder** — not in `pnpm-workspace.yaml`, no code yet. |
 
-## Domain packages (`libs/domain/*/main`)
+## Domain packages (`libs/backend/*/main`)
 
 The control plane's HTTP surface is split into 20 NX packages, one per functional domain
-(`@opencrane/domain-<d>` at `libs/domain/<d>/main`): tenants, policies, grants, skills,
+(`@opencrane/backend-<d>` at `libs/backend/<d>/main`): tenants, policies, grants, skills,
 model-routing, providers, awareness, spend, groups, mcp, sessions, company-docs, audit,
 access-tokens, metrics, connections, cluster-tenants, retrieval, contract, projection.
 Each owns its routes, core services, API types, tests, and (where applicable) a
-`prisma/schema/<d>.prisma` slice. Layout, boundary rules (`scope:domain`), and the
-add-a-domain checklist live in [`libs/domain/README.md`](../../libs/domain/README.md);
+`prisma/schema/<d>.prisma` slice. Layout, boundary rules (`scope:backend`), and the
+add-a-domain checklist live in [`libs/backend/README.md`](../../libs/backend/README.md);
 schema/migration ownership in [`prisma.md`](./prisma.md).
 
 ## Frontend libs (`libs/frontend/*`)

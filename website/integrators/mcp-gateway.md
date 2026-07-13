@@ -54,7 +54,7 @@ oc CLI / API ──▶ Control plane (McpServer rows + grants)
   behind `___AuthMiddleware`; NetworkPolicy is its access control.
 - Obot is pointed at it via `OBOT_SERVER_PROVIDER_REGISTRIES` and polls to sync.
 - **Management surface:** CRUD lives at `/api/v1/mcp-servers`
-  ([mcp-servers.ts](https://github.com/italanta/opencrane/blob/main/libs/domain/mcp/main/src/routes/mcp-servers.ts)) and via
+  ([mcp-servers.ts](https://github.com/italanta/opencrane/blob/main/libs/backend/mcp/main/src/routes/mcp-servers.ts)) and via
   `oc mcp …`. Third-party sources are ingested through the
   fetch → scan → validate → register → entitle pipeline.
 
@@ -78,7 +78,7 @@ the same grant-compiler output — so they cannot disagree by construction:
    will route at all.
 2. **Runtime contract policy** — `policy.mcpServers.allow/deny` in the effective
    contract, re-pulled by the pod
-   ([tenant-contract.ts](https://github.com/italanta/opencrane/blob/main/libs/domain/contract/main/src/routes/internal/tenant-contract.ts)).
+   ([tenant-contract.ts](https://github.com/italanta/opencrane/blob/main/libs/backend/contract/main/src/routes/internal/tenant-contract.ts)).
 3. **In-pod enforcement** — `entrypoint.sh` `_load_mcp_policy` / `_mcp_server_is_enabled`
    evaluate, in precedence order: tenant-CRD `mcpPolicy.deny` (always wins) → tenant-CRD
    `mcpPolicy.allow` → AccessPolicy deny → AccessPolicy allow.

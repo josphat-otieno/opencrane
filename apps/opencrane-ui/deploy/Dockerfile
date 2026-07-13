@@ -1,6 +1,6 @@
 # NOTE: build context is the REPO ROOT (e.g. `docker build -f apps/opencrane-ui/deploy/Dockerfile .`),
 # not the app dir — required so the Angular app's @opencrane/* library path aliases
-# (libs/frontend/*, libs/domain/*, libs/contracts, …) resolve exactly as they do locally.
+# (libs/frontend/*, libs/backend/*, libs/contracts, …) resolve exactly as they do locally.
 #
 # Serves the org-admin console (apps/opencrane-ui) as a chart-native SPA — the
 # opencrane-infra Helm chart's opencrane-ui-spa Deployment/Service

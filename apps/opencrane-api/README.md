@@ -21,7 +21,7 @@ The operator is composition + reconciler wiring: it mounts domain routers, manag
 ```
 src/
 ├── index.ts              # Express app factory + Kubernetes reconcile loops
-├── routes.ts             # Route composition: mounts routers from @opencrane/domain-* packages
+├── routes.ts             # Route composition: mounts routers from @opencrane/backend-* packages
 ├── config.ts             # Configuration + environment variables
 ├── log.ts                # Logging setup
 ├── instrument.ts         # OpenTelemetry instrumentation

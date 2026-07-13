@@ -9,9 +9,9 @@ const { _repair } = vi.hoisted(function _h()
 {
   return { _repair: vi.fn().mockResolvedValue({ entity: "tenant", repairedCount: 0, skippedCount: 0, entries: [] }) };
 });
-vi.mock("@opencrane/domain/projection", async function _mock(importOriginal)
+vi.mock("@opencrane/backend/projection", async function _mock(importOriginal)
 {
-  const actual = await importOriginal<typeof import("@opencrane/domain/projection")>();
+  const actual = await importOriginal<typeof import("@opencrane/backend/projection")>();
   return { ...actual, _RepairTenantProjection: _repair };
 });
 
