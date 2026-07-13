@@ -6,7 +6,7 @@
 # Usage (via the multi-tenant profile). The deploy script uses --reset-then-reuse-values:
 # it merges chart defaults (new keys like multiCt) with the prior release values, so the
 # overlay only needs to override non-default keys. Since reset re-applies chart defaults
-# for all keys the invocation doesn't supply, per-component image tags (--opencrane-ui-tag,
+# for all keys the invocation doesn't supply, per-component image tags (--opencrane-server-tag,
 # --operator-tag, etc.) must be restated explicitly with --tag flags (they are not carried
 # from --values files).
 #

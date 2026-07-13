@@ -72,7 +72,7 @@ All steps are ✅ implemented (gated by `gatewayProxy.enabled`).
 | Credential | Subject | Audience / target | TTL / storage | Status |
 |-----------|---------|-------------------|---------------|--------|
 | **Control-plane session cookie** | the human | control plane + identity-routing proxy | server-signed, HTTP-only cookie (~12h) | ✅ |
-| **Projected SA token** | a Kubernetes service account | `obot-gateway` / `feat-skill-registry` / `opencrane-api` | ~600s, kubelet-rotated, in-cluster only | ✅ |
+| **Projected SA token** | a Kubernetes service account | `obot-gateway` / `feat-skill-registry` / `opencrane-server` | ~600s, kubelet-rotated, in-cluster only | ✅ |
 
 The browser holds **only** the HTTP-only session cookie. There is no bootstrap token, no
 device token, and no pod-specific credential in the browser.
@@ -80,7 +80,7 @@ device token, and no pod-specific credential in the browser.
 The **projected SA token** is *workload* identity and must **never be handed to a
 browser**. It is how the pod calls *outward* — e.g. OpenClaw → Obot MCP Gateway
 (`aud=obot-gateway`), and the contract re-pull loop → control plane
-(`aud=opencrane-api`). The browser never holds an `obot-gateway` token and never talks
+(`aud=opencrane-server`). The browser never holds an `obot-gateway` token and never talks
 to Obot directly.
 
 The pod's Kubernetes ServiceAccount is also what SPIRE mints its **SPIFFE SVID** from

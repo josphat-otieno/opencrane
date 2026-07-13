@@ -48,6 +48,6 @@ Tenants have not reported a participation event within the staleness window.
 
 1. `oc awareness participation --severity warning` to list non-participating tenants.
 2. Confirm the tenant pod is running and can reach the opencrane-api internal
-   participation endpoint (NetworkPolicy + projected `opencrane-api` token).
+   participation endpoint (NetworkPolicy + projected `opencrane-server` token).
 3. A newly-provisioned tenant that has never emitted an event will show here until
    its first heartbeat/agent-card — expected during onboarding.

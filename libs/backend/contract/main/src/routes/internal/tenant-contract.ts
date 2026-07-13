@@ -10,7 +10,7 @@ import { _SyncDerivedDatasetMembership } from "@opencrane/backend/tenants";
 import { _log } from "../../log.js";
 
 /** Expected audience on the projected token the tenant pod uses to call this endpoint. */
-const _EXPECTED_AUDIENCE = "opencrane-ui";
+const _EXPECTED_AUDIENCE = "opencrane-server";
 
 /**
  * Extract the tenant name from a `system:serviceaccount:<ns>:<name>` subject string.
@@ -34,12 +34,12 @@ function _ParseTenantNameFromSubject(subject: string): string | null
  *
  * Tenant pods call this endpoint from the background contract-polling loop
  * (see `apps/feat-openclaw-tenant/deploy/entrypoint.sh`) using the projected ServiceAccount
- * token for the `opencrane-ui` audience.  The operator injects
+ * token for the `opencrane-server` audience.  The operator injects
  * `OPENCRANE_CONTROL_PLANE_URL` and `OPENCRANE_CONTRACT_TOKEN_PATH` into every
  * tenant Deployment so the loop can reach this endpoint.
  *
  * **Identity enforcement:** the caller must present a valid projected
- * ServiceAccount token (audience `opencrane-ui`) in the `Authorization: Bearer`
+ * ServiceAccount token (audience `opencrane-server`) in the `Authorization: Bearer`
  * header.  The token is validated via the Kubernetes TokenReview API.  The
  * authenticated ServiceAccount name is then compared to the `:name` path param
  * so a tenant pod cannot read another tenant's contract.
@@ -86,7 +86,7 @@ export function _RegisterInternalTenantContract(prisma: PrismaClient, authApi: k
       }
 
       // 2. Validate the token via TokenReview and verify audience.
-      //    The opencrane-ui uses @kubernetes/client-node v1.x where createTokenReview
+      //    The opencrane-server uses @kubernetes/client-node v1.x where createTokenReview
       //    accepts { body: V1TokenReview } and returns Promise<V1TokenReview> directly.
       const reviewBody = new k8s.V1TokenReview();
       reviewBody.spec = new k8s.V1TokenReviewSpec();
