@@ -157,12 +157,11 @@ The silo's OIDC above is for per-org **login only** and never holds the IAM_OWNE
 
 ## Ingress same-origin routing
 
-When enabled, the org host's Ingress serves the org-admin SPA at `/` and path-routes the same origin so the browser gets first-party cookies with no CORS.
+Same-origin hosting is the only mode: the control-plane host's Ingress serves the org-admin SPA at `/`, the public API at `/api`, and the OpenClaw gateway WS proxy at `/gateway` (when `gatewayProxy.enabled`) from one origin, so the browser gets first-party cookies with no CORS. Helm owns these rules, so the frontend layer never kubectl-patches the Ingress out-of-band. The legacy `*.<domain>` wildcard Ingress and the bare `/`→control-plane layout were removed once every silo migrated.
 
 | Key | Default | Purpose |
 |-----|---------|---------|
-| `ingress.sameOrigin.enabled` | `false` | Enable same-origin hosting. When true, the org Ingress serves `/` (the SPA), `/api` (public API), and `/gateway` (OpenClaw WS proxy, if enabled) from the same origin. Default off so the historical layout is unchanged; turning it on makes Helm own these Ingress rules, so the frontend layer no longer has to kubectl-patch out-of-band (a patch fought `helm upgrade` and reverted on every reconcile). The silo profile (via the deploy script) sets this true in PR #199. |
-| `ingress.sameOrigin.spaService` | `weownai-control-plane` | Name of the same-origin SPA Service that owns `/`. Applied by the frontend layer (e.g. WeOwnAI's `platform/k8s/frontend-control-plane.yaml`). Only consulted when `enabled` is true. |
+| `ingress.sameOrigin.spaService` | `weownai-control-plane` | Name of the same-origin SPA Service that owns `/`. Applied by the frontend layer (e.g. WeOwnAI's `platform/k8s/frontend-control-plane.yaml`). If the Service is absent, `/` returns 502 while `/api` and `/gateway` keep working. |
 | `ingress.sameOrigin.spaPort` | `80` | Port on the SPA Service. |
 
 ---
