@@ -211,6 +211,9 @@ _retry 3 docker build -f "$ROOT_DIR/apps/opencrane/deploy/Dockerfile" -t opencra
 echo "[e2e] Building tenant image"
 _retry 3 docker build -f "$ROOT_DIR/apps/feat-openclaw-tenant/deploy/Dockerfile" -t opencrane/tenant:e2e "$ROOT_DIR"
 
+echo "[e2e] Building skill registry image"
+_retry 3 docker build -f "$ROOT_DIR/apps/feat-skill-registry/deploy/Dockerfile" -t opencrane/skills-registry:e2e "$ROOT_DIR"
+
 # 3. Create a fresh cluster for deterministic test runs.
 echo "[e2e] Recreating k3d cluster '$CLUSTER_NAME'"
 k3d cluster delete "$CLUSTER_NAME" >/dev/null 2>&1 || true
@@ -224,6 +227,7 @@ _retry 3 docker pull ghcr.io/cloudnative-pg/postgresql:16
 echo "[e2e] Importing images into k3d"
 k3d image import opencrane/opencrane-server:e2e --cluster "$CLUSTER_NAME"
 k3d image import opencrane/tenant:e2e --cluster "$CLUSTER_NAME"
+k3d image import opencrane/skills-registry:e2e --cluster "$CLUSTER_NAME"
 k3d image import ghcr.io/cloudnative-pg/postgresql:16 --cluster "$CLUSTER_NAME"
 
 # 4c. DIAGNOSTIC (temporary): the db-migrate initContainer reported "No migration found

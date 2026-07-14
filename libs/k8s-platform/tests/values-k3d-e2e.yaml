@@ -18,6 +18,12 @@ tenant:
     tag: e2e
     pullPolicy: IfNotPresent
 
+skillRegistry:
+  image:
+    repository: opencrane/skills-registry
+    tag: e2e
+    pullPolicy: IfNotPresent
+
 sharedSkills:
   enabled: true
   pvc:
