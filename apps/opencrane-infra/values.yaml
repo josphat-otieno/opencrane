@@ -319,7 +319,7 @@ clustertenantManager:
     displayName: ""
     # -- Owner email recorded on `spec.owner.email` — the seeded default workspace's contact.
     ownerEmail: ""
-    # -- Optional owner OIDC subject recorded on `spec.owner.subject`.
+    # -- Optional owner OIDC subject recorded on `spec.owner.subject`; defaults to ownerEmail.
     ownerSubject: ""
     # -- Isolation tier for the self-seeded org: shared | dedicatedNodes | dedicatedCluster.
     tier: shared

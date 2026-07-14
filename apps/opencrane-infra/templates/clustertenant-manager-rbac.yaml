@@ -106,6 +106,44 @@ subjects:
   - kind: ServiceAccount
     name: {{ include "opencrane.fullname" . }}-opencrane-server
     namespace: {{ .Release.Namespace }}
+{{- if and (eq (include "opencrane.deploymentMode" .) "standalone") .Values.clustertenantManager.standaloneSeed.name }}
+---
+{{- /*
+  STANDALONE SELF-SEED ONLY: when CLUSTER_TENANT_SEED_NAME is set, there is no fleet-manager
+  to create/bind this silo's own ClusterTenant CR. Grant only the verbs the boot seed uses:
+  create the cluster-scoped CR and patch its status.boundNamespace/phase. Fleet-managed silos
+  stay read-only via the role above.
+*/}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "opencrane.fullname" . }}-opencrane-server-ct-seed-{{ .Release.Namespace }}
+  labels:
+    {{- include "opencrane.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["opencrane.io"]
+    resources: ["clustertenants"]
+    verbs: ["create"]
+  - apiGroups: ["opencrane.io"]
+    resources: ["clustertenants/status"]
+    resourceNames: [{{ .Values.clustertenantManager.standaloneSeed.name | quote }}]
+    verbs: ["patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "opencrane.fullname" . }}-opencrane-server-ct-seed-{{ .Release.Namespace }}
+  labels:
+    {{- include "opencrane.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "opencrane.fullname" . }}-opencrane-server-ct-seed-{{ .Release.Namespace }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "opencrane.fullname" . }}-opencrane-server
+    namespace: {{ .Release.Namespace }}
+{{- end }}
 {{- if .Values.clustertenantManager.manageTenantNamespaces }}
 ---
 {{- /*

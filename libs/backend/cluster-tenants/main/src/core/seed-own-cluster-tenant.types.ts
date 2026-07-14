@@ -7,7 +7,7 @@ export interface SeedOwnClusterTenantOptions
   displayName?: string;
   /** Owner email recorded on `spec.owner.email` — becomes the seeded default Tenant's contact email. */
   ownerEmail?: string;
-  /** Optional owner OIDC subject recorded on `spec.owner.subject`. */
+  /** Optional owner OIDC subject recorded on `spec.owner.subject`; falls back to `ownerEmail`. */
   ownerSubject?: string;
   /** Isolation tier recorded on `spec.isolationTier`; falls back to `"shared"` when empty. */
   tier?: string;

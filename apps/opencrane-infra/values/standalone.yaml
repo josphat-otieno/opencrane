@@ -43,6 +43,7 @@ clustertenantManager:
     name: default
     displayName: "Default Organisation"
     ownerEmail: ""   # REQUIRED — set via --set clustertenantManager.standaloneSeed.ownerEmail=...
+    ownerSubject: "" # Optional — defaults to ownerEmail when omitted.
     tier: shared
 
 # -- Chart self-sufficiency (#151 items 2/3): this is the ONLY OpenCrane release in the
