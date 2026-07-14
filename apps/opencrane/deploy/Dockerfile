@@ -8,7 +8,7 @@ COPY package.json package-lock.json tsconfig.json nx.json ./
 # node_modules/dist out of the context.
 COPY libs libs
 COPY apps/opencrane/scripts apps/opencrane/scripts
-COPY apps/opencrane/package.json apps/opencrane/tsconfig.json apps/opencrane/
+COPY apps/opencrane/package.json apps/opencrane/tsconfig.json apps/opencrane/prisma.config.ts apps/opencrane/
 COPY apps/opencrane/prisma apps/opencrane/prisma
 # npm workspaces install: root package.json's "workspaces" field includes apps/* and website
 RUN npm ci
@@ -25,8 +25,10 @@ FROM node:22-bookworm-slim
 
 WORKDIR /app
 COPY package.json package-lock.json ./
-# Copy app package.json and prisma directory for runtime installation
-COPY apps/opencrane/package.json apps/opencrane/
+# Copy app package.json, Prisma config and prisma directory for runtime installation + migrations.
+# prisma.config.ts is required at runtime: the db-migrate init container runs `prisma migrate deploy`
+# from this package root, and the config declares the schema folder + migrations path.
+COPY apps/opencrane/package.json apps/opencrane/prisma.config.ts apps/opencrane/
 COPY apps/opencrane/prisma apps/opencrane/prisma
 # Install only the app workspace's runtime dependencies
 RUN npm ci --omit=dev --workspace=apps/opencrane

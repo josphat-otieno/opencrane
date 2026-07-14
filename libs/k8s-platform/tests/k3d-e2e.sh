@@ -226,6 +226,20 @@ k3d image import opencrane/opencrane-server:e2e --cluster "$CLUSTER_NAME"
 k3d image import opencrane/tenant:e2e --cluster "$CLUSTER_NAME"
 k3d image import ghcr.io/cloudnative-pg/postgresql:16 --cluster "$CLUSTER_NAME"
 
+# 4c. DIAGNOSTIC (temporary): the db-migrate initContainer reported "No migration found
+#     in prisma/migrations" despite 32 committed migrations. Print what the built image
+#     actually contains so we can tell an image/COPY problem from a prisma schema-folder
+#     migrations-resolution problem. Remove once the migrate path is fixed.
+echo "[e2e] DIAGNOSTIC: prisma migrations/schema inside opencrane-server:e2e image"
+docker run --rm --entrypoint sh opencrane/opencrane-server:e2e -c '
+  echo "[img] cwd package root = apps/opencrane"
+  echo "[img] prisma/migrations dirs:"; ls apps/opencrane/prisma/migrations 2>&1 | head
+  echo "[img] migration.sql count:"; find apps/opencrane/prisma/migrations -name migration.sql 2>/dev/null | wc -l
+  echo "[img] migration_lock.toml:"; ls -l apps/opencrane/prisma/migrations/migration_lock.toml 2>&1
+  echo "[img] prisma/schema files:"; ls apps/opencrane/prisma/schema 2>&1 | head -3
+  echo "[img] any migrations INSIDE prisma/schema?:"; ls apps/opencrane/prisma/schema/migrations 2>&1 | head
+' || echo "[e2e] (diagnostic docker run failed — non-fatal)"
+
 # 5. Install in-cluster PostgreSQL and publish the DATABASE_URL secrets expected by the chart.
 echo "[e2e] Installing CloudNativePG Engine Operator into control plane"
 helm repo add cnpg https://cloudnative-pg.github.io/charts --force-update >/dev/null
@@ -266,6 +280,12 @@ spec:
       # The silo (clustertenant) opencrane-ui owns its own Prisma database. Its
       # runtime planes each get a sibling DB on the same server (own _prisma_migrations).
       database: silo
+      # Owner role pinned to opencrane (NOT defaulted to the database name silo):
+      # the creds secret user, every DATABASE_URL, and the CREATE DATABASE OWNER
+      # statements below all use role opencrane. No backticks/dollar-refs in this
+      # heredoc comment -- it is unquoted for var expansion, so they would run as
+      # command substitution (bash: "owner: command not found").
+      owner: opencrane
       secret:
         name: ${DB_RELEASE_NAME}-creds
       postInitApplicationSQL:

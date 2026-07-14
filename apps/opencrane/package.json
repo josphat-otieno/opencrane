@@ -65,8 +65,5 @@
         ]
       }
     }
-  },
-  "prisma": {
-    "schema": "prisma/schema"
   }
 }
