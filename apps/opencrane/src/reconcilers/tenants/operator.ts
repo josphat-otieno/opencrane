@@ -9,7 +9,7 @@ import { TenantPolicyResolutionState, TenantStatusPhase, type TenantDegradedReas
 
 import { __K8sApplyResource, _IsK8sNotFound, _RunWatchLoop, K8sWatchEventType, OPENCRANE_API_GROUP, OPENCRANE_API_VERSION, TENANT_CRD_PLURAL, type ClusterTenantResource } from "@opencrane/infra/api";
 import { _BuildOrgDomainProvisioner, type OrgDomainProvisioner } from "@opencrane/backend/cluster-tenants";
-import { _BuildClusterTenantLimitRange, _BuildClusterTenantNamespace, _BuildClusterTenantResourceQuota, _BuildConfigMap, _BuildDeployment, _BuildGatewayNetworkPolicy, _BuildService, _BuildServiceAccount, _BuildSiloBaselineNetworkPolicy, _BuildSiloExternalEgressNetworkPolicy, _BuildSiloLinkerdIdentityPolicy, _BuildStatePvc, _ConfigChecksum, _ResolveTenantModelGate } from "./deploy/index.js";
+import { _BuildClusterTenantLimitRange, _BuildClusterTenantNamespace, _BuildClusterTenantResourceQuota, _BuildConfigMap, _BuildDeployment, _BuildGatewayNetworkPolicy, _BuildService, _BuildServiceAccount, _BuildSiloBaselineNetworkPolicy, _BuildSiloExternalEgressNetworkPolicy, _BuildSiloKubernetesApiEgressNetworkPolicy, _BuildSiloLinkerdIdentityPolicy, _BuildStatePvc, _ConfigChecksum, _ResolveTenantModelGate } from "./deploy/index.js";
 import { TenantCleanup } from "./destroy/tenant-cleanup.js";
 import { LinkerdIdentityClient } from "./internal/linkerd-identity.client.js";
 
@@ -104,6 +104,9 @@ export class TenantOperator
    */
   private readonly configChecksum: string;
 
+  /** Delay between failed startup snapshot attempts. */
+  private readonly initialReplayRetryDelayMs: number;
+
   /**
    * Create a new TenantOperator with pre-wired dependencies.
    * Prefer {@link _CreateTenantOperator} in production entry-points.
@@ -121,7 +124,8 @@ export class TenantOperator
               encryptionKeys: TenantEncryptionKeys,
               liteLlmKeys: TenantLiteLlmKeys,
               cogneeTenantIdentity: CogneeTenantIdentity,
-              domainProvisioner: OrgDomainProvisioner)
+              domainProvisioner: OrgDomainProvisioner,
+              initialReplayRetryDelayMs = 5000)
   {
     this.watch = watch;
     this.customApi = customApi;
@@ -138,6 +142,7 @@ export class TenantOperator
     this.cogneeTenantIdentity = cogneeTenantIdentity;
     this.domainProvisioner = domainProvisioner;
     this.configChecksum = _OperatorConfigChecksum(config);
+    this.initialReplayRetryDelayMs = initialReplayRetryDelayMs;
   }
 
   /**
@@ -162,6 +167,86 @@ export class TenantOperator
         await this.handleEvent(type, tenant);
       },
     });
+    await this.reconcileExistingTenantsUntilListed();
+  }
+
+  /**
+   * Fetch an existing Tenant CR and route it through the same coalesced reconcile path
+   * as an ADDED watch event.
+   *
+   * Standalone boot seeds create the first Tenant from inside this process, before
+   * Kubernetes watch delivery is guaranteed. This gives the seeding path a deterministic
+   * hand-off while the startup replay remains the backstop after restarts.
+   */
+  async reconcileExistingTenantByName(name: string, namespace: string): Promise<void>
+  {
+    const tenant = await this.customApi.getNamespacedCustomObject({
+      group: OPENCRANE_API_GROUP,
+      version: OPENCRANE_API_VERSION,
+      namespace,
+      plural: TENANT_CRD_PLURAL,
+      name,
+    }) as Tenant;
+    await this.handleEvent(K8sWatchEventType.Added, tenant);
+  }
+
+  /**
+   * Retry the startup snapshot until the current Tenant set has been listed.
+   *
+   * The watch remains active while this waits; the retry only closes transient
+   * list failures that would otherwise leave pre-existing Tenant CRs invisible.
+   */
+  private async reconcileExistingTenantsUntilListed(): Promise<void>
+  {
+    while (true)
+    {
+      const listed = await this.reconcileExistingTenants();
+      if (listed) return;
+
+      const retryDelayMs = this.initialReplayRetryDelayMs;
+      await new Promise<void>(function _sleep(resolve)
+      {
+        setTimeout(resolve, retryDelayMs);
+      });
+    }
+  }
+
+  /**
+   * Reconcile Tenant CRs that already existed before the watch stream connected.
+   *
+   * Kubernetes watches observe changes after the stream starts; they are not an
+   * initial snapshot. Boot seeds and operator restarts can therefore leave a
+   * Tenant present but unreconciled unless startup also lists the current set.
+   */
+  private async reconcileExistingTenants(): Promise<boolean>
+  {
+    try
+    {
+      const ns = this.config.watchNamespace;
+      const response = ns
+        ? await this.customApi.listNamespacedCustomObject({ group: OPENCRANE_API_GROUP, version: OPENCRANE_API_VERSION, namespace: ns, plural: TENANT_CRD_PLURAL })
+        : await this.customApi.listClusterCustomObject({ group: OPENCRANE_API_GROUP, version: OPENCRANE_API_VERSION, plural: TENANT_CRD_PLURAL });
+      const tenants = (response as { items?: Tenant[] }).items ?? [];
+      this.log.info({ count: tenants.length }, "replaying existing tenants before watch settles");
+
+      for (const tenant of tenants)
+      {
+        try
+        {
+          await this.handleEvent(K8sWatchEventType.Added, tenant);
+        }
+        catch (err)
+        {
+          this.log.error({ err, name: tenant.metadata?.name }, "initial tenant reconcile failed");
+        }
+      }
+    }
+    catch (err)
+    {
+      this.log.error({ err }, "initial tenant replay failed; retrying while watch remains active");
+      return false;
+    }
+    return true;
   }
 
   /**
@@ -589,13 +674,24 @@ export class TenantOperator
       this.log.debug({ namespace, clusterTenant: clusterTenantName }, "manageTenantNamespaces=false: skipping namespace create (fleet-manager owns it)");
     }
 
-    // 1b. Silo baseline NetworkPolicy — flip the namespace to default-deny (S2 /
+    // 1b. Kubernetes API egress — scoped to in-silo control-plane pods only. In
+    //     standalone installs the operator runs inside the same namespace it fences;
+    //     lay down this API path BEFORE the namespace-wide default-deny below so the
+    //     operator can still finish the rest of reconcile. Fleet-managed silos use a
+    //     separate tenant namespace, so the external fleet/operator namespace keeps
+    //     its own platform policy and no runtime carve-out is needed here.
+    if (namespace === this.config.operatorNamespace)
+    {
+      await __K8sApplyResource(this.networkingApi, _BuildSiloKubernetesApiEgressNetworkPolicy(namespace, clusterTenantName), this.log);
+    }
+
+    // 1b-2. Silo baseline NetworkPolicy — flip the namespace to default-deny (S2 /
     //     Phase 1) right after it exists and before any workload lands, so the silo
     //     edge is closed from the start: only intra-silo + the opencrane-ui plane
     //     and DNS are allowed; no silo→silo path is ever created.
     await __K8sApplyResource(this.networkingApi, _BuildSiloBaselineNetworkPolicy(namespace, clusterTenantName, this.config), this.log);
 
-    // 1b-2. External-HTTPS egress — a SEPARATE policy from the baseline above (see its
+    // 1b-3. External-HTTPS egress — a SEPARATE policy from the baseline above (see its
     //       doc comment) so the bundled Cognee pod can be excluded from it. An
     //       unpatched Cognee vuln (topoteretes/cognee#3084) lets any authenticated
     //       Cognee user redirect its process-wide LLM endpoint with no admin check;

@@ -6,7 +6,7 @@ import { _ReviewToken } from "../token-review.js";
 function _makeAuthApi(reviewResponse: Partial<k8s.V1TokenReview>): k8s.AuthenticationV1Api
 {
   return {
-    createTokenReview: vi.fn().mockResolvedValue({ body: reviewResponse as k8s.V1TokenReview, response: {} }),
+    createTokenReview: vi.fn().mockResolvedValue(reviewResponse as k8s.V1TokenReview),
   } as unknown as k8s.AuthenticationV1Api;
 }
 

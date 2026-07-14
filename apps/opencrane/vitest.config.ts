@@ -13,7 +13,7 @@ const require = createRequire(import.meta.url);
  * delegate — spans silently stop recording (found via the observability lib tests).
  */
 export default defineConfig({
-  plugins: [tsconfigPaths({ projects: ["../../tsconfig.json"] })],
+  plugins: [tsconfigPaths({ projects: ["../../tsconfig.vitest.json"] })],
   resolve: { alias: { "@opentelemetry/api": require.resolve("@opentelemetry/api") } },
   // 43 supertest-heavy files: full file-parallelism intermittently drops sockets
   // ("socket hang up") on loaded machines — cap the worker pool for determinism.

@@ -9,7 +9,7 @@ import tsconfigPaths from "vite-tsconfig-paths";
  * that reach into Angular DI (TestBed, router, etc.) working without jsdom.
  */
 export default defineConfig({
-	plugins: [tsconfigPaths({ projects: ["../../../../tsconfig.frontend.json"] })],
+	plugins: [tsconfigPaths({ projects: ["../../../../tsconfig.vitest.json"] })],
 	test: {
 		globals: true,
 		environment: "node",

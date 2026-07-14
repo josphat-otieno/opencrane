@@ -2,9 +2,13 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "outDir": "../../../../../dist/out-tsc",
-    "types": []
+    "types": [],
+    "composite": true,
+    "tsBuildInfoFile": "../../../../../dist/out-tsc/libs/frontend/state/mcp/adapter/tsconfig.lib.tsbuildinfo"
   },
-  "include": ["src/**/*.ts"],
+  "include": [
+    "src/**/*.ts"
+  ],
   "exclude": [
     "src/**/*.spec.ts"
   ],

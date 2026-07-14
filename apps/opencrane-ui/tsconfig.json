@@ -1,9 +1,38 @@
 {
-	"extends": "../../tsconfig.frontend.json",
-	"compilerOptions": {
-		"outDir": "../../dist/out-tsc",
-		"types": []
-	},
-	"include": ["src/**/*.ts"],
-	"exclude": ["**/*.spec.ts"]
+  "extends": "../../tsconfig.frontend.json",
+  "compilerOptions": {
+    "outDir": "../../dist/out-tsc",
+    "types": [],
+    "composite": true,
+    "tsBuildInfoFile": "../../dist/out-tsc/apps/opencrane-ui/tsconfig.tsbuildinfo"
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "**/*.spec.ts"
+  ],
+  "references": [
+    {
+      "path": "../../libs/frontend/features/workspace"
+    },
+    {
+      "path": "../../libs/frontend/features/tools"
+    },
+    {
+      "path": "../../libs/frontend/features/customer-admin"
+    },
+    {
+      "path": "../../libs/frontend/features/welcome"
+    },
+    {
+      "path": "../../libs/frontend/platform"
+    },
+    {
+      "path": "../../libs/frontend/state/core"
+    },
+    {
+      "path": "../../libs/frontend/core"
+    }
+  ]
 }

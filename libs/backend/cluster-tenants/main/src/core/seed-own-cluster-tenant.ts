@@ -74,6 +74,7 @@ export async function _SeedOwnClusterTenant(
     if (!existing)
     {
       const ownerEmail = opts.ownerEmail?.trim();
+      const ownerSubject = opts.ownerSubject?.trim() || ownerEmail;
       await customApi.createClusterCustomObject({
         group: OPENCRANE_API_GROUP, version: OPENCRANE_API_VERSION, plural: CLUSTER_TENANT_CRD_PLURAL,
         body: {
@@ -83,8 +84,8 @@ export async function _SeedOwnClusterTenant(
           spec: {
             displayName: opts.displayName?.trim() || name,
             isolationTier: opts.tier?.trim() || "shared",
-            ...(ownerEmail || opts.ownerSubject?.trim()
-              ? { owner: { ...(ownerEmail ? { email: ownerEmail } : {}), ...(opts.ownerSubject?.trim() ? { subject: opts.ownerSubject.trim() } : {}) } }
+            ...(ownerSubject
+              ? { owner: { subject: ownerSubject, ...(ownerEmail ? { email: ownerEmail } : {}) } }
               : {}),
           },
         },

@@ -1,11 +1,6 @@
 import * as k8s from "@kubernetes/client-node";
 
-/**
- * Result of a token review — either a validated tenant identity or a rejection.
- */
-export type TokenReviewResult =
-  | { ok: true; tenantName: string; namespace: string }
-  | { ok: false; reason: string };
+import type { TokenReviewResult } from "./token-review.types.js";
 
 /**
  * Validate a Kubernetes projected ServiceAccount token and extract the tenant name.
@@ -25,13 +20,13 @@ export async function _ReviewToken(authApi: k8s.AuthenticationV1Api, token: stri
   let response: k8s.V1TokenReview;
   try
   {
+    // 1. Ask Kubernetes to validate the projected token for this service's audience.
     const review = new k8s.V1TokenReview();
     review.spec = new k8s.V1TokenReviewSpec();
     review.spec.token = token;
     review.spec.audiences = ["feat-skill-registry"];
 
-    const result = await authApi.createTokenReview(review);
-    response = result.body;
+    response = await authApi.createTokenReview({ body: review });
   }
   catch (err)
   {
@@ -39,20 +34,19 @@ export async function _ReviewToken(authApi: k8s.AuthenticationV1Api, token: stri
     return { ok: false, reason: `TokenReview API call failed: ${message}` };
   }
 
+  // 2. Reject unauthenticated tokens before deriving any tenant identity.
   if (!response.status?.authenticated)
   {
     return { ok: false, reason: response.status?.error ?? "token not authenticated" };
   }
 
-  // Explicitly verify the Kubernetes API confirmed the "feat-skill-registry" audience.
-  // The API only authenticates when the token carries the requested audience, but
-  // we check here to make the contract visible and catch any unexpected API changes.
+  // 3. Confirm Kubernetes authenticated the token for this service, not another plane.
   if (!response.status.audiences?.includes("feat-skill-registry"))
   {
     return { ok: false, reason: "token audience does not include feat-skill-registry" };
   }
 
-  // Subject format: system:serviceaccount:<namespace>:<name>
+  // 4. Extract the namespace and tenant name from the ServiceAccount subject.
   const subject = response.status.user?.username ?? "";
   const parts = subject.split(":");
   if (parts.length !== 4 || parts[0] !== "system" || parts[1] !== "serviceaccount")
@@ -63,5 +57,6 @@ export async function _ReviewToken(authApi: k8s.AuthenticationV1Api, token: stri
   const namespace = parts[2];
   const tenantName = parts[3];
 
+  // 5. Return only the identity Kubernetes authenticated for the expected audience.
   return { ok: true, tenantName, namespace };
 }

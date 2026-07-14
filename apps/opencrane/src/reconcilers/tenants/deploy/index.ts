@@ -6,7 +6,7 @@ export { _BuildStatePvc } from "./3-state-pvc.js";
 export { _BuildDeployment } from "./3-deployment.js";
 export { _BuildService } from "./4-service.js";
 export { _BuildGatewayNetworkPolicy } from "./network-policy.js";
-export { _BuildSiloBaselineNetworkPolicy, _BuildSiloExternalEgressNetworkPolicy } from "./silo-baseline-network-policy.js";
+export { _BuildSiloBaselineNetworkPolicy, _BuildSiloExternalEgressNetworkPolicy, _BuildSiloKubernetesApiEgressNetworkPolicy } from "./silo-baseline-network-policy.js";
 export { _BuildSiloLinkerdIdentityPolicy } from "./silo-linkerd-identity.js";
 export { _BuildClusterTenantNamespace } from "@opencrane/infra/api";
 export { _BuildClusterTenantResourceQuota, _BuildClusterTenantLimitRange } from "./7-resource-quota.js";

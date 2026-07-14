@@ -176,6 +176,131 @@ describe("TenantOperator reconcile guard + coalescing", () =>
   });
 });
 
+describe("TenantOperator startup replay", () =>
+{
+  it("connects the watch before reconciling tenants that already exist", async () =>
+  {
+    const order: string[] = [];
+    const tenant = _makeTenant("seeded");
+    const patch = vi.fn(async function _patchStatus() {});
+    const watch = {
+      watch: vi.fn(async function _watch()
+      {
+        order.push("watch");
+        return new AbortController();
+      }),
+    };
+    const customApi = {
+      listNamespacedCustomObject: vi.fn(async function _list()
+      {
+        order.push("list");
+        return { items: [tenant] };
+      }),
+    };
+    const statusWriter = { patchStatus: patch } as unknown as TenantStatusWriter;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const stub = {} as any;
+    const op = new TenantOperator(watch as any, customApi as any, stub, stub, stub, pino({ level: "silent" }),
+      defaultConfig, stub, stub, statusWriter, stub, stub, stub, stub);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (op as any).reconcileTenant = async function _reconcile(existing: Tenant)
+    {
+      order.push(`reconcile:${existing.metadata!.name!}`);
+    };
+
+    await op.start();
+
+    expect(watch.watch).toHaveBeenCalled();
+    expect(customApi.listNamespacedCustomObject).toHaveBeenCalledWith({
+      group: "opencrane.io",
+      version: "v1alpha1",
+      namespace: "default",
+      plural: "tenants",
+    });
+    expect(order).toEqual(["watch", "list", "reconcile:seeded"]);
+  });
+
+  it("reconciles a named existing tenant without waiting for watch delivery", async () =>
+  {
+    const order: string[] = [];
+    const tenant = _makeTenant("seeded-now");
+    const patch = vi.fn(async function _patchStatus() {});
+    const customApi = {
+      getNamespacedCustomObject: vi.fn(async function _get()
+      {
+        order.push("get");
+        return tenant;
+      }),
+    };
+    const statusWriter = { patchStatus: patch } as unknown as TenantStatusWriter;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const stub = {} as any;
+    const op = new TenantOperator(stub, customApi as any, stub, stub, stub, pino({ level: "silent" }),
+      defaultConfig, stub, stub, statusWriter, stub, stub, stub, stub);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (op as any).reconcileTenant = async function _reconcile(existing: Tenant)
+    {
+      order.push(`reconcile:${existing.metadata!.name!}`);
+    };
+
+    await op.reconcileExistingTenantByName("seeded-now", "default");
+
+    expect(customApi.getNamespacedCustomObject).toHaveBeenCalledWith({
+      group: "opencrane.io",
+      version: "v1alpha1",
+      namespace: "default",
+      plural: "tenants",
+      name: "seeded-now",
+    });
+    expect(order).toEqual(["get", "reconcile:seeded-now"]);
+  });
+
+  it("retries the startup replay when the first tenant list fails", async () =>
+  {
+    const order: string[] = [];
+    const tenant = _makeTenant("seeded-after-retry");
+    const patch = vi.fn(async function _patchStatus() {});
+    let attempts = 0;
+    const watch = {
+      watch: vi.fn(async function _watch()
+      {
+        order.push("watch");
+        return new AbortController();
+      }),
+    };
+    const customApi = {
+      listNamespacedCustomObject: vi.fn(async function _list()
+      {
+        order.push(`list:${attempts}`);
+        attempts += 1;
+        if (attempts === 1)
+        {
+          throw new Error("temporary list failure");
+        }
+        return { items: [tenant] };
+      }),
+    };
+    const statusWriter = { patchStatus: patch } as unknown as TenantStatusWriter;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const stub = {} as any;
+    const op = new TenantOperator(watch as any, customApi as any, stub, stub, stub, pino({ level: "silent" }),
+      defaultConfig, stub, stub, statusWriter, stub, stub, stub, stub, 0);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (op as any).reconcileTenant = async function _reconcile(existing: Tenant)
+    {
+      order.push(`reconcile:${existing.metadata!.name!}`);
+    };
+
+    await op.start();
+
+    expect(customApi.listNamespacedCustomObject).toHaveBeenCalledTimes(2);
+    expect(order).toEqual(["watch", "list:0", "list:1", "reconcile:seeded-after-retry"]);
+  });
+});
+
 describe("TenantOperator suspend self-loop guard", () =>
 {
   /**

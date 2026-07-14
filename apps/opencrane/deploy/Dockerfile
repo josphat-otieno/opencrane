@@ -8,9 +8,6 @@ COPY package.json package-lock.json tsconfig.json nx.json ./
 # node_modules/dist out of the context.
 COPY libs libs
 COPY apps/opencrane/scripts apps/opencrane/scripts
-# @opencrane/contracts generates its typed client from the silo OpenAPI spec only (the fleet
-# spec/client moved out with apps/fleet-operator, see italanta/opencrane#150).
-COPY apps/opencrane/openapi.json apps/opencrane/openapi.json
 COPY apps/opencrane/package.json apps/opencrane/tsconfig.json apps/opencrane/prisma.config.ts apps/opencrane/
 COPY apps/opencrane/prisma apps/opencrane/prisma
 # npm workspaces install: root package.json's "workspaces" field includes apps/* and website

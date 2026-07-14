@@ -2,13 +2,32 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "outDir": "../../../../dist/out-tsc",
-    "types": []
+    "types": [],
+    "composite": true,
+    "tsBuildInfoFile": "../../../../dist/out-tsc/libs/frontend/state/gateways/tsconfig.lib.tsbuildinfo"
   },
-  "include": ["src/**/*.ts"],
+  "include": [
+    "src/**/*.ts"
+  ],
   "exclude": [
     "src/**/*.spec.ts"
   ],
   "references": [
+    {
+      "path": "../conversation/adapter/tsconfig.lib.json"
+    },
+    {
+      "path": "../tenant/adapter/tsconfig.lib.json"
+    },
+    {
+      "path": "../settings/adapter/tsconfig.lib.json"
+    },
+    {
+      "path": "../provider-key/adapter/tsconfig.lib.json"
+    },
+    {
+      "path": "../mcp/adapter/tsconfig.lib.json"
+    },
     {
       "path": "../core"
     },

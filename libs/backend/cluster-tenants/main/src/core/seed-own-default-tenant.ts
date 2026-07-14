@@ -2,7 +2,7 @@ import * as k8s from "@kubernetes/client-node";
 import type { PrismaClient } from "@prisma/client";
 import type { Logger } from "pino";
 
-import { _EnsureOwnerDefaultTenant } from "./default-tenant.js";
+import { _EnsureOwnerDefaultTenant, type EnsureDefaultTenantResult } from "./default-tenant.js";
 import { _ResolveOwnClusterTenant } from "./resolve-own-cluster-tenant.js";
 
 /**
@@ -33,7 +33,7 @@ export async function _SeedOwnDefaultTenant(
   prisma: PrismaClient,
   namespace: string,
   log: Logger,
-): Promise<void>
+): Promise<EnsureDefaultTenantResult | null>
 {
   try
   {
@@ -41,7 +41,7 @@ export async function _SeedOwnDefaultTenant(
     if (!own?.metadata?.name)
     {
       log.info({ namespace }, "no ClusterTenant bound to this namespace yet; skipping default-tenant seed");
-      return;
+      return null;
     }
 
     const orgName = own.metadata.name;
@@ -63,9 +63,12 @@ export async function _SeedOwnDefaultTenant(
     {
       log.info({ orgName, tenantName: result.tenantName, skippedReason: result.skippedReason }, "default workspace tenant already present or skipped");
     }
+
+    return result;
   }
   catch (err)
   {
     log.warn({ err, namespace }, "default-tenant boot seed failed (non-fatal; projection-repair remains the backstop)");
+    return null;
   }
 }

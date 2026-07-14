@@ -2,12 +2,12 @@
 
 # --- Build the VitePress static site -----------------------------------------
 # Built from the repo root context (`docker build -f website/Dockerfile .`) because
-# the site's prebuild copies apps/opencrane/openapi.json for the API reference.
+# the site's prebuild emits and copies the OpenAPI spec for the API reference.
 FROM node:22-alpine AS builder
 WORKDIR /repo
 COPY package.json package-lock.json tsconfig.json nx.json ./
 COPY libs libs
-COPY apps/opencrane/openapi.json apps/opencrane/
+COPY apps/opencrane apps/opencrane
 COPY website website
 RUN npm ci
 RUN npm run docs:build

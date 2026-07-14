@@ -12,7 +12,7 @@
 		"lint": {
 			"executor": "nx:run-commands",
 			"options": {
-				"command": "tsc -p tsconfig.json --noEmit",
+				"command": "tsc -p tsconfig.lint.json",
 				"cwd": "libs/frontend/state/settings/adapter"
 			}
 		},

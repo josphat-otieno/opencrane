@@ -280,6 +280,8 @@ async function _startInSiloControllers(): Promise<void>
     // the seed's ≥1-model onboarding gate and the silo comes up usable. Awaited for that ordering.
     await _BootstrapProviderKeyIfConfigured(config);
 
+    const tenantOperator = _CreateTenantOperator(kc, config, log);
+
     // Standalone-only boot seeds (#151 item 4): a fleet-managed silo defers ClusterTenant
     // lifecycle AND its own default-workspace seed entirely to the external fleet-manager +
     // its provisioning flow (member adoption / first login) — this silo racing an unconditional
@@ -308,7 +310,19 @@ async function _startInSiloControllers(): Promise<void>
         // projection-repair namespace, which is derived independently and could diverge
         // under manual env overrides. Run AFTER the ClusterTenant self-seed above so a
         // fresh standalone boot has something bound to seed a workspace from.
-        await _SeedOwnDefaultTenant(customApi, prisma, config.watchNamespace, log);
+        const seedResult = await _SeedOwnDefaultTenant(customApi, prisma, config.watchNamespace, log);
+        if (seedResult?.created)
+        {
+          try
+          {
+            await tenantOperator.reconcileExistingTenantByName(seedResult.tenantName, config.watchNamespace);
+            log.info({ tenantName: seedResult.tenantName }, "queued standalone default tenant for immediate reconciliation");
+          }
+          catch (err)
+          {
+            log.warn({ err, tenantName: seedResult.tenantName }, "standalone default tenant immediate reconcile failed; watch replay remains the backstop");
+          }
+        }
       })();
     }
     else
@@ -390,7 +404,6 @@ async function _startInSiloControllers(): Promise<void>
       }, 60_000);
     }
 
-    const tenantOperator = _CreateTenantOperator(kc, config, log);
     const policyOperator = new PolicyOperator(kc, config, log);
 
     const idleChecker = new IdleChecker(kc, config, log);

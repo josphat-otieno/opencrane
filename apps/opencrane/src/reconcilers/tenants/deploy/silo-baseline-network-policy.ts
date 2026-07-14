@@ -1,3 +1,5 @@
+import { isIP } from "node:net";
+
 import * as k8s from "@kubernetes/client-node";
 
 import type { OpenClawTenantOperatorConfig } from "../../../app/config.js";
@@ -10,6 +12,17 @@ const _DNS_NAMESPACE = "kube-system";
 
 /** Component label the bundled Cognee pod carries (`cognee-deployment.yaml`). */
 const _COGNEE_COMPONENT_LABEL = "cognee";
+
+/** Components that legitimately need Kubernetes API egress from inside a silo. */
+const _KUBERNETES_API_EGRESS_COMPONENTS = ["opencrane-server", "mcp-gateway"];
+
+/** Build the single-host CIDR form Kubernetes NetworkPolicy expects for an IP. */
+function _IpBlockForHost(host: string): k8s.V1IPBlock | undefined
+{
+  const ipVersion = isIP(host);
+  if (ipVersion === 0) return undefined;
+  return { cidr: `${host}/${ipVersion === 6 ? 128 : 32}` };
+}
 
 /**
  * Build the per-silo baseline NetworkPolicy — the default-deny edge of a
@@ -170,6 +183,67 @@ export function _BuildSiloExternalEgressNetworkPolicy(
       egress: [
         {
           ports: [{ protocol: "TCP", port: 443 }],
+        },
+      ],
+    },
+  };
+}
+
+/**
+ * Build the silo control-plane Kubernetes API egress allowance.
+ *
+ * The baseline policy intentionally flips the whole silo namespace to default-deny.
+ * In standalone mode that namespace also contains the in-silo operator and Obot
+ * gateway. Both use their Kubernetes service-account identity, and the API service
+ * may be enforced as either service port 443 or backend port 6443 depending on the
+ * CNI/kube-proxy path. Keep this as a separate, component-scoped policy so tenant
+ * pods do not gain a Kubernetes API egress grant.
+ *
+ * @param namespace - The silo (ClusterTenant) namespace the policy is created in.
+ * @param clusterTenantName - Parent ClusterTenant name, recorded as a label.
+ * @returns The Kubernetes API egress policy for in-silo control-plane pods.
+ */
+export function _BuildSiloKubernetesApiEgressNetworkPolicy(
+  namespace: string,
+  clusterTenantName: string,
+  kubernetesServiceHost = process.env["KUBERNETES_SERVICE_HOST"] ?? "",
+): k8s.V1NetworkPolicy
+{
+  const kubernetesServiceIpBlock = _IpBlockForHost(kubernetesServiceHost);
+  const kubernetesServiceRule: k8s.V1NetworkPolicyEgressRule = kubernetesServiceIpBlock
+    ? { to: [{ ipBlock: kubernetesServiceIpBlock }], ports: [{ protocol: "TCP", port: 443 }] }
+    : { ports: [{ protocol: "TCP", port: 443 }] };
+
+  return {
+    apiVersion: "networking.k8s.io/v1",
+    kind: "NetworkPolicy",
+    metadata: {
+      name: `opencrane-${clusterTenantName}-kube-api-egress`,
+      namespace,
+      labels: {
+        "app.kubernetes.io/part-of": "opencrane",
+        "app.kubernetes.io/managed-by": "opencrane-fleet-manager",
+        "app.kubernetes.io/component": "silo-isolation",
+        "opencrane.io/cluster-tenant": clusterTenantName,
+      },
+    },
+    spec: {
+      podSelector: {
+        matchExpressions: [
+          { key: "app.kubernetes.io/component", operator: "In", values: _KUBERNETES_API_EGRESS_COMPONENTS },
+        ],
+      },
+      policyTypes: ["Egress"],
+      egress: [
+        kubernetesServiceRule,
+        {
+          // Standard NetworkPolicy cannot select the Kubernetes Service by name, and some
+          // CNIs enforce the apiserver connection after kube-proxy has translated it to
+          // the backend 6443 port. Keep this fallback component-scoped; Kubernetes RBAC is
+          // still the authorization boundary for what these pods may do once connected.
+          ports: [
+            { protocol: "TCP", port: 6443 },
+          ],
         },
       ],
     },

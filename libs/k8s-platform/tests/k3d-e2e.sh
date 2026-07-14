@@ -128,16 +128,23 @@ function _cleanup()
   if [[ "$exit_code" -ne 0 ]]; then
     echo "[e2e] ===== FAILURE (exit $exit_code): cluster diagnostics ====="
     kubectl get pods,jobs -n "$NAMESPACE" -o wide 2>/dev/null || true
+    echo "[e2e] --- cluster services / network policies ---"
+    kubectl get svc,endpoints,endpointslices -A -o wide 2>/dev/null || true
+    kubectl get networkpolicies -A -o wide 2>/dev/null || true
     echo "[e2e] --- clustertenants / tenants ---"
     kubectl get clustertenants,tenants -A 2>/dev/null || true
     echo "[e2e] --- recent events ---"
     kubectl get events -n "$NAMESPACE" --sort-by=.lastTimestamp 2>/dev/null | tail -40 || true
     for p in $(kubectl get pods -n "$NAMESPACE" -o name 2>/dev/null); do
+      local log_tail=80
+      if [[ "$p" == *"opencrane-server"* ]]; then
+        log_tail=240
+      fi
       echo "[e2e] ### describe $p"
       kubectl describe "$p" -n "$NAMESPACE" 2>/dev/null | tail -30 || true
       echo "[e2e] ### logs $p"
-      kubectl logs "$p" -n "$NAMESPACE" --all-containers --tail=60 2>/dev/null || true
-      kubectl logs "$p" -n "$NAMESPACE" --all-containers --previous --tail=60 2>/dev/null || true
+      kubectl logs "$p" -n "$NAMESPACE" --all-containers --tail="$log_tail" 2>/dev/null || true
+      kubectl logs "$p" -n "$NAMESPACE" --all-containers --previous --tail="$log_tail" 2>/dev/null || true
     done
     echo "[e2e] ===== end diagnostics ====="
   fi
@@ -211,6 +218,9 @@ _retry 3 docker build -f "$ROOT_DIR/apps/opencrane/deploy/Dockerfile" -t opencra
 echo "[e2e] Building tenant image"
 _retry 3 docker build -f "$ROOT_DIR/apps/feat-openclaw-tenant/deploy/Dockerfile" -t opencrane/tenant:e2e "$ROOT_DIR"
 
+echo "[e2e] Building skill registry image"
+_retry 3 docker build -f "$ROOT_DIR/apps/feat-skill-registry/deploy/Dockerfile" -t opencrane/skills-registry:e2e "$ROOT_DIR"
+
 # 3. Create a fresh cluster for deterministic test runs.
 echo "[e2e] Recreating k3d cluster '$CLUSTER_NAME'"
 k3d cluster delete "$CLUSTER_NAME" >/dev/null 2>&1 || true
@@ -224,6 +234,7 @@ _retry 3 docker pull ghcr.io/cloudnative-pg/postgresql:16
 echo "[e2e] Importing images into k3d"
 k3d image import opencrane/opencrane-server:e2e --cluster "$CLUSTER_NAME"
 k3d image import opencrane/tenant:e2e --cluster "$CLUSTER_NAME"
+k3d image import opencrane/skills-registry:e2e --cluster "$CLUSTER_NAME"
 k3d image import ghcr.io/cloudnative-pg/postgresql:16 --cluster "$CLUSTER_NAME"
 
 # 4c. DIAGNOSTIC (temporary): the db-migrate initContainer reported "No migration found

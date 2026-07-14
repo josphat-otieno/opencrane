@@ -87,32 +87,75 @@ export async function _RunWatchLoop<T>(config: WatchRunnerConfig<T>): Promise<vo
 
   config.log.info({ path: config.path }, config.startMessage);
 
-  const watchLoop = async () => {
+  /**
+   * Keep trying until one watch stream has actually been established.
+   */
+  async function _connectUntilEstablished(): Promise<void>
+  {
+    while (!(await _connectOnce()))
+    {
+      await new Promise<void>(function _sleep(resolve)
+      {
+        setTimeout(resolve, retryDelayMs);
+      });
+    }
+  }
+
+  /**
+   * Attempt one watch connection and report whether setup reached an active stream.
+   */
+  async function _connectOnce(): Promise<boolean>
+  {
+    let established = false;
+    let setupClosed = false;
+    let setupErr: unknown;
+
     try
     {
       await config.watch.watch(
         config.path,
         {},
-        (type: K8sWatchEventType | string, resource: T) => {
-          config.onEvent(type, resource).catch((err) => {
+        function _onEvent(type: K8sWatchEventType | string, resource: T)
+        {
+          config.onEvent(type, resource).catch(function _onHandlerFailed(err)
+          {
             config.log.error({ err }, "event handler failed");
           });
         },
-        (err: unknown) => {
+        function _onDone(err: unknown)
+        {
+          if (!established)
+          {
+            setupClosed = true;
+            setupErr = err;
+            return;
+          }
+
           if (err)
           {
             config.log.error({ err }, config.reconnectMessage);
           }
-          setTimeout(watchLoop, retryDelayMs);
+          setTimeout(function _reconnect()
+          {
+            void _connectUntilEstablished();
+          }, retryDelayMs);
         },
       );
+      established = true;
+      if (setupClosed)
+      {
+        const err = setupErr ?? new Error("watch closed before it was established");
+        config.log.error({ err }, config.failedMessage);
+        return false;
+      }
+      return true;
     }
     catch (err)
     {
       config.log.error({ err }, config.failedMessage);
-      setTimeout(watchLoop, retryDelayMs);
+      return false;
     }
-  };
+  }
 
-  await watchLoop();
+  await _connectUntilEstablished();
 }

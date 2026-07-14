@@ -1,8 +1,8 @@
 import { Injectable, inject } from "@angular/core";
 
 import type { paths } from "@opencrane/contracts";
-import { CONTROL_PLANE_BASE_URL } from "./api-client.types";
-import { OpenCraneApiClientBase } from "./api-client.base";
+import { CONTROL_PLANE_BASE_URL } from "./api-client.types.js";
+import { OpenCraneApiClientBase } from "./api-client.base.js";
 
 /**
  * Typed HTTP client for the OpenCrane **Control Plane** API (per-tenant/org
@@ -10,7 +10,7 @@ import { OpenCraneApiClientBase } from "./api-client.base";
  *
  * Intra-repo contract: `paths` is the SAME generated type the backend's own
  * `@opencrane/contracts` package exports, built directly from
- * `apps/opencrane/openapi.json` via `nx run contracts:generate`
+ * `dist/apps/opencrane/openapi.json` via `nx run contracts:generate`
  * (`openapi-typescript`). No cross-repo spec pin — frontend and backend share
  * one generated source of truth. All feature data access must flow through
  * services in `core/api`.

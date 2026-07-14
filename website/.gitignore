@@ -1,5 +1,5 @@
 node_modules/
 .vitepress/cache/
 .vitepress/dist/
-# Generated from apps/opencrane/openapi.json by scripts/sync-openapi.mjs
+# Generated from dist/apps/opencrane/openapi.json by scripts/sync-openapi.mjs
 public/openapi.json
