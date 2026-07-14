@@ -128,16 +128,23 @@ function _cleanup()
   if [[ "$exit_code" -ne 0 ]]; then
     echo "[e2e] ===== FAILURE (exit $exit_code): cluster diagnostics ====="
     kubectl get pods,jobs -n "$NAMESPACE" -o wide 2>/dev/null || true
+    echo "[e2e] --- cluster services / network policies ---"
+    kubectl get svc,endpoints,endpointslices -A -o wide 2>/dev/null || true
+    kubectl get networkpolicies -A -o wide 2>/dev/null || true
     echo "[e2e] --- clustertenants / tenants ---"
     kubectl get clustertenants,tenants -A 2>/dev/null || true
     echo "[e2e] --- recent events ---"
     kubectl get events -n "$NAMESPACE" --sort-by=.lastTimestamp 2>/dev/null | tail -40 || true
     for p in $(kubectl get pods -n "$NAMESPACE" -o name 2>/dev/null); do
+      local log_tail=80
+      if [[ "$p" == *"opencrane-server"* ]]; then
+        log_tail=240
+      fi
       echo "[e2e] ### describe $p"
       kubectl describe "$p" -n "$NAMESPACE" 2>/dev/null | tail -30 || true
       echo "[e2e] ### logs $p"
-      kubectl logs "$p" -n "$NAMESPACE" --all-containers --tail=60 2>/dev/null || true
-      kubectl logs "$p" -n "$NAMESPACE" --all-containers --previous --tail=60 2>/dev/null || true
+      kubectl logs "$p" -n "$NAMESPACE" --all-containers --tail="$log_tail" 2>/dev/null || true
+      kubectl logs "$p" -n "$NAMESPACE" --all-containers --previous --tail="$log_tail" 2>/dev/null || true
     done
     echo "[e2e] ===== end diagnostics ====="
   fi

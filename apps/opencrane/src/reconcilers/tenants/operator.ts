@@ -171,6 +171,26 @@ export class TenantOperator
   }
 
   /**
+   * Fetch an existing Tenant CR and route it through the same coalesced reconcile path
+   * as an ADDED watch event.
+   *
+   * Standalone boot seeds create the first Tenant from inside this process, before
+   * Kubernetes watch delivery is guaranteed. This gives the seeding path a deterministic
+   * hand-off while the startup replay remains the backstop after restarts.
+   */
+  async reconcileExistingTenantByName(name: string, namespace: string): Promise<void>
+  {
+    const tenant = await this.customApi.getNamespacedCustomObject({
+      group: OPENCRANE_API_GROUP,
+      version: OPENCRANE_API_VERSION,
+      namespace,
+      plural: TENANT_CRD_PLURAL,
+      name,
+    }) as Tenant;
+    await this.handleEvent(K8sWatchEventType.Added, tenant);
+  }
+
+  /**
    * Retry the startup snapshot until the current Tenant set has been listed.
    *
    * The watch remains active while this waits; the retry only closes transient

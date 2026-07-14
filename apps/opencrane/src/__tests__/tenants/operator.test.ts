@@ -221,6 +221,42 @@ describe("TenantOperator startup replay", () =>
     expect(order).toEqual(["watch", "list", "reconcile:seeded"]);
   });
 
+  it("reconciles a named existing tenant without waiting for watch delivery", async () =>
+  {
+    const order: string[] = [];
+    const tenant = _makeTenant("seeded-now");
+    const patch = vi.fn(async function _patchStatus() {});
+    const customApi = {
+      getNamespacedCustomObject: vi.fn(async function _get()
+      {
+        order.push("get");
+        return tenant;
+      }),
+    };
+    const statusWriter = { patchStatus: patch } as unknown as TenantStatusWriter;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const stub = {} as any;
+    const op = new TenantOperator(stub, customApi as any, stub, stub, stub, pino({ level: "silent" }),
+      defaultConfig, stub, stub, statusWriter, stub, stub, stub, stub);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (op as any).reconcileTenant = async function _reconcile(existing: Tenant)
+    {
+      order.push(`reconcile:${existing.metadata!.name!}`);
+    };
+
+    await op.reconcileExistingTenantByName("seeded-now", "default");
+
+    expect(customApi.getNamespacedCustomObject).toHaveBeenCalledWith({
+      group: "opencrane.io",
+      version: "v1alpha1",
+      namespace: "default",
+      plural: "tenants",
+      name: "seeded-now",
+    });
+    expect(order).toEqual(["get", "reconcile:seeded-now"]);
+  });
+
   it("retries the startup replay when the first tenant list fails", async () =>
   {
     const order: string[] = [];
