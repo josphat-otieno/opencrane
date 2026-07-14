@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { defaultConfig, gcpConfig, gcpAdapter, onPremAdapter, _makeAccessPolicy, _makeTenant } from "../fixtures.js";
-import { _BuildClusterTenantLimitRange, _BuildClusterTenantNamespace, _BuildClusterTenantResourceQuota, _BuildClusterTenantScheduling, _BuildConfigMap, _BuildDeployment, _BuildGatewayNetworkPolicy, _BuildServiceAccount, _BuildSiloBaselineNetworkPolicy, _BuildSiloExternalEgressNetworkPolicy, _BuildSiloLinkerdIdentityPolicy, _BuildStatePvc, _ConfigChecksum } from "../../reconcilers/tenants/deploy/index.js";
+import { _BuildClusterTenantLimitRange, _BuildClusterTenantNamespace, _BuildClusterTenantResourceQuota, _BuildClusterTenantScheduling, _BuildConfigMap, _BuildDeployment, _BuildGatewayNetworkPolicy, _BuildServiceAccount, _BuildSiloBaselineNetworkPolicy, _BuildSiloExternalEgressNetworkPolicy, _BuildSiloKubernetesApiEgressNetworkPolicy, _BuildSiloLinkerdIdentityPolicy, _BuildStatePvc, _ConfigChecksum } from "../../reconcilers/tenants/deploy/index.js";
 
 describe("TenantResourceBuilder", () =>
 {
@@ -539,6 +539,36 @@ describe("Silo external-egress NetworkPolicy (Cognee excluded — topoteretes/co
   {
     const egress = netpol.spec?.egress ?? [];
     expect(egress).toContainEqual({ ports: [{ protocol: "TCP", port: 443 }] });
+  });
+});
+
+describe("Silo Kubernetes API egress NetworkPolicy", () =>
+{
+  const netpol = _BuildSiloKubernetesApiEgressNetworkPolicy("opencrane-acme", "acme", "10.43.0.1");
+
+  it("targets only in-silo control-plane pods", () =>
+  {
+    expect(netpol.metadata?.namespace).toBe("opencrane-acme");
+    expect(netpol.metadata?.labels?.["opencrane.io/cluster-tenant"]).toBe("acme");
+    expect(netpol.spec?.policyTypes).toEqual(["Egress"]);
+    expect(netpol.spec?.podSelector).toEqual({
+      matchExpressions: [
+        { key: "app.kubernetes.io/component", operator: "In", values: ["opencrane-server", "mcp-gateway"] },
+      ],
+    });
+  });
+
+  it("allows both the Kubernetes service port and common API backend port", () =>
+  {
+    expect(netpol.spec?.egress).toEqual([
+      {
+        to: [{ ipBlock: { cidr: "10.43.0.1/32" } }],
+        ports: [{ protocol: "TCP", port: 443 }],
+      },
+      {
+        ports: [{ protocol: "TCP", port: 6443 }],
+      },
+    ]);
   });
 });
 

@@ -207,6 +207,47 @@ describe("ClusterTenant isolation enforcement (CT.5 reconcile flow)", () =>
     expect(podSpec?.tolerations?.[0]?.key).toBe("opencrane.io/dedicated");
   });
 
+  it("applies Kubernetes API egress before the standalone same-namespace default-deny", async () =>
+  {
+    const clusterTenant = _makeClusterTenant("e2e-org", "default");
+    const tenant = _makeTenant("workspace", { clusterTenantRef: "e2e-org" });
+
+    const operator = _makeOperator(core, apps, networking, clusterTenant, undefined, {
+      deploymentMode: "standalone",
+      manageTenantNamespaces: true,
+      operatorNamespace: "default",
+    });
+
+    await operator.reconcileTenant(tenant);
+
+    const networkPolicyNames = networking.created
+      .filter((resource) => resource.kind === "NetworkPolicy")
+      .map((resource) => resource.metadata?.name);
+    const kubeApiIndex = networkPolicyNames.indexOf("opencrane-e2e-org-kube-api-egress");
+    const baselineIndex = networkPolicyNames.indexOf("opencrane-e2e-org-silo-baseline");
+
+    expect(kubeApiIndex).toBeGreaterThanOrEqual(0);
+    expect(baselineIndex).toBeGreaterThanOrEqual(0);
+    expect(kubeApiIndex).toBeLessThan(baselineIndex);
+  });
+
+  it("does not add standalone Kubernetes API egress in a fleet-owned tenant namespace", async () =>
+  {
+    const clusterTenant = _makeClusterTenant("acme", "ct-acme");
+    const tenant = _makeTenant("mike", { clusterTenantRef: "acme" });
+
+    const operator = _makeOperator(core, apps, networking, clusterTenant);
+
+    await operator.reconcileTenant(tenant);
+
+    const networkPolicyNames = networking.created
+      .filter((resource) => resource.kind === "NetworkPolicy")
+      .map((resource) => resource.metadata?.name);
+
+    expect(networkPolicyNames).not.toContain("opencrane-acme-kube-api-egress");
+    expect(networkPolicyNames).toContain("opencrane-acme-silo-baseline");
+  });
+
   it("suspending a ref'd openclaw keeps its bound namespace + scheduling, scaled to zero", async () =>
   {
     const clusterTenant = _makeClusterTenant("acme", "ct-acme");

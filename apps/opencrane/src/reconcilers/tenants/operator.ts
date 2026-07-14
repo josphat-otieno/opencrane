@@ -9,7 +9,7 @@ import { TenantPolicyResolutionState, TenantStatusPhase, type TenantDegradedReas
 
 import { __K8sApplyResource, _IsK8sNotFound, _RunWatchLoop, K8sWatchEventType, OPENCRANE_API_GROUP, OPENCRANE_API_VERSION, TENANT_CRD_PLURAL, type ClusterTenantResource } from "@opencrane/infra/api";
 import { _BuildOrgDomainProvisioner, type OrgDomainProvisioner } from "@opencrane/backend/cluster-tenants";
-import { _BuildClusterTenantLimitRange, _BuildClusterTenantNamespace, _BuildClusterTenantResourceQuota, _BuildConfigMap, _BuildDeployment, _BuildGatewayNetworkPolicy, _BuildService, _BuildServiceAccount, _BuildSiloBaselineNetworkPolicy, _BuildSiloExternalEgressNetworkPolicy, _BuildSiloLinkerdIdentityPolicy, _BuildStatePvc, _ConfigChecksum, _ResolveTenantModelGate } from "./deploy/index.js";
+import { _BuildClusterTenantLimitRange, _BuildClusterTenantNamespace, _BuildClusterTenantResourceQuota, _BuildConfigMap, _BuildDeployment, _BuildGatewayNetworkPolicy, _BuildService, _BuildServiceAccount, _BuildSiloBaselineNetworkPolicy, _BuildSiloExternalEgressNetworkPolicy, _BuildSiloKubernetesApiEgressNetworkPolicy, _BuildSiloLinkerdIdentityPolicy, _BuildStatePvc, _ConfigChecksum, _ResolveTenantModelGate } from "./deploy/index.js";
 import { TenantCleanup } from "./destroy/tenant-cleanup.js";
 import { LinkerdIdentityClient } from "./internal/linkerd-identity.client.js";
 
@@ -674,13 +674,24 @@ export class TenantOperator
       this.log.debug({ namespace, clusterTenant: clusterTenantName }, "manageTenantNamespaces=false: skipping namespace create (fleet-manager owns it)");
     }
 
-    // 1b. Silo baseline NetworkPolicy — flip the namespace to default-deny (S2 /
+    // 1b. Kubernetes API egress — scoped to in-silo control-plane pods only. In
+    //     standalone installs the operator runs inside the same namespace it fences;
+    //     lay down this API path BEFORE the namespace-wide default-deny below so the
+    //     operator can still finish the rest of reconcile. Fleet-managed silos use a
+    //     separate tenant namespace, so the external fleet/operator namespace keeps
+    //     its own platform policy and no runtime carve-out is needed here.
+    if (namespace === this.config.operatorNamespace)
+    {
+      await __K8sApplyResource(this.networkingApi, _BuildSiloKubernetesApiEgressNetworkPolicy(namespace, clusterTenantName), this.log);
+    }
+
+    // 1b-2. Silo baseline NetworkPolicy — flip the namespace to default-deny (S2 /
     //     Phase 1) right after it exists and before any workload lands, so the silo
     //     edge is closed from the start: only intra-silo + the opencrane-ui plane
     //     and DNS are allowed; no silo→silo path is ever created.
     await __K8sApplyResource(this.networkingApi, _BuildSiloBaselineNetworkPolicy(namespace, clusterTenantName, this.config), this.log);
 
-    // 1b-2. External-HTTPS egress — a SEPARATE policy from the baseline above (see its
+    // 1b-3. External-HTTPS egress — a SEPARATE policy from the baseline above (see its
     //       doc comment) so the bundled Cognee pod can be excluded from it. An
     //       unpatched Cognee vuln (topoteretes/cognee#3084) lets any authenticated
     //       Cognee user redirect its process-wide LLM endpoint with no admin check;
