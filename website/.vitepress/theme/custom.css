@@ -123,3 +123,325 @@
 .g-pt { font: 600 11px ui-sans-serif, system-ui, sans-serif; fill: #c2620f; }
 .g-s { font: 400 11.5px ui-sans-serif, system-ui, sans-serif; fill: var(--vp-c-text-2); }
 .dark .g-pt { fill: #f2a05a; }
+
+/* Homepage: a practical product story below VitePress's built-in hero and
+   feature grid. The page keeps the documentation site's light, calm visual
+   language while giving product screenshots enough presence to be useful. */
+.oc-home {
+  --oc-home-ink: #15212a;
+  --oc-home-muted: #53616c;
+  --oc-home-surface: #f4fbfc;
+  --oc-home-line: #d8e7ea;
+  max-width: 1152px;
+  margin: 0 auto;
+  padding: 28px 24px 84px;
+}
+
+.oc-home h2 {
+  max-width: 18ch;
+  margin: 0;
+  color: var(--oc-home-ink);
+  font-size: clamp(1.8rem, 3vw, 2.7rem);
+  line-height: 1.12;
+  letter-spacing: -0.035em;
+}
+
+.oc-home p {
+  color: var(--oc-home-muted);
+  font-size: 1.04rem;
+  line-height: 1.7;
+}
+
+.oc-eyebrow {
+  margin: 0 0 11px !important;
+  color: var(--vp-c-brand-1) !important;
+  font-size: .78rem !important;
+  font-weight: 700;
+  letter-spacing: .12em;
+  line-height: 1.2 !important;
+  text-transform: uppercase;
+}
+
+.oc-home-problem {
+  display: grid;
+  grid-template-columns: minmax(0, 1.12fr) minmax(280px, .88fr);
+  gap: 48px;
+  align-items: end;
+  margin: 8px 0 100px;
+  padding: 50px;
+  border: 1px solid var(--oc-home-line);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 92% 8%, rgba(20, 168, 196, .18), transparent 32%),
+    var(--oc-home-surface);
+}
+
+.oc-home-problem p {
+  max-width: 38ch;
+  margin: 0;
+}
+
+.oc-home-showcase,
+.oc-home-governance {
+  display: grid;
+  grid-template-columns: minmax(290px, .82fr) minmax(0, 1.18fr);
+  gap: clamp(32px, 7vw, 88px);
+  align-items: center;
+  margin: 0 0 118px;
+}
+
+.oc-home-copy p:not(.oc-eyebrow),
+.oc-home-workflow-intro p:not(.oc-eyebrow),
+.oc-home-governance-card p:not(.oc-eyebrow) {
+  max-width: 45ch;
+  margin: 18px 0 20px;
+}
+
+.oc-text-link {
+  color: var(--vp-c-brand-1);
+  font-weight: 650;
+}
+
+.oc-text-link span {
+  display: inline-block;
+  transition: transform .2s ease;
+}
+
+.oc-text-link:hover span {
+  transform: translateX(4px);
+}
+
+.oc-product-shot {
+  margin: 0;
+}
+
+.oc-product-shot img {
+  display: block;
+  width: 100%;
+  border: 1px solid rgba(21, 33, 42, .12);
+  border-radius: 16px;
+  box-shadow: 0 22px 56px rgba(15, 35, 44, .14);
+}
+
+.oc-product-shot figcaption {
+  margin-top: 12px;
+  color: var(--vp-c-text-2);
+  font-size: .86rem;
+  text-align: center;
+}
+
+.oc-product-shot--welcome {
+  transform: rotate(1.15deg);
+}
+
+.oc-home-workflow {
+  margin: 0 0 118px;
+  padding: 74px clamp(26px, 7vw, 76px);
+  border-radius: 28px;
+  background: #15252c;
+}
+
+.oc-home-workflow h2,
+.oc-home-workflow p {
+  color: #f7fbfc;
+}
+
+.oc-home-workflow .oc-eyebrow {
+  color: #69d8ec !important;
+}
+
+.oc-home-workflow-intro {
+  display: grid;
+  grid-template-columns: minmax(0, .9fr) minmax(300px, .75fr);
+  column-gap: clamp(32px, 8vw, 96px);
+  align-items: start;
+}
+
+.oc-home-workflow-intro .oc-eyebrow,
+.oc-home-workflow-intro h2 {
+  grid-column: 1;
+}
+
+.oc-home-workflow-intro p,
+.oc-home-workflow-intro .oc-text-link {
+  grid-column: 2;
+}
+
+.oc-home-workflow-intro .oc-text-link {
+  align-self: start;
+  color: #70dff1;
+}
+
+.oc-home-workflow-visuals {
+  display: grid;
+  grid-template-columns: 1.35fr .65fr;
+  gap: 28px;
+  align-items: start;
+  margin-top: 50px;
+}
+
+.oc-product-shot--skills {
+  padding-top: 22px;
+}
+
+.oc-product-shot--workflow {
+  margin-top: -10px;
+}
+
+.oc-home-governance {
+  grid-template-columns: minmax(0, .92fr) minmax(280px, 1.08fr);
+}
+
+.oc-home-governance-card {
+  padding: 10px 0;
+}
+
+.oc-home-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 28px;
+}
+
+.oc-home-actions .VPButton {
+  text-decoration: none;
+}
+
+.oc-product-shot--budget {
+  transform: rotate(-1.15deg);
+}
+
+.oc-home-next {
+  padding-top: 72px;
+  border-top: 1px solid var(--oc-home-line);
+  text-align: center;
+}
+
+.oc-home-next h2 {
+  max-width: none;
+}
+
+.oc-home-next-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-top: 34px;
+  text-align: left;
+}
+
+.oc-home-next-grid a {
+  position: relative;
+  min-height: 156px;
+  padding: 25px 48px 24px 24px;
+  border: 1px solid var(--oc-home-line);
+  border-radius: 16px;
+  color: var(--oc-home-ink);
+  background: var(--vp-c-bg);
+  text-decoration: none;
+  transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+
+.oc-home-next-grid a:hover {
+  border-color: var(--vp-c-brand-2);
+  box-shadow: 0 12px 28px rgba(15, 64, 77, .11);
+  transform: translateY(-3px);
+}
+
+.oc-home-next-grid strong,
+.oc-home-next-grid span,
+.oc-home-next-grid b {
+  display: block;
+}
+
+.oc-home-next-grid strong {
+  font-size: 1.05rem;
+}
+
+.oc-home-next-grid span {
+  margin-top: 9px;
+  color: var(--oc-home-muted);
+  font-size: .93rem;
+  line-height: 1.5;
+}
+
+.oc-home-next-grid b {
+  position: absolute;
+  right: 22px;
+  bottom: 20px;
+  color: var(--vp-c-brand-1);
+  font-size: 1.25rem;
+}
+
+.dark .oc-home {
+  --oc-home-ink: #edf7f8;
+  --oc-home-muted: #b8c8cc;
+  --oc-home-surface: #112a31;
+  --oc-home-line: #28505a;
+}
+
+.dark .oc-home-workflow {
+  background: #0b171b;
+}
+
+.dark .oc-product-shot img {
+  border-color: rgba(183, 218, 225, .2);
+  box-shadow: 0 22px 56px rgba(0, 0, 0, .3);
+}
+
+@media (max-width: 768px) {
+  .oc-home {
+    padding: 10px 24px 60px;
+  }
+
+  .oc-home-problem,
+  .oc-home-showcase,
+  .oc-home-governance,
+  .oc-home-workflow-intro {
+    grid-template-columns: 1fr;
+  }
+
+  .oc-home-problem {
+    gap: 24px;
+    margin-bottom: 72px;
+    padding: 32px 26px;
+  }
+
+  .oc-home-showcase,
+  .oc-home-governance {
+    gap: 34px;
+    margin-bottom: 82px;
+  }
+
+  .oc-home-workflow {
+    margin-bottom: 82px;
+    padding: 48px 24px;
+  }
+
+  .oc-home-workflow-intro .oc-eyebrow,
+  .oc-home-workflow-intro h2,
+  .oc-home-workflow-intro p,
+  .oc-home-workflow-intro .oc-text-link {
+    grid-column: auto;
+  }
+
+  .oc-home-workflow-visuals,
+  .oc-home-next-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .oc-home-workflow-visuals {
+    gap: 18px;
+    margin-top: 34px;
+  }
+
+  .oc-product-shot--skills,
+  .oc-product-shot--workflow {
+    margin: 0;
+    padding: 0;
+  }
+
+  .oc-product-shot--welcome,
+  .oc-product-shot--budget {
+    transform: none;
+  }
+}
