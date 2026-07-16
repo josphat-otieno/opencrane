@@ -1,45 +1,47 @@
 # OpenCrane — Active Plan
 
-> **Rebased 2026-07-05; resequenced 2026-07-07.** Implementation detail lives in **GitHub
-> issues** (context + todo checklists); this file is the sequencing index the work is driven
-> from. When an item here is executed, work off the linked issue — not this file. History of
-> everything landed before the rebase: `plan-done.md` + the git history of this file (the
-> pre-rebase plan is at commit `700473b` and earlier).
+> **Rebased 2026-07-05; resequenced 2026-07-07; re-lettered 2026-07-16.** Implementation
+> detail lives in **GitHub issues** (context + todo checklists); this file is the sequencing
+> index the work is driven from. When an item here is executed, work off the linked issue —
+> not this file. History of everything landed before the rebase: `plan-done.md` + the git
+> history of this file (the pre-rebase plan is at commit `700473b` and earlier).
+>
+> Phase letters were reset on 2026-07-16 to match where the work actually stands: the launch
+> stabilisation phase, member onboarding, and the bulk of the Phase 3 repo cutover are done
+> (see Current state), so the active sequence now restarts at **Phase A**.
 
-## Current state (2026-07-05)
+## Current state (2026-07-16)
 
-`main` @ `700473b`. The silo program (S1–S6) is merged: fleet/silo split, Zitadel as PDP
-system-of-record with per-org OIDC login, member API (`oc cluster-tenant members`), S4
-inheritance + scope vocabularies + dataset-membership sync, BYOK provider keys, same-origin
-org ingress + gateway proxy (built, gated), org-memory (Cognee) wired into tenant pods.
+The silo program (S1–S6) is merged: fleet/silo split, Zitadel as PDP system-of-record with
+per-org OIDC login, member API (`oc cluster-tenant members`), S4 inheritance + scope
+vocabularies + dataset-membership sync, BYOK provider keys, same-origin org ingress + gateway
+proxy (built, gated), org-memory (Cognee) wired into tenant pods.
+
+Since the rebase, three tranches have completed and dropped out of the active sequence:
+
+- **Launch stabilisation** — fail-safe tenant reconcile ([#144](https://github.com/italanta/opencrane/issues/144)) and operator/deploy ops hygiene ([#134](https://github.com/italanta/opencrane/issues/134)). The live cluster no longer clobbers a known-good config or silently reverts deploys.
+- **Member onboarding & user lifecycle** ([#126](https://github.com/italanta/opencrane/issues/126)) — signup → invite → membership → seeded workspace → offboard.
+- **Phase 3 repo cutover (bulk)** — standalone-capable silo ([#151](https://github.com/italanta/opencrane/issues/151)), frontend + org-libs receive/relicense ([#152](https://github.com/italanta/opencrane/issues/152)), NX adoption ([#153](https://github.com/italanta/opencrane/issues/153)). Landed on the `phase3-cutover` branch — **pending merge to `main`** (merge gated on the e2e-k3d design call + the k8s-platform subchart vendor-vs-publish decision).
 
 ## Execution order
 
 The roadmap is sequenced into cross-repo phases (shared with [weownai's plan](https://github.com/italanta/WeOwnAI/blob/main/plan.md)).
-Governing rule: **finish the launch push before starting the Phase 3 restructuring**, because
-Phase 3 physically moves the code the launch issues are still changing. Two exceptions are
-pulled early — see Phase A and the #150 note in Phase E.
+Governing rule: **finish the launch push (Phases A–C) before treating the Phase 3 tail
+(Phase D) as anything but bookkeeping + research.** The heavy Phase 3 code moves are already
+done; what remains there has no launch dependency.
 
-### Phase A — Stabilise the live cluster (gates all live verification)
+### Phase A — Isolation & domaining production defaults (current front)
 
 | Issue | Scope | Why first |
 |-------|-------|-----------|
-| [#144](https://github.com/italanta/opencrane/issues/144) — **Fail-safe tenant reconcile** | Don't clobber a known-good openclaw ConfigMap when `tenant-models` returns empty/errors · never emit a bare unprefixed model · mark Tenant `Degraded` · unit tests | This is the elewa-be chat-break bug. Until reconcile degrades safely, every live E2E below is flaky. |
-| [#134](https://github.com/italanta/opencrane/issues/134) — **Operator & deploy ops hygiene** | Skill-registry env wired through the chart (survives `helm upgrade`) · suspend self-loop `observedGeneration` guard · operator auto-reconcile on config change | Small; stops deploys silently reverting state. Runs alongside #144. |
+| [#127](https://github.com/italanta/opencrane/issues/127) — **Isolation & domaining production defaults** | Default-deny mandatory for multi-CT (ex-#105) · per-ClusterTenant hosts default-ON + purge per-usertenant domains · encrypted tenant storage (CMEK + preflight) · GCP smoke + live ACME e2e | Shipped defaults must match the documented security model before any multi-org production install. Last launch-critical backend item. |
 
-### Phase B — Backend launch-critical (parallel, independent)
-
-| Issue | Scope | Why |
-|-------|-------|-----|
-| [#126](https://github.com/italanta/opencrane/issues/126) — **Member onboarding & user lifecycle** | Org-admin signup (ex-#122) · member adoption on first login · internal member-workspace seeding · `POST /tenants` membership-validation + subject binding · S4b groups-as-Zitadel-project-roles · seat caps · offboarding (retain datasets) · provisioning/deploy correctness (ex-#100) | The funnel's missing middle: invited employees can't reach a running assistant today. Pairs with weownai #30. |
-| [#127](https://github.com/italanta/opencrane/issues/127) — **Isolation & domaining production defaults** | Default-deny mandatory for multi-CT (ex-#105) · per-ClusterTenant hosts default-ON + purge per-usertenant domains · encrypted tenant storage (CMEK + preflight) · GCP smoke + live ACME e2e | Shipped defaults must match the documented security model before any multi-org production install. |
-
-### Phase C — Frontend launch cutover (weownai)
+### Phase B — Frontend launch cutover (weownai)
 
 No opencrane issues. Cross-repo gate: weownai [#28](https://github.com/italanta/WeOwnAI/issues/28)
-(live workspace) needs Phase A's stable cluster; weownai #30 pairs with #126. See weownai's plan.
+(live workspace) needs the stabilised cluster; weownai #30 pairs with the completed #126. See weownai's plan.
 
-### Phase D — Capability completion (overlaps Phase C's tail)
+### Phase C — Capability completion (overlaps Phase B's tail)
 
 | Issue | Scope | Dependency |
 |-------|-------|------------|
@@ -48,21 +50,18 @@ No opencrane issues. Cross-repo gate: weownai [#28](https://github.com/italanta/
 | [#130](https://github.com/italanta/opencrane/issues/130) — **Scope-aware retrieval + per-scope memory partitioning** (S4e + P4B.7.2/.3) | ScopeContext in `@opencrane/awareness` · cascade retrieval plugin · `node_set` ingestion tagging · written-memory partitioning | Plugin can land against manual groups; full value after #126's S4b. |
 | [#138](https://github.com/italanta/opencrane/issues/138) — **ClusterTenant teardown** | Finalizer-driven silo deprovision · CR-delete + DB-row in one transaction · data-retention policy | Pairs with #126's lifecycle; align teardown semantics with #150's contract. |
 
-### Phase E — Phase 3 repo boundary re-draw (after launch settles)
+### Phase D — Phase 3 cutover close-out & plugin seam (no launch dependency)
 
-This repo narrows to a standalone **ClusterTenant template** (deployable alone or fleet-managed
-from weownai); the org/clustertenant frontend moves in from weownai, and the fleet backend
-moves out to weownai.
+The heavy Phase 3 code moves — standalone silo (#151), frontend receive (#152), NX adoption
+(#153) — are **done** on `phase3-cutover` (see Current state). What remains is the contract
+close-out and the plugin research spike.
 
 | Issue | Scope | Dependency |
 |-------|-------|------------|
-| [#150](https://github.com/italanta/opencrane/issues/150) — **Fleet↔silo contract + licensing split** | ClusterTenant CR schema + lifecycle API (incl. teardown, see #138) · OIDC delegation payload · relicense `fleet-operator`/`fleet-platform` to private ahead of the move | **DONE (opencrane side, phase3-cutover):** `apps/fleet-operator` + `apps/fleet-platform` removed from this repo (fleet-facing CLI commands and the generated `fleet-api.ts` client removed with them); the fleet backend now lives in WeOwnAI (counterpart: weownai#39, "done"). Deploy scripts/terraform that drove the fleet chart now require an external `FLEET_CHART_DIR`/`fleet_chart_path` pointing at a checked-out WeOwnAI copy. |
-| [#151](https://github.com/italanta/opencrane/issues/151) — **Standalone-capable silo** | Decouple identity (OIDC delegation), move `OrgDomainProvisioner` into the silo operator, chart self-sufficiency (SecretStore, NetworkPolicy floor, CRDs), standalone deploy mode | **DONE (phase3-cutover):** item 1 identity decoupling — audited, no code change needed (`docs/design/fleet-silo-contract.md`); item 2 `OrgDomainProvisioner` in-operator + item 3 chart self-sufficiency (CRDs/SecretStore/NetworkPolicy floor) both landed; item 4 standalone deploy mode — single `deploymentMode`/`DEPLOYMENT_MODE` switch (`config.ts` + chart `deploymentMode` value, fanning out `manageTenantNamespaces`/`manageOwnDomain`/the boot-time `_SeedOwnClusterTenant`+`_SeedOwnDefaultTenant` self-seed), `values/standalone.yaml` preset, `values.schema.json` + Helm `fail` coherence guards, docs in `docs/agents/apps/opencrane.md` → "Deployment modes". |
-| [#152](https://github.com/italanta/opencrane/issues/152) — **Receive opencrane-ui frontend + org libs from weownai, relicense AGPL** | Land `apps/opencrane-ui` + org feature/state libs, fork shared foundation libs, chart-native frontend deploy, drop the opencrane-api OpenAPI pin | Lockstep with [weownai#38](https://github.com/italanta/WeOwnAI/issues/38); after weownai #41 lands so rendering ports wholesale. |
-| [#153](https://github.com/italanta/opencrane/issues/153) — **Adopt NX + diffuse opencrane-api into libs** | NX adoption, extract `src/core/` (40k LOC) into `libs/features/*`, per-feature migration ownership convention | After #151/#152 settle — don't refactor code mid-relocation. |
-| [#154](https://github.com/italanta/opencrane/issues/154) — **Plugin system research spike** | Plugin shape (backend module + frontend element + chart + manifest), install procedure, customisation line, hooks inventory, prove-the-seam plugins (skills, MCP, #129 harvesting, #130 awareness, billing, metrics) | Research anytime; design after #153. #129/#130 become prove-the-seam candidates. |
+| [#150](https://github.com/italanta/opencrane/issues/150) — **Fleet↔silo contract + licensing split** | ClusterTenant CR schema + lifecycle API (incl. teardown, see #138) · OIDC delegation payload · relicense `fleet-operator`/`fleet-platform` to private ahead of the move | **DONE (opencrane side, phase3-cutover):** `apps/fleet-operator` + `apps/fleet-platform` removed from this repo (fleet-facing CLI commands and the generated `fleet-api.ts` client removed with them); the fleet backend now lives in WeOwnAI (counterpart: weownai#39, "done"). Deploy scripts/terraform that drove the fleet chart now require an external `FLEET_CHART_DIR`/`fleet_chart_path` pointing at a checked-out WeOwnAI copy. Issue still open — close out once `phase3-cutover` merges to `main`. |
+| [#154](https://github.com/italanta/opencrane/issues/154) — **Plugin system research spike** | Plugin shape (backend module + frontend element + chart + manifest), install procedure, customisation line, hooks inventory, prove-the-seam plugins (skills, MCP, #129 harvesting, #130 awareness, billing, metrics) | Research anytime; design after the cutover merges. #129/#130 become prove-the-seam candidates. |
 
-### Phase F — End-state substrate & deferred (no launch dependency)
+### Phase E — End-state substrate & deferred (no launch dependency)
 
 | Issue | Scope | Status |
 |-------|-------|--------|
