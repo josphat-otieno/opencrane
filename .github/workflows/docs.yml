@@ -1,8 +1,8 @@
 name: Deploy docs site
 
 # Builds the VitePress documentation site (website/) and deploys it to GitHub
-# Pages. The interactive API reference is generated from the OpenAPI source and
-# staged through dist by the site's prebuild step.
+# Pages. The interactive API reference is rendered from the checked-in OpenAPI
+# snapshot, so this deployment is fully static.
 
 on:
   push:
@@ -10,9 +10,6 @@ on:
       - main
     paths:
       - "website/**"
-      - "apps/opencrane/src/openapi/**"
-      - "libs/backend/**/main/src/openapi.ts"
-      - "libs/contracts/src/generated/api.ts"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
 
@@ -51,9 +48,9 @@ jobs:
 
       - name: Build site
         # Served at the opencrane.ai custom domain (website/public/CNAME), so base
-        # stays '/' — no DOCS_BASE override. (prebuild syncs the OpenAPI spec.)
+        # stays '/' — no DOCS_BASE override.
         # Build the website package directly so this doesn't depend on a root
-        # `docs:build` alias being present. (prebuild syncs the OpenAPI spec.)
+        # `docs:build` alias being present.
         run: npm run build -w @opencrane/website
 
       - name: Upload Pages artifact

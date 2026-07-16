@@ -1,8 +1,9 @@
 # syntax=docker/dockerfile:1
 
 # --- Build the VitePress static site -----------------------------------------
-# Built from the repo root context (`docker build -f website/Dockerfile .`) because
-# the site's prebuild emits and copies the OpenAPI spec for the API reference.
+# Built from the repo root context (`docker build -f website/Dockerfile .`) so the
+# workspace dependency install is reproducible. The site uses its checked-in API
+# snapshot and does not import or generate the server during this build.
 FROM node:22-alpine AS builder
 WORKDIR /repo
 COPY package.json package-lock.json tsconfig.json nx.json ./

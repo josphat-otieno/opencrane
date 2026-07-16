@@ -45,6 +45,13 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Verify API reference snapshot is up to date
+        # The server build above generated the source spec. Keep this contract
+        # check in API CI so the Pages deployment can remain entirely static.
+        run: |
+          npm run sync-openapi -w @opencrane/website
+          git diff --exit-code -- website/public/openapi.json
+
       # Regenerate the typed client from the freshly emitted OpenAPI dist
       # artifact, then diff the committed generated client to catch drift.
       - name: Verify generated client is up to date

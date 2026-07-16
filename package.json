@@ -17,7 +17,7 @@
     "install:phase1:local": "KEEP_CLUSTER=1 ./libs/k8s-platform/tests/k3d-local.sh",
     "lint": "nx run-many -t lint",
     "lint:boundaries": "eslint .",
-    "docs:sync-openapi": "npm run sync-openapi -w website",
+    "docs:sync-openapi": "npm run refresh-openapi -w website",
     "docs:dev": "npm run dev -w website",
     "docs:build": "npm run build -w website",
     "docs:preview": "npm run preview -w website",

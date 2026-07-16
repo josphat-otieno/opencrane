@@ -7,9 +7,8 @@
   "type": "module",
   "scripts": {
     "sync-openapi": "node scripts/sync-openapi.mjs",
-    "predev": "npm run emit-openapi -w @opencrane/server && npm run sync-openapi",
+    "refresh-openapi": "npm run db:generate -w @opencrane/server && npm run emit-openapi -w @opencrane/server && npm run sync-openapi",
     "dev": "vitepress dev",
-    "prebuild": "npm run emit-openapi -w @opencrane/server && npm run sync-openapi",
     "build": "vitepress build",
     "preview": "vitepress preview"
   },
