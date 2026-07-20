@@ -22,6 +22,7 @@
 #   TYPES-IN-IMPL     exported interface/type outside a *.types.ts file
 #   JSDOC             exported declaration with no JSDoc directly above (heuristic)
 #   BRACE             opening { not on its own line for a multi-line fn/class (heuristic)
+#   TEST-LOCATION     *.test.ts file not placed under a __tests__ directory
 
 set -euo pipefail
 
@@ -50,11 +51,6 @@ for f in "${FILES[@]:-}"; do
 	CHECKABLE+=("$f")
 done
 
-if [[ ${#CHECKABLE[@]} -eq 0 ]]; then
-	echo "agent-style-check: no checkable TypeScript files in scope."
-	exit 0
-fi
-
 ERRORS=0
 WARNS=0
 
@@ -64,6 +60,27 @@ _report()
 	printf '%s:%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$5"
 	if [[ "$3" == "ERROR" ]]; then ERRORS=$((ERRORS + 1)); else WARNS=$((WARNS + 1)); fi
 }
+
+# TEST-LOCATION — every *.test.ts must live under a __tests__ directory,
+# never co-located next to the source file it tests. Runs against the raw
+# FILES list since test files are otherwise excluded from CHECKABLE below.
+for f in "${FILES[@]:-}"; do
+	[[ -z "$f" || ! -f "$f" ]] && continue
+	case "$f" in
+		*.test.ts)
+			case "$f" in
+				*/__tests__/*) : ;;
+				*) _report "$f" 1 ERROR TEST-LOCATION "test file not under __tests__/ — move it there and fix relative imports" ;;
+			esac
+			;;
+	esac
+done
+
+if [[ ${#CHECKABLE[@]} -eq 0 ]]; then
+	echo "agent-style-check: no checkable TypeScript files in scope."
+	[[ $ERRORS -gt 0 ]] && exit 1
+	exit 0
+fi
 
 for f in "${CHECKABLE[@]}"; do
 

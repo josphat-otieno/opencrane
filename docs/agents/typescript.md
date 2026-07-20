@@ -69,9 +69,9 @@ line). Use its output to populate the table; do **not** rely on "it feels right"
 
 When a coding turn writes or edits `.ts` files, include a compact compliance table in the response:
 
-| File | No standalone `=>` | Imports single-line at top | All declarations JSDoc (incl. properties) | Types in `*.types.ts` | Naming convention |
-|---|---|---|---|---|---|
-| `example.ts` | ✓ | ✓ | ✓ | ✓ | ✓ |
+| File | No standalone `=>` | Imports single-line at top | All declarations JSDoc (incl. properties) | Types in `*.types.ts` | Naming convention | New test under `__tests__/` |
+|---|---|---|---|---|---|---|
+| `example.ts` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 Rules to check:
 
@@ -80,6 +80,7 @@ Rules to check:
 3. **JSDoc on every declaration, including every interface property and every class field** — not just the enclosing type or class.
 4. **Exported interfaces and type aliases in `*.types.ts`** — not in the implementation file.
 5. **Function naming** — file-private: `_camelCase`; same-package export: `_PascalCase`; same-domain: `__PascalCase`; wide/global: `___PascalCase`.
+6. **New tests under `__tests__/`** — a `*.test.ts` co-located next to the source file it tests, instead of under a `__tests__` directory, is a violation. See [Test File Location](#test-file-location).
 
 The compliance table is **not** optional when TypeScript files were modified. If the table would be incomplete, fix the violations first.
 
@@ -206,6 +207,27 @@ export function _Resolve(): ResolveResult
 {
 	return { status: "ok" };
 }
+```
+
+## Test File Location
+
+Test files live under a `__tests__` directory next to the source they cover, never co-located as
+a sibling `*.test.ts` file.
+
+- `src/foo.ts` is tested by `src/__tests__/foo.test.ts`, not `src/foo.test.ts`.
+- Fix relative imports accordingly (`./foo.js` becomes `../foo.js` once the test moves down a
+  directory level).
+- Checked mechanically by `scripts/agent-style-check.sh` (`TEST-LOCATION`) — a co-located
+  `*.test.ts` is an ERROR, not a style suggestion.
+
+```typescript
+// WRONG
+// libs/backend/example/main/src/widget.test.ts
+import { Widget } from "./widget.js";
+
+// CORRECT
+// libs/backend/example/main/src/__tests__/widget.test.ts
+import { Widget } from "../widget.js";
 ```
 
 ## Custom HTTP Response Headers
