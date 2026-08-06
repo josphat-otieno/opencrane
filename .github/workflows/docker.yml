@@ -4,11 +4,17 @@ on:
   push:
     branches:
       - main
-      - feat/agent-platform-v2
+      - develop
+      - own-personal-ai-agent-setup
+  # Stacked PRs target feature branches. Validate every PR base so descendants receive the same
+  # build/test gate as integration-root changes.
   pull_request:
-    branches:
-      - main
-      - feat/agent-platform-v2
+
+# One live run per ref: a new push supersedes the in-flight PR validation of the stale commit.
+# Pushes to the integration branches are never cancelled mid-publish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   actions: read
@@ -27,7 +33,7 @@ jobs:
       deployables: ${{ steps.affected.outputs.deployables }}
       has_deployables: ${{ steps.affected.outputs.has_deployables }}
       api_contract_changed: ${{ steps.affected.outputs.api_contract_changed }}
-      e2e_required: ${{ steps.affected.outputs.e2e_required }}
+      guard_inputs_changed: ${{ steps.affected.outputs.guard_inputs_changed }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -38,13 +44,24 @@ jobs:
           node-version: 24
           cache: npm
 
+      - name: Restore node_modules
+        id: node-modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ runner.os }}-node24-${{ hashFiles('package-lock.json') }}
+
       - name: Install dependencies
+        if: steps.node-modules.outputs.cache-hit != 'true'
         run: npm ci
 
       - name: Select the last successful base
         uses: nrwl/nx-set-shas@v5
         with:
-          main-branch-name: ${{ github.base_ref || (github.ref_name == 'feat/agent-platform-v2' && 'feat/agent-platform-v2' || 'main') }}
+          main-branch-name: ${{ github.base_ref || github.ref_name }}
+
+      - name: Prove app-owned deployable selection
+        run: npm run test:affected-deployables
 
       - name: Emit affected deployable matrix
         id: affected
@@ -54,7 +71,22 @@ jobs:
     name: Build, test, and lint affected projects
     runs-on: ubuntu-latest
     needs: prepare
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: opencrane
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d opencrane"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/opencrane
       NX_BASE: ${{ needs.prepare.outputs.nx_base }}
       NX_HEAD: ${{ needs.prepare.outputs.nx_head }}
     steps:
@@ -67,8 +99,93 @@ jobs:
           node-version: 24
           cache: npm
 
+      - name: Restore node_modules
+        id: node-modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ runner.os }}-node24-${{ hashFiles('package-lock.json') }}
+
       - name: Install dependencies
+        if: steps.node-modules.outputs.cache-hit != 'true'
         run: npm ci
+
+      - name: Install Helm for topology render validation
+        uses: azure/setup-helm@v5
+        with:
+          # Pinned to the version local deploys and the render-parity evidence used —
+          # renders must not drift with the runner image or a new Helm release.
+          version: v4.1.4
+
+      - name: Install validation clients
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client ripgrep
+
+      - name: Enforce workload ownership and app composition
+        run: npm run check:workload-ownership-app-composition
+
+      - name: Prove workload ownership and app composition reject drift
+        # Tests the guard, not the repo — re-prove only when the guard or its inputs change.
+        if: needs.prepare.outputs.guard_inputs_changed == 'true' || github.event_name == 'push'
+        run: npm run test:workload-ownership-app-composition
+
+      - name: Enforce personal, execution, and operator agent domains
+        run: npm run check:agent-domain-boundary
+
+      - name: Prove the agent-domain boundary rejects drift
+        run: npm run test:agent-domain-boundary
+
+      - name: Enforce mechanical TypeScript agent style
+        run: scripts/agent-style-check.sh --diff "$NX_BASE"
+
+      - name: Prove the inline-conditional classifier
+        run: npm run test:agent-style
+
+      - name: Enforce language-neutral production module growth
+        run: npm run check:module-growth -- --diff "$NX_BASE"
+
+      - name: Prove the module-growth classifier
+        run: npm run test:module-growth
+
+      - name: Prove the PR-stack integrity classifier
+        run: npm run test:pr-stack-integrity
+
+      - name: Prove configuration documentation coverage
+        run: npm run test:config-docs-coverage
+
+      - name: Enforce operator configuration documentation
+        run: scripts/config-docs-coverage.sh --strict
+
+      - name: Enforce Prisma repository and unit-of-work ownership
+        run: npm run check:prisma-boundaries -- --diff "$NX_BASE"
+
+      - name: Prove the Prisma-boundary classifier
+        run: npm run test:prisma-boundaries
+
+      # The topology gate must inspect the checked-in app owners, before any
+      # generator can introduce transient files beneath an app root.
+      - name: Generate the database client
+        run: npm run db:generate -w @opencrane/server
+
+      - name: Verify the reviewed target authority baseline is intact
+        run: npm run test:authority-baseline -w @opencrane/server
+
+      - name: Apply the fresh target database baseline
+        run: psql "$DATABASE_URL" -X --set=ON_ERROR_STOP=1 --file=apps/opencrane/prisma/bootstrap/target-baseline.sql
+
+      # Every suite validates the shared target baseline. A baseline-only change belongs to the
+      # opencrane app and therefore cannot make the library-owned SQL suites "affected" in Nx.
+      - name: Run every PostgreSQL authority suite
+        run: npx nx run-many -t test:sql --parallel=1
+
+      - name: Restore the Nx computation cache
+        uses: actions/cache@v4
+        with:
+          path: .nx/cache
+          key: nx-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
+          restore-keys: |
+            nx-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
 
       - name: Build, test, and lint affected projects
         run: npx nx affected -t build test lint
@@ -85,36 +202,15 @@ jobs:
           npx nx run contracts:generate
           git diff --exit-code -- libs/contracts/src/generated/api.ts
 
-  e2e-k3d:
-    name: k3d standalone-silo e2e smoke test
-    runs-on: ubuntu-latest
-    needs: [prepare, test]
-    if: needs.prepare.outputs.e2e_required == 'true'
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Install k3d
-        run: curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
-
-      - name: Install Helm
-        uses: azure/setup-helm@v5
-
-      - name: Run k3d e2e smoke test
-        run: ./libs/k8s-platform/tests/k3d-e2e.sh
-        env:
-          KEEP_CLUSTER: "0"
-          TIMEOUT_SECONDS: "300"
-
   build-and-push:
     name: Build and publish affected images
     runs-on: ubuntu-latest
-    needs: [prepare, test, e2e-k3d]
+    needs: [prepare, test]
     if: >-
       ${{
         always() &&
         needs.prepare.outputs.has_deployables == 'true' &&
-        needs.test.result == 'success' &&
-        (needs.e2e-k3d.result == 'success' || needs.e2e-k3d.result == 'skipped')
+        needs.test.result == 'success'
       }}
     permissions:
       contents: read

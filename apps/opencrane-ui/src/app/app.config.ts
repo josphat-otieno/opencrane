@@ -5,18 +5,12 @@ import { provideHttpClient, withFetch } from "@angular/common/http";
 import { providePrimeNG } from "primeng/config";
 
 import { WeOwnAiPreset } from "@opencrane/core";
-import { CONVERSATION_CACHE, PLATFORM_SURFACE } from "@opencrane/state/core";
-import { IndexedDbConversationCache } from "@opencrane/state/conversation/cache";
-import { UserTenantStore } from "@opencrane/state/tenant/adapter";
+import { PLATFORM_SURFACE } from "@opencrane/state/core";
 import { LOCAL_STORAGE_GATEWAY, SESSION_STORAGE_GATEWAY, WebLocalStorageAdapter, WebSessionStorageAdapter } from "@opencrane/state/utils/storage";
 import { provideControlPlaneGateways } from "@opencrane/state/gateways";
 import { provideWebPlatform } from "@opencrane/platform";
-import { SessionStore } from "@opencrane/state/core";
-import { provideTestGateways } from "@opencrane/state/gateways/testing";
 
-import { environment } from "../environments/environment.js";
-import { APP_ROUTES } from "./app.routes.js";
-import { MockSessionStore } from "@opencrane/state/core/testing";
+import { APP_ROUTES } from "./app.routes";
 
 /**
  * Root application configuration for the WeOwnAI frontend.
@@ -43,13 +37,6 @@ export const appConfig: ApplicationConfig =
 		{ provide: PLATFORM_SURFACE, useValue: "org" },
 		// Swappable data gateways are selected from one environment flag
 		// (mock in dev, live in prod) — see provideControlPlaneGateways.
-		...(environment.gatewayMode === "mock" ? provideTestGateways() : provideControlPlaneGateways()),
-		// Web local-transcript cache; a desktop build binds this token to a
-		// filesystem/SQLite store instead (see ConversationCache).
-		{ provide: CONVERSATION_CACHE, useClass: IndexedDbConversationCache },
-		// Use the mock identity store for the UI handoff.
-		{ provide: SessionStore, useClass: MockSessionStore },
-		// UserTenant store for the customer-admin console (not a gateway).
-		UserTenantStore
+		...provideControlPlaneGateways()
 	]
 };

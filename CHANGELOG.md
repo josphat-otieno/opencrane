@@ -15,32 +15,60 @@ follows [Keep a Changelog](https://keepachangelog.com/); the project uses
 
 ### Added
 
+- **Operators can now admit managed agents through the immutable, fail-closed run authority.**
+  Run-now and scheduled work derive a dedicated service principal, verify its current
+  Ed25519-signed fleet membership, intersect the active revision's exact non-personal knowledge
+  attachments with effective grants, and atomically persist the run, snapshot, and dispatch
+  request. Managed Jobs use their distinct projected identity and can never inherit the requesting
+  administrator, scheduler, personal memory, or personal configuration tools.
+
+- **Platform developers can now build the personal-agent data model, APIs, and policies from one
+  canonical target contract.** Pure packages define personal and managed AgentServices, immutable
+  revisions and runs, ordered transcripts and events, content-addressed artifacts and skills, and
+  proof-bound runtime assignments; the public contracts barrel exposes the same types without a
+  second domain authority.
+
+- **Authorization implementations can now evaluate grants and signed fleet membership with
+  deterministic fail-closed rules.** Project is independent of department and team, deny wins at
+  equal priority, and membership trust is bounded by verified issuer evidence, silo and subject,
+  monotonic revision, maximum staleness, and hard expiry.
+
+- **Personal-agent onboarding now has an executable persona contract before UI and runtime work
+  begins.** Versioned interviews select reviewed `SOUL.md` templates, produce three to five explicit
+  provenance-linked insights, and block the first session until the user previews and approves the
+  compiled PersonaRevision; runtime cannot mutate durable persona content.
+
+- **Storage and update implementations now share enforceable product invariants.** Canonical data is
+  retained until authorized deletion on mounted, backed-up, online-expandable storage; runtime
+  workspaces are mounted non-authoritative scratch; and future application updates must return ready
+  target Pods in strictly less than five minutes while remounting existing canonical volumes.
+
 - **Platform developers can now work on one functional domain in isolation, with module boundaries
   enforced by lint.** Each of 20 functional domains (tenants, policies, grants, skills, model-routing,
   providers, awareness, spend, groups, MCP, sessions, company-docs, audit, access-tokens, metrics,
   connections, cluster-tenants, retrieval, contract, projection) is now an NX package at
   `libs/domain/<domain>/main`, owning its routes, services, types, tests, and Prisma schema slice.
-  A module-boundary lint rule (`pnpm lint:boundaries`) enforces that imports flow domain → domain + shared
+  A module-boundary lint rule (`npm run lint:boundaries`) enforces that imports flow domain → domain + shared
   only — no cross-domain hard coupling. The stepping stone for multi-tenant customisation and Wave 5
   plugin ownership.
 
-- **The workspace now builds, tests, and lints with NX caching — `pnpm build/test/lint` runs once per
-  input change across all 20 domains.** NX derives the project graph from the pnpm workspace
-  `package.json` dependencies, so a new package or dependency edge updates cache invalidation without
-  manual configuration. The developer experience remains `pnpm build && pnpm test` and the
+- **The workspace now builds, tests, and lints with NX caching — `npm run build/test/lint` runs once per
+  input change across all 20 domains.** NX derives the project graph from project metadata and source
+  imports, so a new package or dependency edge updates cache invalidation without manual
+  configuration. The developer experience remains `npm run build && npm test` and the
   CI cost drops as unchanged domains are skipped.
 
 - **Adding a new domain package requires no Dockerfile or CI edits — the image builds the app's
-  workspace dependency closure automatically.** The Dockerfile copies `libs` wholesale and
-  builds the operator's transitive workspace deps topologically (`pnpm --filter "app^..." build`);
-  each new domain is included on the next build without touching the build definition. The `pnpm install` → `docker build` → app-start
-  pipeline stays identical.
+  dependency closure automatically.** The Dockerfile copies `libs` wholesale and runs the
+  OpenCrane server's npm workspace build, which lets Nx build the required dependency graph; each
+  new domain is included on the next build without touching the build definition. The `npm ci` →
+  `docker build` → app-start pipeline stays identical.
 
-- **Database models are now owned per domain, with clear migration ownership.** The single
-  `schema.prisma` is replaced by per-domain files under `prisma/schema/<domain>.prisma` (e.g.
-  `prisma/schema/tenants.prisma`), and migrations follow the convention `NNNN_<domain>_description.sql`
-  — visible code ownership and single-direction dependency for Wave 5 plugin-owned migrations.
-  The migration runner (Prisma + the pre-install Hook Job) remains unchanged.
+- **Operators can create a silo database directly from one reviewed target definition.** Per-domain
+  Prisma files keep model ownership visible, while a content-addressed immutable baseline is applied
+  once during CloudNativePG `initdb` as the application owner. Server startup never changes schema,
+  physical recovery reuses the schema in the backup, and a protected in-database digest prevents an
+  incompatible backup from being relabelled as current. A changed target requires a clean database.
 
 - **Org admins can supply their own upstream provider key and get a full tier-structured model
   catalog from a single credential.** Calling `PUT /api/v1/providers/byok/:provider` (org-admin
@@ -64,6 +92,30 @@ follows [Keep a Changelog](https://keepachangelog.com/); the project uses
   until the pod was manually recycled.
 
 ### Changed
+
+- **Maintainers can now navigate deployment and server ownership directly from the directory
+  structure.** Deployment-only applications live under `apps/_infra`, the installation chart lives
+  under `apps/_infra/deploy-k8s`, reusable OpenCrane server domains live
+  under `libs/backend/server`, and server-process support lives under `libs/backend/_server`.
+
+- **Operators can now identify and release every deployed workload from its owning app package.**
+  OpenCrane server and UI definitions stay with their product apps; Cognee, LiteLLM, and Obot live
+  under `apps/_infra`; and `apps/_infra/deploy-k8s` composes those app-owned charts.
+
+- **Platform developers can reuse functional server capabilities without importing an app root.**
+  Tenant reconciliation, identity, projection, connection auth, policy reconciliation, channel
+  proxying, tenant hosting, transport security, and OpenAPI ownership now live in focused backend
+  and infrastructure libraries. CI rejects new app-owned implementation logic, unregistered
+  workload constructors, duplicate workload ownership, and dependency-direction drift.
+
+- **Tenant runtime upgrades and rollbacks are now image operations, not startup-time mutations.**
+  OpenClaw and its Cognee memory plugin are pinned in the tenant image, and an empty state volume
+  can start either the current or previous image without downloading executable code. Operators
+  can now qualify and roll back the exact runtime artifact they deploy.
+
+- **Tenant MCP access now has one effective authority path.** AccessPolicy and the rendered runtime
+  contract determine which servers are available; retired Tenant-CRD allow/deny fields, shared-skill
+  mounts, and free-form runtime overrides can no longer shadow that decision.
 
 - **Tenant-runtime org memory now has one implementation and ownership boundary.** The official
   Cognee OpenClaw plugin exclusively owns retrieval and capture; the retired bespoke awareness SDK
@@ -104,6 +156,10 @@ follows [Keep a Changelog](https://keepachangelog.com/); the project uses
 
 ### Security
 
+- **Tenant pods can no longer self-install or self-update their agent runtime.** Runtime code is
+  owned by the signed image lifecycle, closing the path where a restart or mutable state volume
+  could silently select a different OpenClaw or memory-plugin build.
+
 - **The Control-UI can authenticate users over trusted-proxy without requiring device pairing.**
   Setting `dangerouslyDisableDeviceAuth: true` on a gateway lets a Control-UI connection that
   arrives over the OIDC-verifying ingress proxy retain full operator scopes — without the
@@ -113,6 +169,21 @@ follows [Keep a Changelog](https://keepachangelog.com/); the project uses
   `allowUsers` pin on the gateway restricts it to the tenant owner's email. Device auth is
   redundant in this topology; the flag makes that explicit rather than leaving it as a silent
   gap.
+
+### Removed
+
+- **Operators can now run the OpenCrane stack without the bundled Langfuse data plane.** The
+  Langfuse workloads, database and credentials, LiteLLM callback, metrics proxy, and unused
+  dashboard are gone.
+
+- **OpenCrane now has one supported product surface: authenticated APIs, generated clients, and
+  the UI.** The bundled `oc` command-line app and its active documentation are removed, eliminating
+  a second client that had to duplicate every API and workflow change.
+
+- **Legacy pairing, brokered-device, and live SessionScope contracts are retired.** Tenant cuts now
+  terminate the single-user runtime pod directly, and the obsolete session-scope CRUD/API/client
+  surface is gone. Historical SessionScope rows remain only as migration input for the green
+  platform cutover.
 
 ## [0.6.1] — 2026-06-29
 
@@ -179,9 +250,9 @@ Stage 4 "strong-siloes" fleet/silo architecture split plus earlier silo-program 
   now ships two typed clients — `___CreateFleetClient` and the existing silo client — so
   integrators can depend on exactly the surface they need and get compile-time safety for both.
 
-- **Shared infrastructure code is extracted into two workspace libs usable by both managers.**
-  `@opencrane/infra-api` provides CRD constants and typed Kubernetes error helpers.
-  `@opencrane/infra-auth` provides the shared OIDC login/auth substrate — `OidcAuthServiceBase`,
+- **Shared server infrastructure code is extracted into two workspace libs usable by both managers.**
+  `@opencrane/server/_infra/api` provides CRD constants and typed Kubernetes error helpers.
+  `@opencrane/server/_infra/auth` provides the shared OIDC login/auth substrate — `OidcAuthServiceBase`,
   auth middleware, org-membership helpers, and the gating primitives — parametrised over each
   manager's Prisma client so neither app ships a duplicate copy of the auth stack.
 
@@ -626,6 +697,9 @@ Per-org domain serving, the full multi-tenant deploy pipeline, and the identity-
   documents the expected `groups`/`roles` claim names (`OIDC_GROUPS_CLAIM`/`OIDC_ROLES_CLAIM`)
   and how the operator-group and seed-email parameters are configured at install.
 
+> The 0.4.0 entries below record release-time capabilities. The Langfuse integration and metrics
+> endpoint described there were removed in Unreleased.
+
 ## [0.4.0] — 2026-06-19
 
 ### Added
@@ -808,13 +882,13 @@ First tagged release — a working multi-tenant OpenClaw platform you can deploy
 - Initial scaffold of the multi-tenant OpenClaw platform (operator, control-plane, Angular app,
   launch script). Folded into the 0.2.0 tag.
 
-[Unreleased]: https://github.com/italanta/opencrane/compare/0.6.1...HEAD
-[0.6.1]: https://github.com/italanta/opencrane/compare/0.6.0...0.6.1
-[0.6.0]: https://github.com/italanta/opencrane/compare/0.5.3...0.6.0
-[0.5.3]: https://github.com/italanta/opencrane/compare/0.5.2...0.5.3
-[0.5.2]: https://github.com/italanta/opencrane/compare/0.5.1...0.5.2
-[0.5.1]: https://github.com/italanta/opencrane/compare/0.5.0...0.5.1
-[0.5.0]: https://github.com/italanta/opencrane/compare/0.4.0...0.5.0
-[0.4.0]: https://github.com/italanta/opencrane/releases/tag/0.4.0
-[0.3.0]: https://github.com/italanta/opencrane/releases/tag/0.3.0
-[0.2.0]: https://github.com/italanta/opencrane/releases/tag/0.2.0
+[Unreleased]: https://github.com/elewa-git/opencrane/compare/0.6.1...HEAD
+[0.6.1]: https://github.com/elewa-git/opencrane/compare/0.6.0...0.6.1
+[0.6.0]: https://github.com/elewa-git/opencrane/compare/0.5.3...0.6.0
+[0.5.3]: https://github.com/elewa-git/opencrane/compare/0.5.2...0.5.3
+[0.5.2]: https://github.com/elewa-git/opencrane/compare/0.5.1...0.5.2
+[0.5.1]: https://github.com/elewa-git/opencrane/compare/0.5.0...0.5.1
+[0.5.0]: https://github.com/elewa-git/opencrane/compare/0.4.0...0.5.0
+[0.4.0]: https://github.com/elewa-git/opencrane/releases/tag/0.4.0
+[0.3.0]: https://github.com/elewa-git/opencrane/releases/tag/0.3.0
+[0.2.0]: https://github.com/elewa-git/opencrane/releases/tag/0.2.0

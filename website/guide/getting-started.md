@@ -11,20 +11,18 @@ OpenCrane — there's no special cloud dependency. Pick the path that fits you:
 Both install the same way — the only difference is the size and shape of the
 Kubernetes underneath.
 
-## Connect the command-line tool
+## Connect to the management API
 
-However you deploy, everything in these guides uses the `oc` CLI. Point it at your
-control plane:
+Operators sign in through OIDC and use the resulting session with the management API.
+There is no static API token to copy into a terminal. The current UI does not expose every
+management surface, so use an authenticated client and retrieve its contract through the
+[API reference](/reference/api).
 
-```bash
-export OPENCRANE_URL=https://<your-domain>
-export OPENCRANE_TOKEN=<your-access-token>
-
-oc auth me        # confirms you're connected
-```
+For TypeScript integrations, use the generated client described in the
+[Contracts SDK](/integrators/contracts-sdk).
 
 ## Then
 
 1. **[Set up your domain](/guide/dns)** — point DNS at OpenCrane and turn on HTTPS.
-2. **[Create your first assistant](/guide/first-tenant)**.
-3. **[Connect to OpenClaw](/guide/connect)**.
+2. **[Create your first agent](/guide/first-agent)**.
+3. Start a governed run through the agent-services API and inspect its durable status.
