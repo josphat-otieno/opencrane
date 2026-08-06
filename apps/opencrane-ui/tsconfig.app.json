@@ -14,6 +14,9 @@
   ],
   "references": [
     {
+      "path": "../../libs/frontend/features/conversation/tsconfig.lib.json"
+    },
+    {
       "path": "../../libs/frontend/state/onboarding/tsconfig.lib.json"
     },
     {
@@ -21,6 +24,9 @@
     },
     {
       "path": "../../libs/frontend/features/welcome/tsconfig.lib.json"
+    },
+    {
+      "path": "../../libs/frontend/features/workspace/tsconfig.lib.json"
     },
     {
       "path": "../../libs/frontend/platform"

@@ -14,10 +14,16 @@
   ],
   "references": [
     {
+      "path": "../../libs/frontend/features/conversation"
+    },
+    {
       "path": "../../libs/frontend/features/tools"
     },
     {
       "path": "../../libs/frontend/features/welcome"
+    },
+    {
+      "path": "../../libs/frontend/features/workspace"
     },
     {
       "path": "../../libs/frontend/platform"

@@ -19,8 +19,8 @@ The backend that serves its APIs is [`apps/opencrane`](../opencrane/README.md) (
 this app only renders screens and calls that server.
 
 It composes the frontend feature and state libraries under `libs/frontend/*` — the route table
-lazy-loads the onboarding and MCP tool-administration screens. MCP is the Model Context Protocol for
-connecting tools. Two beats
+lazy-loads the workspace shell, onboarding, and MCP tool-administration screens. MCP is the Model
+Context Protocol for connecting tools. Two beats
 define what it *is* as a deployable:
 
 1. **The served asset** — a static bundle plus a hardened nginx config, so a browser can load it.
@@ -51,15 +51,16 @@ If the backend is unreachable the app refuses authenticated actions.
 ## Public surface
 
 `Entrypoint: src/main.ts` (bootstraps `AppComponent` with `appConfig` from `src/app/app.config.ts`).
-Route table `src/app/app.routes.ts`: `login`, `welcome` (onboarding), and `admin` (MCP tool
-administration). The root route redirects to onboarding; administrative routes use
-`OperatorAccessGuard`.
+Route table `src/app/app.routes.ts`: `login`, `welcome` (onboarding), `admin` (MCP tool
+administration), and the authenticated workspace at `/`. The workspace uses `OperatorAccessGuard`
+followed by the first-run guard; its child routes are owned by
+`libs/frontend/features/workspace`.
 
 ## Boundary
 
 Browser-only presentation. It holds no server secrets and no database; it persists only local
-conveniences (local/session storage, an IndexedDB transcript cache). It does not implement authorization
-— it renders what the backend permits and gates screens on backend-supplied capability claims.
+conveniences in local/session storage. It does not implement authorization — it renders what the
+backend permits and gates screens on backend-supplied capability claims.
 
 ## Dependency direction
 

@@ -4,28 +4,26 @@
 
 A **feature** is one slice of the app's screen: a routed page or a pane, plus the components that
 fill it. Most are **lazy-loaded** — the browser only downloads a feature's code the first time its
-route is opened, so the app starts small. Each feature exports the component the shell drops into
-its slot; the shell itself is `workspace`.
+route is opened, so the app starts small. Routed features export route contracts that the host or
+workspace shell lazy-loads; the shell itself is `workspace`.
 
 ## Map
 
 | Package | What it owns |
 | --- | --- |
+| [`conversation`](./conversation/README.md) | Display-safe conversation messages and visual states. |
 | [`context`](./context/README.md) | The right-hand context pane. |
-| [`conversation`](./conversation/README.md) | The centre conversation pane. |
 | [`notifications`](./notifications/README.md) | The notification popover. |
-| [`settings`](./settings/README.md) | The settings page. |
 | [`tools`](./tools/README.md) | Tools and tool-governance routes. |
 | [`welcome`](./welcome/README.md) | First-run onboarding. |
-| [`workspace`](./workspace/README.md) | The workspace shell. |
+| [`workspace`](./workspace/README.md) | The authenticated workspace shell and child route composition. |
 
 ```
-                       workspace (the shell)
-         ┌──────────────┼───────────────┐
-   conversation      context        notifications
-   (centre pane)   (right pane)      (bell popover)
-         │
-   routed pages: settings · tools · welcome
+                workspace (the shell)
+                         │
+                  routed tools
+
+   welcome remains a top-level first-run route
 ```
 
 ## Dependency rule for this tier

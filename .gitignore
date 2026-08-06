@@ -29,6 +29,7 @@ __pycache__/
 # Dev (root-level scratch dir only; anchored so it doesn't swallow nested dirs
 # like apps/_infra/deploy-k8s/platform/terraform/environments/dev/)
 /dev/
+/ui-designs/
 
 # Claude Code local review-gate state
 .claude/.last-review-hash

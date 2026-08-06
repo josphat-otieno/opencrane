@@ -1,0 +1,48 @@
+.wo-message {
+	display: grid;
+	grid-template-columns: 34px minmax(0, 1fr);
+	gap: 14px;
+	width: 100%;
+	color: var(--oc-text-primary);
+
+	&--user {
+		display: flex;
+		justify-content: flex-end;
+
+		.wo-message__body {
+			max-width: min(80%, 560px);
+			padding: 9px 13px;
+			border: 1px solid #d8d4cd;
+			border-radius: 10px 10px 3px 10px;
+			background: var(--oc-surface-card);
+		}
+	}
+
+	&__mark {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 34px;
+		height: 34px;
+		border: 1px solid var(--oc-border);
+		border-radius: 7px;
+		background: var(--oc-surface-card);
+
+		img { width: 17px; height: 17px; }
+	}
+
+	&__body > p {
+		margin: 0;
+		font-size: 14.5px;
+		line-height: 1.65;
+		white-space: pre-wrap;
+	}
+
+	&__loading { display: flex; gap: 5px; padding: 10px 0; }
+	&__loading span { width: 6px; height: 6px; border-radius: 50%; background: var(--oc-teal); opacity: 0.45; }
+	&__tools { margin-top: 12px; border-left: 2px solid var(--oc-border); color: var(--oc-text-secondary); font-size: 12.5px; }
+	&__tools div { display: flex; align-items: center; gap: 8px; padding: 4px 10px; }
+	&__citations { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+	&__citations span { padding: 3px 7px; border: 1px solid var(--oc-border); border-radius: 4px; background: var(--oc-surface-card); color: var(--oc-text-secondary); font-size: 11.5px; }
+	&__failure { display: flex; align-items: center; gap: 7px; margin-top: 10px; color: var(--oc-red); font-size: 12.5px; }
+}

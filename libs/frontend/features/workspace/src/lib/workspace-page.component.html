@@ -1,0 +1,59 @@
+<div class="wo-workspace">
+	<aside class="wo-workspace__rail">
+		<header class="wo-workspace__brand">
+			<img class="wo-workspace__mark" src="/favicon.svg" alt="" />
+			<span>Open<span>Crane</span></span>
+		</header>
+
+		<nav class="wo-workspace__nav" aria-label="Workspace">
+			<a
+				class="wo-workspace__new-conversation"
+				[routerLink]="['/']"
+				[routerLinkActiveOptions]="{ exact: true }"
+				routerLinkActive="wo-workspace__new-conversation--active"
+			>
+				<i class="pi pi-plus" aria-hidden="true"></i>
+				<span>New conversation</span>
+			</a>
+
+			<wo-workspace-history />
+
+			<div class="wo-workspace__nav-spacer"></div>
+
+			<a
+				class="wo-workspace__nav-item"
+				[routerLink]="['/tools']"
+				routerLinkActive="wo-workspace__nav-item--active"
+			>
+				<i class="pi pi-wrench" aria-hidden="true"></i>
+				<span>Tools</span>
+			</a>
+			<button class="wo-workspace__nav-item" type="button" disabled title="Settings are not available yet">
+				<i class="pi pi-cog" aria-hidden="true"></i>
+				<span>Settings</span>
+			</button>
+		</nav>
+
+		<footer class="wo-workspace__account">
+			<span class="wo-workspace__avatar" aria-hidden="true">{{ userInitials() }}</span>
+			<span class="wo-workspace__user">{{ userName() }}</span>
+			<button
+				type="button"
+				class="wo-workspace__logout"
+				title="Log out"
+				aria-label="Log out"
+				[disabled]="logoutPending()"
+				(click)="logout()"
+			>
+				<i class="pi pi-sign-out" aria-hidden="true"></i>
+			</button>
+			@if (logoutError()) {
+				<span class="wo-workspace__account-error" role="alert">Logout failed. Try again.</span>
+			}
+		</footer>
+	</aside>
+
+	<main class="wo-workspace__content">
+		<router-outlet />
+	</main>
+</div>

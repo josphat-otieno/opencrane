@@ -190,6 +190,12 @@
       "@opencrane/features/welcome": [
         "./libs/frontend/features/welcome/src/index.ts"
       ],
+      "@opencrane/features/workspace": [
+        "./libs/frontend/features/workspace/src/index.ts"
+      ],
+      "@opencrane/features/conversation": [
+        "./libs/frontend/features/conversation/src/index.ts"
+      ],
       "@opencrane/features/tools": [
         "./libs/frontend/features/tools/src/index.ts"
       ],

@@ -51,7 +51,7 @@ export class LoginPageComponent
 
 		// An already-signed-in visitor (refresh, bookmark, manual nav) should not
 		// see the login card — bounce them to `/` so the access guard decides
-		// whether they reach the workspace or the no-tenant screen.
+		// whether the workspace or first-run onboarding opens.
 		effect(function _redirectIfAlreadyAuthenticated(): void
 		{
 			if (!session.me.hasValue())

@@ -1,5 +1,6 @@
 import { Routes } from "@angular/router";
 
+import { ___FirstRunGuard } from "./first-run.guard";
 import { ___OperatorAccessGuard } from "./operator-access.guard";
 
 /** Top-level route table; feature pages are lazy-loaded route containers. */
@@ -42,7 +43,19 @@ export const APP_ROUTES: Routes =
 			});
 		}
 	},
-	{ path: "", pathMatch: "full", redirectTo: "welcome" },
+	{
+		// Authenticated workspace shell. On first use the welcome flow must finish
+		// before the shell activates; the shell owns its child feature routes.
+		path: "",
+		canActivate: [___OperatorAccessGuard, ___FirstRunGuard],
+		loadChildren: function loadWorkspaceRoutes()
+		{
+			return import("@opencrane/features/workspace").then(function pickWorkspaceRoutes(m)
+			{
+				return m.WORKSPACE_ROUTES;
+			});
+		}
+	},
 	{
 		path: "**",
 		redirectTo: ""

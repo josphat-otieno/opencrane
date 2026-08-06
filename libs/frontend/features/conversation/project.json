@@ -1,0 +1,18 @@
+{
+	"name": "frontend-features-conversation",
+	"$schema": "../../../../node_modules/nx/schemas/project-schema.json",
+	"projectType": "library",
+	"sourceRoot": "libs/frontend/features/conversation/src",
+	"prefix": "wo",
+	"tags": ["scope:web", "scope:conversation", "type:feature", "type:lib", "layer:frontend"],
+	"targets": {
+		"lint": {
+			"executor": "nx:run-commands",
+			"options": { "command": "tsc -p tsconfig.lint.json", "cwd": "libs/frontend/features/conversation" }
+		},
+		"test": {
+			"executor": "nx:run-commands",
+			"options": { "command": "vitest run --passWithNoTests", "cwd": "libs/frontend/features/conversation" }
+		}
+	}
+}

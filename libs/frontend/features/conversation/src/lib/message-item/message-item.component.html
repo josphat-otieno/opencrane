@@ -1,0 +1,30 @@
+<article class="wo-message" [class.wo-message--user]="message().role === roles.User">
+	@if (message().role === roles.Assistant) {
+		<div class="wo-message__mark" aria-hidden="true"><img src="/favicon.svg" alt="" /></div>
+	}
+	<div class="wo-message__body">
+		@if (message().state === states.Loading) {
+			<div class="wo-message__loading" role="status" aria-label="Assistant is responding"><span aria-hidden="true"></span><span aria-hidden="true"></span><span aria-hidden="true"></span></div>
+		} @else {
+			<p>{{ message().text }}</p>
+		}
+
+		@if (message().tools?.length) {
+			<div class="wo-message__tools">
+				@for (tool of message().tools; track tool.id) {
+					<div><i class="pi" [class.pi-check-circle]="tool.complete" [class.pi-clock]="!tool.complete" aria-hidden="true"></i>{{ tool.label }}</div>
+				}
+			</div>
+		}
+
+		@if (message().citations?.length) {
+			<div class="wo-message__citations" aria-label="Sources">
+				@for (citation of message().citations; track citation.id) { <span>{{ citation.label }}</span> }
+			</div>
+		}
+
+		@if (message().state === states.Failed) {
+			<div class="wo-message__failure" role="alert"><i class="pi pi-exclamation-triangle" aria-hidden="true"></i>Response could not be completed.</div>
+		}
+	</div>
+</article>
