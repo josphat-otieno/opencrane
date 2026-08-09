@@ -1,0 +1,12 @@
+@if (visible()) {
+	<div class="wo-conversation-progress-status" [class.wo-conversation-progress-status--error]="role() === 'alert'" [attr.role]="role()" [attr.aria-live]="ariaLive()">
+		<span class="wo-conversation-progress-status__dot" aria-hidden="true"></span>
+		<span class="wo-conversation-progress-status__label">{{ label() }}</span>
+		@if (detail()) {
+			<span class="wo-conversation-progress-status__detail">{{ detail() }}</span>
+		}
+		@if (retryable()) {
+			<button type="button" (click)="retry()">Retry</button>
+		}
+	</div>
+}

@@ -1,0 +1,40 @@
+.wo-conversation-progress-status {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: min(100%, 700px);
+	min-height: 30px;
+	margin: 0 auto 8px;
+	color: var(--oc-text-secondary);
+	font-size: 12px;
+
+	&__dot {
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		background: var(--oc-teal);
+		box-shadow: 0 0 0 3px color-mix(in srgb, var(--oc-teal) 16%, transparent);
+	}
+
+	&__label { color: var(--oc-text-primary); font-weight: 600; }
+	&__detail { overflow: hidden; min-width: 0; text-overflow: ellipsis; white-space: nowrap; }
+
+	button {
+		margin-left: auto;
+		padding: 4px 9px;
+		border: 1px solid var(--oc-border);
+		border-radius: 5px;
+		background: var(--oc-surface-card);
+		color: var(--oc-text-primary);
+		font-size: 12px;
+	}
+
+	&--error {
+		color: #9f2d20;
+
+		.wo-conversation-progress-status__dot {
+			background: #b23b2d;
+			box-shadow: 0 0 0 3px rgba(178, 59, 45, 0.14);
+		}
+	}
+}

@@ -1,6 +1,6 @@
-import { Provider } from "@angular/core";
+import type { Provider } from "@angular/core";
 
-import { CONVERSATION_HISTORY_GATEWAY, CONVERSATION_REPLAY_GATEWAY, CONVERSATION_RUN_GATEWAY, CONVERSATION_SUBMISSION_GATEWAY } from "@opencrane/state/conversation/adapter";
+import { CONVERSATION_HISTORY_GATEWAY, CONVERSATION_PROGRESS_GATEWAY, CONVERSATION_REPLAY_GATEWAY, CONVERSATION_RUN_GATEWAY, CONVERSATION_SUBMISSION_GATEWAY } from "@opencrane/state/conversation/adapter";
 import { MCP_GATEWAY } from "@opencrane/state/mcp/adapter";
 import { PROVIDER_KEY_GATEWAY } from "@opencrane/state/provider-key/adapter";
 import { PERSONAL_ASSETS_GATEWAY } from "@opencrane/state/assets/adapter";
@@ -8,6 +8,7 @@ import { SKILL_CATALOGUE_GATEWAY } from "@opencrane/state/skills/adapter";
 
 import { GATEWAY_MODE } from "../gateway-mode.types";
 import { MockConversationHistoryGateway } from "./mock-conversation-history-gateway";
+import { MockConversationProgressGateway } from "./mock-conversation-progress-gateway";
 import { MockConversationReplayGateway } from "./mock-conversation-replay-gateway";
 import { MockConversationRunGateway } from "./mock-conversation-run-gateway";
 import { MockConversationSubmissionGateway } from "./mock-conversation-submission-gateway";
@@ -17,6 +18,7 @@ import { MockPersonalAssetsGateway } from "./mock-personal-assets-gateway";
 import { MockSkillCatalogueGateway } from "./mock-skill-catalogue-gateway";
 
 export { MockConversationHistoryGateway } from "./mock-conversation-history-gateway";
+export { MockConversationProgressGateway } from "./mock-conversation-progress-gateway";
 export { MockConversationReplayGateway } from "./mock-conversation-replay-gateway";
 export { MockConversationRunGateway } from "./mock-conversation-run-gateway";
 export { MockConversationSubmissionGateway } from "./mock-conversation-submission-gateway";
@@ -37,6 +39,7 @@ export function provideTestGateways(): Provider[]
 		{ provide: CONVERSATION_REPLAY_GATEWAY, useClass: MockConversationReplayGateway },
 		{ provide: CONVERSATION_SUBMISSION_GATEWAY, useClass: MockConversationSubmissionGateway },
 		{ provide: CONVERSATION_RUN_GATEWAY, useClass: MockConversationRunGateway },
+		{ provide: CONVERSATION_PROGRESS_GATEWAY, useClass: MockConversationProgressGateway },
 		{ provide: MCP_GATEWAY, useClass: MockMcpGateway },
 		{ provide: PROVIDER_KEY_GATEWAY, useClass: MockProviderKeyGateway },
 		{ provide: PERSONAL_ASSETS_GATEWAY, useClass: MockPersonalAssetsGateway },

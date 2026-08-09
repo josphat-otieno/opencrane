@@ -1,13 +1,17 @@
-export { CONVERSATION_HISTORY_GATEWAY, CONVERSATION_REPLAY_GATEWAY, CONVERSATION_RUN_GATEWAY, CONVERSATION_SUBMISSION_GATEWAY } from "./lib/conversation-gateway.tokens.js";
+export { CONVERSATION_HISTORY_GATEWAY, CONVERSATION_PROGRESS_GATEWAY, CONVERSATION_REPLAY_GATEWAY, CONVERSATION_RUN_GATEWAY, CONVERSATION_SUBMISSION_GATEWAY } from "./lib/conversation-gateway.tokens.js";
+export { ConversationProgressController, __CreateIdleConversationProgressSnapshot } from "./lib/conversation-progress-controller.js";
 export { OpenCraneConversationHistoryGateway, __ToConversationHistoryEntries } from "./lib/opencrane-conversation-history-gateway.js";
+export { OpenCraneConversationProgressGateway } from "./lib/opencrane-conversation-progress-gateway.js";
 export { OpenCraneConversationReplayReader, __CreateEmptyConversationReplayView, __ReadConversationReplay, __ToConversationReplayView } from "./lib/opencrane-conversation-replay-reader.js";
 export { OpenCraneConversationRunGateway } from "./lib/opencrane-conversation-run-gateway.js";
 export { OpenCraneConversationSubmissionGateway } from "./lib/opencrane-conversation-submission-gateway.js";
 export { ConversationMessageRoles, ConversationMessageStates } from "./lib/conversation-display.types.js";
+export { ConversationProgressFailures, ConversationProgressStates } from "./lib/conversation-progress.types.js";
 export { ConversationRunAdmissionFailures, ConversationRunAdmissionOutcomes, ConversationRunLifecycleStates } from "./lib/conversation-run.types.js";
 export { ConversationSubmissionFailures, ConversationSubmissionStates, ConversationSubmissionUnavailableReasons } from "./lib/conversation-submission.types.js";
 export type { ConversationCitationView, ConversationContextItemView, ConversationFileView, ConversationHistoryEntryView, ConversationMessageView, ConversationReplayView, ConversationToolView } from "./lib/conversation-display.types.js";
 export type { ConversationHistoryGateway, ConversationReplayGateway } from "./lib/conversation-gateway.types.js";
+export type { ConversationProgressControllerOptions, ConversationProgressGateway, ConversationProgressRefreshRequest, ConversationProgressScheduler, ConversationProgressSnapshot, ConversationProgressSnapshotListener, ConversationProgressStartRequest, ConversationProgressTimerCallback, ConversationReplayRefreshPolicy } from "./lib/conversation-progress.types.js";
 export type { ConversationRunAdmissionAttempt, ConversationRunAdmissionResult, ConversationRunGateway, ConversationRunStatusView } from "./lib/conversation-run.types.js";
 export type { ConversationDraft, ConversationSubmissionAvailability, ConversationSubmissionGateway, ConversationSubmitResult } from "./lib/conversation-submission.types.js";
 export type { ConversationReplayReader } from "./lib/conversation-replay-reader.types.js";

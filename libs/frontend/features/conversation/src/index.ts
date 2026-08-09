@@ -1,4 +1,5 @@
 export * from "./lib/conversation.types";
+export * from "./lib/components/progress-status/conversation-progress-status.component";
 export * from "./lib/conversation-composer/conversation-composer.component";
 export * from "./lib/conversation-view/conversation-view.component";
 export * from "./lib/message-item/message-item.component";

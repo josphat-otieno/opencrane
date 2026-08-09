@@ -12,7 +12,7 @@
 	} @else {
 		<nav aria-label="Conversation history">
 			@for (entry of entries(); track entry.threadId) {
-				<a [routerLink]="['/conversation', entry.threadId]" routerLinkActive="wo-history__entry--active">
+				<a [routerLink]="['/conversation', entry.threadId]" [queryParams]="{ runId: entry.runId }" routerLinkActive="wo-history__entry--active">
 					<span>{{ entry.title }}</span>
 					@if (entry.recency) { <small>{{ entry.recency }}</small> }
 				</a>

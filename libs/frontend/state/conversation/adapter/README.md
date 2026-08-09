@@ -6,25 +6,28 @@
 
 Part of the OpenCrane frontend state layer, between the browser UI and the backend. This package reads
 a signed-in participant's already-authorised, display-safe conversation history from public OpenCrane
-APIs and exposes narrow ports for future prompt submission and run admission. It does not open an
-agent-runtime connection, mint a pod credential, or invent missing thread-message authority: those
-concerns belong to the owned execution boundary, not the browser.
+APIs and exposes narrow ports for future prompt submission, run admission, and bounded live progress.
+It does not open an agent-runtime connection, mint a pod credential, or invent missing
+thread-message authority: those concerns belong to the owned execution boundary, not the browser.
 
 Listing history reads `GET /api/v1/me/runs` and derives one newest display row per non-null `threadId`
 until a dedicated thread-list contract exists. Reading a thread sends one cookie-session request to
 `GET /api/v1/me/conversations/:threadId/events`. The server derives the caller and silo from the
 session, applies participant membership, and returns bounded AG-UI server-sent events (SSE). The
 reader validates every record with the shared AG-UI state package before reducing it into browser view
-state. Run admission calls the generated `POST /api/v1/me/runs` contract with only `threadId` and a
-retry-stable `requestIdempotencyKey`. Prompt submission currently fails closed because the generated
-public API has no conversation thread/message creation endpoint.
+state. Progress refresh reuses the latest in-memory cursor for bounded replay and reads
+`GET /api/v1/me/runs/:runId` only for lifecycle status. Run admission calls the generated
+`POST /api/v1/me/runs` contract with only `threadId` and a retry-stable `requestIdempotencyKey`.
+Prompt submission currently fails closed because the generated public API has no conversation
+thread/message creation endpoint.
 
 ```text
  workspace/conversation features
         |
         v
- Conversation history/replay/submission/run gateways  <-- HERE
+ Conversation history/replay/progress/submission/run gateways  <-- HERE
         | GET /me/runs
+        | GET /me/runs/:runId
         | GET /me/conversations/:threadId/events
         | POST /me/runs
         v
@@ -39,10 +42,12 @@ authorization state.
 
 - `OpenCraneConversationHistoryGateway` - cookie-session reader for recent owner thread summaries.
 - `OpenCraneConversationReplayReader` - cookie-session reader for one canonical thread replay.
+- `OpenCraneConversationProgressGateway` - bounded replay/status refresh port for user-visible progress.
+- `ConversationProgressController` - cursor reuse, merge, backoff, and cancellation owner.
 - `OpenCraneConversationRunGateway` - generated-client port for admitting and reading owner-visible runs.
 - `OpenCraneConversationSubmissionGateway` - fail-closed prompt submission port until the public contract exists.
-- `CONVERSATION_HISTORY_GATEWAY` / `CONVERSATION_REPLAY_GATEWAY` / `CONVERSATION_SUBMISSION_GATEWAY` / `CONVERSATION_RUN_GATEWAY` - DI tokens consumed by routed features.
-- `ConversationHistoryGateway` / `ConversationReplayGateway` / `ConversationSubmissionGateway` / `ConversationRunGateway` - narrow contracts for replaceable API seams.
+- `CONVERSATION_HISTORY_GATEWAY` / `CONVERSATION_REPLAY_GATEWAY` / `CONVERSATION_PROGRESS_GATEWAY` / `CONVERSATION_SUBMISSION_GATEWAY` / `CONVERSATION_RUN_GATEWAY` - DI tokens consumed by routed features.
+- `ConversationHistoryGateway` / `ConversationReplayGateway` / `ConversationProgressGateway` / `ConversationSubmissionGateway` / `ConversationRunGateway` - narrow contracts for replaceable API seams.
 - `ConversationMessageView` and related display types - read-only view models consumed by feature components.
 - `__ReadConversationReplay` - validates and reduces one finite AG-UI SSE body.
 - `ConversationReplayReader` - lower-level AG-UI replay contract retained for reducer tests.
@@ -51,8 +56,8 @@ authorization state.
 
 Consumed by the workspace and conversation features through DI tokens. It depends on the shared
 `ControlPlaneApiService` only for the session-bound generated API client, and delegates all SSE
-validation to `conversation/ag-ui`. It deliberately does not cache messages, maintain a socket, expose
-runtime commands, or create a thread/message outside a generated public OpenCrane contract.
+validation to `conversation/ag-ui`. It deliberately does not cache messages, maintain a live stream,
+expose runtime commands, or create a thread/message outside a generated public OpenCrane contract.
 
 ## Dependency direction
 

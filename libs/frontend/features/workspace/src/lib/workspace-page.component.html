@@ -59,6 +59,6 @@
 	</aside>
 
 	<main class="wo-workspace__content">
-		<router-outlet />
+			<router-outlet (activate)="attachRoutedFeature($event)" (deactivate)="detachRoutedFeature()" />
 	</main>
 </div>

@@ -15,7 +15,7 @@ OpenCrane API.
  provideControlPlaneGateways()  <-- HERE
       | binds tokens to live adapters
       v
- conversation history/replay/submission/run admission
+ conversation history/replay/progress/submission/run admission
  MCP
  provider keys
  personal assets

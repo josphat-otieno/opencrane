@@ -1,6 +1,7 @@
 import { InjectionToken } from "@angular/core";
 
 import type { ConversationHistoryGateway, ConversationReplayGateway } from "./conversation-gateway.types.js";
+import type { ConversationProgressGateway } from "./conversation-progress.types.js";
 import type { ConversationRunGateway } from "./conversation-run.types.js";
 import type { ConversationSubmissionGateway } from "./conversation-submission.types.js";
 
@@ -15,3 +16,6 @@ export const CONVERSATION_SUBMISSION_GATEWAY = new InjectionToken<ConversationSu
 
 /** DI token for signed-in run admission and status reads. */
 export const CONVERSATION_RUN_GATEWAY = new InjectionToken<ConversationRunGateway>("OpenCrane conversation run gateway");
+
+/** DI token for bounded replay/status progress refresh. */
+export const CONVERSATION_PROGRESS_GATEWAY = new InjectionToken<ConversationProgressGateway>("OpenCrane conversation progress gateway");

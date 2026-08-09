@@ -40,8 +40,11 @@
 							<div>
 								<p class="wo-conversation__speaker">OpenCrane</p>
 								@if (threadId()) {
-									<h2>No replay events yet</h2>
-									<p>This conversation does not have displayable canonical events yet.</p>
+									<h2>{{ emptyTitle() }}</h2>
+									<p>{{ emptyDetail() }}</p>
+									@if (progressRetryable()) {
+										<button type="button" (click)="retryProgress()">Retry</button>
+									}
 								} @else {
 									<h2>Hello, {{ displayName() }}.</h2>
 									<p>What would you like to work on?</p>
@@ -59,6 +62,9 @@
 			</div>
 
 			<footer class="wo-conversation__composer-area">
+				@if (messages().length > 0) {
+					<wo-conversation-progress-status [state]="progressState()" [detail]="progressDetail()" [retryable]="progressRetryable()" (retryRequested)="retryProgress()" />
+				}
 				<wo-conversation-composer [pending]="submissionPending()" [disabledReason]="composerDisabledReason()" (submitted)="submitPrompt($event)" />
 				@if (submissionError()) {
 					<p class="wo-conversation__submission-error" role="alert">{{ submissionError() }}</p>

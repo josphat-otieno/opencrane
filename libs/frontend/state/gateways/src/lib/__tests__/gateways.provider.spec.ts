@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { ClassProvider, InjectionToken, Provider, ValueProvider } from "@angular/core";
+import type { ClassProvider, InjectionToken, Provider, ValueProvider } from "@angular/core";
 
-import { CONVERSATION_HISTORY_GATEWAY, CONVERSATION_REPLAY_GATEWAY, CONVERSATION_RUN_GATEWAY, CONVERSATION_SUBMISSION_GATEWAY, OpenCraneConversationHistoryGateway, OpenCraneConversationReplayReader, OpenCraneConversationRunGateway, OpenCraneConversationSubmissionGateway } from "@opencrane/state/conversation/adapter";
+import { CONVERSATION_HISTORY_GATEWAY, CONVERSATION_PROGRESS_GATEWAY, CONVERSATION_REPLAY_GATEWAY, CONVERSATION_RUN_GATEWAY, CONVERSATION_SUBMISSION_GATEWAY, OpenCraneConversationHistoryGateway, OpenCraneConversationProgressGateway, OpenCraneConversationReplayReader, OpenCraneConversationRunGateway, OpenCraneConversationSubmissionGateway } from "@opencrane/state/conversation/adapter";
 import { MCP_GATEWAY, OpenCraneMcpGateway } from "@opencrane/state/mcp/adapter";
 import { OpenCranePersonalAssetsGateway, PERSONAL_ASSETS_GATEWAY } from "@opencrane/state/assets/adapter";
 import { OpenCraneSkillCatalogueGateway, SKILL_CATALOGUE_GATEWAY } from "@opencrane/state/skills/adapter";
@@ -11,6 +11,7 @@ import { provideControlPlaneGateways } from "../control-plane-gateways.provider"
 import {
 	MockMcpGateway,
 	MockConversationHistoryGateway,
+	MockConversationProgressGateway,
 	MockConversationReplayGateway,
 	MockConversationRunGateway,
 	MockConversationSubmissionGateway,
@@ -53,9 +54,9 @@ function valueFor(providers: Provider[], token: InjectionToken<unknown>): unknow
 	return (match as ValueProvider).useValue;
 }
 
-describe("provideControlPlaneGateways", () =>
+describe("provideControlPlaneGateways", function _Suite()
 {
-	it("binds the live opencrane-ui (org-admin) gateways and reports live mode", () =>
+	it("binds the live opencrane-ui (org-admin) gateways and reports live mode", function _BindsLiveGateways()
 	{
 		const providers = provideControlPlaneGateways();
 
@@ -63,6 +64,7 @@ describe("provideControlPlaneGateways", () =>
 		expect(classFor(providers, CONVERSATION_REPLAY_GATEWAY)).toBe(OpenCraneConversationReplayReader);
 		expect(classFor(providers, CONVERSATION_SUBMISSION_GATEWAY)).toBe(OpenCraneConversationSubmissionGateway);
 		expect(classFor(providers, CONVERSATION_RUN_GATEWAY)).toBe(OpenCraneConversationRunGateway);
+		expect(classFor(providers, CONVERSATION_PROGRESS_GATEWAY)).toBe(OpenCraneConversationProgressGateway);
 		expect(classFor(providers, MCP_GATEWAY)).toBe(OpenCraneMcpGateway);
 		expect(classFor(providers, PERSONAL_ASSETS_GATEWAY)).toBe(OpenCranePersonalAssetsGateway);
 		expect(classFor(providers, SKILL_CATALOGUE_GATEWAY)).toBe(OpenCraneSkillCatalogueGateway);
@@ -70,9 +72,9 @@ describe("provideControlPlaneGateways", () =>
 	});
 });
 
-describe("provideTestGateways", () =>
+describe("provideTestGateways", function _Suite()
 {
-	it("binds every swappable gateway to its in-memory fixture and reports mock mode", () =>
+	it("binds every swappable gateway to its in-memory fixture and reports mock mode", function _BindsMockGateways()
 	{
 		const providers = provideTestGateways();
 
@@ -80,6 +82,7 @@ describe("provideTestGateways", () =>
 		expect(classFor(providers, CONVERSATION_REPLAY_GATEWAY)).toBe(MockConversationReplayGateway);
 		expect(classFor(providers, CONVERSATION_SUBMISSION_GATEWAY)).toBe(MockConversationSubmissionGateway);
 		expect(classFor(providers, CONVERSATION_RUN_GATEWAY)).toBe(MockConversationRunGateway);
+		expect(classFor(providers, CONVERSATION_PROGRESS_GATEWAY)).toBe(MockConversationProgressGateway);
 		expect(classFor(providers, MCP_GATEWAY)).toBe(MockMcpGateway);
 		expect(classFor(providers, PERSONAL_ASSETS_GATEWAY)).toBe(MockPersonalAssetsGateway);
 		expect(classFor(providers, SKILL_CATALOGUE_GATEWAY)).toBe(MockSkillCatalogueGateway);
