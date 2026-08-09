@@ -9,9 +9,9 @@ identity presentation, logout, and a child router outlet. The conversation featu
 the root and `/conversation/:threadId`; the existing tools feature is mounted at `/tools`. The shell
 also owns read-only history navigation because it persists while child features are lazy-loaded.
 
-The shell deliberately owns no conversation transport or product authority. Conversation
-capabilities must enter through the authenticated OpenCrane API and a dedicated frontend state
-adapter.
+The shell deliberately owns no conversation transport or product authority. Its history rail reads
+display-safe thread summaries through `CONVERSATION_HISTORY_GATEWAY`; conversation capabilities
+must enter through the authenticated OpenCrane API and a dedicated frontend state adapter.
 
 ```
  opencrane-ui authenticated root

@@ -3,12 +3,17 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ControlPlaneApiService } from "@opencrane/core";
 
-import { OpenCraneConversationReplayReader, __ReadConversationReplay } from "../opencrane-conversation-replay-reader.js";
+import { ConversationMessageStates } from "../conversation-display.types.js";
+import { OpenCraneConversationReplayReader, __ReadConversationReplay, __ToConversationReplayView } from "../opencrane-conversation-replay-reader.js";
 
-/** Construct one reader with a controlled generated-client response. */
-function _Reader(body: string)
+/** Construct one reader with controlled generated-client responses. */
+function _Reader(body: string | readonly string[])
 {
-	const get = vi.fn().mockResolvedValue({ data: body });
+	const get = vi.fn();
+	for (const page of Array.isArray(body) ? body : [body])
+	{
+		get.mockResolvedValueOnce({ data: page });
+	}
 	const injector = Injector.create({ providers: [{ provide: ControlPlaneApiService, useValue: { client: { GET: get } } }] });
 	const reader = runInInjectionContext(injector, function _create(): OpenCraneConversationReplayReader
 	{
@@ -45,5 +50,46 @@ describe("OpenCraneConversationReplayReader", function _Suite()
 
 		expect(state.cursor).toBeNull();
 		expect(state.messages).toEqual({});
+	});
+
+	it("maps display-safe assistant and tool replay state into route rows", function _MapsReplayRows()
+	{
+		const fixture = "id: cursor-1\nevent: ag-ui\ndata: {\"type\":\"RUN_STARTED\",\"threadId\":\"thread-1\",\"runId\":\"run-1\"}\n\nid: cursor-2\nevent: ag-ui\ndata: {\"type\":\"TEXT_MESSAGE_START\",\"messageId\":\"message-1\",\"role\":\"assistant\"}\n\nid: cursor-3\nevent: ag-ui\ndata: {\"type\":\"TEXT_MESSAGE_CONTENT\",\"messageId\":\"message-1\",\"delta\":\"hello\"}\n\nid: cursor-4\nevent: ag-ui\ndata: {\"type\":\"TEXT_MESSAGE_END\",\"messageId\":\"message-1\"}\n\nid: cursor-5\nevent: ag-ui\ndata: {\"type\":\"TOOL_CALL_START\",\"toolCallId\":\"tool-1\",\"toolCallName\":\"Search\"}\n\nid: cursor-6\nevent: ag-ui\ndata: {\"type\":\"TOOL_CALL_END\",\"toolCallId\":\"tool-1\"}\n\n";
+		const state = __ReadConversationReplay(fixture);
+
+		const view = __ToConversationReplayView("thread-1", state);
+
+		expect(view.runId).toBe("run-1");
+		expect(view.messages[0]?.text).toBe("hello");
+		expect(view.messages[0]?.state).toBe(ConversationMessageStates.Complete);
+		expect(view.messages[0]?.tools?.[0]?.label).toBe("Search");
+	});
+
+	it("follows bounded replay cursors until the stream stops advancing", async function _ReadsReplayPages()
+	{
+		const first = "id: cursor-1\nevent: ag-ui\ndata: {\"type\":\"RUN_STARTED\",\"threadId\":\"thread-1\",\"runId\":\"run-1\"}\n\nid: cursor-2\nevent: ag-ui\ndata: {\"type\":\"TEXT_MESSAGE_START\",\"messageId\":\"message-1\",\"role\":\"assistant\"}\n\n";
+		const second = "id: cursor-2\nevent: ag-ui\ndata: {\"type\":\"TEXT_MESSAGE_START\",\"messageId\":\"message-1\",\"role\":\"assistant\"}\n\nid: cursor-3\nevent: ag-ui\ndata: {\"type\":\"TEXT_MESSAGE_CONTENT\",\"messageId\":\"message-1\",\"delta\":\"paged\"}\n\n";
+		const third = "id: cursor-3\nevent: ag-ui\ndata: {\"type\":\"TEXT_MESSAGE_CONTENT\",\"messageId\":\"message-1\",\"delta\":\"paged\"}\n\n";
+		const { reader, get } = _Reader([first, second, third]);
+
+		const view = await reader.read("thread-1");
+
+		expect(get).toHaveBeenNthCalledWith(2, "/me/conversations/{threadId}/events", {
+			params: { path: { threadId: "thread-1" }, query: { cursor: "cursor-2" }, header: { "Last-Event-ID": "cursor-2" } },
+			parseAs: "text"
+		});
+		expect(view.cursor).toBe("cursor-3");
+		expect(view.messages[0]?.text).toBe("paged");
+	});
+
+	it("marks incomplete assistant output failed when canonical replay reports run failure", function _MapsFailedReplay()
+	{
+		const fixture = "id: cursor-1\nevent: ag-ui\ndata: {\"type\":\"TEXT_MESSAGE_START\",\"messageId\":\"message-1\",\"role\":\"assistant\"}\n\nid: cursor-2\nevent: ag-ui\ndata: {\"type\":\"TEXT_MESSAGE_CONTENT\",\"messageId\":\"message-1\",\"delta\":\"partial\"}\n\nid: cursor-3\nevent: ag-ui\ndata: {\"type\":\"CUSTOM\",\"name\":\"opencrane.run_failed\",\"value\":{\"eventType\":\"run.failed\"}}\n\n";
+		const state = __ReadConversationReplay(fixture);
+
+		const view = __ToConversationReplayView("thread-1", state);
+
+		expect(view.messages[0]?.text).toBe("partial");
+		expect(view.messages[0]?.state).toBe(ConversationMessageStates.Failed);
 	});
 });

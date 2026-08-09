@@ -1,10 +1,8 @@
 /*
- * Markdown fenced-code span scanner — vendored from OpenClaw's `@openclaw/markdown-core`
- * (`packages/markdown-core/src/fences.ts`, a `workspace:*` package not published to npm).
+ * Markdown fenced-code span scanner used by OpenCrane's conversation renderer.
  * Used by canvas-render to keep `[embed …]` shortcodes inside code fences literal.
  *
- * Vendored verbatim from openclaw@v2026.6.11. MIT — Copyright (c) 2026 OpenClaw Foundation.
- * See THIRD_PARTY_NOTICES.md.
+ * Derived from upstream MIT render code. See THIRD_PARTY_NOTICES.md.
  */
 
 /** Markdown fenced-code block span with the opener data needed to reopen it. */

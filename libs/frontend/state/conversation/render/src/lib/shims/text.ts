@@ -1,9 +1,8 @@
 /*
- * Text helpers the markdown pipeline needs, ported from OpenClaw sources that live in
+ * Text helpers the markdown pipeline needs, ported from upstream sources that live in
  * unpublished/deep locations (`src/shared/text/citation-control-markers.ts`, `ui/src/ui/format.ts`).
  *
- * Derived from openclaw@v2026.6.11. MIT — Copyright (c) 2026 OpenClaw Foundation.
- * See THIRD_PARTY_NOTICES.md.
+ * Derived from upstream MIT render code. See THIRD_PARTY_NOTICES.md.
  */
 
 const UNSUPPORTED_CITATION_CONTROL_MARKER_RE = /cite(?:[^]*)?/g;

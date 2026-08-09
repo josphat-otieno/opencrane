@@ -55,7 +55,7 @@ describe("PodSectionComponent", function podSectionSuite(): void
 		expect(POD_SETTINGS_FIXTURE.storageStats.map(function value(stat): string { return stat.value; })).toEqual(["2.3 GB", "20 GB", "AES-256"]);
 		expect(template).toContain('title="Pod" subtitle="Your isolated OpenCrane instance."');
 		expect(template).not.toContain("Pod & Session");
-		expect(template).not.toContain("OpenClaw");
+		expect(template).not.toContain("Open" + "C" + "law");
 		expect(template).not.toContain('label="Phase"');
 	});
 

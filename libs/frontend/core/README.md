@@ -31,7 +31,7 @@ a feature never calls `fetch` directly and never guesses a request or response s
 - `OpenCraneApiError` — the browser-safe failed-request model. It preserves the public status/code
   and bounded validation issues so forms can bind `issue.path` to controls, while discarding
   server-only detail and arbitrary response bodies.
-- `WeOwnAiPreset` (`lib/theme/weownai-preset`) — the PrimeNG (the component library) theme preset.
+- `OpenCranePreset` (`lib/theme/opencrane-preset`) — the PrimeNG (the component library) theme preset.
 - `lib/utils/*` — framework-agnostic helpers (`_ToggleId`, collection helpers).
 
 ## Boundary

@@ -3,6 +3,7 @@
 
 	header { padding: 0 6px; color: #a8a49c; font-size: 10px; font-weight: 600; text-transform: uppercase; }
 	p { margin: 9px 6px 0; color: var(--oc-text-muted); font-size: 11.5px; }
+	&__error button { margin: 7px 6px 0; padding: 5px 8px; border: 1px solid var(--oc-border); border-radius: 5px; background: var(--oc-surface-card); color: var(--oc-text-secondary); font-size: 11.5px; }
 	nav { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
 	a { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 7px 6px; border-radius: 5px; color: var(--oc-text-secondary); font-size: 12px; text-decoration: none; }
 	a:hover, &__entry--active { background: var(--oc-surface-card); color: var(--oc-text-primary); }

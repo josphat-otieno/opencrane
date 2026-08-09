@@ -1,14 +1,12 @@
 /*
- * Shim for OpenClaw's unpublished `@openclaw/normalization-core` workspace helpers.
+ * Shim for unpublished upstream normalization helpers.
  *
  * The vendored render slice imports a handful of tiny coercion utilities from
- * `@openclaw/normalization-core/{string-coerce,number-coercion,record-coerce}` — packages
- * that are `workspace:*` in the OpenClaw monorepo and are NOT published to npm. Rather than
+ * string, number, and record coercion packages that are not published to npm. Rather than
  * take an unbuildable dependency, the exact functions the vendored files use are ported here
- * verbatim. Faithful to openclaw@v2026.6.11.
+ * verbatim.
  *
- * Portions derived from OpenClaw (MIT) — Copyright (c) 2026 OpenClaw Foundation.
- * See THIRD_PARTY_NOTICES.md.
+ * Derived from upstream MIT render code. See THIRD_PARTY_NOTICES.md.
  */
 
 /** Type guard for non-array object records at browser-safe boundaries. */

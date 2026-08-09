@@ -1,12 +1,11 @@
 /*
- * Chat render-model types — vendored from OpenClaw (`ui/src/ui/types/chat-types.ts`).
+ * Chat render-model types for OpenCrane conversation rendering.
  *
- * These are the view-model types WeOwnAI's conversation renderer consumes. The upstream
+ * These are the view-model types OpenCrane's conversation renderer consumes. The upstream
  * `ChatItem`/`MessageGroup` Slack-style layout types are intentionally NOT vendored (we do
  * not group messages that way); only the per-message content model is kept.
  *
- * Derived from openclaw@v2026.6.11. MIT — Copyright (c) 2026 OpenClaw Foundation.
- * See THIRD_PARTY_NOTICES.md.
+ * Derived from upstream MIT render code. See THIRD_PARTY_NOTICES.md.
  */
 
 /** A canvas (A2UI) preview descriptor carried by a tool card or a message content item. */

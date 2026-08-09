@@ -1,7 +1,7 @@
 import type { Types } from "@a2ui/angular/v0_8";
 
 /**
- * The WeOwnAI A2UI theme — brings agent-authored canvas surfaces onto our design tokens.
+ * The OpenCrane A2UI theme — brings agent-authored canvas surfaces onto our design tokens.
  *
  * A2UI applies `additionalStyles.<Component>` as inline styles on each rendered component, so
  * that channel is the bridge to our CSS variables (no A2UI-named CSS classes exist to target, so
@@ -13,7 +13,7 @@ import type { Types } from "@a2ui/angular/v0_8";
  * borders, which need per-element class-maps A2UI doesn't expose via additionalStyles) is a
  * further refinement on top of this.
  */
-export function _WoA2uiTheme(): Types.Theme
+export function _OpenCraneA2uiTheme(): Types.Theme
 {
 	const on: Record<string, boolean> = {};
 	const leaf = { container: on, element: on, label: on };

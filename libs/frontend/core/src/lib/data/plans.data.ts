@@ -1,6 +1,6 @@
 import { Plan } from "../models/plan.types";
 
-/** Seed subscription plan catalogue offered to WeOwnAI customers. */
+/** Seed subscription plan catalogue offered to OpenCrane customers. */
 export const _PLAN_CATALOGUE: readonly Plan[] =
 [
 	{

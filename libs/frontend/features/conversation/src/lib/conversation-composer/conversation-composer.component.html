@@ -1,0 +1,18 @@
+<div class="wo-conversation-composer" [class.wo-conversation-composer--disabled]="disabledReason() !== null">
+	<div class="wo-conversation-composer__box">
+		<button type="button" disabled aria-label="Add attachment" title="Attachments are not available yet"><i class="pi pi-plus" aria-hidden="true"></i></button>
+		<textarea
+			rows="1"
+			[value]="draft()"
+			[disabled]="disabledReason() !== null || pending()"
+			aria-label="Conversation message"
+			[placeholder]="disabledReason() ?? 'Message OpenCrane'"
+			(input)="updateDraft($event)"
+			(keydown)="handleKeydown($event)"
+		></textarea>
+		<button class="wo-conversation-composer__send" type="button" [disabled]="!canSubmit()" aria-label="Send message" [title]="disabledReason() ?? 'Send message'" (click)="submit()"><i class="pi pi-arrow-right" aria-hidden="true"></i></button>
+	</div>
+	@if (disabledReason()) {
+		<p class="wo-conversation-composer__notice">{{ disabledReason() }}</p>
+	}
+</div>

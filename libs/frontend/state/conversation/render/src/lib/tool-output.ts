@@ -1,12 +1,11 @@
 /*
  * Self-contained tool-output helpers — the pure, dependency-free functions extracted from
- * OpenClaw's `ui/src/ui/chat/tool-cards.ts` (whose full `extractToolCards` pulls a deep
- * server tail we deliberately do NOT vendor). Our gateway extractor pairs tool calls with
+ * upstream tool-card rendering code. The full extractor pulls a deep server tail that
+ * OpenCrane deliberately does not vendor. Our gateway extractor pairs tool calls with
  * their results directly; these helpers classify the output (error?) and tidy the collapsed
  * summary, and mirror upstream's detection so error styling matches.
  *
- * Derived from openclaw@v2026.6.11. MIT — Copyright (c) 2026 OpenClaw Foundation.
- * See THIRD_PARTY_NOTICES.md.
+ * Derived from upstream MIT render code. See THIRD_PARTY_NOTICES.md.
  */
 const TOOL_NOT_FOUND_PATTERN = /^tool not found\.?$/i;
 const MAX_ERROR_DETECT_CHARS = 20_000;

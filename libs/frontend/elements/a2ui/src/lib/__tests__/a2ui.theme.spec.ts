@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { _WoA2uiTheme } from "../a2ui.theme";
+import { _OpenCraneA2uiTheme } from "../a2ui.theme";
 
-describe("_WoA2uiTheme", () =>
+describe("_OpenCraneA2uiTheme", () =>
 {
-	const theme = _WoA2uiTheme();
+	const theme = _OpenCraneA2uiTheme();
 
-	it("maps key components onto WeOwnAI design tokens via additionalStyles", () =>
+	it("maps key components onto OpenCrane design tokens via additionalStyles", () =>
 	{
 		expect(theme.additionalStyles?.Card?.["background"]).toBe("var(--card)");
 		expect(theme.additionalStyles?.Button?.["background"]).toBe("var(--primary)");

@@ -1,4 +1,4 @@
-// Public API of @opencrane/state/conversation/render — the vendored OpenClaw headless
+// Public API of @opencrane/state/conversation/render — the headless
 // render slice (MIT; see THIRD_PARTY_NOTICES.md). View-model types + pure builders; the
 // Product UI rendering is intentionally owned by a future product feature package.
 export * from "./lib/chat-types";

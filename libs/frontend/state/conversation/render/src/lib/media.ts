@@ -1,12 +1,10 @@
 /*
- * Media attachment classification — the self-contained pure helpers extracted from OpenClaw's
- * `@openclaw/media-core` (`constants.ts`) and `message-normalizer.ts`. Maps a URL/mime to a
+ * Media attachment classification — self-contained pure helpers for mapping a URL/mime to a
  * media family (image/audio/video/document) with a display label, so our extractor can surface
  * audio/video/document attachments — not just images. The deep `splitMediaFromOutput` /
  * inline-directive tail is NOT vendored; these operate on already-structured attachment refs.
  *
- * Derived from openclaw@v2026.6.11. MIT — Copyright (c) 2026 OpenClaw Foundation.
- * See THIRD_PARTY_NOTICES.md.
+ * Derived from upstream MIT render code. See THIRD_PARTY_NOTICES.md.
  */
 
 /** Media families that share size-policy and MIME-classification behavior. */

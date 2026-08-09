@@ -10,8 +10,8 @@ import { McpAccessPolicyWire, McpInstalledWire, McpServerWire, _MapAccessPolicy,
  *
  * Issues real requests to `/api/v1/mcp/...` through the shared
  * {@link ControlPlaneApiService} (same cookie session + 401→login as the typed
- * client) and maps the responses onto the read models. WeOwnAI never imports
- * OpenCrane source; this network contract is the only coupling.
+ * client) and maps the responses onto the read models. The UI never imports
+ * server source; this network contract is the only coupling.
  *
  * The MCP paths are not yet in the pinned OpenAPI contract (backend P0, in
  * parallel), so calls go through {@link ControlPlaneApiService.request} with locally

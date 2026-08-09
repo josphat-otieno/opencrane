@@ -1,6 +1,6 @@
-# @opencrane/state/gateways — gateway dependency-injection root
+# @opencrane/state/gateways - gateway dependency-injection root
 
-> [frontend](../../README.md) › [state](../README.md) › gateways
+> [frontend](../../README.md) > [state](../README.md) > gateways
 
 ## What it owns
 
@@ -8,31 +8,37 @@ This package is the Angular dependency-injection composition root for live front
 Features inject narrow gateway tokens; this package binds those tokens to the adapters that call the
 OpenCrane API.
 
-```
+```text
  opencrane-ui
-      │ installs providers
-      ▼
- provideControlPlaneGateways()  ◄── HERE
-      │ binds tokens to live adapters
-      ▼
- MCP · provider keys · personal assets · skill catalogue
-      │
-      ▼
+      | installs providers
+      v
+ provideControlPlaneGateways()  <-- HERE
+      | binds tokens to live adapters
+      v
+ conversation history/replay/submission/run admission
+ MCP
+ provider keys
+ personal assets
+ skill catalogue
+      |
+      v
  frontend features
 ```
 
-**In this flow:** [mcp/adapter](../mcp/adapter/README.md) ·
-[provider-key/adapter](../provider-key/adapter/README.md) ·
-[assets/adapter](../assets/adapter/README.md) ·
-[skills/adapter](../skills/adapter/README.md)
+**In this flow:** [conversation/adapter](../conversation/adapter/README.md),
+[mcp/adapter](../mcp/adapter/README.md),
+[provider-key/adapter](../provider-key/adapter/README.md),
+[assets/adapter](../assets/adapter/README.md), and
+[skills/adapter](../skills/adapter/README.md).
 
 All shipped bindings are live. Tests can replace individual tokens with in-memory fakes without
 changing feature code.
 
 ## Public surface
 
-- `provideControlPlaneGateways()` — returns the live gateway providers for `opencrane-ui`.
-- `GatewayMode` / `GATEWAY_MODE` — exposes the active gateway mode to presentation code.
+- `provideControlPlaneGateways()` - returns the live gateway providers for `opencrane-ui`.
+- `GatewayMode` / `GATEWAY_MODE` - exposes the active gateway mode to presentation code.
+- Test-only mock gateway providers live under the `@opencrane/state/gateways/testing` entrypoint.
 
 ## Boundary
 
@@ -47,5 +53,5 @@ Tagged `scope:web`, `layer:frontend`, and `type:lib`: it may depend only on `sco
 ## See also
 
 - Parent index: [state](../README.md)
-- Siblings: [core](../core/README.md) · [assets/adapter](../assets/adapter/README.md) ·
-  [skills/adapter](../skills/adapter/README.md)
+- Siblings: [core](../core/README.md), [conversation/adapter](../conversation/adapter/README.md),
+  [assets/adapter](../assets/adapter/README.md), and [skills/adapter](../skills/adapter/README.md)

@@ -1,8 +1,8 @@
 /**
  * Cluster isolation tier for a tenant.
  *
- * Mirrors the OpenCrane ClusterTenant contract locally; WeOwnAI is a network
- * client and does not import OpenCrane source.
+ * Mirrors the OpenCrane ClusterTenant contract locally; the UI is a network
+ * client and does not import server source.
  */
 export type ClusterIsolationTier = "shared" | "dedicatedNodes" | "dedicatedCluster";
 
@@ -29,7 +29,7 @@ export interface PlanQuota
 	gpu?: number;
 }
 
-/** A subscription plan offered to WeOwnAI customers. */
+/** A subscription plan offered to OpenCrane customers. */
 export interface Plan
 {
 	/** Stable plan id. */
@@ -66,7 +66,7 @@ export interface ClusterTenantResources
  * OpenCrane ClusterTenant create body.
  *
  * Mirrors the OpenCrane ClusterTenant contract locally so the plan mapping is
- * typed; WeOwnAI is a network client and does not import OpenCrane source.
+ * typed; the UI is a network client and does not import server source.
  */
 export interface ClusterTenantCreateBody
 {

@@ -5,8 +5,8 @@ export interface Capabilities
 	isOperator: boolean;
 
 	/**
-	 * Whether the session is a WeOwnAI **platform** operator — one who manages
-	 * customers/ClusterTenants across the fleet from the super-opencrane-ui app,
+	 * Whether the session is an OpenCrane **platform** operator — one who manages
+	 * customers/ClusterTenants across the fleet from the fleet operator app,
 	 * as opposed to a customer admin operating within a single account.
 	 */
 	isPlatformOperator: boolean;
@@ -52,7 +52,7 @@ export interface SessionUser
 	groups?: string[];
 
 	/**
-	 * Whether the session is a WeOwnAI **platform** operator (manages the fleet).
+	 * Whether the session is an OpenCrane **platform** operator (manages the fleet).
 	 * Optional for the same fail-closed reason as {@link groups}: the contract
 	 * marks it required, but a missing claim must grant nothing, not elevate.
 	 */

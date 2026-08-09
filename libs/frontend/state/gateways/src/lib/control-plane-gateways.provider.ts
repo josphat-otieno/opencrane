@@ -1,5 +1,6 @@
 import { Provider } from "@angular/core";
 
+import { CONVERSATION_HISTORY_GATEWAY, CONVERSATION_REPLAY_GATEWAY, CONVERSATION_RUN_GATEWAY, CONVERSATION_SUBMISSION_GATEWAY, OpenCraneConversationHistoryGateway, OpenCraneConversationReplayReader, OpenCraneConversationRunGateway, OpenCraneConversationSubmissionGateway } from "@opencrane/state/conversation/adapter";
 import { MCP_GATEWAY, OpenCraneMcpGateway } from "@opencrane/state/mcp/adapter";
 import { OpenCraneProviderKeyGateway, PROVIDER_KEY_GATEWAY } from "@opencrane/state/provider-key/adapter";
 import { OpenCranePersonalAssetsGateway, PERSONAL_ASSETS_GATEWAY } from "@opencrane/state/assets/adapter";
@@ -21,6 +22,10 @@ export function provideControlPlaneGateways(): Provider[]
 {
 	return [
 		{ provide: GATEWAY_MODE, useValue: "live" },
+		{ provide: CONVERSATION_HISTORY_GATEWAY, useClass: OpenCraneConversationHistoryGateway },
+		{ provide: CONVERSATION_REPLAY_GATEWAY, useClass: OpenCraneConversationReplayReader },
+		{ provide: CONVERSATION_SUBMISSION_GATEWAY, useClass: OpenCraneConversationSubmissionGateway },
+		{ provide: CONVERSATION_RUN_GATEWAY, useClass: OpenCraneConversationRunGateway },
 		{ provide: MCP_GATEWAY, useClass: OpenCraneMcpGateway },
 		{ provide: PROVIDER_KEY_GATEWAY, useClass: OpenCraneProviderKeyGateway },
 		{ provide: PERSONAL_ASSETS_GATEWAY, useClass: OpenCranePersonalAssetsGateway },

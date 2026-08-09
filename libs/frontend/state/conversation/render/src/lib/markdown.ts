@@ -1,5 +1,5 @@
 /*
- * Markdown → sanitized HTML pipeline — vendored from OpenClaw (`ui/src/ui/markdown.ts`).
+ * Markdown → sanitized HTML pipeline for OpenCrane conversation rendering.
  *
  * markdown-it (GFM: strikethrough, www-only linkify, task lists) + highlight.js (14 languages)
  * + DOMPurify with an explicit tag/attr allowlist. Code fences get a copy button and JSON
@@ -8,13 +8,12 @@
  * (host-local file hrefs and dangerous schemes stripped, rel/target set). 140k char limit +
  * a 40k parse guard + a 200-entry LRU cache.
  *
- * Divergence from upstream: OpenClaw's docs-link rewriting (bare `/foo` → docs.openclaw.ai) and
- * its control-ui route/resource detection are NOT vendored — that is OpenClaw-product coupling
+ * Divergence from upstream: docs-link rewriting and control-ui route/resource detection are NOT
+ * vendored, because those concerns are product coupling
  * we don't want; the `i18n` copy-button labels are inlined in English. The security posture
  * (allowlist, scheme/host-local blocking, HTML escaping) is preserved verbatim.
  *
- * Derived from openclaw@v2026.6.11. MIT — Copyright (c) 2026 OpenClaw Foundation.
- * See THIRD_PARTY_NOTICES.md.
+ * Derived from upstream MIT render code. See THIRD_PARTY_NOTICES.md.
  */
 import DOMPurify from "dompurify";
 import hljs from "highlight.js/lib/core";
@@ -43,7 +42,7 @@ import markdownItTaskLists from "markdown-it-task-lists";
 import { normalizeLowercaseStringOrEmpty } from "./shims/coerce";
 import { stripUnsupportedCitationControlMarkers, truncateText } from "./shims/text";
 
-// Copy-button labels (upstream reads these from i18n; WeOwnAI renders one locale for now).
+// Copy-button labels (upstream reads these from i18n; OpenCrane renders one locale for now).
 const COPY_CODE_ARIA = "Copy code";
 const COPY_IDLE = "Copy";
 const COPY_DONE = "Copied";
@@ -684,8 +683,8 @@ md.renderer.rules.html_inline = (tokens, idx) =>
 };
 
 /**
- * Expand agent MDX-style components into markdown the pipeline can render. OpenClaw agents emit
- * `<AccordionGroup>`/`<Accordion title="…">…</Accordion>` (OpenClaw's control-ui renders these as
+ * Expand agent MDX-style components into markdown the pipeline can render. Some agents emit
+ * `<AccordionGroup>`/`<Accordion title="…">…</Accordion>` (control UIs render these as
  * collapsibles; markdown-it would otherwise escape them as raw tags). We map them to allowlisted
  * `<details>`/`<summary>` with blank lines around the body so the inner markdown still parses, and
  * the summary title is HTML-escaped. Unknown attributes are dropped.

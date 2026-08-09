@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ClassProvider, InjectionToken, Provider, ValueProvider } from "@angular/core";
 
+import { CONVERSATION_HISTORY_GATEWAY, CONVERSATION_REPLAY_GATEWAY, CONVERSATION_RUN_GATEWAY, CONVERSATION_SUBMISSION_GATEWAY, OpenCraneConversationHistoryGateway, OpenCraneConversationReplayReader, OpenCraneConversationRunGateway, OpenCraneConversationSubmissionGateway } from "@opencrane/state/conversation/adapter";
 import { MCP_GATEWAY, OpenCraneMcpGateway } from "@opencrane/state/mcp/adapter";
 import { OpenCranePersonalAssetsGateway, PERSONAL_ASSETS_GATEWAY } from "@opencrane/state/assets/adapter";
 import { OpenCraneSkillCatalogueGateway, SKILL_CATALOGUE_GATEWAY } from "@opencrane/state/skills/adapter";
@@ -9,6 +10,10 @@ import { GATEWAY_MODE } from "../gateway-mode.types";
 import { provideControlPlaneGateways } from "../control-plane-gateways.provider";
 import {
 	MockMcpGateway,
+	MockConversationHistoryGateway,
+	MockConversationReplayGateway,
+	MockConversationRunGateway,
+	MockConversationSubmissionGateway,
 	MockPersonalAssetsGateway,
 	MockSkillCatalogueGateway,
 	provideTestGateways
@@ -54,6 +59,10 @@ describe("provideControlPlaneGateways", () =>
 	{
 		const providers = provideControlPlaneGateways();
 
+		expect(classFor(providers, CONVERSATION_HISTORY_GATEWAY)).toBe(OpenCraneConversationHistoryGateway);
+		expect(classFor(providers, CONVERSATION_REPLAY_GATEWAY)).toBe(OpenCraneConversationReplayReader);
+		expect(classFor(providers, CONVERSATION_SUBMISSION_GATEWAY)).toBe(OpenCraneConversationSubmissionGateway);
+		expect(classFor(providers, CONVERSATION_RUN_GATEWAY)).toBe(OpenCraneConversationRunGateway);
 		expect(classFor(providers, MCP_GATEWAY)).toBe(OpenCraneMcpGateway);
 		expect(classFor(providers, PERSONAL_ASSETS_GATEWAY)).toBe(OpenCranePersonalAssetsGateway);
 		expect(classFor(providers, SKILL_CATALOGUE_GATEWAY)).toBe(OpenCraneSkillCatalogueGateway);
@@ -67,6 +76,10 @@ describe("provideTestGateways", () =>
 	{
 		const providers = provideTestGateways();
 
+		expect(classFor(providers, CONVERSATION_HISTORY_GATEWAY)).toBe(MockConversationHistoryGateway);
+		expect(classFor(providers, CONVERSATION_REPLAY_GATEWAY)).toBe(MockConversationReplayGateway);
+		expect(classFor(providers, CONVERSATION_SUBMISSION_GATEWAY)).toBe(MockConversationSubmissionGateway);
+		expect(classFor(providers, CONVERSATION_RUN_GATEWAY)).toBe(MockConversationRunGateway);
 		expect(classFor(providers, MCP_GATEWAY)).toBe(MockMcpGateway);
 		expect(classFor(providers, PERSONAL_ASSETS_GATEWAY)).toBe(MockPersonalAssetsGateway);
 		expect(classFor(providers, SKILL_CATALOGUE_GATEWAY)).toBe(MockSkillCatalogueGateway);

@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, input } from "@angular/core";
+import { ChangeDetectionStrategy, Component, input, output } from "@angular/core";
 import { RouterLink, RouterLinkActive } from "@angular/router";
 
 import { WorkspaceConversationHistoryEntryView } from "./workspace-history.types.js";
@@ -16,4 +16,13 @@ export class WorkspaceHistoryComponent
 {
 	/** Canonical thread summaries safe to expose in workspace navigation. */
 	public readonly entries = input<readonly WorkspaceConversationHistoryEntryView[]>([]);
+
+	/** Whether the history rail is waiting on the canonical reader. */
+	public readonly loading = input<boolean>(false);
+
+	/** Whether the history rail hit a retryable read failure. */
+	public readonly error = input<boolean>(false);
+
+	/** Request a parent-owned reload of the history reader. */
+	public readonly retryRequested = output<void>();
 }

@@ -2,7 +2,7 @@
 	<header class="wo-conversation__header">
 		<div>
 			<h1 id="conversation-title">{{ title() }}</h1>
-			<span class="wo-conversation__badge">{{ threadId() ? "Read only" : "Draft" }}</span>
+			<span class="wo-conversation__badge">{{ badge() }}</span>
 		</div>
 		<nav aria-label="Conversation panels">
 			<button type="button" aria-label="Context" title="Context" [class.wo-conversation__panel-button--active]="activePanel() === panelKinds.Context" (click)="togglePanel(panelKinds.Context)"><i class="pi pi-compass" aria-hidden="true"></i></button>
@@ -15,14 +15,33 @@
 		<div class="wo-conversation__centre">
 			<div class="wo-conversation__stream">
 				<div class="wo-conversation__stream-content" aria-live="polite">
-					@if (messages().length === 0) {
+					@if (replayLoading()) {
+						<div class="wo-conversation__welcome" role="status">
+							<span class="wo-conversation__assistant-mark" aria-hidden="true"><img src="/favicon.svg" alt="" /></span>
+							<div>
+								<p class="wo-conversation__speaker">OpenCrane</p>
+								<h2>Loading conversation</h2>
+								<p>Reading canonical replay events.</p>
+							</div>
+						</div>
+					} @else if (replayError()) {
+						<div class="wo-conversation__welcome" role="alert">
+							<span class="wo-conversation__assistant-mark" aria-hidden="true"><img src="/favicon.svg" alt="" /></span>
+							<div>
+								<p class="wo-conversation__speaker">OpenCrane</p>
+								<h2>Conversation could not be loaded</h2>
+								<p>Canonical replay is temporarily unavailable.</p>
+								<button type="button" (click)="retryReplay()">Retry</button>
+							</div>
+						</div>
+					} @else if (messages().length === 0) {
 						<div class="wo-conversation__welcome">
 							<span class="wo-conversation__assistant-mark" aria-hidden="true"><img src="/favicon.svg" alt="" /></span>
 							<div>
 								<p class="wo-conversation__speaker">OpenCrane</p>
 								@if (threadId()) {
-									<h2>Conversation unavailable</h2>
-									<p>Canonical conversation replay is not connected yet.</p>
+									<h2>No replay events yet</h2>
+									<p>This conversation does not have displayable canonical events yet.</p>
 								} @else {
 									<h2>Hello, {{ displayName() }}.</h2>
 									<p>What would you like to work on?</p>
@@ -40,11 +59,10 @@
 			</div>
 
 			<footer class="wo-conversation__composer-area">
-				<div class="wo-conversation__composer">
-					<button type="button" disabled aria-label="Add attachment" title="Attachments are not available yet"><i class="pi pi-plus" aria-hidden="true"></i></button>
-					<textarea rows="1" disabled aria-label="Conversation message" placeholder="Messaging is not available yet"></textarea>
-					<button class="wo-conversation__send" type="button" disabled aria-label="Send message" title="Messaging is not available yet"><i class="pi pi-arrow-right" aria-hidden="true"></i></button>
-				</div>
+				<wo-conversation-composer [pending]="submissionPending()" [disabledReason]="composerDisabledReason()" (submitted)="submitPrompt($event)" />
+				@if (submissionError()) {
+					<p class="wo-conversation__submission-error" role="alert">{{ submissionError() }}</p>
+				}
 				<p class="wo-conversation__scope">Personal workspace</p>
 			</footer>
 		</div>

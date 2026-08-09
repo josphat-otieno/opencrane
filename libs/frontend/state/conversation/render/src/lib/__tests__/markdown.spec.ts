@@ -39,7 +39,7 @@ describe("toSanitizedMarkdownHtml — rendering", () =>
 
 	it("leaves a NON-GFM table (no --- separator row) as plain text (upstream format issue)", () =>
 	{
-		// The OpenClaw status output uses a box-drawing separator, not `|---|`, so markdown-it
+		// Status output uses a box-drawing separator, not `|---|`, so markdown-it
 		// (correctly) does not treat it as a table — this documents that gap is agent-side.
 		const html = toSanitizedMarkdownHtml("| Item | Value |\n| OS | linux |");
 		expect(html).not.toContain("<table>");

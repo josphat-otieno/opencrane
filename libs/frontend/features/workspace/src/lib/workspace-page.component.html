@@ -16,7 +16,12 @@
 				<span>New conversation</span>
 			</a>
 
-			<wo-workspace-history />
+			<wo-workspace-history
+				[entries]="historyEntries()"
+				[loading]="historyLoading()"
+				[error]="historyError()"
+				(retryRequested)="retryHistory()"
+			/>
 
 			<div class="wo-workspace__nav-spacer"></div>
 

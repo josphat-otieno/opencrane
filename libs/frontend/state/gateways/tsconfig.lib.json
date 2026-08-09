@@ -14,6 +14,9 @@
   ],
   "references": [
     {
+      "path": "../conversation/adapter/tsconfig.lib.json"
+    },
+    {
       "path": "../provider-key/adapter/tsconfig.lib.json"
     },
     {

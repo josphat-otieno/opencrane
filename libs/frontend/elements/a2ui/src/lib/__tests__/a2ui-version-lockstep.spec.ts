@@ -12,14 +12,14 @@ const _ROOT_PACKAGE_JSON = fileURLToPath(new URL("../../../../../../../package.j
 
 /**
  * §5 version discipline (fast, offline CI guard): our A2UI packages must move in lockstep with
- * the `@a2ui/lit` minor OpenClaw ships at the pinned render-tree tag. The AUTHORITATIVE upstream
+ * the pinned `@a2ui/lit` minor. The authoritative upstream
  * cross-check (fetching @a2ui/lit at the tag) lives in scripts/sync-render-tree.sh and runs on a
  * pin bump; this test is the cheap invariant every CI run enforces:
  *   - @a2ui/angular and @a2ui/web_core share one minor, and
  *   - that minor equals EXPECTED_A2UI_MINOR (kept in step with the pin by the sync script).
- * If you bump the OpenClaw pin and @a2ui/lit's minor changes, update the @a2ui/* deps AND this.
+ * If you bump the render pin and @a2ui/lit's minor changes, update the @a2ui/* deps AND this.
  */
-const EXPECTED_A2UI_MINOR = "0.10"; // OpenClaw @a2ui/lit @ v2026.6.11
+const EXPECTED_A2UI_MINOR = "0.10";
 
 /** The `major.minor` of a semver-ish range string (strips a leading ^ or ~). */
 function _minor(range: string): string

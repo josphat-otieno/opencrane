@@ -34,14 +34,14 @@ intentionally unproduced.
 
 ## Public surface
 
-- `provideWoA2ui()` — app-level providers (component catalogue, theme, shared markdown renderer);
+- `provideOpenCraneA2ui()` — app-level providers (component catalogue, theme, shared markdown renderer);
   spread once into a route or app's `providers`.
 - `A2uiCanvasComponent` (`<wo-a2ui-canvas>`) — renders a canvas payload and emits each `userAction`.
 - `_ParseA2uiMessages(raw)` — tolerant parser accepting JSONL, a JSON array, or parsed actions.
 
 ## Boundary
 
-Consumed by the workspace shell, which calls `provideWoA2ui()` on its lazy route so the vendored (copied-in third-party code)
+Consumed by the workspace shell, which calls `provideOpenCraneA2ui()` on its lazy route so the copied-in third-party
 A2UI code stays out of the initial bundle. It only renders and emits — it does not fetch canvas
 payloads or talk to the API; returning an action to the agent is the host's job.
 

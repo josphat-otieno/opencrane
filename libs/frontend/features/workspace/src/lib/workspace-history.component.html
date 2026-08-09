@@ -1,6 +1,13 @@
 <section class="wo-history" aria-labelledby="conversation-history-label">
 	<header id="conversation-history-label">Conversations</header>
-	@if (entries().length === 0) {
+	@if (loading()) {
+		<p role="status">Loading conversations</p>
+	} @else if (error()) {
+		<div class="wo-history__error" role="alert">
+			<p>Conversations could not be loaded.</p>
+			<button type="button" (click)="retryRequested.emit()">Retry</button>
+		</div>
+	} @else if (entries().length === 0) {
 		<p>No conversations yet</p>
 	} @else {
 		<nav aria-label="Conversation history">

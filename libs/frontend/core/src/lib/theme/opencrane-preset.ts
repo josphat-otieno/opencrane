@@ -11,13 +11,13 @@ const OC_PRIMARY_HOVER = "#22c7dd";
 const OC_PRIMARY_EDGE = "#0a94a7";
 
 /**
- * WeOwnAI PrimeNG preset.
+ * OpenCrane PrimeNG preset.
  *
  * Extends Aura with the semantic colours used by the OpenCrane Paper handoff.
  * Component-specific overrides stay here so PrimeNG controls and application
  * styles share the same surface, focus, and primary colour contracts.
  */
-export const WeOwnAiPreset = definePreset(Aura,
+export const OpenCranePreset = definePreset(Aura,
 {
 	semantic:
 	{

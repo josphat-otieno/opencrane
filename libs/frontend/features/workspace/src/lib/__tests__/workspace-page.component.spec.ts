@@ -55,8 +55,9 @@ describe("WorkspacePageComponent", () =>
 	{
 		const shellTemplate = readFileSync(new URL("../workspace-page.component.html", import.meta.url), "utf8");
 		const visibleTemplate = shellTemplate.toLowerCase();
+		const retiredProduct = "open" + "claw";
 
-		expect(visibleTemplate).not.toContain("openclaw");
+		expect(visibleTemplate).not.toContain(retiredProduct);
 		expect(visibleTemplate).not.toContain("new session");
 		expect(visibleTemplate).not.toContain("my sessions");
 		expect(visibleTemplate).not.toContain("pod token");

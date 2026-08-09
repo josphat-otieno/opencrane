@@ -3,8 +3,8 @@ import { McpAccessPolicy, McpApprovalStatus, McpConnectionStatus, McpCredentialF
 /**
  * Wire shapes + mappers for the live OpenCrane MCP gateway.
  *
- * Local projections of the `/api/v1/mcp/...` JSON — WeOwnAI never imports
- * OpenCrane source. Enum-bearing fields arrive as raw strings, so the mappers
+ * Local projections of the `/api/v1/mcp/...` JSON; the UI never imports server
+ * source. Enum-bearing fields arrive as raw strings, so the mappers
  * coerce them through the known enum values (with a safe default) and fill
  * missing collections, keeping the read models the components consume total.
  */

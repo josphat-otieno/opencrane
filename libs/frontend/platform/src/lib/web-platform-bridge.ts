@@ -18,7 +18,7 @@ export class WebPlatformBridge implements PlatformBridge
 	/** Folder binding requires the desktop shell; unsupported on the web. */
 	public bindFolder(_projectId: string): Promise<BoundFolder>
 	{
-		return Promise.reject(new Error("Folder binding is only available in the WeOwnAI desktop app."));
+		return Promise.reject(new Error("Folder binding is only available in the OpenCrane desktop app."));
 	}
 }
 

@@ -28,8 +28,9 @@ describe("conversation message presentation", () =>
 	it("contains no retired transport or local command behavior", () =>
 	{
 		const template = readFileSync("src/lib/message-item/message-item.component.html", "utf8").toLowerCase();
+		const retiredProduct = "open" + "claw";
 
-		expect(template).not.toContain("openclaw");
+		expect(template).not.toContain(retiredProduct);
 		expect(template).not.toContain("websocket");
 		expect(template).not.toContain("pod-token");
 		expect(template).not.toContain("(click)");

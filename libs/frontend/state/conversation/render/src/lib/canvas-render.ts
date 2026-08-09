@@ -1,11 +1,10 @@
 /*
- * Canvas (A2UI) extraction — vendored from OpenClaw (`src/chat/canvas-render.ts`).
+ * Canvas (A2UI) extraction for OpenCrane conversation rendering.
  * Extracts assistant-message canvas previews from tool JSON payloads or `[embed …]`
  * markdown shortcodes, returning the text with consumed shortcodes stripped. This is the
  * A2UI transport the in-process renderer (§4) consumes. Imports rewired to local shims.
  *
- * Vendored from openclaw@v2026.6.11. MIT — Copyright (c) 2026 OpenClaw Foundation.
- * See THIRD_PARTY_NOTICES.md.
+ * Derived from upstream MIT render code. See THIRD_PARTY_NOTICES.md.
  */
 import type { CanvasPreview } from "./chat-types";
 import { parseFenceSpans } from "./fences";
@@ -145,7 +144,7 @@ function parseCanvasAttributes(raw: string): Record<string, string>
 function defaultCanvasEntryUrl(ref: string): string
 {
 	const encoded = encodeURIComponent(ref.trim());
-	return `/__openclaw__/canvas/documents/${encoded}/index.html`;
+	return `/__opencrane__/canvas/documents/${encoded}/index.html`;
 }
 
 function previewFromShortcode(attrs: Record<string, string>): CanvasPreview | undefined

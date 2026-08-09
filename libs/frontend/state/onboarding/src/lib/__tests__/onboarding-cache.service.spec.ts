@@ -36,7 +36,7 @@ class MockStorageGateway implements StorageGateway
 describe("OnboardingCacheService", () =>
 {
 	/** Key used by the service internally. */
-	const STATE_KEY = "weownai.onboarding.state";
+	const STATE_KEY = "opencrane.onboarding.state";
 
 	/** Helper to spin up the service in an isolated injection context with a fresh mock gateway. */
 	function _setup(): { service: OnboardingCacheService; mockGateway: MockStorageGateway }

@@ -1,11 +1,9 @@
 /*
- * Tool content-block guards — vendored from OpenClaw (`src/chat/tool-content.ts`).
+ * Tool content-block guards for OpenCrane conversation rendering.
  * Recognises tool-call / tool-result content blocks across provider SDK spellings and
- * reads their args + stable ids. Its one `@openclaw/normalization-core` import is rewired
- * to the local coerce shim.
+ * reads their args + stable ids. Upstream normalization imports are rewired to the local coerce shim.
  *
- * Vendored from openclaw@v2026.6.11. MIT — Copyright (c) 2026 OpenClaw Foundation.
- * See THIRD_PARTY_NOTICES.md.
+ * Derived from upstream MIT render code. See THIRD_PARTY_NOTICES.md.
  */
 import { normalizeOptionalString } from "./shims/coerce";
 

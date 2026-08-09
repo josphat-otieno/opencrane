@@ -2,9 +2,9 @@
  * Domain model for the MCP (Model Context Protocol) catalogue, credential
  * connect, and activation feature.
  *
- * WeOwnAI is a pure network client: these are local projections of the
- * OpenCrane opencrane-ui `/api/v1/mcp/...` contract shapes the catalogue UI
- * renders, never a re-export of OpenCrane source.
+ * The OpenCrane UI is a pure network client: these are local projections of
+ * the `/api/v1/mcp/...` contract shapes the catalogue UI renders, never a
+ * re-export of server source.
  */
 
 /**
@@ -44,7 +44,7 @@ export enum McpApprovalStatus
 /**
  * Per-user connection state of a server the user has installed.
  *
- * Activation in the user's agent runtime ("Claw") is automatic once connected;
+ * Activation in the user's OpenCrane agent runtime is automatic once connected;
  * `Activating` and `ActivationFailed` surface that backend step.
  */
 export enum McpConnectionStatus

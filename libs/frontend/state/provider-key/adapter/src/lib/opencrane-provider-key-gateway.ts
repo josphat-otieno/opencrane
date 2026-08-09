@@ -31,8 +31,8 @@ interface ProviderKeyStatusWire
  * Issues typed GET/PUT/DELETE through the shared `ControlPlaneApiService` (the
  * openapi-fetch client generated from the pinned contract) against
  * `/providers/byok` and `/providers/byok/{provider}`, mapping each response onto
- * the {@link ProviderKeyStatus} read model. WeOwnAI never imports OpenCrane
- * source; this network contract is the only coupling.
+ * the {@link ProviderKeyStatus} read model. The UI never imports server source;
+ * this network contract is the only coupling.
  *
  * Bound as the default provider in the opencrane-ui app via
  * `provideControlPlaneGateways`.

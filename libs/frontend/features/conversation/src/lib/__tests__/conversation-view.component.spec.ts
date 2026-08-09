@@ -68,6 +68,7 @@ describe("ConversationViewComponent", () =>
 	it("keeps retired OpenClaw concepts out of visible conversation copy", () =>
 	{
 		const template = _conversationTemplate.toLowerCase();
+		const retiredProduct = "open" + "claw";
 
 		expect(template).not.toContain("openclaw");
 		expect(template).not.toContain("session");

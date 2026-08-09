@@ -10,6 +10,7 @@
 	"exclude": ["**/*.spec.ts"],
 	"references": [
 		{ "path": "../../state/core" },
+		{ "path": "../../state/conversation/adapter" },
 		{ "path": "../conversation" },
 		{ "path": "../tools" }
 	]

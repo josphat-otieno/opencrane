@@ -16,7 +16,7 @@ import type { OnboardingSelection } from "./onboarding.types";
 export class OnboardingCacheService
 {
 	/** Storage key for the self-serve funnel progress. */
-	private readonly _STATE_KEY = "weownai.onboarding.state";
+	private readonly _STATE_KEY = "opencrane.onboarding.state";
 
 	/** Initialize with the abstract session storage gateway. */
 	constructor(@Inject(SESSION_STORAGE_GATEWAY) private readonly _storage: StorageGateway)
