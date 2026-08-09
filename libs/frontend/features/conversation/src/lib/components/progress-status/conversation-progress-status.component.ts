@@ -53,24 +53,7 @@ export class ConversationProgressStatusComponent
 	private _role(): "status" | "alert"
 	{
 		const state = this.state();
-		switch (state)
-		{
-			case ConversationProgressStates.RefreshFailed:
-			case ConversationProgressStates.Failed:
-				return "alert";
-			case ConversationProgressStates.Idle:
-			case ConversationProgressStates.LoadingReplay:
-			case ConversationProgressStates.RunAdmitted:
-			case ConversationProgressStates.Running:
-			case ConversationProgressStates.WaitingForApproval:
-			case ConversationProgressStates.Refreshing:
-			case ConversationProgressStates.Reconnecting:
-			case ConversationProgressStates.Completed:
-			case ConversationProgressStates.Cancelled:
-				return "status";
-		}
-		const unhandled: never = state;
-		return unhandled;
+		return _PROGRESS_ROLES[state];
 	}
 
 	/** Announce failures promptly while keeping normal progress low-noise. */
@@ -83,32 +66,36 @@ export class ConversationProgressStatusComponent
 	private _label(): string
 	{
 		const state = this.state();
-		switch (state)
-		{
-			case ConversationProgressStates.LoadingReplay:
-				return "Loading conversation";
-			case ConversationProgressStates.RunAdmitted:
-				return "Waiting for OpenCrane";
-			case ConversationProgressStates.Running:
-				return "Running";
-			case ConversationProgressStates.WaitingForApproval:
-				return "Waiting for approval";
-			case ConversationProgressStates.Refreshing:
-				return "Refreshing";
-			case ConversationProgressStates.Reconnecting:
-				return "Reconnecting";
-			case ConversationProgressStates.RefreshFailed:
-				return "Refresh failed";
-			case ConversationProgressStates.Completed:
-				return "Completed";
-			case ConversationProgressStates.Cancelled:
-				return "Cancelled";
-			case ConversationProgressStates.Failed:
-				return "Failed";
-			case ConversationProgressStates.Idle:
-				return "";
-		}
-		const unhandled: never = state;
-		return unhandled;
+		return _PROGRESS_LABELS[state];
 	}
 }
+
+/** Exhaustive accessible-role mapping for status-strip progress states. */
+const _PROGRESS_ROLES: Record<ConversationProgressStates, "status" | "alert"> = {
+	[ConversationProgressStates.Idle]: "status",
+	[ConversationProgressStates.LoadingReplay]: "status",
+	[ConversationProgressStates.RunAdmitted]: "status",
+	[ConversationProgressStates.Running]: "status",
+	[ConversationProgressStates.WaitingForApproval]: "status",
+	[ConversationProgressStates.Refreshing]: "status",
+	[ConversationProgressStates.Reconnecting]: "status",
+	[ConversationProgressStates.Completed]: "status",
+	[ConversationProgressStates.Cancelled]: "status",
+	[ConversationProgressStates.RefreshFailed]: "alert",
+	[ConversationProgressStates.Failed]: "alert"
+};
+
+/** Exhaustive label mapping for status-strip progress states. */
+const _PROGRESS_LABELS: Record<ConversationProgressStates, string> = {
+	[ConversationProgressStates.Idle]: "",
+	[ConversationProgressStates.LoadingReplay]: "Loading conversation",
+	[ConversationProgressStates.RunAdmitted]: "Waiting for OpenCrane",
+	[ConversationProgressStates.Running]: "Running",
+	[ConversationProgressStates.WaitingForApproval]: "Waiting for approval",
+	[ConversationProgressStates.Refreshing]: "Refreshing",
+	[ConversationProgressStates.Reconnecting]: "Reconnecting",
+	[ConversationProgressStates.Completed]: "Completed",
+	[ConversationProgressStates.Cancelled]: "Cancelled",
+	[ConversationProgressStates.RefreshFailed]: "Refresh failed",
+	[ConversationProgressStates.Failed]: "Failed"
+};

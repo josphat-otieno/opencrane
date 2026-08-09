@@ -2,21 +2,24 @@ import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, injec
 import type { Signal } from "@angular/core";
 import { Router } from "@angular/router";
 
+import { APPROVAL_DECISION_GATEWAY } from "@opencrane/state/approvals/adapter";
 import { SessionStore } from "@opencrane/state/core";
 import { CONVERSATION_PROGRESS_GATEWAY, CONVERSATION_SUBMISSION_GATEWAY, ConversationProgressController, ConversationProgressStates, ConversationSubmissionFailures, ConversationSubmissionUnavailableReasons, __CreateIdleConversationProgressSnapshot } from "@opencrane/state/conversation/adapter";
 import type { ConversationMessageView, ConversationProgressSnapshot, ConversationSubmissionAvailability } from "@opencrane/state/conversation/adapter";
 
 import { ConversationPanelKinds } from "../conversation.types.js";
+import { ConversationApprovalCardComponent } from "../components/approval-card/conversation-approval-card.component.js";
 import { ConversationComposerComponent } from "../conversation-composer/conversation-composer.component.js";
 import { ConversationProgressStatusComponent } from "../components/progress-status/conversation-progress-status.component.js";
 import { MessageItemComponent } from "../message-item/message-item.component.js";
 import { ConversationSupportPanelComponent } from "../support-panel/conversation-support-panel.component.js";
+import { ConversationApprovalController } from "./conversation-approval-controller.js";
 
 /** Initial conversation surface shown before messaging commands are connected. */
 @Component({
 	selector: "wo-conversation-view",
 	standalone: true,
-	imports: [ConversationComposerComponent, ConversationProgressStatusComponent, MessageItemComponent, ConversationSupportPanelComponent],
+	imports: [ConversationApprovalCardComponent, ConversationComposerComponent, ConversationProgressStatusComponent, MessageItemComponent, ConversationSupportPanelComponent],
 	templateUrl: "./conversation-view.component.html",
 	styleUrl: "./conversation-view.component.scss",
 	changeDetection: ChangeDetectionStrategy.OnPush
@@ -52,6 +55,18 @@ export class ConversationViewComponent
 
 	/** Bounded progress controller for this route component instance. */
 	private readonly _progressController = new ConversationProgressController({ gateway: this._progressGateway, onSnapshot: this._publishProgress.bind(this) });
+
+	/** Feature-local approval controller for the selected route/run. */
+	private readonly _approvalController = new ConversationApprovalController({ gateway: inject(APPROVAL_DECISION_GATEWAY), onDecisionRecorded: this._refreshAfterApprovalDecision.bind(this) });
+
+	/** Current display-safe approvals for the selected run. */
+	public readonly approvalCards = this._approvalController.cards;
+
+	/** Whether approval list loading is unresolved. */
+	public readonly approvalsLoading = this._approvalController.loading;
+
+	/** User-visible approval list failure. */
+	public readonly approvalsError = this._approvalController.error;
 
 	/** Canonical, display-safe messages reduced from replay events. */
 	public readonly messages: Signal<readonly ConversationMessageView[]> = computed(this._messages.bind(this));
@@ -128,6 +143,30 @@ export class ConversationViewComponent
 		this._progressController.retry();
 	}
 
+	/** Retry the pending approval list for the current run. */
+	public retryApprovals(): void
+	{
+		this._approvalController.retryLoad(this.progress().runId);
+	}
+
+	/** Approve one exact server-owned action. */
+	public approveApproval(approvalId: string): void
+	{
+		this._approvalController.approve(approvalId);
+	}
+
+	/** Deny one exact server-owned action. */
+	public denyApproval(approvalId: string): void
+	{
+		this._approvalController.deny(approvalId);
+	}
+
+	/** Retry the last failed decision for one approval. */
+	public retryApprovalDecision(approvalId: string): void
+	{
+		this._approvalController.retryDecision(approvalId);
+	}
+
 	/** Submit a prompt through the state gateway when the backend contract allows it. */
 	public async submitPrompt(prompt: string): Promise<void>
 	{
@@ -179,6 +218,7 @@ export class ConversationViewComponent
 	{
 		const previous = untracked(this.progress);
 		this.progress.set(snapshot);
+		this._approvalController.syncForProgress(snapshot);
 		if (_shouldRefreshHistory(previous, snapshot)) this.historyRefreshRequested.emit();
 	}
 
@@ -190,6 +230,7 @@ export class ConversationViewComponent
 		{
 			this._progressController.stop();
 			this.progress.set(__CreateIdleConversationProgressSnapshot(null));
+			this._approvalController.clear();
 			return;
 		}
 		this._progressController.start({ threadId, runId: this.runId() ?? null });
@@ -213,6 +254,13 @@ export class ConversationViewComponent
 	private _messages(): readonly ConversationMessageView[]
 	{
 		return this.progress().replay.messages;
+	}
+
+	/** Refresh server-owned replay/status after an approval decision attempt. */
+	private _refreshAfterApprovalDecision(): void
+	{
+		this._progressController.retry();
+		this.historyRefreshRequested.emit();
 	}
 
 	/** Derive a title without exposing opaque route identifiers. */
@@ -311,78 +359,20 @@ function _unavailableReasonText(reason: ConversationSubmissionUnavailableReasons
 /** Convert typed submission failures into user-facing copy. */
 function _submissionFailureText(failure: ConversationSubmissionFailures): string
 {
-	switch (failure)
-	{
-		case ConversationSubmissionFailures.BlankPrompt:
-			return "Enter a message before sending.";
-		case ConversationSubmissionFailures.ThreadMessageContractMissing:
-			return "Message submission is not available yet.";
-		case ConversationSubmissionFailures.Unknown:
-			return "OpenCrane could not submit the message. Try again.";
-	}
-	const unhandled: never = failure;
-	return unhandled;
+	return _SUBMISSION_FAILURE_TEXT[failure];
 }
 
 /** Convert progress state into compact header badge copy. */
 function _badgeForProgress(state: ConversationProgressStates, submissionAvailable: boolean): string
 {
-	switch (state)
-	{
-		case ConversationProgressStates.LoadingReplay:
-		case ConversationProgressStates.Refreshing:
-			return "Loading";
-		case ConversationProgressStates.RunAdmitted:
-			return "Waiting";
-		case ConversationProgressStates.Running:
-		case ConversationProgressStates.Reconnecting:
-			return "Running";
-		case ConversationProgressStates.WaitingForApproval:
-			return "Approval";
-		case ConversationProgressStates.Completed:
-			return "Completed";
-		case ConversationProgressStates.Failed:
-		case ConversationProgressStates.RefreshFailed:
-			return "Failed";
-		case ConversationProgressStates.Cancelled:
-			return "Cancelled";
-		case ConversationProgressStates.Idle:
-			return submissionAvailable ? "Ready" : "Read only";
-	}
-	const unhandled: never = state;
-	return unhandled;
+	if (state === ConversationProgressStates.Idle && !submissionAvailable) return "Read only";
+	return _PROGRESS_BADGES[state];
 }
 
 /** Explain progress state without exposing runtime internals. */
 function _progressDetail(snapshot: ConversationProgressSnapshot): string | null
 {
-	switch (snapshot.state)
-	{
-		case ConversationProgressStates.LoadingReplay:
-			return "Reading canonical replay events.";
-		case ConversationProgressStates.RunAdmitted:
-			return "Waiting for server-confirmed events.";
-		case ConversationProgressStates.Running:
-			return "Reading new output from OpenCrane.";
-		case ConversationProgressStates.WaitingForApproval:
-			return "Review the pending action before OpenCrane continues.";
-		case ConversationProgressStates.Refreshing:
-			return "Checking for new canonical events.";
-		case ConversationProgressStates.Reconnecting:
-			return "Keeping the current messages visible.";
-		case ConversationProgressStates.RefreshFailed:
-			return "Canonical replay is temporarily unavailable.";
-		case ConversationProgressStates.Completed:
-			return "OpenCrane finished this run.";
-		case ConversationProgressStates.Cancelled:
-			return "This run was cancelled.";
-		case ConversationProgressStates.Failed:
-			return "OpenCrane could not complete this run.";
-		case ConversationProgressStates.Idle:
-			return null;
-	}
-	const unhandled: never = snapshot.state;
-	return unhandled;
+	return _PROGRESS_DETAILS[snapshot.state];
 }
 
 /** Decide whether progress changed enough for the workspace history rail to refresh. */
@@ -396,31 +386,57 @@ function _shouldRefreshHistory(previous: ConversationProgressSnapshot, next: Con
 /** Convert empty-stream progress into the existing welcome heading region. */
 function _emptyTitle(state: ConversationProgressStates): string
 {
-	switch (state)
-	{
-		case ConversationProgressStates.LoadingReplay:
-			return "Loading conversation";
-		case ConversationProgressStates.RunAdmitted:
-			return "Waiting for OpenCrane";
-		case ConversationProgressStates.Running:
-			return "Running";
-		case ConversationProgressStates.WaitingForApproval:
-			return "Waiting for approval";
-		case ConversationProgressStates.Refreshing:
-			return "Refreshing";
-		case ConversationProgressStates.Reconnecting:
-			return "Reconnecting";
-		case ConversationProgressStates.RefreshFailed:
-			return "Conversation could not be loaded";
-		case ConversationProgressStates.Completed:
-			return "Completed";
-		case ConversationProgressStates.Cancelled:
-			return "Cancelled";
-		case ConversationProgressStates.Failed:
-			return "Failed";
-		case ConversationProgressStates.Idle:
-			return "No replay events yet";
-	}
-	const unhandled: never = state;
-	return unhandled;
+	return _EMPTY_TITLES[state];
 }
+
+/** Exhaustive user-facing mapping for submission failures. */
+const _SUBMISSION_FAILURE_TEXT: Record<ConversationSubmissionFailures, string> = {
+	[ConversationSubmissionFailures.BlankPrompt]: "Enter a message before sending.",
+	[ConversationSubmissionFailures.ThreadMessageContractMissing]: "Message submission is not available yet.",
+	[ConversationSubmissionFailures.Unknown]: "OpenCrane could not submit the message. Try again."
+};
+
+/** Exhaustive badge mapping for route progress states. */
+const _PROGRESS_BADGES: Record<ConversationProgressStates, string> = {
+	[ConversationProgressStates.Idle]: "Ready",
+	[ConversationProgressStates.LoadingReplay]: "Loading",
+	[ConversationProgressStates.RunAdmitted]: "Waiting",
+	[ConversationProgressStates.Running]: "Running",
+	[ConversationProgressStates.WaitingForApproval]: "Approval",
+	[ConversationProgressStates.Refreshing]: "Loading",
+	[ConversationProgressStates.Reconnecting]: "Running",
+	[ConversationProgressStates.Completed]: "Completed",
+	[ConversationProgressStates.Cancelled]: "Cancelled",
+	[ConversationProgressStates.RefreshFailed]: "Failed",
+	[ConversationProgressStates.Failed]: "Failed"
+};
+
+/** Exhaustive detail-copy mapping for route progress states. */
+const _PROGRESS_DETAILS: Record<ConversationProgressStates, string | null> = {
+	[ConversationProgressStates.Idle]: null,
+	[ConversationProgressStates.LoadingReplay]: "Reading canonical replay events.",
+	[ConversationProgressStates.RunAdmitted]: "Waiting for server-confirmed events.",
+	[ConversationProgressStates.Running]: "Reading new output from OpenCrane.",
+	[ConversationProgressStates.WaitingForApproval]: "Review the pending action before OpenCrane continues.",
+	[ConversationProgressStates.Refreshing]: "Checking for new canonical events.",
+	[ConversationProgressStates.Reconnecting]: "Keeping the current messages visible.",
+	[ConversationProgressStates.Completed]: "OpenCrane finished this run.",
+	[ConversationProgressStates.Cancelled]: "This run was cancelled.",
+	[ConversationProgressStates.RefreshFailed]: "Canonical replay is temporarily unavailable.",
+	[ConversationProgressStates.Failed]: "OpenCrane could not complete this run."
+};
+
+/** Exhaustive empty-state title mapping for route progress states. */
+const _EMPTY_TITLES: Record<ConversationProgressStates, string> = {
+	[ConversationProgressStates.Idle]: "No replay events yet",
+	[ConversationProgressStates.LoadingReplay]: "Loading conversation",
+	[ConversationProgressStates.RunAdmitted]: "Waiting for OpenCrane",
+	[ConversationProgressStates.Running]: "Running",
+	[ConversationProgressStates.WaitingForApproval]: "Waiting for approval",
+	[ConversationProgressStates.Refreshing]: "Refreshing",
+	[ConversationProgressStates.Reconnecting]: "Reconnecting",
+	[ConversationProgressStates.Completed]: "Completed",
+	[ConversationProgressStates.Cancelled]: "Cancelled",
+	[ConversationProgressStates.RefreshFailed]: "Conversation could not be loaded",
+	[ConversationProgressStates.Failed]: "Failed"
+};

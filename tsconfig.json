@@ -217,6 +217,9 @@
       "@opencrane/state/gateways/testing": [
         "./libs/frontend/state/gateways/src/testing.ts"
       ],
+      "@opencrane/state/approvals/adapter": [
+        "./libs/frontend/state/approvals/adapter/src/index.ts"
+      ],
       "@opencrane/state/conversation/adapter": [
         "./libs/frontend/state/conversation/adapter/src/index.ts"
       ],

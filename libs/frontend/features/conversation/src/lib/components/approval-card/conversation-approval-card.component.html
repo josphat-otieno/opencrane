@@ -1,0 +1,41 @@
+<article class="wo-approval-card" [class.wo-approval-card--terminal]="!actionable()" [attr.aria-busy]="deciding()" [attr.role]="role()">
+	<header>
+		<div>
+			<p>Approval required</p>
+			<h2>{{ approval().title }}</h2>
+		</div>
+		<span>{{ statusLabel() }}</span>
+	</header>
+
+	<p class="wo-approval-card__description">{{ approval().description }}</p>
+
+	<dl>
+		<div>
+			<dt>Tool</dt>
+			<dd>{{ approval().toolName }}</dd>
+		</div>
+		<div>
+			<dt>Requested</dt>
+			<dd>{{ approval().requestedAt }}</dd>
+		</div>
+		<div>
+			<dt>Expires</dt>
+			<dd>{{ approval().expiresAt }}</dd>
+		</div>
+	</dl>
+
+	@if (approval().status === states.Failed) {
+		<p class="wo-approval-card__error" role="alert">OpenCrane could not record the decision. Try again.</p>
+	} @else if (approval().status === states.Stale || approval().status === states.Expired) {
+		<p class="wo-approval-card__error" role="status">This approval is no longer available.</p>
+	}
+
+	<footer>
+		@if (approval().status === states.Failed) {
+			<button class="wo-approval-card__retry" type="button" (click)="retry()">Retry</button>
+		} @else {
+			<button class="wo-approval-card__deny" type="button" [disabled]="!actionable() || deciding()" (click)="deny()">Deny</button>
+			<button class="wo-approval-card__approve" type="button" [disabled]="!actionable() || deciding()" (click)="approve()">Approve</button>
+		}
+	</footer>
+</article>

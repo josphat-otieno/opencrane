@@ -1,5 +1,6 @@
 import type { Provider } from "@angular/core";
 
+import { APPROVAL_DECISION_GATEWAY, OpenCraneApprovalDecisionGateway } from "@opencrane/state/approvals/adapter";
 import { CONVERSATION_HISTORY_GATEWAY, CONVERSATION_PROGRESS_GATEWAY, CONVERSATION_REPLAY_GATEWAY, CONVERSATION_RUN_GATEWAY, CONVERSATION_SUBMISSION_GATEWAY, OpenCraneConversationHistoryGateway, OpenCraneConversationProgressGateway, OpenCraneConversationReplayReader, OpenCraneConversationRunGateway, OpenCraneConversationSubmissionGateway } from "@opencrane/state/conversation/adapter";
 import { MCP_GATEWAY, OpenCraneMcpGateway } from "@opencrane/state/mcp/adapter";
 import { OpenCraneProviderKeyGateway, PROVIDER_KEY_GATEWAY } from "@opencrane/state/provider-key/adapter";
@@ -27,6 +28,7 @@ export function provideControlPlaneGateways(): Provider[]
 		{ provide: CONVERSATION_SUBMISSION_GATEWAY, useClass: OpenCraneConversationSubmissionGateway },
 		{ provide: CONVERSATION_RUN_GATEWAY, useClass: OpenCraneConversationRunGateway },
 		{ provide: CONVERSATION_PROGRESS_GATEWAY, useClass: OpenCraneConversationProgressGateway },
+		{ provide: APPROVAL_DECISION_GATEWAY, useClass: OpenCraneApprovalDecisionGateway },
 		{ provide: MCP_GATEWAY, useClass: OpenCraneMcpGateway },
 		{ provide: PROVIDER_KEY_GATEWAY, useClass: OpenCraneProviderKeyGateway },
 		{ provide: PERSONAL_ASSETS_GATEWAY, useClass: OpenCranePersonalAssetsGateway },

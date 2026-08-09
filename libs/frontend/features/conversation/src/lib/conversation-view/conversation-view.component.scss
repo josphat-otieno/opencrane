@@ -72,6 +72,8 @@
 	&__speaker { margin: 0 0 7px; color: var(--oc-teal-edge); font-size: 11px; font-weight: 600; text-transform: uppercase; }
 	&__composer-area { padding: 0 24px 18px; }
 	&__submission-error { width: min(100%, 700px); margin: 8px auto 0; color: #9f2d20; font-size: 12px; text-align: center; }
+	&__approval-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--oc-red-border); border-radius: var(--oc-radius-control); background: var(--oc-red-tint-bg); color: var(--oc-red); font-size: 12.5px; }
+	&__approval-error button { padding: 5px 9px; border: 1px solid var(--oc-red-border); border-radius: var(--oc-radius-button); background: var(--paper-button-secondary-gradient); box-shadow: var(--paper-button-secondary-shadow); color: var(--oc-red); font-size: 12px; }
 	&__scope { margin: 7px 0 0; color: var(--oc-text-placeholder-aa); font-size: 11.5px; text-align: center; }
 }
 

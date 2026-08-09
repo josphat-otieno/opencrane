@@ -34,7 +34,7 @@
 								<button type="button" (click)="retryReplay()">Retry</button>
 							</div>
 						</div>
-					} @else if (messages().length === 0) {
+					} @else if (messages().length === 0 && approvalCards().length === 0 && !approvalsError()) {
 						<div class="wo-conversation__welcome">
 							<span class="wo-conversation__assistant-mark" aria-hidden="true"><img src="/favicon.svg" alt="" /></span>
 							<div>
@@ -55,6 +55,15 @@
 						<div class="wo-conversation__messages">
 							@for (message of messages(); track message.id) {
 								<wo-conversation-message [message]="message" />
+							}
+							@for (approval of approvalCards(); track approval.approvalId) {
+								<wo-conversation-approval-card [approval]="approval" (approveRequested)="approveApproval($event)" (denyRequested)="denyApproval($event)" (retryRequested)="retryApprovalDecision($event)" />
+							}
+							@if (approvalsError()) {
+								<div class="wo-conversation__approval-error" role="alert">
+									<span>{{ approvalsError() }}</span>
+									<button type="button" (click)="retryApprovals()">Retry</button>
+								</div>
 							}
 						</div>
 					}

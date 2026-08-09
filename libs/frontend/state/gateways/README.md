@@ -16,6 +16,7 @@ OpenCrane API.
       | binds tokens to live adapters
       v
  conversation history/replay/progress/submission/run admission
+ approval decisions
  MCP
  provider keys
  personal assets
@@ -25,7 +26,8 @@ OpenCrane API.
  frontend features
 ```
 
-**In this flow:** [conversation/adapter](../conversation/adapter/README.md),
+**In this flow:** [approvals/adapter](../approvals/adapter/README.md),
+[conversation/adapter](../conversation/adapter/README.md),
 [mcp/adapter](../mcp/adapter/README.md),
 [provider-key/adapter](../provider-key/adapter/README.md),
 [assets/adapter](../assets/adapter/README.md), and
@@ -53,5 +55,6 @@ Tagged `scope:web`, `layer:frontend`, and `type:lib`: it may depend only on `sco
 ## See also
 
 - Parent index: [state](../README.md)
-- Siblings: [core](../core/README.md), [conversation/adapter](../conversation/adapter/README.md),
+- Siblings: [core](../core/README.md), [approvals/adapter](../approvals/adapter/README.md),
+  [conversation/adapter](../conversation/adapter/README.md),
   [assets/adapter](../assets/adapter/README.md), and [skills/adapter](../skills/adapter/README.md)

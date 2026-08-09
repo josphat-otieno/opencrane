@@ -4,6 +4,8 @@ import { Injector, runInInjectionContext } from "@angular/core";
 import { Router } from "@angular/router";
 import { describe, expect, it, vi } from "vitest";
 
+import { APPROVAL_DECISION_GATEWAY, ApprovalDecisionStates, ApprovalDecisions } from "@opencrane/state/approvals/adapter";
+import type { ApprovalCardView, ApprovalDecisionGateway, ApprovalDecisionRequest, ApprovalDecisionResult } from "@opencrane/state/approvals/adapter";
 import { SessionStore } from "@opencrane/state/core";
 import { CONVERSATION_PROGRESS_GATEWAY, CONVERSATION_SUBMISSION_GATEWAY, ConversationMessageRoles, ConversationMessageStates, ConversationProgressStates, ConversationSubmissionFailures, ConversationSubmissionStates, ConversationSubmissionUnavailableReasons, __CreateIdleConversationProgressSnapshot } from "@opencrane/state/conversation/adapter";
 import type { ConversationProgressGateway, ConversationProgressRefreshRequest, ConversationProgressSnapshot, ConversationSubmissionGateway } from "@opencrane/state/conversation/adapter";
@@ -13,6 +15,7 @@ import { ConversationViewComponent } from "../conversation-view/conversation-vie
 const _conversationTemplate = readFileSync("src/lib/conversation-view/conversation-view.component.html", "utf8");
 const _composerTemplate = readFileSync("src/lib/conversation-composer/conversation-composer.component.html", "utf8");
 const _progressTemplate = readFileSync("src/lib/components/progress-status/conversation-progress-status.component.html", "utf8");
+const _approvalTemplate = readFileSync("src/lib/components/approval-card/conversation-approval-card.component.html", "utf8");
 
 describe("ConversationViewComponent", function _Suite()
 {
@@ -21,13 +24,15 @@ describe("ConversationViewComponent", function _Suite()
 		return _componentHarness(displayName).component;
 	}
 
-	function _componentHarness(displayName: string | null, submissionGateway?: ConversationSubmissionGateway, progressGateway?: ConversationProgressGateway): { component: ConversationViewComponent; navigate: ReturnType<typeof vi.fn>; progressGateway: ConversationProgressGateway }
+	function _componentHarness(displayName: string | null, submissionGateway?: ConversationSubmissionGateway, progressGateway?: ConversationProgressGateway, approvalGateway?: ApprovalDecisionGateway): { component: ConversationViewComponent; navigate: ReturnType<typeof vi.fn>; progressGateway: ConversationProgressGateway; approvalGateway: ApprovalDecisionGateway }
 	{
 		const navigate = vi.fn().mockResolvedValue(true);
 		const progress = progressGateway ?? _progressGateway();
 		const gateway = submissionGateway ?? _submissionGateway(false);
+		const approvals = approvalGateway ?? _approvalGateway([]);
 		const injector = Injector.create({
 			providers: [
+				{ provide: APPROVAL_DECISION_GATEWAY, useValue: approvals },
 				{ provide: CONVERSATION_PROGRESS_GATEWAY, useValue: progress },
 				{ provide: CONVERSATION_SUBMISSION_GATEWAY, useValue: gateway },
 				{ provide: Router, useValue: { navigate } },
@@ -38,9 +43,9 @@ describe("ConversationViewComponent", function _Suite()
 			]
 		});
 
-		return runInInjectionContext(injector, function _create(): { component: ConversationViewComponent; navigate: ReturnType<typeof vi.fn>; progressGateway: ConversationProgressGateway }
+		return runInInjectionContext(injector, function _create(): { component: ConversationViewComponent; navigate: ReturnType<typeof vi.fn>; progressGateway: ConversationProgressGateway; approvalGateway: ApprovalDecisionGateway }
 		{
-			return { component: new ConversationViewComponent(), navigate, progressGateway: progress };
+			return { component: new ConversationViewComponent(), navigate, progressGateway: progress, approvalGateway: approvals };
 		});
 	}
 
@@ -59,10 +64,18 @@ describe("ConversationViewComponent", function _Suite()
 		expect(template).not.toContain("shareRequested");
 		expect(template).toContain("<wo-conversation-composer");
 		expect(template).toContain("<wo-conversation-progress-status");
+		expect(template).toContain("<wo-conversation-approval-card");
 		expect(template).toContain("[disabledReason]=\"composerDisabledReason()\"");
 		expect(_composerTemplate).toContain("disabled aria-label=\"Add attachment\"");
 		expect(_composerTemplate).toContain("[disabled]=\"disabledReason() !== null || pending()\"");
 		expect(_composerTemplate).toContain("[disabled]=\"!canSubmit()\"");
+	});
+
+	it("keeps approval load failures outside the empty-state branch", function _ShowsApprovalLoadFailure()
+	{
+		expect(_conversationTemplate).toContain("messages().length === 0 && approvalCards().length === 0 && !approvalsError()");
+		expect(_conversationTemplate).toContain("<div class=\"wo-conversation__approval-error\" role=\"alert\">");
+		expect(_conversationTemplate).toContain("(click)=\"retryApprovals()\"");
 	});
 
 	it("composes display-safe messages without a transport dependency", function _ComposesDisplaySafeMessages()
@@ -72,6 +85,7 @@ describe("ConversationViewComponent", function _Suite()
 
 		expect(componentSource).toContain("CONVERSATION_PROGRESS_GATEWAY");
 		expect(componentSource).toContain("CONVERSATION_SUBMISSION_GATEWAY");
+		expect(componentSource).toContain("APPROVAL_DECISION_GATEWAY");
 		expect(componentSource).toContain("readonly messages: Signal<readonly ConversationMessageView[]>");
 		expect(template).toContain("@for (message of messages(); track message.id)");
 		expect(template).toContain("<wo-conversation-message [message]=\"message\" />");
@@ -126,6 +140,42 @@ describe("ConversationViewComponent", function _Suite()
 		expect(component.progressDetail()).toBe("Keeping the current messages visible.");
 	});
 
+	it("loads only pending approval cards for the selected run", async function _LoadsApprovalsForRun()
+	{
+		const approvals = [_approval("approval-1", "run-1"), _approval("approval-2", "run-2")];
+		const approvalGateway = _approvalGateway(approvals);
+		const { component } = _componentHarness("Ada Lovelace", undefined, undefined, approvalGateway);
+		component.progress.set({ ...__CreateIdleConversationProgressSnapshot("thread-1"), state: ConversationProgressStates.WaitingForApproval, runId: "run-1", terminal: false });
+
+		component.retryApprovals();
+		await _flush();
+
+		expect(approvalGateway.listPending).toHaveBeenCalled();
+		expect(component.approvalCards()).toEqual([approvals[0]]);
+	});
+
+	it("disables approval actions while deciding and refreshes server-owned progress", async function _DecidesApproval()
+	{
+		const deferred = _Deferred<ApprovalDecisionResult>();
+		const decide = vi.fn(function _decide(_request: ApprovalDecisionRequest): Promise<ApprovalDecisionResult>
+		{
+			return deferred.promise;
+		});
+		const approvalGateway = _approvalGateway([_approval("approval-1", "run-1")], decide);
+		const { component } = _componentHarness("Ada Lovelace", undefined, undefined, approvalGateway);
+		component.approvalCards.set([_approval("approval-1", "run-1")]);
+
+		component.approveApproval("approval-1");
+
+		expect(decide).toHaveBeenCalledWith({ approvalId: "approval-1", decision: ApprovalDecisions.Approve });
+		expect(component.approvalCards()[0]?.status).toBe(ApprovalDecisionStates.Approving);
+
+		deferred.resolve({ approvalId: "approval-1", state: ApprovalDecisionStates.Approved, retryable: false });
+		await _flush();
+
+		expect(component.approvalCards()[0]?.status).toBe(ApprovalDecisionStates.Approved);
+	});
+
 	it("supports opaque thread routes and read-only companion panels", function _SupportsOpaqueRoutes()
 	{
 		const componentSource = readFileSync("src/lib/conversation-view/conversation-view.component.ts", "utf8");
@@ -147,7 +197,7 @@ describe("ConversationViewComponent", function _Suite()
 
 	it("keeps retired runtime concepts out of visible conversation copy", function _KeepsRetiredCopyOut()
 	{
-		const template = `${_conversationTemplate}\n${_composerTemplate}\n${_progressTemplate}`.toLowerCase();
+		const template = `${_conversationTemplate}\n${_composerTemplate}\n${_progressTemplate}\n${_approvalTemplate}`.toLowerCase();
 		const retiredProduct = "open" + "claw";
 
 		expect(template).not.toContain(retiredProduct);
@@ -186,4 +236,48 @@ function _progressGateway(): ConversationProgressGateway
 		}
 	};
 	return gateway;
+}
+
+/** Create an approval gateway fixture. */
+function _approvalGateway(approvals: readonly ApprovalCardView[], decide = vi.fn(async function _decide(request: ApprovalDecisionRequest): Promise<ApprovalDecisionResult>
+{
+	return { approvalId: request.approvalId, state: request.decision === ApprovalDecisions.Approve ? ApprovalDecisionStates.Approved : ApprovalDecisionStates.Denied, retryable: false };
+})): ApprovalDecisionGateway & { readonly listPending: ReturnType<typeof vi.fn>; readonly decide: ReturnType<typeof vi.fn> }
+{
+	const listPending = vi.fn(async function _listPending(): Promise<readonly ApprovalCardView[]>
+	{
+		return approvals;
+	});
+	return { listPending, decide };
+}
+
+/** Create one display-safe approval card fixture. */
+function _approval(approvalId: string, runId: string): ApprovalCardView
+{
+	return { approvalId, runId, title: "Tool approval required", description: "Review the pending action.", toolName: "tool-revision-1", requestedAt: "2026-08-09T12:00:00.000Z", expiresAt: "2026-08-09T13:00:00.000Z", status: ApprovalDecisionStates.Pending, attempt: 1 };
+}
+
+/** Minimal deferred promise fixture. */
+function _Deferred<T>(): { readonly promise: Promise<T>; readonly resolve: _Resolve<T> }
+{
+	let resolve: _Resolve<T> = function _missingResolve(): void {};
+	const promise = new Promise<T>(function _executor(innerResolve: _Resolve<T>): void
+	{
+		resolve = innerResolve;
+	});
+	return { promise, resolve };
+}
+
+/** Promise resolver callback. */
+interface _Resolve<T>
+{
+	/** Resolve the deferred promise. */
+	(value: T): void;
+}
+
+/** Flush one resolved async turn. */
+async function _flush(): Promise<void>
+{
+	await Promise.resolve();
+	await Promise.resolve();
 }
