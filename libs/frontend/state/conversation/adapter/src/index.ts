@@ -9,7 +9,7 @@ export { ConversationMessageRoles, ConversationMessageStates } from "./lib/conve
 export { ConversationProgressFailures, ConversationProgressStates } from "./lib/conversation-progress.types.js";
 export { ConversationRunAdmissionFailures, ConversationRunAdmissionOutcomes, ConversationRunLifecycleStates } from "./lib/conversation-run.types.js";
 export { ConversationSubmissionFailures, ConversationSubmissionStates, ConversationSubmissionUnavailableReasons } from "./lib/conversation-submission.types.js";
-export type { ConversationCitationView, ConversationContextItemView, ConversationFileView, ConversationHistoryEntryView, ConversationMessageView, ConversationReplayView, ConversationToolView } from "./lib/conversation-display.types.js";
+export type { ConversationCitationView, ConversationContextItemView, ConversationFileView, ConversationHistoryEntryView, ConversationMemoryReferenceView, ConversationMessageView, ConversationReplayView, ConversationToolView } from "./lib/conversation-display.types.js";
 export type { ConversationHistoryGateway, ConversationReplayGateway } from "./lib/conversation-gateway.types.js";
 export type { ConversationProgressControllerOptions, ConversationProgressGateway, ConversationProgressRefreshRequest, ConversationProgressScheduler, ConversationProgressSnapshot, ConversationProgressSnapshotListener, ConversationProgressStartRequest, ConversationProgressTimerCallback, ConversationReplayRefreshPolicy } from "./lib/conversation-progress.types.js";
 export type { ConversationRunAdmissionAttempt, ConversationRunAdmissionResult, ConversationRunGateway, ConversationRunStatusView } from "./lib/conversation-run.types.js";

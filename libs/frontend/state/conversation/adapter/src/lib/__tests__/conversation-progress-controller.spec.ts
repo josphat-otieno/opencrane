@@ -188,6 +188,9 @@ function _snapshot(threadId: string, runId: string, cursor: string, messageId: s
 			runId,
 			cursor,
 			customEvents: [],
+			citations: [],
+			files: [],
+			memoryReferences: [],
 			messages: [{ id: messageId, role: ConversationMessageRoles.Assistant, text, state: messageState }]
 		},
 		retryable: false,

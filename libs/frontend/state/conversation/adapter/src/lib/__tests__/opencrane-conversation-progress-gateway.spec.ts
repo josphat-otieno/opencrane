@@ -148,5 +148,5 @@ function _runStatus(state: ConversationRunLifecycleStates, threadId: string | nu
 /** Create one replay fixture. */
 function _replay(threadId: string, runId: string | null, cursor: string): ConversationReplayView
 {
-	return { threadId, runId, cursor, customEvents: [], messages: [] };
+	return { threadId, runId, cursor, customEvents: [], citations: [], files: [], memoryReferences: [], messages: [] };
 }

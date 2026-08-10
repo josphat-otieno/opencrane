@@ -92,4 +92,17 @@ describe("OpenCraneConversationReplayReader", function _Suite()
 		expect(view.messages[0]?.text).toBe("partial");
 		expect(view.messages[0]?.state).toBe(ConversationMessageStates.Failed);
 	});
+
+	it("maps display-safe source references without exposing raw artifact or memory fields", function _MapsSourceReferences()
+	{
+		const fixture = "id: cursor-1\nevent: ag-ui\ndata: {\"type\":\"TEXT_MESSAGE_START\",\"messageId\":\"message-1\",\"role\":\"assistant\"}\n\nid: cursor-2\nevent: ag-ui\ndata: {\"type\":\"TEXT_MESSAGE_CONTENT\",\"messageId\":\"message-1\",\"delta\":\"grounded\"}\n\nid: cursor-3\nevent: ag-ui\ndata: {\"type\":\"OPENCRANE_SOURCE_REFERENCES\",\"messageId\":\"message-1\",\"citations\":[{\"id\":\"cite-1\",\"label\":\"Project brief\",\"snippet\":\"safe\"}],\"artifacts\":[],\"memoryReferences\":[]}\n\nid: cursor-4\nevent: ag-ui\ndata: {\"type\":\"OPENCRANE_SOURCE_REFERENCES\",\"citations\":[{\"id\":\"cite-2\",\"label\":\"Run source\",\"sourceKind\":\"document\"}],\"artifacts\":[{\"id\":\"artifact-ref-1\",\"label\":\"brief.pdf\",\"accessState\":\"metadata_only\",\"mediaType\":\"application/pdf\",\"leaseUrl\":\"never\"}],\"memoryReferences\":[{\"id\":\"memory-1\",\"factId\":\"fact-1\",\"contentDigest\":\"sha256:abc\",\"rawFact\":\"never\"}]}\n\n";
+		const state = __ReadConversationReplay(fixture);
+
+		const view = __ToConversationReplayView("thread-1", state);
+
+		expect(view.messages[0]?.citations).toEqual([{ id: "cite-1", label: "Project brief", snippet: "safe" }]);
+		expect(view.citations).toEqual([{ id: "cite-2", label: "Run source", sourceKind: "document" }]);
+		expect(view.files).toEqual([{ id: "artifact-ref-1", name: "brief.pdf", type: "application/pdf", accessState: "metadata_only" }]);
+		expect(view.memoryReferences).toEqual([{ id: "memory-1", label: "fact-1", contentDigest: "sha256:abc" }]);
+	});
 });

@@ -5,7 +5,7 @@ import { Router } from "@angular/router";
 import { APPROVAL_DECISION_GATEWAY } from "@opencrane/state/approvals/adapter";
 import { SessionStore } from "@opencrane/state/core";
 import { CONVERSATION_PROGRESS_GATEWAY, CONVERSATION_SUBMISSION_GATEWAY, ConversationProgressController, ConversationProgressStates, ConversationSubmissionFailures, ConversationSubmissionUnavailableReasons, __CreateIdleConversationProgressSnapshot } from "@opencrane/state/conversation/adapter";
-import type { ConversationMessageView, ConversationProgressSnapshot, ConversationSubmissionAvailability } from "@opencrane/state/conversation/adapter";
+import type { ConversationCitationView, ConversationFileView, ConversationMemoryReferenceView, ConversationMessageView, ConversationProgressSnapshot, ConversationSubmissionAvailability } from "@opencrane/state/conversation/adapter";
 
 import { ConversationPanelKinds } from "../conversation.types.js";
 import { ConversationApprovalCardComponent } from "../components/approval-card/conversation-approval-card.component.js";
@@ -70,6 +70,15 @@ export class ConversationViewComponent
 
 	/** Canonical, display-safe messages reduced from replay events. */
 	public readonly messages: Signal<readonly ConversationMessageView[]> = computed(this._messages.bind(this));
+
+	/** Run-level display-safe citations reduced from replay events. */
+	public readonly citations: Signal<readonly ConversationCitationView[]> = computed(this._citations.bind(this));
+
+	/** Run-level display-safe artifact metadata reduced from replay events. */
+	public readonly files: Signal<readonly ConversationFileView[]> = computed(this._files.bind(this));
+
+	/** Run-level display-safe memory references reduced from replay events. */
+	public readonly memoryReferences: Signal<readonly ConversationMemoryReferenceView[]> = computed(this._memoryReferences.bind(this));
 
 	/** Read-only companion panel selected within the conversation view. */
 	public readonly activePanel = signal<ConversationPanelKinds>(ConversationPanelKinds.None);
@@ -254,6 +263,24 @@ export class ConversationViewComponent
 	private _messages(): readonly ConversationMessageView[]
 	{
 		return this.progress().replay.messages;
+	}
+
+	/** Read run-level citations from the latest progress snapshot. */
+	private _citations(): readonly ConversationCitationView[]
+	{
+		return this.progress().replay.citations;
+	}
+
+	/** Read run-level artifact metadata from the latest progress snapshot. */
+	private _files(): readonly ConversationFileView[]
+	{
+		return this.progress().replay.files;
+	}
+
+	/** Read run-level memory references from the latest progress snapshot. */
+	private _memoryReferences(): readonly ConversationMemoryReferenceView[]
+	{
+		return this.progress().replay.memoryReferences;
 	}
 
 	/** Refresh server-owned replay/status after an approval decision attempt. */

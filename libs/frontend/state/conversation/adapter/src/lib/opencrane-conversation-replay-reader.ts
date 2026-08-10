@@ -1,9 +1,9 @@
 import { Injectable, inject } from "@angular/core";
 
 import { ControlPlaneApiService } from "@opencrane/core";
-import { __CreateAgUiStreamState, __DecodeAgUiSseRecord, __ReduceAgUiStream, type AgUiStreamState, type AgUiToolView } from "@opencrane/state/conversation/ag-ui";
+import { __CreateAgUiStreamState, __DecodeAgUiSseRecord, __ReduceAgUiStream, type AgUiSourceReferenceView, type AgUiStreamState, type AgUiToolView } from "@opencrane/state/conversation/ag-ui";
 
-import { ConversationMessageRoles, ConversationMessageStates, type ConversationMessageView, type ConversationReplayView, type ConversationToolView } from "./conversation-display.types.js";
+import { ConversationMessageRoles, ConversationMessageStates, type ConversationCitationView, type ConversationFileView, type ConversationMemoryReferenceView, type ConversationMessageView, type ConversationReplayView, type ConversationToolView } from "./conversation-display.types.js";
 import type { ConversationReplayGateway } from "./conversation-gateway.types.js";
 import type { ConversationReplayReader } from "./conversation-replay-reader.types.js";
 
@@ -82,7 +82,7 @@ export class OpenCraneConversationReplayReader implements ConversationReplayGate
 /** Create an empty route replay state without inferring server-owned thread state. */
 export function __CreateEmptyConversationReplayView(threadId: string | null): ConversationReplayView
 {
-	return { threadId, cursor: null, runId: null, messages: [], customEvents: [] };
+	return { threadId, cursor: null, runId: null, messages: [], customEvents: [], citations: [], files: [], memoryReferences: [] };
 }
 
 /** Convert reduced AG-UI state into the display rows consumed by the conversation feature. */
@@ -99,7 +99,8 @@ export function __ToConversationReplayView(threadId: string, state: AgUiStreamSt
 		};
 	});
 	const tools = Object.values(state.tools).map(_toolView);
-	return { threadId, cursor: state.cursor, runId: state.runId, messages: _attachTools(messages, tools), customEvents: state.customEvents };
+	const messagesWithSources = _attachMessageSources(_attachTools(messages, tools), state.sourceReferences);
+	return { threadId, cursor: state.cursor, runId: state.runId, messages: messagesWithSources, customEvents: state.customEvents, citations: _runCitations(state.sourceReferences), files: _runFiles(state.sourceReferences), memoryReferences: _runMemoryReferences(state.sourceReferences) };
 }
 
 /** Map message completion and terminal run failure into a display state. */
@@ -119,6 +120,78 @@ function _isFailedReplay(state: AgUiStreamState): boolean
 function _toolView(tool: AgUiToolView): ConversationToolView
 {
 	return { id: tool.id, label: tool.name ?? "Tool activity", complete: tool.complete };
+}
+
+/** Attach message-scoped citation metadata to the matching assistant row. */
+function _attachMessageSources(messages: readonly ConversationMessageView[], references: readonly AgUiSourceReferenceView[]): readonly ConversationMessageView[]
+{
+	if (references.length === 0) return messages;
+	return messages.map(function _message(message: ConversationMessageView): ConversationMessageView
+	{
+		const citations = references.filter(function _forMessage(reference: AgUiSourceReferenceView): boolean { return reference.messageId === message.id; }).flatMap(function _citations(reference: AgUiSourceReferenceView): readonly ConversationCitationView[] { return reference.citations.map(_citationView); });
+		return citations.length === 0 ? message : { ...message, citations: [...(message.citations ?? []), ...citations] };
+	});
+}
+
+/** Select run-level citations for support panels. */
+function _runCitations(references: readonly AgUiSourceReferenceView[]): readonly ConversationCitationView[]
+{
+	return references.filter(_runReference).flatMap(function _citations(reference: AgUiSourceReferenceView): readonly ConversationCitationView[] { return reference.citations.map(_citationView); });
+}
+
+/** Select run-level artifact metadata for support panels. */
+function _runFiles(references: readonly AgUiSourceReferenceView[]): readonly ConversationFileView[]
+{
+	return references.filter(_runReference).flatMap(function _files(reference: AgUiSourceReferenceView): readonly ConversationFileView[] { return reference.artifacts.map(_fileView); });
+}
+
+/** Select run-level memory references for support panels. */
+function _runMemoryReferences(references: readonly AgUiSourceReferenceView[]): readonly ConversationMemoryReferenceView[]
+{
+	return references.filter(_runReference).flatMap(function _memory(reference: AgUiSourceReferenceView): readonly ConversationMemoryReferenceView[] { return reference.memoryReferences.map(_memoryView); });
+}
+
+/** Check whether a source-reference event applies at run scope. */
+function _runReference(reference: AgUiSourceReferenceView): boolean
+{
+	return reference.messageId === null;
+}
+
+/** Convert one protocol citation into a conversation citation chip. */
+function _citationView(citation: AgUiSourceReferenceView["citations"][number]): ConversationCitationView
+{
+	const view: ConversationCitationView = { id: citation.id, label: citation.label };
+	if (citation.sourceKind) return citation.snippet ? { ...view, sourceKind: citation.sourceKind, snippet: citation.snippet } : { ...view, sourceKind: citation.sourceKind };
+	return citation.snippet ? { ...view, snippet: citation.snippet } : view;
+}
+
+/** Convert one protocol artifact into metadata-only file panel state. */
+function _fileView(artifact: AgUiSourceReferenceView["artifacts"][number]): ConversationFileView
+{
+	let view: ConversationFileView = { id: artifact.artifactId ?? artifact.id, name: artifact.label, accessState: artifact.accessState };
+	if (artifact.mediaType) view = { ...view, type: artifact.mediaType };
+	if (artifact.byteLength) view = { ...view, byteLength: artifact.byteLength };
+	if (artifact.artifactRevisionId) view = { ...view, revisionId: artifact.artifactRevisionId };
+	if (artifact.createdAt) view = { ...view, createdAt: artifact.createdAt };
+	return view;
+}
+
+/** Convert one protocol memory reference without inventing raw fact text. */
+function _memoryView(memory: AgUiSourceReferenceView["memoryReferences"][number]): ConversationMemoryReferenceView
+{
+	let view: ConversationMemoryReferenceView = { id: memory.id, label: _memoryLabel(memory) };
+	if (memory.sourceKind) view = { ...view, sourceKind: memory.sourceKind };
+	if (memory.contentDigest) view = { ...view, contentDigest: memory.contentDigest };
+	if (memory.summary) view = { ...view, summary: memory.summary };
+	return view;
+}
+
+/** Select a display label for a memory reference without reading fact content. */
+function _memoryLabel(memory: AgUiSourceReferenceView["memoryReferences"][number]): string
+{
+	if (memory.label) return memory.label;
+	if (memory.factId) return memory.factId;
+	return memory.id;
 }
 
 /** Attach tool activity to the latest assistant row, or create a neutral standalone row. */

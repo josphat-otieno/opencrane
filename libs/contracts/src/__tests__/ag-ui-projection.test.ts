@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { AG_UI_PROJECTION_VERSION, __EncodeAgUiSseRecord, __ProjectAgUiEvent, type AgUiProjectionSourceEvent } from "../index.js";
+import { AG_UI_PROJECTION_VERSION, AgUiSourceAccessStates, __EncodeAgUiSseRecord, __ProjectAgUiEvent, type AgUiProjectionSourceEvent } from "../index.js";
 
 /** Construct one server-authorized safe source event for projection tests. */
 function _Source(eventType: AgUiProjectionSourceEvent["eventType"], payload: AgUiProjectionSourceEvent["payload"] = {}): AgUiProjectionSourceEvent
@@ -25,6 +25,12 @@ describe("AG-UI projection", function _Suite()
 		expect(__ProjectAgUiEvent(_Source("message.completed", { messageId: "message-1" })).data).toEqual({ type: "TEXT_MESSAGE_END", messageId: "message-1" });
 		expect(__ProjectAgUiEvent(_Source("tool.requested", { toolCallId: "tool-1", toolCallName: "search" })).data).toEqual({ type: "TOOL_CALL_START", toolCallId: "tool-1", toolCallName: "search" });
 		expect(__ProjectAgUiEvent(_Source("tool.completed", { toolCallId: "tool-1", toolResult: "AWS_SECRET_ACCESS_KEY=never-forwarded" })).data).toEqual({ type: "TOOL_CALL_END", toolCallId: "tool-1" });
+	});
+
+	it("projects display-safe OpenCrane source references", function _ProjectsSources()
+	{
+		expect(__ProjectAgUiEvent(_Source("message.sources", { messageId: "message-1", citations: [{ id: "cite-1", label: "Project brief", snippet: "safe", storageUrl: "never" } as never], artifacts: [{ id: "artifact-ref-1", label: "brief.pdf", accessState: AgUiSourceAccessStates.MetadataOnly, mediaType: "application/pdf", lease: "never" } as never], memoryReferences: [{ id: "memory-1", factId: "fact-1", contentDigest: "sha256:abc", rawFact: "never" } as never] })).data).toEqual({ type: "OPENCRANE_SOURCE_REFERENCES", messageId: "message-1", citations: [{ id: "cite-1", label: "Project brief", snippet: "safe" }], artifacts: [{ id: "artifact-ref-1", label: "brief.pdf", accessState: "metadata_only", mediaType: "application/pdf" }], memoryReferences: [{ id: "memory-1", factId: "fact-1", contentDigest: "sha256:abc" }] });
+		expect(__ProjectAgUiEvent(_Source("source.references")).data).toEqual({ type: "CUSTOM", name: "opencrane.source_references", value: { eventType: "source.references" } });
 	});
 
 	it("retains every unsupported or incomplete canonical event as a payload-free custom signal", function _ProjectsCustom()

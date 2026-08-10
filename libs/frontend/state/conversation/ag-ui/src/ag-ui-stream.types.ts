@@ -1,4 +1,4 @@
-import type { AgUiProjectionEvent } from "@opencrane/contracts";
+import type { AgUiArtifactReference, AgUiCitationReference, AgUiMemoryReference, AgUiProjectionEvent } from "@opencrane/contracts";
 
 /** Browser-owned view of one safe assistant message assembled from the projection. */
 export interface AgUiMessageView
@@ -22,6 +22,20 @@ export interface AgUiToolView
 	/** Display-safe tool result, when emitted. */
 	readonly result: string | null;
 }
+
+/** Browser-owned view of source references selected by server replay authority. */
+export interface AgUiSourceReferenceView
+{
+	/** Message these references support, or null when they apply to the run. */
+	readonly messageId: string | null;
+	/** Display-safe citations selected by the server. */
+	readonly citations: readonly AgUiCitationReference[];
+	/** Display-safe artifact metadata selected by the server. */
+	readonly artifacts: readonly AgUiArtifactReference[];
+	/** Display-safe memory references selected by the server. */
+	readonly memoryReferences: readonly AgUiMemoryReference[];
+}
+
 /** Immutable reduced state for one replayable projected event stream. */
 export interface AgUiStreamState
 {
@@ -35,6 +49,8 @@ export interface AgUiStreamState
 	readonly messages: Readonly<Record<string, AgUiMessageView>>;
 	/** Tool lifecycles assembled from safe events. */
 	readonly tools: Readonly<Record<string, AgUiToolView>>;
+	/** Source references assembled from server-selected source metadata events. */
+	readonly sourceReferences: readonly AgUiSourceReferenceView[];
 	/** Names of payload-free custom display signals. */
 	readonly customEvents: readonly string[];
 }

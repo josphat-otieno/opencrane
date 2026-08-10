@@ -15,9 +15,15 @@
 	&__empty i { font-size: 18px; }
 	&__empty p { max-width: 220px; margin: 0; font-size: 12.5px; line-height: 1.5; }
 	&__empty button { padding: 7px 12px; border: 1px solid var(--oc-border); border-radius: 5px; }
+	&__group { display: flex; flex-direction: column; gap: 2px; margin-bottom: 12px; }
+	&__group h3 { margin: 0 0 4px; color: var(--oc-text-secondary); font-size: 11px; font-weight: 700; text-transform: uppercase; }
 	article { display: flex; flex-direction: column; gap: 4px; padding: 10px 0; border-bottom: 1px solid var(--oc-border); }
 	article strong { overflow-wrap: anywhere; font-size: 12.5px; }
 	article span { color: var(--oc-text-muted); font-size: 11px; }
+	article p { margin: 0; color: var(--oc-text-secondary); font-size: 12px; line-height: 1.45; }
+	article code { overflow-wrap: anywhere; color: var(--oc-text-muted); font-size: 11px; }
+	article button { align-self: flex-start; margin-top: 4px; padding: 5px 9px; border: 1px solid var(--oc-border); border-radius: 5px; font-size: 11.5px; }
+	article button:disabled { cursor: not-allowed; opacity: 0.58; }
 }
 
 @media (max-width: 900px) {

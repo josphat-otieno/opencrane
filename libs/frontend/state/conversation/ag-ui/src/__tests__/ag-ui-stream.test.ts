@@ -55,4 +55,13 @@ describe("AG-UI stream state", function _Suite()
 		expect(state.cursor).toBe("event-1");
 		expect(state.messages).toEqual({});
 	});
+
+	it("stores display-safe source references and drops unsafe extra fields", function _StoresSources()
+	{
+		const record = _Record("event-20", { type: "OPENCRANE_SOURCE_REFERENCES", messageId: "message-1", citations: [{ id: "cite-1", label: "Project brief", snippet: "safe", storageUrl: "https://storage.invalid" }], artifacts: [{ id: "artifact-ref-1", label: "brief.pdf", accessState: "metadata_only", mediaType: "application/pdf", lease: "secret" }], memoryReferences: [{ id: "memory-1", factId: "fact-1", contentDigest: "sha256:abc", rawFact: "never" }] });
+
+		const state = __ReduceAgUiStream(__CreateAgUiStreamState(), record);
+
+		expect(state.sourceReferences).toEqual([{ messageId: "message-1", citations: [{ id: "cite-1", label: "Project brief", snippet: "safe" }], artifacts: [{ id: "artifact-ref-1", label: "brief.pdf", accessState: "metadata_only", mediaType: "application/pdf" }], memoryReferences: [{ id: "memory-1", factId: "fact-1", contentDigest: "sha256:abc" }] }]);
+	});
 });

@@ -131,7 +131,7 @@ describe("ConversationViewComponent", function _Suite()
 	it("keeps refresh failures visible without deleting existing messages", function _KeepsExistingMessagesOnRefreshFailure()
 	{
 		const component = _component("Ada Lovelace");
-		const replay = { threadId: "thread-1", cursor: "cursor-1", runId: "run-1", customEvents: [], messages: [{ id: "message-1", role: ConversationMessageRoles.Assistant, text: "Already visible", state: ConversationMessageStates.Complete }] };
+		const replay = { threadId: "thread-1", cursor: "cursor-1", runId: "run-1", customEvents: [], citations: [], files: [], memoryReferences: [], messages: [{ id: "message-1", role: ConversationMessageRoles.Assistant, text: "Already visible", state: ConversationMessageStates.Complete }] };
 
 		component.progress.set({ ...__CreateIdleConversationProgressSnapshot("thread-1"), state: ConversationProgressStates.Reconnecting, runId: "run-1", cursor: "cursor-1", replay, retryable: true, terminal: false });
 

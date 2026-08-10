@@ -22,7 +22,7 @@ export const WORKSPACE_BUDGET_RESET_DATE_FIXTURE = "Jul 1, 2026";
 export const WORKSPACE_BUDGET_SUCCESS_MUTATION: SettingsMutation<WorkspaceBudgetDraft> =
 {
 	/** Accept one captured draft without persistence. */
-	mutate: async function mutate(draft)
+	mutate: async function mutate(draft: WorkspaceBudgetDraft)
 	{
 		return { outcome: SettingsMutationOutcome.Success, accepted: structuredClone(draft), message: "Budget changes saved." };
 	}

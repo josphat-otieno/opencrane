@@ -19,7 +19,7 @@
 
 		@if (message().citations?.length) {
 			<div class="wo-message__citations" aria-label="Sources">
-				@for (citation of message().citations; track citation.id) { <span>{{ citation.label }}</span> }
+				@for (citation of message().citations; track citation.id) { <span tabindex="0" [title]="citation.snippet || citation.sourceKind || citation.label">{{ citation.label }}</span> }
 			</div>
 		}
 

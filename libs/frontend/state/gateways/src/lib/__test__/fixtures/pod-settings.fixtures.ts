@@ -23,7 +23,7 @@ export const POD_SETTINGS_FIXTURE: PodSettingsFixture =
 /** Repeatable mounted-screen success boundary that accepts the captured draft. */
 export const POD_SETTINGS_SUCCESS_MUTATION: SettingsMutation<PodSettingsDraftFixture> =
 {
-	mutate: function acceptPodSettings(draft)
+	mutate: function acceptPodSettings(draft: PodSettingsDraftFixture)
 	{
 		return Promise.resolve({ outcome: SettingsMutationOutcome.Success, accepted: structuredClone(draft), message: "Pod settings saved." });
 	}

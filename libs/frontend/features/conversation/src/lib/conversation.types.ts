@@ -1,5 +1,5 @@
 export { ConversationMessageRoles, ConversationMessageStates } from "@opencrane/state/conversation/adapter";
-export type { ConversationCitationView, ConversationContextItemView, ConversationFileView, ConversationMessageView, ConversationToolView } from "@opencrane/state/conversation/adapter";
+export type { ConversationCitationView, ConversationContextItemView, ConversationFileView, ConversationMemoryReferenceView, ConversationMessageView, ConversationToolView } from "@opencrane/state/conversation/adapter";
 
 /** Read-only supporting panel selected beside the conversation stream. */
 export enum ConversationPanelKinds

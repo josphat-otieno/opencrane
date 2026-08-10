@@ -222,6 +222,9 @@ function _mergeReplay(previous: ConversationReplayView, next: ConversationReplay
 		cursor: next.cursor ?? previous.cursor,
 		runId: next.runId ?? previous.runId,
 		messages: [...messages.values()],
-		customEvents: [...new Set([...previous.customEvents, ...next.customEvents])]
+		customEvents: [...new Set([...previous.customEvents, ...next.customEvents])],
+		citations: [...previous.citations, ...next.citations],
+		files: [...previous.files, ...next.files],
+		memoryReferences: [...previous.memoryReferences, ...next.memoryReferences]
 	};
 }

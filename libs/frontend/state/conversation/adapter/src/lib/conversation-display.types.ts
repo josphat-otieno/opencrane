@@ -25,6 +25,10 @@ export interface ConversationCitationView
 	readonly id: string;
 	/** Human-readable source label; never an inferred private resource path. */
 	readonly label: string;
+	/** Display-safe source category, when supplied by replay. */
+	readonly sourceKind?: string;
+	/** Short server-selected snippet or summary. */
+	readonly snippet?: string;
 }
 
 /** Display-safe tool activity attached to an assistant message. */
@@ -75,6 +79,29 @@ export interface ConversationFileView
 	readonly name: string;
 	/** Optional display-only file type. */
 	readonly type?: string;
+	/** Browser action availability selected by server-owned contracts. */
+	readonly accessState: "metadata_only" | "unavailable" | "readable";
+	/** Optional display-only byte count. */
+	readonly byteLength?: string;
+	/** Optional public artifact revision id. */
+	readonly revisionId?: string;
+	/** Optional creation time. */
+	readonly createdAt?: string;
+}
+
+/** Display-safe memory provenance associated with a conversation. */
+export interface ConversationMemoryReferenceView
+{
+	/** Stable display reference identifier. */
+	readonly id: string;
+	/** Human-readable label or fallback reference id. */
+	readonly label: string;
+	/** Display-safe provenance category, when supplied. */
+	readonly sourceKind?: string;
+	/** Immutable digest, when explicitly display-safe. */
+	readonly contentDigest?: string;
+	/** Server-selected summary, never inferred by the browser. */
+	readonly summary?: string;
 }
 
 /** Display-safe history entry derived from canonical OpenCrane run/thread data. */
@@ -105,4 +132,10 @@ export interface ConversationReplayView
 	readonly messages: readonly ConversationMessageView[];
 	/** Payload-free custom display signals surfaced by the projection. */
 	readonly customEvents: readonly string[];
+	/** Run-level display-safe citations surfaced by replay. */
+	readonly citations: readonly ConversationCitationView[];
+	/** Run-level display-safe artifact metadata surfaced by replay. */
+	readonly files: readonly ConversationFileView[];
+	/** Run-level display-safe memory references surfaced by replay. */
+	readonly memoryReferences: readonly ConversationMemoryReferenceView[];
 }

@@ -16,6 +16,80 @@ export interface AgUiPublicEventPayload
 	readonly toolCallName?: string;
 	/** Display-safe, already-redacted tool result text. */
 	readonly toolResult?: string;
+	/** Display-safe citation references selected by the server-owned replay reader. */
+	readonly citations?: readonly AgUiCitationReference[];
+	/** Display-safe artifact metadata references selected by the server-owned replay reader. */
+	readonly artifacts?: readonly AgUiArtifactReference[];
+	/** Display-safe memory references selected by the server-owned replay reader. */
+	readonly memoryReferences?: readonly AgUiMemoryReference[];
+}
+
+/** Display availability vocabulary for source references. */
+export enum AgUiSourceAccessStates
+{
+	/** Metadata can be displayed, but no browser read contract is available. */
+	MetadataOnly = "metadata_only",
+	/** The reference is stale, denied, deleted, or otherwise unavailable to open. */
+	Unavailable = "unavailable",
+	/** A public browser read contract exists for this reference. */
+	Readable = "readable"
+}
+
+/** Display-safe citation selected by server replay authority. */
+export interface AgUiCitationReference
+{
+	/** Stable display reference id. */
+	readonly id: string;
+	/** Human-readable source label. */
+	readonly label: string;
+	/** Display-safe source category. */
+	readonly sourceKind?: string;
+	/** Short display-safe snippet or summary. */
+	readonly snippet?: string;
+	/** ISO-8601 time at which the source was captured, when public. */
+	readonly capturedAt?: string;
+}
+
+/** Display-safe artifact metadata selected by server replay authority. */
+export interface AgUiArtifactReference
+{
+	/** Stable display reference id. */
+	readonly id: string;
+	/** Human-readable artifact label or filename. */
+	readonly label: string;
+	/** Stable artifact id, when public. */
+	readonly artifactId?: string;
+	/** Stable artifact revision id, when public. */
+	readonly artifactRevisionId?: string;
+	/** Public media type, when finalized. */
+	readonly mediaType?: string;
+	/** Decimal byte count, when finalized. */
+	readonly byteLength?: string;
+	/** ISO-8601 creation time, when public. */
+	readonly createdAt?: string;
+	/** Browser action availability selected by server-owned contracts. */
+	readonly accessState: AgUiSourceAccessStates;
+}
+
+/** Display-safe memory reference selected by server replay authority. */
+export interface AgUiMemoryReference
+{
+	/** Stable display reference id. */
+	readonly id: string;
+	/** Human-readable label, when the server chooses one for display. */
+	readonly label?: string;
+	/** Stable dataset id, when public for provenance display. */
+	readonly datasetId?: string;
+	/** Stable fact id, when public for provenance display. */
+	readonly factId?: string;
+	/** Immutable content digest, when public for provenance display. */
+	readonly contentDigest?: string;
+	/** Display-safe provenance category. */
+	readonly sourceKind?: string;
+	/** ISO-8601 source capture time, when public. */
+	readonly capturedAt?: string;
+	/** Server-selected display summary; never inferred by the browser. */
+	readonly summary?: string;
 }
 
 /** One already-authorized canonical event made safe for protocol projection. */
@@ -132,6 +206,21 @@ export interface AgUiToolCallResultEvent
 	readonly content: string;
 }
 
+/** OpenCrane source-reference event carrying display-safe provenance metadata. */
+export interface AgUiSourceReferencesEvent
+{
+	/** AG-UI discriminator namespaced to OpenCrane's extension surface. */
+	readonly type: "OPENCRANE_SOURCE_REFERENCES";
+	/** Message these references support, when selected at message scope. */
+	readonly messageId?: string;
+	/** Display-safe citations selected by the server. */
+	readonly citations: readonly AgUiCitationReference[];
+	/** Display-safe artifact metadata selected by the server. */
+	readonly artifacts: readonly AgUiArtifactReference[];
+	/** Display-safe memory references selected by the server. */
+	readonly memoryReferences: readonly AgUiMemoryReference[];
+}
+
 /** Vendor-namespaced signal for an event that has no stable standard mapping yet. */
 export interface AgUiCustomEvent
 {
@@ -144,7 +233,7 @@ export interface AgUiCustomEvent
 }
 
 /** One protocol event the offline projection can encode without an AG-UI runtime dependency. */
-export type AgUiProjectionEvent = AgUiRunStartedEvent | AgUiRunFinishedEvent | AgUiTextMessageStartEvent | AgUiTextMessageContentEvent | AgUiTextMessageEndEvent | AgUiToolCallStartEvent | AgUiToolCallArgsEvent | AgUiToolCallEndEvent | AgUiToolCallResultEvent | AgUiCustomEvent;
+export type AgUiProjectionEvent = AgUiRunStartedEvent | AgUiRunFinishedEvent | AgUiTextMessageStartEvent | AgUiTextMessageContentEvent | AgUiTextMessageEndEvent | AgUiToolCallStartEvent | AgUiToolCallArgsEvent | AgUiToolCallEndEvent | AgUiToolCallResultEvent | AgUiSourceReferencesEvent | AgUiCustomEvent;
 
 /** One SSE record ready for a server-owned authorized replay source to write. */
 export interface AgUiSseRecord

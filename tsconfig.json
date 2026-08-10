@@ -235,6 +235,9 @@
       "@opencrane/state/provider-key/adapter": [
         "./libs/frontend/state/provider-key/adapter/src/index.ts"
       ],
+      "@opencrane/state/settings/adapter": [
+        "./libs/frontend/state/settings/adapter/src/index.ts"
+      ],
 		"@opencrane/state/assets/adapter": ["./libs/frontend/state/assets/adapter/src/index.ts"],
 		"@opencrane/state/skills/adapter": ["./libs/frontend/state/skills/adapter/src/index.ts"],
       "@opencrane/state/onboarding": [

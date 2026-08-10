@@ -83,7 +83,7 @@
 		</div>
 
 		@if (activePanel() !== panelKinds.None) {
-			<wo-conversation-support-panel [kind]="activePanel()" (closed)="activePanel.set(panelKinds.None)" />
+			<wo-conversation-support-panel [kind]="activePanel()" [citations]="citations()" [files]="files()" [memoryReferences]="memoryReferences()" (closed)="activePanel.set(panelKinds.None)" />
 		}
 	</div>
 </section>
