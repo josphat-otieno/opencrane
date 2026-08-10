@@ -1,6 +1,10 @@
-import { Injector, runInInjectionContext } from "@angular/core";
+// @vitest-environment jsdom
+
 import { readFileSync } from "node:fs";
-import { describe, expect, it, vi } from "vitest";
+import { resolve } from "node:path";
+import { TestBed } from "@angular/core/testing";
+import { BrowserTestingModule, platformBrowserTesting } from "@angular/platform-browser/testing";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { SessionStore } from "@opencrane/state/core";
 import { CONVERSATION_HISTORY_GATEWAY } from "@opencrane/state/conversation/adapter";
@@ -11,7 +15,7 @@ describe("WorkspacePageComponent", function _Suite()
 {
 	function _component(logout: _LogoutCallback): WorkspacePageComponent
 	{
-		const injector = Injector.create({
+		TestBed.configureTestingModule({
 			providers: [
 				{
 					provide: CONVERSATION_HISTORY_GATEWAY,
@@ -27,11 +31,26 @@ describe("WorkspacePageComponent", function _Suite()
 			]
 		});
 
-		return runInInjectionContext(injector, function _create(): WorkspacePageComponent
+		return TestBed.runInInjectionContext(function _create(): WorkspacePageComponent
 		{
 			return new WorkspacePageComponent();
 		});
 	}
+
+	beforeAll(function _PrepareAngular(): void
+	{
+		TestBed.initTestEnvironment(BrowserTestingModule, platformBrowserTesting(), { teardown: { destroyAfterEach: true } });
+	});
+
+	afterEach(function _ResetAngular(): void
+	{
+		TestBed.resetTestingModule();
+	});
+
+	afterAll(function _ReleaseAngular(): void
+	{
+		TestBed.resetTestEnvironment();
+	});
 
 	it("exposes a retryable error instead of rejecting when logout fails", async function _HandlesLogoutFailure()
 	{
@@ -81,8 +100,8 @@ describe("WorkspacePageComponent", function _Suite()
 
 	it("keeps retired project concepts out of visible workspace copy", function _KeepsRetiredCopyOut()
 	{
-		const shellTemplate = readFileSync(new URL("../workspace-page.component.html", import.meta.url), "utf8");
-		const historyTemplate = readFileSync(new URL("../workspace-history.component.html", import.meta.url), "utf8");
+		const shellTemplate = readFileSync(resolve(process.cwd(), "src/lib/workspace-page.component.html"), "utf8");
+		const historyTemplate = readFileSync(resolve(process.cwd(), "src/lib/workspace-history.component.html"), "utf8");
 		const visibleTemplate = shellTemplate.toLowerCase();
 		const retiredProduct = "open" + "claw";
 

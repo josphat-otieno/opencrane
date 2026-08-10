@@ -1,0 +1,72 @@
+.wo-account {
+	display: block;
+
+	&__profile {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+
+		strong,
+		span {
+			display: block;
+		}
+
+		strong {
+			color: var(--oc-text-primary);
+			font-size: 14px;
+			font-weight: 600;
+		}
+
+		span {
+			margin-top: 2px;
+			color: var(--oc-text-secondary);
+			font-size: 12px;
+		}
+	}
+
+	&__readonly {
+		margin: 0;
+		color: var(--oc-text-secondary);
+		font-size: 13.5px;
+		overflow-wrap: anywhere;
+	}
+
+	&__session {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+	}
+
+	&__logout {
+		padding: 7px 13px;
+		border: 1px solid var(--oc-danger);
+		border-radius: var(--oc-radius-control);
+		background: var(--oc-surface-card);
+		box-shadow: 0 1px 0 var(--oc-danger), 0 2px 3px rgba(193, 57, 43, 0.16);
+		color: var(--oc-danger);
+		cursor: pointer;
+		font: inherit;
+		font-size: 13px;
+		transition: transform 0.13s ease, box-shadow 0.13s ease, background 0.13s ease;
+
+		&:hover:not(:disabled) {
+			background: linear-gradient(135deg, var(--oc-surface-card) 0%, var(--oc-surface-card) 50%, var(--oc-danger-soft) 50%);
+			transform: translateY(-1px);
+		}
+
+		&:active:not(:disabled) {
+			box-shadow: none;
+			transform: translateY(0);
+		}
+
+		&:disabled {
+			cursor: not-allowed;
+			opacity: 0.65;
+		}
+	}
+
+	&__error {
+		color: var(--oc-danger);
+		font-size: 12px;
+	}
+}

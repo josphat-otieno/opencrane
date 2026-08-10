@@ -40,6 +40,16 @@ export const WORKSPACE_ROUTES: Routes =
 						return m.TOOLS_ROUTES;
 					});
 				}
+			},
+			{
+				path: "settings",
+				loadChildren: function loadSettingsRoutes()
+				{
+					return import("@opencrane/features/settings").then(function pickSettingsRoutes(m)
+					{
+						return m.SETTINGS_ROUTES;
+					});
+				}
 			}
 		]
 	}

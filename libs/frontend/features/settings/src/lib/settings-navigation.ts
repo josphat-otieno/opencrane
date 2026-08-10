@@ -3,14 +3,13 @@ import { SettingsNavigationItem, SettingsScope, SettingsSectionId } from "./sett
 /** Workspace settings navigation in the authoritative handoff order. */
 export const WORKSPACE_SETTINGS_NAVIGATION: readonly SettingsNavigationItem[] =
 [
-	{ id: SettingsSectionId.Pod, label: "Pod", route: "/settings/workspace/pod", iconPath: "M3 4h10v8H3zm0 3.5h10M6 4v3.5M10 4v3.5" },
+	{ id: SettingsSectionId.Models, label: "Models", route: "/settings/workspace/models", iconPath: "M6.5 9.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm3.5-.5 5 5" },
 	{ id: SettingsSectionId.Members, label: "Members", route: "/settings/workspace/members", iconPath: "M8 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM3.5 13c0-2.485 2.015-4.5 4.5-4.5s4.5 2.015 4.5 4.5" },
 	{ id: SettingsSectionId.Budgets, label: "Budgets", route: "/settings/workspace/budgets", iconPath: "M8 3v10M5.5 5.5h3.5a2 2 0 0 1 0 4H5.5" },
 	{ id: SettingsSectionId.Capabilities, label: "Skills", route: "/settings/workspace/skills", iconPath: "M9.5 2.5L6 9.5h4.5L7 14 13 7h-4.5z" },
 	{ id: SettingsSectionId.Connectors, label: "Connectors", route: "/settings/workspace/connectors", iconPath: "M5.5 2.5v4a2.5 2.5 0 0 0 5 0v-4M5.5 2.5h5M8 9v2.5M8 11.5v2" },
 	{ id: SettingsSectionId.Agents, label: "Agents", route: "/settings/workspace/agents", iconPath: "M8 8.2a1.3 1.3 0 1 0 0-2.6 1.3 1.3 0 0 0 0 2.6zM3.5 3.5l3.2 3.6M12.5 3.5l-3.2 3.6M8 9.5V13" },
-	{ id: SettingsSectionId.DataNetwork, label: "Data & Network", route: "/settings/workspace/data-network", iconPath: "M8 2l-6 3.5v5L8 14l6-3.5v-5zm0 0v12M2 5.5l6 3.5 6-3.5" },
-	{ id: SettingsSectionId.ProviderKeys, label: "LLM Providers", route: "/settings/workspace/provider-keys", iconPath: "M6.5 9.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm3.5-.5 5 5" }
+	{ id: SettingsSectionId.DataNetwork, label: "Data & Network", route: "/settings/workspace/data-network", iconPath: "M8 2l-6 3.5v5L8 14l6-3.5v-5zm0 0v12M2 5.5l6 3.5 6-3.5" }
 ];
 
 /** Personal settings navigation in the authoritative handoff order. */

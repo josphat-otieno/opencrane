@@ -1,13 +1,57 @@
-import { ChangeDetectionStrategy, Component, Signal, computed, signal, inject, resource, effect, untracked } from "@angular/core";
+import { ChangeDetectionStrategy, Component, Signal, computed, signal, inject, resource } from "@angular/core";
 
-import { DestructiveActionPhase, DestructiveActionState, LlmProviderFeedback, LlmProviderId, LlmProviderOption, ModelRouteCategory, WorkspaceLlmProvider } from "@opencrane/core";
+import { DestructiveActionPhase, DestructiveActionState, LlmProviderFeedback, ModelRouteCategory } from "@opencrane/core";
 import { DestructiveConfirmationComponent } from "@opencrane/elements/ui";
-import { SETTINGS_GATEWAY } from "@opencrane/state/settings/adapter";
-import { ActiveTenantStore } from "@opencrane/state/gateways";
+import { ModelProvider, PROVIDER_KEY_GATEWAY, ProviderKeyStatus, SUPPORTED_MODEL_PROVIDERS } from "@opencrane/state/provider-key/adapter";
 import { _settledValue } from "../../resource.util.js";
 
-/** Mounted-only interaction phases for testing a transient provider key. */
-type ConnectionPhase = "idle" | "testing" | "valid" | "invalid";
+/** Display metadata for one supported provider. */
+interface ProviderDisplay
+{
+	/** Provider identifier used by the BYOK gateway. */
+	readonly provider: ModelProvider;
+
+	/** Human-readable provider name. */
+	readonly name: string;
+
+	/** Human-readable supported model summary. */
+	readonly models: string;
+}
+
+/** Safe configured-provider row displayed by the Models section. */
+interface ProviderRow extends ProviderDisplay
+{
+	/** Stable identifier used by existing row tracking and dialog labels. */
+	readonly id: ModelProvider;
+
+	/** Whether this provider currently has a stored key. */
+	readonly configured: boolean;
+
+	/** When the key was configured, or an inactive placeholder label. */
+	readonly added: string;
+
+	/** LiteLLM registration state or inactive placeholder label. */
+	readonly lastUsed: string;
+}
+
+/** Provider display metadata keyed by the BYOK contract enum. */
+const PROVIDER_DISPLAY: Record<ModelProvider, ProviderDisplay> =
+{
+	[ModelProvider.OpenAi]: { provider: ModelProvider.OpenAi, name: "OpenAI", models: "gpt-4o · gpt-4o-mini · gpt-4-turbo" },
+	[ModelProvider.Anthropic]: { provider: ModelProvider.Anthropic, name: "Anthropic", models: "claude-opus · claude-sonnet · claude-haiku" },
+	[ModelProvider.Gemini]: { provider: ModelProvider.Gemini, name: "Google Gemini", models: "gemini-flash · gemini-pro" },
+	[ModelProvider.Mistral]: { provider: ModelProvider.Mistral, name: "Mistral", models: "mistral-large · mistral-small" },
+	[ModelProvider.DeepSeek]: { provider: ModelProvider.DeepSeek, name: "DeepSeek", models: "deepseek-chat · deepseek-reasoner" },
+	[ModelProvider.Glm]: { provider: ModelProvider.Glm, name: "Zhipu GLM", models: "glm-4 · glm-4-air" }
+};
+
+/** Read-only examples until model-routing settings are backed by a public contract. */
+const MODEL_ROUTE_CATEGORIES_UNAVAILABLE: readonly ModelRouteCategory[] =
+[
+	{ id: "simple", name: "Simple / factual lookup", description: "Short questions, definitions, quick edits.", model: "Not configurable yet" },
+	{ id: "reasoning", name: "Complex reasoning", description: "Multi-step analysis, planning, maths.", model: "Not configurable yet" },
+	{ id: "code", name: "Code & technical", description: "Writing, reviewing, or debugging code.", model: "Not configurable yet" }
+];
 
 /** Workspace provider keys and category routing from the authoritative Paper handoff. */
 @Component({
@@ -20,45 +64,55 @@ type ConnectionPhase = "idle" | "testing" | "valid" | "invalid";
 })
 export class LlmProvidersSectionComponent
 {
-	private readonly _gateway = inject(SETTINGS_GATEWAY);
-	private readonly _tenant = inject(ActiveTenantStore).tenant;
+	/** Contract-backed provider-key gateway. */
+	private readonly _gateway = inject(PROVIDER_KEY_GATEWAY);
 
 	/** Safe configured-provider metadata; never contains credential text. */
 	public readonly providersResource = resource({
-		params: () => this._tenant(),
-		loader: ({ params }) => this._gateway.getWorkspaceLlmProviders(params ?? "")
+		loader: (): Promise<ProviderKeyStatus[]> => this._gateway.list()
 	});
-	public readonly providers = computed(() => _settledValue(this.providersResource) ?? []);
+
+	/** Full provider status list in supported-provider order. */
+	public readonly providers: Signal<readonly ProviderRow[]> = computed((): readonly ProviderRow[] =>
+	{
+		const statuses = _settledValue(this.providersResource) ?? [];
+		const byProvider = new Map(statuses.map(function index(status): [ModelProvider, ProviderKeyStatus]
+		{
+			return [status.provider, status];
+		}));
+		return SUPPORTED_MODEL_PROVIDERS.map(function mapProvider(provider): ProviderRow
+		{
+			const display = PROVIDER_DISPLAY[provider];
+			const status = byProvider.get(provider);
+			return {
+				id: provider,
+				name: display.name,
+				models: display.models,
+				provider,
+				configured: status?.configured ?? false,
+				added: _ProviderAddedLabel(status),
+				lastUsed: _ProviderRegistrationLabel(status)
+			};
+		});
+	});
 
 	/** Complete Add Provider Key catalogue. */
-	public readonly providerOptionsResource = resource({
-		loader: () => this._gateway.getLlmProviderOptions()
+	public readonly providerOptions: readonly ProviderDisplay[] = SUPPORTED_MODEL_PROVIDERS.map(function mapDisplay(provider): ProviderDisplay
+	{
+		return PROVIDER_DISPLAY[provider];
 	});
-	public readonly providerOptions = computed(() => _settledValue(this.providerOptionsResource) ?? []);
 
 	/** Answer-model options used by every category selector. */
-	public readonly modelOptionsResource = resource({
-		loader: () => this._gateway.getLlmModelOptions()
-	});
-	public readonly modelOptions = computed(() => _settledValue(this.modelOptionsResource) ?? []);
-
-	/** Fast classification models used by prompt analysis. */
-	public readonly analysisModelOptionsResource = resource({
-		loader: () => this._gateway.getLlmAnalysisModelOptions()
-	});
-	public readonly analysisModelOptions = computed(() => _settledValue(this.analysisModelOptionsResource) ?? []);
+	public readonly modelOptions: readonly string[] = ["Not configurable yet"];
 
 	/** Mounted-only route-owned Add Provider Key sub-page state. */
 	public readonly addPageOpen = signal(false);
 
 	/** Provider currently being configured in the Add sub-page. */
-	public readonly selectedProviderId = signal<LlmProviderId | null>(null);
+	public readonly selectedProviderId = signal<ModelProvider | null>(null);
 
 	/** Raw input exists only while this mounted component owns the add flow. */
 	public readonly keyDraft = signal("");
-
-	/** Current deterministic connection-test phase. */
-	public readonly connectionPhase = signal<ConnectionPhase>("idle");
 
 	/** Whether Save key owns the global add-form lock. */
 	public readonly savePending = signal(false);
@@ -67,7 +121,7 @@ export class LlmProvidersSectionComponent
 	public readonly feedback = signal<LlmProviderFeedback | null>(null);
 
 	/** Configured provider waiting for confirmed removal. */
-	public readonly removeTarget = signal<WorkspaceLlmProvider | null>(null);
+	public readonly removeTarget = signal<ProviderRow | null>(null);
 
 	/** Button that opened removal confirmation and regains focus when it closes. */
 	public readonly removeFocusTarget = signal<HTMLElement | null>(null);
@@ -79,44 +133,16 @@ export class LlmProvidersSectionComponent
 	public readonly destructiveState = signal<DestructiveActionState>({ phase: DestructiveActionPhase.Idle });
 
 	/** Selected fast classifier model. */
-	public readonly analysisModel = signal("");
+	public readonly analysisModel = signal("Not configurable yet");
 
 	/** Mounted-only route-category assignments. */
-	public readonly routeCategoriesResource = resource({
-		loader: () => this._gateway.getModelRouteCategories()
-	});
-	public readonly routeCategories = signal<readonly ModelRouteCategory[]>([]);
-
-	/** Monotonic identity source for mounted-only categories added by the user. */
-	private _nextCategoryId = 1;
-	private _categoriesLoaded = false;
-
-	constructor()
-	{
-		effect(() => {
-			const options = this.analysisModelOptions();
-			if (options.length > 0 && !untracked(() => this.analysisModel())) {
-				this.analysisModel.set(options[0] ?? "");
-			}
-		});
-
-		effect(() => {
-			const categories = this.routeCategoriesResource.value();
-			if (categories && !untracked(() => this._categoriesLoaded)) {
-				untracked(() => {
-					this._categoriesLoaded = true;
-					this.routeCategories.set(structuredClone(categories));
-					this._nextCategoryId = categories.length + 1;
-				});
-			}
-		});
-	}
+	public readonly routeCategories = signal<readonly ModelRouteCategory[]>(MODEL_ROUTE_CATEGORIES_UNAVAILABLE);
 
 	/** Selected provider metadata, derived without storing a second mutable copy. */
-	public readonly selectedProvider: Signal<LlmProviderOption | null> = computed((): LlmProviderOption | null =>
+	public readonly selectedProvider: Signal<ProviderDisplay | null> = computed((): ProviderDisplay | null =>
 	{
 		const providerId = this.selectedProviderId();
-		return this.providerOptions().find(function matches(option): boolean { return option.id === providerId; }) ?? null;
+		return providerId === null ? null : PROVIDER_DISPLAY[providerId];
 	});
 
 	/** Open the authoritative sub-page with pristine transient state. */
@@ -130,7 +156,7 @@ export class LlmProvidersSectionComponent
 	/** Return to the list and destroy all mounted credential input. */
 	public closeAddPage(): void
 	{
-		if (this.connectionPhase() === "testing" || this.savePending()) return;
+		if (this.savePending()) return;
 		this._clearTransientKey();
 		this.selectedProviderId.set(null);
 		this.feedback.set(null);
@@ -138,9 +164,9 @@ export class LlmProvidersSectionComponent
 	}
 
 	/** Select a provider and discard any key entered for the previous choice. */
-	public selectProvider(providerId: LlmProviderId): void
+	public selectProvider(providerId: ModelProvider): void
 	{
-		if (this.connectionPhase() === "testing" || this.savePending()) return;
+		if (this.savePending()) return;
 		this._clearTransientKey();
 		this.feedback.set(null);
 		this.selectedProviderId.set(providerId);
@@ -150,31 +176,7 @@ export class LlmProvidersSectionComponent
 	public updateKeyDraft(event: Event): void
 	{
 		this.keyDraft.set((event.target as HTMLInputElement).value);
-		this.connectionPhase.set("idle");
 		this.feedback.set(null);
-	}
-
-	/** Test one transient key without allowing concurrent test/save actions. */
-	public async testConnection(): Promise<void>
-	{
-		const providerId = this.selectedProviderId();
-		const key = this.keyDraft();
-		const tenant = this._tenant();
-		if (providerId === null || !tenant || key.trim() === "" || this.connectionPhase() === "testing" || this.savePending()) return;
-
-		this.connectionPhase.set("testing");
-		this.feedback.set(null);
-		try
-		{
-			await this._gateway.testWorkspaceLlmProviderConnection(tenant, providerId, key);
-			this.connectionPhase.set("valid");
-			this.feedback.set({ kind: "success", message: "Connection successful." });
-		}
-		catch
-		{
-			this.connectionPhase.set("invalid");
-			this.feedback.set({ kind: "error", message: "The connection could not be tested. Try again." });
-		}
 	}
 
 	/** Save one transient key through the fixture boundary, then destroy the input. */
@@ -182,14 +184,13 @@ export class LlmProvidersSectionComponent
 	{
 		const provider = this.selectedProvider();
 		const key = this.keyDraft();
-		const tenant = this._tenant();
-		if (provider === null || !tenant || key.trim() === "" || this.connectionPhase() === "testing" || this.savePending()) return;
+		if (provider === null || key.trim() === "" || this.savePending()) return;
 
 		this.savePending.set(true);
 		this.feedback.set(null);
 		try
 		{
-			await this._gateway.addWorkspaceLlmProvider(tenant, { id: provider.id, name: provider.name, models: provider.models });
+			await this._gateway.setKey(provider.provider, key);
 			this.providersResource.reload();
 			this._clearTransientKey();
 			this.selectedProviderId.set(null);
@@ -207,7 +208,7 @@ export class LlmProvidersSectionComponent
 	}
 
 	/** Request explicit removal confirmation for one configured provider. */
-	public requestRemove(provider: WorkspaceLlmProvider, event: Event, successFocusTarget: HTMLElement): void
+	public requestRemove(provider: ProviderRow, event: Event, successFocusTarget: HTMLElement): void
 	{
 		this.feedback.set(null);
 		this.destructiveState.set({ phase: DestructiveActionPhase.Idle });
@@ -226,12 +227,11 @@ export class LlmProvidersSectionComponent
 	public async confirmRemove(): Promise<void>
 	{
 		const target = this.removeTarget();
-		const tenant = this._tenant();
-		if (target === null || !tenant || this.destructiveState().phase === DestructiveActionPhase.Pending) return;
+		if (target === null || this.destructiveState().phase === DestructiveActionPhase.Pending) return;
 		this.destructiveState.set({ phase: DestructiveActionPhase.Pending });
 		try
 		{
-			await this._gateway.removeWorkspaceLlmProvider(tenant, target.id);
+			await this._gateway.deleteKey(target.provider);
 			this.removeFocusTarget.set(this.removeSuccessFocusTarget());
 			this.providersResource.reload();
 			this.destructiveState.set({ phase: DestructiveActionPhase.Success });
@@ -263,24 +263,33 @@ export class LlmProvidersSectionComponent
 	/** Append one deterministic editable mock category. */
 	public addCategory(): void
 	{
-		const id = `category-${this._nextCategoryId}`;
-		this._nextCategoryId += 1;
-		this.routeCategories.update(function append(rows): readonly ModelRouteCategory[]
-		{
-			return [...rows, { id, name: "New category", description: "Describe which prompts fall here.", model: "claude-sonnet-4-6" }];
-		});
+		this.feedback.set({ kind: "error", message: "Model routing settings are not available yet." });
 	}
 
 	/** Remove one category assignment from mounted-only routing state. */
 	public removeCategory(categoryId: string): void
 	{
-		this.routeCategories.update(function remove(rows): readonly ModelRouteCategory[] { return rows.filter(function keep(row): boolean { return row.id !== categoryId; }); });
+		void categoryId;
+		this.feedback.set({ kind: "error", message: "Model routing settings are not available yet." });
 	}
 
 	/** Destroy the only state that may hold raw credential text. */
 	private _clearTransientKey(): void
 	{
 		this.keyDraft.set("");
-		this.connectionPhase.set("idle");
 	}
+}
+
+/** Format the configured date without exposing key material. */
+function _ProviderAddedLabel(status: ProviderKeyStatus | undefined): string
+{
+	if (!status?.updatedAt) return "Not connected";
+	return new Date(status.updatedAt).toLocaleDateString();
+}
+
+/** Format the LiteLLM registration state for one provider status. */
+function _ProviderRegistrationLabel(status: ProviderKeyStatus | undefined): string
+{
+	if (!status?.configured) return "Inactive";
+	return status.litellmRegistered ? "Registered with LiteLLM" : "Secret-only";
 }

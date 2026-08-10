@@ -3,21 +3,20 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-/** Read the sidebar template as normalized markup for consumer-contract checks. */
-function _sidebarTemplate(): string
+/** Read the workspace shell template as normalized markup for consumer-contract checks. */
+function _workspaceTemplate(): string
 {
-	return readFileSync(resolve(process.cwd(), "src/lib/components/sidebar/sidebar.component.html"), "utf8").replace(/\s+/g, " ");
+	return readFileSync(resolve(process.cwd(), "src/lib/workspace-page.component.html"), "utf8").replace(/\s+/g, " ");
 }
 
 describe("Sidebar avatar contract", function sidebarAvatarSuite(): void
 {
-	it("uses the handoff color, geometry, and current-user accessible name", function avatarContract(): void
+	it("keeps account identity visible in the workspace rail", function avatarContract(): void
 	{
-		const template = _sidebarTemplate();
+		const template = _workspaceTemplate();
 
-		expect(template).toContain("[accessibleName]=\"userName() || 'Current user'\"");
-		expect(template).toContain("color=\"var(--oc-teal)\"");
-		expect(template).toContain("size=\"large\"");
+		expect(template).toContain("{{ userInitials() }}");
+		expect(template).toContain("{{ userName() }}");
 		expect(template).not.toMatch(/#[0-9a-fA-F]{3,6}/);
 	});
 });

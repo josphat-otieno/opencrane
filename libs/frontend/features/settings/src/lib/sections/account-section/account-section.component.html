@@ -1,0 +1,36 @@
+<section class="wo-account" aria-labelledby="account-settings-title">
+	<wo-section-heading title="Account" subtitle="Your signed-in OpenCrane profile and session status." />
+
+	<wo-settings-row label="Profile">
+		<div woSettingsControl class="wo-account__profile">
+			<wo-avatar-circle [initials]="avatarInitials()" [accessibleName]="displayName()" color="var(--oc-teal)" size="profile" />
+			<div>
+				<strong id="account-settings-title">{{ displayName() }}</strong>
+				<span>{{ role() }}</span>
+			</div>
+		</div>
+	</wo-settings-row>
+
+	<wo-settings-row label="Email" description="Read from the authenticated identity session.">
+		<div woSettingsControl class="wo-account__readonly">{{ email() }}</div>
+	</wo-settings-row>
+
+	<wo-settings-row label="Subject" description="Stable identity-provider subject for this session.">
+		<div woSettingsControl class="wo-account__readonly wo-mono">{{ subject() }}</div>
+	</wo-settings-row>
+
+	<wo-settings-row label="Workspace" description="Organisation claim supplied by the OpenCrane API.">
+		<div woSettingsControl class="wo-account__readonly">{{ workspace() }}</div>
+	</wo-settings-row>
+
+	<wo-settings-row label="Session">
+		<div woSettingsControl class="wo-account__session">
+			<button type="button" class="wo-account__logout" [disabled]="logoutPending()" (click)="logout()">
+				{{ logoutPending() ? "Logging out..." : "Log out" }}
+			</button>
+			@if (logoutError()) {
+				<span class="wo-account__error" role="alert">Logout failed. Try again.</span>
+			}
+		</div>
+	</wo-settings-row>
+</section>

@@ -10,8 +10,8 @@ export enum SettingsScope
 /** Stable identities for every settings navigation destination. */
 export enum SettingsSectionId
 {
-	/** Workspace pod settings. */
-	Pod = "pod",
+	/** Workspace model routing and provider key settings. */
+	Models = "models",
 	/** Workspace membership settings. */
 	Members = "members",
 	/** Workspace budget settings. */
@@ -24,8 +24,6 @@ export enum SettingsSectionId
 	Agents = "agents",
 	/** Workspace data-sovereignty and network settings. */
 	DataNetwork = "data-network",
-	/** Workspace LLM provider configuration. */
-	ProviderKeys = "provider-keys",
 	/** Personal account settings. */
 	Account = "account",
 	/** Personal awareness settings. */

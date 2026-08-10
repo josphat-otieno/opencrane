@@ -29,6 +29,9 @@
       "path": "../../libs/frontend/features/workspace/tsconfig.lib.json"
     },
     {
+      "path": "../../libs/frontend/features/settings/tsconfig.json"
+    },
+    {
       "path": "../../libs/frontend/platform"
     },
     {

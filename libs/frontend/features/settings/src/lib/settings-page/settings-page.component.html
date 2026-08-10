@@ -1,0 +1,55 @@
+<div class="wo-settings">
+	<nav class="wo-settings__nav" aria-label="Settings sections">
+		<div class="wo-settings__nav-title">
+			<span>Settings</span>
+			<svg width="26" height="8" viewBox="0 0 26 8" aria-hidden="true">
+				<polygon points="0,8 4,0 8,8" fill="var(--oc-teal)" opacity=".55" />
+				<polygon points="6,8 10,0 14,8" fill="var(--oc-teal-fold-dark)" opacity=".45" />
+				<polygon points="12,8 16,0 20,8" fill="var(--oc-teal-hover)" opacity=".5" />
+				<polygon points="18,8 22,0 26,8" fill="var(--oc-orange)" opacity=".5" />
+			</svg>
+		</div>
+
+		<div class="wo-settings__scope" role="group" aria-label="Settings scope">
+			<button
+				type="button"
+				class="wo-settings__scope-link"
+				[class.wo-settings__scope-link--active]="activeScope() === scopes.Workspace"
+				[attr.aria-pressed]="activeScope() === scopes.Workspace"
+				(click)="selectScope(scopes.Workspace)"
+			>
+				Workspace
+			</button>
+			<button
+				type="button"
+				class="wo-settings__scope-link"
+				[class.wo-settings__scope-link--active]="activeScope() === scopes.Personal"
+				[attr.aria-pressed]="activeScope() === scopes.Personal"
+				(click)="selectScope(scopes.Personal)"
+			>
+				Personal
+			</button>
+		</div>
+
+		<div class="wo-settings__nav-list">
+			@for (item of navigation(); track item.id) {
+				<a
+					class="wo-settings__nav-item"
+					[routerLink]="item.route"
+					routerLinkActive="wo-settings__nav-item--active"
+					[routerLinkActiveOptions]="{ exact: false }"
+					ariaCurrentWhenActive="page"
+				>
+					<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+						<path [attr.d]="item.iconPath" />
+					</svg>
+					<span>{{ item.label }}</span>
+				</a>
+			}
+		</div>
+	</nav>
+
+	<main class="wo-settings__content wo-scrollable" tabindex="-1">
+		<router-outlet />
+	</main>
+</div>

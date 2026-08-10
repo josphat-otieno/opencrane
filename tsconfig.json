@@ -199,6 +199,9 @@
       "@opencrane/features/tools": [
         "./libs/frontend/features/tools/src/index.ts"
       ],
+      "@opencrane/features/settings": [
+        "./libs/frontend/features/settings/src/index.ts"
+      ],
       "@opencrane/features/context": [
         "./libs/frontend/features/context/src/index.ts"
       ],
@@ -261,6 +264,9 @@
     },
     {
       "path": "./libs/frontend/features/tools"
+    },
+    {
+      "path": "./libs/frontend/features/settings"
     },
     {
       "path": "./libs/frontend/elements/a2ui"

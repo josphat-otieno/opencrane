@@ -1,20 +1,20 @@
 <section class="wo-llm-providers" aria-labelledby="workspace-llm-providers-title">
 	@if (addPageOpen()) {
-		<button type="button" class="wo-llm-providers__back" [disabled]="connectionPhase() === 'testing' || savePending()" (click)="closeAddPage()">
+		<button type="button" class="wo-llm-providers__back" [disabled]="savePending()" (click)="closeAddPage()">
 			<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 2L4 7l5 5"></path></svg>
-			LLM Providers
+			Models
 		</button>
-		<h2 id="workspace-llm-providers-title" class="wo-llm-providers__add-title">Add Provider Key</h2>
+		<h2 id="workspace-llm-providers-title" class="wo-llm-providers__add-title">Add provider key</h2>
 
 		<div class="wo-llm-providers__provider-grid" role="list" aria-label="Provider options">
-			@for (provider of providerOptions(); track provider.id) {
+			@for (provider of providerOptions; track provider.provider) {
 				<button
 					type="button"
 					class="wo-llm-providers__provider-option"
-					[class.wo-llm-providers__provider-option--selected]="selectedProviderId() === provider.id"
-					[attr.aria-pressed]="selectedProviderId() === provider.id"
-					[disabled]="connectionPhase() === 'testing' || savePending()"
-					(click)="selectProvider(provider.id)"
+					[class.wo-llm-providers__provider-option--selected]="selectedProviderId() === provider.provider"
+					[attr.aria-pressed]="selectedProviderId() === provider.provider"
+					[disabled]="savePending()"
+					(click)="selectProvider(provider.provider)"
 				>
 					<strong>{{ provider.name }}</strong>
 					<span>{{ provider.models }}</span>
@@ -33,39 +33,38 @@
 						autocomplete="new-password"
 						placeholder="Enter API key"
 						[value]="keyDraft()"
-						[disabled]="connectionPhase() === 'testing' || savePending()"
+						[disabled]="savePending()"
 						(input)="updateKeyDraft($event)"
 					/>
 				</label>
 				<div class="wo-llm-providers__key-actions">
-					<button type="button" class="wo-llm-providers__secondary" [disabled]="!keyDraft().trim() || connectionPhase() === 'testing' || savePending()" (click)="testConnection()">
-						{{ connectionPhase() === "testing" ? "Testing…" : "Test connection" }}
-					</button>
-					<button type="submit" class="wo-llm-providers__primary" [disabled]="!keyDraft().trim() || connectionPhase() === 'testing' || savePending()">
-						{{ savePending() ? "Saving…" : "Save key" }}
+					<button type="submit" class="wo-llm-providers__primary" [disabled]="!keyDraft().trim() || savePending()">
+						{{ savePending() ? "Saving..." : "Save key" }}
 					</button>
 				</div>
 			</form>
 		}
 	} @else {
 		<header class="wo-llm-providers__header">
-			<h2 id="workspace-llm-providers-title">LLM Providers</h2>
-			<p>The model providers powering your workspace, and how queries are routed across them.</p>
+			<h2 id="workspace-llm-providers-title">Models</h2>
+			<p>Provider keys and model routing status for this OpenCrane workspace.</p>
 		</header>
 
 		<div class="wo-llm-providers__section-heading">
-			<h3>LLM provider keys</h3>
+			<h3>Provider keys</h3>
 			<button #addProviderButton type="button" class="wo-llm-providers__primary" (click)="openAddPage()">Add provider key</button>
 		</div>
 		<div class="wo-llm-providers__card">
 			@for (provider of providers(); track provider.id) {
 				<article class="wo-llm-providers__provider-row">
 					<div class="wo-llm-providers__provider-row-heading">
-						<div><h4>{{ provider.name }}</h4><span class="wo-llm-providers__status-dot" role="img" aria-label="Connected"></span></div>
-						<button type="button" class="wo-llm-providers__remove" (click)="requestRemove(provider, $event, addProviderButton)">Remove</button>
+						<div><h4>{{ provider.name }}</h4><span class="wo-llm-providers__status-dot" [class.wo-llm-providers__status-dot--inactive]="!provider.configured" role="img" [attr.aria-label]="provider.configured ? 'Connected' : 'Not connected'"></span></div>
+						@if (provider.configured) {
+							<button type="button" class="wo-llm-providers__remove" (click)="requestRemove(provider, $event, addProviderButton)">Remove</button>
+						}
 					</div>
 					<p>{{ provider.models }}</p>
-					<div class="wo-llm-providers__metadata"><span class="wo-llm-providers__key-state wo-mono">Encrypted key</span><span>Added {{ provider.added }}</span><span>Used {{ provider.lastUsed }}</span></div>
+					<div class="wo-llm-providers__metadata"><span class="wo-llm-providers__key-state wo-mono">{{ provider.configured ? "Encrypted key" : "No key" }}</span><span>{{ provider.added }}</span><span>{{ provider.lastUsed }}</span></div>
 				</article>
 			}
 		</div>
@@ -73,28 +72,28 @@
 
 		<section class="wo-llm-providers__routing" aria-labelledby="llm-routing-title">
 			<h3 id="llm-routing-title">Routing</h3>
-			<p>A fast analysis model reads each incoming prompt, classifies it into a category, then hands it to the LLM you've chosen for that category.</p>
+			<p>Model routing controls will be enabled when the public routing settings contract is available.</p>
 			<div class="wo-llm-providers__flow" aria-label="Prompt routing flow">
 				<div><small>Incoming prompt</small><span>Any message or agent task</span></div>
 				<b aria-hidden="true">→</b>
-				<label class="wo-llm-providers__analysis"><small>Prompt analysis model</small><select class="wo-mono" [value]="analysisModel()" (change)="updateAnalysisModel($event)">@for (model of analysisModelOptions(); track model) {<option [value]="model">{{ model }}</option>}</select><span>Fast + cheap · classifies, doesn't answer</span></label>
+				<label class="wo-llm-providers__analysis"><small>Prompt analysis model</small><select class="wo-mono" [value]="analysisModel()" disabled>@for (model of modelOptions; track model) {<option [value]="model">{{ model }}</option>}</select><span>Awaiting contract-backed routing settings</span></label>
 				<b aria-hidden="true">→</b>
 				<div><small>Category → LLM</small><span>Routed by the table below</span></div>
 			</div>
 
-			<div class="wo-llm-providers__route-heading"><h4>Route by category</h4><button type="button" (click)="addCategory()">+ Add category</button></div>
+			<div class="wo-llm-providers__route-heading"><h4>Route by category</h4><button type="button" disabled>+ Add category</button></div>
 			<div class="wo-llm-providers__card">
 				@for (category of routeCategories(); track category.id) {
 					<div class="wo-llm-providers__route-row">
 						<div><h5>{{ category.name }}</h5><p>{{ category.description }}</p></div>
-						<select class="wo-mono" [value]="category.model" (change)="updateCategoryModel(category.id, $event)">@for (model of modelOptions(); track model) {<option [value]="model" [selected]="model === category.model">{{ model }}</option>}</select>
-						<button type="button" class="wo-llm-providers__trash" [attr.aria-label]="'Remove ' + category.name" (click)="removeCategory(category.id)">
+						<select class="wo-mono" [value]="category.model" disabled>@for (model of modelOptions; track model) {<option [value]="model" [selected]="model === category.model">{{ model }}</option>}</select>
+						<button type="button" class="wo-llm-providers__trash" [attr.aria-label]="'Remove ' + category.name" disabled>
 							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"></path></svg>
 						</button>
 					</div>
 				}
 			</div>
-			<div class="wo-llm-providers__note">If the analysis model is unsure, the prompt falls through to the LLM set for <strong>Simple / factual lookup</strong>.</div>
+			<div class="wo-llm-providers__note">Routing is read-only in this slice; provider keys above are the contract-backed controls.</div>
 		</section>
 	}
 

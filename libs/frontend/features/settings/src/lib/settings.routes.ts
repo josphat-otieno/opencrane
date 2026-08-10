@@ -1,120 +1,55 @@
-import { Route, Routes } from "@angular/router";
+import { Routes } from "@angular/router";
 
 import { SettingsPageComponent } from "./settings-page/settings-page.component.js";
-import { _CanDeactivatePodSection } from "./sections/pod-section/pod-section.guard.js";
-import { _CanDeactivateMembersSection } from "./sections/members-section/members-section.guard.js";
-import { _CanDeactivateBudgetsSection } from "./sections/budgets-section/budgets-section.guard.js";
+import { SettingsPlaceholderComponent } from "./settings-placeholder/settings-placeholder.component.js";
 
 /** Workspace-owned settings routes in the canonical navigation order. */
 const WORKSPACE_SETTINGS_ROUTES: Routes =
 [
-	{ path: "", pathMatch: "full", redirectTo: "pod" },
+	{ path: "", pathMatch: "full", redirectTo: "models" },
 	{
-		path: "pod",
-		canDeactivate: [_CanDeactivatePodSection],
-		loadComponent: function loadPodSection()
+		path: "models",
+		loadComponent: function loadModelsSection()
 		{
-			return import("./sections/pod-section/pod-section.component.js").then(function pickPodSection(module)
-			{
-				return module.PodSectionComponent;
-			});
-		}
-	},
-	{
-		path: "members",
-		children:
-		[
-			{
-				path: "",
-				pathMatch: "full",
-				loadComponent: function loadMembersSection()
-				{
-					return import("./sections/members-section/members-section.component.js").then(function pickMembersSection(module)
-					{
-						return module.MembersSectionComponent;
-					});
-				}
-			},
-			...(["department", "team", "project"] as const).map(function membersEditorRoute(editorKind): Route
-			{
-				return {
-					path: `edit/${editorKind}/:id`,
-					data: { editorKind },
-					canDeactivate: [_CanDeactivateMembersSection],
-					loadComponent: function loadMembersEditor()
-					{
-						return import("./sections/members-section/members-section.component.js").then(function pickMembersEditor(module)
-						{
-							return module.MembersSectionComponent;
-						});
-					}
-				};
-			})
-		]
-	},
-	{
-		path: "budgets",
-		canDeactivate: [_CanDeactivateBudgetsSection],
-		loadComponent: function loadBudgetsSection()
-		{
-			return import("./sections/budgets-section/budgets-section.component.js").then(function pickBudgetsSection(module)
-			{
-				return module.BudgetsSectionComponent;
-			});
-		}
-	},
-	{
-		path: "skills",
-		loadComponent: function loadSkillsSection()
-		{
-			return import("./sections/skills-section/skills-section.component.js").then(function pickSkillsSection(module)
-			{
-				return module.SkillsSectionComponent;
-			});
-		}
-	},
-	{
-		path: "connectors",
-		loadComponent: function loadConnectorsSection()
-		{
-			return import("./sections/connectors-section/connectors-section.component.js").then(function pickConnectorsSection(module)
-			{
-				return module.ConnectorsSectionComponent;
-			});
-		}
-	},
-	{
-		path: "agents",
-		loadComponent: function loadAgentsSection()
-		{
-			return import("./sections/agents-section/agents-section.component.js").then(function pickAgentsSection(module)
-			{
-				return module.AgentsSectionComponent;
-			});
-		}
-	},
-	{
-		path: "data-network",
-		loadComponent: function loadDataNetworkSection()
-		{
-			return import("./sections/data-network-section/data-network-section.component.js").then(function pickDataNetworkSection(module)
-			{
-				return module.DataNetworkSectionComponent;
-			});
-		}
-	},
-	{
-		path: "provider-keys",
-		loadComponent: function loadLlmProvidersSection()
-		{
-			return import("./sections/llm-providers-section/llm-providers-section.component.js").then(function pickLlmProvidersSection(module)
+			return import("./sections/llm-providers-section/llm-providers-section.component.js").then(function pickModelsSection(module)
 			{
 				return module.LlmProvidersSectionComponent;
 			});
 		}
 	},
-	{ path: "**", redirectTo: "pod" }
-];
+		{
+			path: "members",
+			component: SettingsPlaceholderComponent,
+			data: { title: "Members", description: "Workspace membership settings are waiting for a public settings contract." }
+		},
+		{
+			path: "budgets",
+			component: SettingsPlaceholderComponent,
+			data: { title: "Budgets", description: "Workspace budget controls will appear when the budget settings contract is available." }
+		},
+		{
+			path: "skills",
+			component: SettingsPlaceholderComponent,
+			data: { title: "Skills", description: "Skill settings are read-only until governed skill configuration is contract-backed." }
+		},
+		{
+			path: "connectors",
+			component: SettingsPlaceholderComponent,
+			data: { title: "Tools", description: "Tool and connector settings will use the MCP gateway once the section contract is complete." }
+		},
+		{
+			path: "agents",
+			component: SettingsPlaceholderComponent,
+			data: { title: "Agent", description: "Personal assistant configuration will appear after the public configuration contract is ready." }
+		},
+		{
+			path: "data-network",
+			component: SettingsPlaceholderComponent,
+			data: { title: "Memory and knowledge", description: "Memory and retrieval-source controls require confirmed public memory contracts." }
+		},
+		{ path: "provider-keys", redirectTo: "models" },
+		{ path: "**", redirectTo: "models" }
+	];
 
 /** Personal settings routes in the canonical navigation order. */
 const PERSONAL_SETTINGS_ROUTES: Routes =
@@ -130,36 +65,21 @@ const PERSONAL_SETTINGS_ROUTES: Routes =
 			});
 		}
 	},
-	{
-		path: "awareness",
-		loadComponent: function loadAwarenessSection()
 		{
-			return import("./sections/awareness-section/awareness-section.component.js").then(function pickAwarenessSection(module)
-			{
-				return module.AwarenessSectionComponent;
-			});
-		}
-	},
-	{
-		path: "budget",
-		loadComponent: function loadBudgetSection()
+			path: "awareness",
+			component: SettingsPlaceholderComponent,
+			data: { title: "Awareness", description: "Personal awareness settings are waiting for a public configuration contract." }
+		},
 		{
-			return import("./sections/budget-section/budget-section.component.js").then(function pickBudgetSection(module)
-			{
-				return module.BudgetSectionComponent;
-			});
-		}
-	},
-	{
-		path: "api-keys",
-		loadComponent: function loadApiKeysSection()
+			path: "budget",
+			component: SettingsPlaceholderComponent,
+			data: { title: "My budget", description: "Personal budget status will appear when the spend settings contract is available." }
+		},
 		{
-			return import("./sections/api-keys-section/api-keys-section.component.js").then(function pickApiKeysSection(module)
-			{
-				return module.ApiKeysSectionComponent;
-			});
-		}
-	},
+			path: "api-keys",
+			component: SettingsPlaceholderComponent,
+			data: { title: "API keys", description: "Personal API keys are unavailable until the account key contract is present." }
+		},
 	{ path: "**", redirectTo: "account" }
 ];
 
@@ -171,10 +91,10 @@ export const SETTINGS_ROUTES: Routes =
 		component: SettingsPageComponent,
 		children:
 		[
-			{ path: "", pathMatch: "full", redirectTo: "workspace/pod" },
-			{ path: "workspace", children: WORKSPACE_SETTINGS_ROUTES },
-			{ path: "personal", children: PERSONAL_SETTINGS_ROUTES },
-			{ path: "**", redirectTo: "workspace/pod" }
-		]
-	}
-];
+				{ path: "", pathMatch: "full", redirectTo: "personal/account" },
+				{ path: "workspace", children: WORKSPACE_SETTINGS_ROUTES },
+				{ path: "personal", children: PERSONAL_SETTINGS_ROUTES },
+				{ path: "**", redirectTo: "personal/account" }
+			]
+		}
+	];

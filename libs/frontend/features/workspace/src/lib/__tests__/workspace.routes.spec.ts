@@ -3,13 +3,13 @@ import { WorkspacePageComponent } from "../workspace-page.component";
 
 describe("WORKSPACE_ROUTES", () =>
 {
-	it("mounts a shell with a root home and the existing tools feature", () =>
+	it("mounts a shell with root home, tools, and settings features", () =>
 	{
 		const shell = WORKSPACE_ROUTES[0];
 
 		expect(shell?.path).toBe("");
 		expect(shell?.component).toBe(WorkspacePageComponent);
-		expect(shell?.children?.map(function _path(route) { return route.path; })).toEqual(["", "conversation/:threadId", "tools"]);
+		expect(shell?.children?.map(function _path(route) { return route.path; })).toEqual(["", "conversation/:threadId", "tools", "settings"]);
 	});
 
 	it("does not restore retired conversation session routes", () =>
