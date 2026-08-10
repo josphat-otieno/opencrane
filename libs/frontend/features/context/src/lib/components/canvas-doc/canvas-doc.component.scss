@@ -9,8 +9,8 @@
 		justify-content: space-between;
 		padding: 8px 12px;
 		flex-shrink: 0;
-		border-bottom: 1px solid var(--border);
-		background: var(--background);
+		border-bottom: 1px solid var(--oc-border-default);
+		background: var(--oc-surface-paper);
 
 		&-title {
 			display: flex;
@@ -21,7 +21,7 @@
 
 			.wo-mono {
 				font-size: 10px;
-				color: var(--muted-foreground);
+				color: var(--oc-ink-muted);
 				font-weight: 400;
 			}
 		}
@@ -36,12 +36,12 @@
 				align-items: center;
 				gap: 4px;
 				padding: 4px 8px;
-				border-radius: var(--radius);
+				border-radius: var(--oc-radius-chip);
 				font-size: 10px;
-				color: var(--muted-foreground);
+				color: var(--oc-ink-muted);
 
 				&:hover {
-					background: var(--secondary);
+					background: var(--oc-surface-subtle);
 				}
 
 				i {
@@ -50,7 +50,7 @@
 			}
 
 			.wo-canvas__saved {
-				color: var(--wo-ok);
+				color: var(--oc-status-ok);
 			}
 		}
 	}
@@ -73,12 +73,11 @@
 		gap: 6px;
 		margin-bottom: 16px;
 		padding: 6px 8px;
-		border-radius: var(--radius);
-		background: rgba(200, 75, 49, 0.06);
-		border: 1px solid rgba(200, 75, 49, 0.15);
+		border-radius: var(--oc-radius-chip);
+		background: var(--oc-info-soft);
+		border: 1px solid var(--oc-info);
 		font-size: 10px;
-		color: var(--accent);
-		opacity: 0.9;
+		color: var(--oc-info);
 
 		i {
 			font-size: 10px;
@@ -87,7 +86,7 @@
 
 	&__meta {
 		font-size: 11px;
-		color: var(--muted-foreground);
+		color: var(--oc-ink-muted);
 		margin: 0 0 16px;
 	}
 
@@ -96,10 +95,10 @@
 		font-weight: 500;
 		letter-spacing: 0.07em;
 		text-transform: uppercase;
-		color: var(--muted-foreground);
+		color: var(--oc-ink-muted);
 		margin: 20px 0 8px;
 		padding-bottom: 4px;
-		border-bottom: 1px solid var(--border);
+		border-bottom: 1px solid var(--oc-border-default);
 	}
 
 	&__prose {
@@ -113,11 +112,11 @@
 		align-items: center;
 		justify-content: space-between;
 		padding: 6px 0;
-		border-bottom: 1px solid var(--border);
+		border-bottom: 1px solid var(--oc-border-default);
 
 		&-label {
 			font-size: 12px;
-			color: var(--muted-foreground);
+			color: var(--oc-ink-muted);
 		}
 
 		&-value {
@@ -133,7 +132,7 @@
 
 		&-note {
 			font-size: 10px;
-			color: var(--muted-foreground);
+			color: var(--oc-ink-muted);
 		}
 	}
 
@@ -148,35 +147,26 @@
 			font-weight: 500;
 			letter-spacing: 0.06em;
 			text-transform: uppercase;
-			color: var(--muted-foreground);
-			border-bottom: 1px solid var(--border);
+			color: var(--oc-ink-muted);
+			border-bottom: 1px solid var(--oc-border-default);
 		}
 
 		td {
 			padding: 8px 12px 8px 0;
 			font-size: 12px;
-			border-bottom: 1px solid var(--border);
+			border-bottom: 1px solid var(--oc-border-default);
 		}
 
 		&-muted {
 			font-size: 11px;
-			color: var(--muted-foreground);
+			color: var(--oc-ink-muted);
 		}
 
 		&-timeline {
 			font-size: 10px;
-			color: var(--muted-foreground);
+			color: var(--oc-ink-muted);
 			white-space: nowrap;
 		}
-	}
-
-	&__status {
-		font-size: 9px;
-		border: 1px solid;
-		border-radius: 3px;
-		padding: 1px 5px;
-		opacity: 0.85;
-		white-space: nowrap;
 	}
 
 	&__risk {
@@ -185,13 +175,13 @@
 		gap: 10px;
 		margin-bottom: 8px;
 		padding: 8px;
-		border-radius: var(--radius);
-		background: rgba(74, 107, 138, 0.05);
-		border-left: 2px solid var(--wo-observation);
+		border-radius: var(--oc-radius-chip);
+		background: var(--oc-info-soft);
+		border-left: 2px solid var(--oc-info);
 
 		i {
 			font-size: 11px;
-			color: var(--wo-observation);
+			color: var(--oc-info);
 			margin-top: 2px;
 		}
 
@@ -202,18 +192,59 @@
 		}
 
 		&--high {
-			background: var(--wo-policy-bg);
-			border-left-color: var(--wo-policy);
+			background: var(--oc-warning-soft);
+			border-left-color: var(--oc-warning);
 
 			i {
-				color: var(--wo-policy);
+				color: var(--oc-warning);
 			}
+		}
+	}
+
+	&__table-caption {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border: 0;
+	}
+
+	&__empty {
+		display: grid;
+		justify-items: center;
+		align-content: center;
+		gap: var(--oc-space-3);
+		min-height: 100%;
+		padding: var(--oc-space-8);
+		color: var(--oc-ink-muted);
+		text-align: center;
+
+		i {
+			font-size: var(--oc-text-2xl);
+			color: var(--oc-info);
+		}
+
+		p {
+			margin: 0;
+			font-size: var(--oc-text-sm);
+			font-weight: 500;
+			color: var(--oc-ink-strong);
+		}
+
+		span {
+			max-width: 20rem;
+			font-size: var(--oc-text-xs);
+			line-height: 1.5;
 		}
 	}
 
 	&__footer {
 		font-size: 10px;
-		color: var(--muted-foreground);
+		color: var(--oc-ink-muted);
 		margin-top: 8px;
 	}
 }

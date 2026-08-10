@@ -1,48 +1,79 @@
-# @opencrane/state/onboarding — shared onboarding persistence
+# @opencrane/state/onboarding — server-backed onboarding orchestration
 
 > [frontend](../../README.md) › [state](../README.md) › onboarding
 
 ## What it owns
 
-Part of the OpenCrane **frontend state layer** (the code between the browser UI and the backend). This
-package owns the small pieces of *persisted* state the onboarding journeys need — the bits that must
-survive a page reload or a redirect. It talks to the browser through the abstract `StorageGateway` from
-[`utils/storage`](../utils/storage/README.md) rather than touching `localStorage` directly, so it
-degrades gracefully where storage is unavailable.
+This package owns the transport-neutral persona gateway port, validated owner projection, and
+component-scoped browser store, plus the first-chat gateway port, validated projection, and thin
+generated-client adapter. Every durable fact remains on the server. Persona commands adopt the
+complete owner snapshot; first-chat commands consume the complete projection returned by the same
+server authority.
 
-It owns two independent concerns:
+```
+ features/onboarding
+       │ survey choices · approval · first-chat answers
+       ▼
+ ┌───────────────────────────────┐
+ │ state/onboarding  ◄── HERE    │  ports · models · validate · orchestrate
+ └───────────────────────────────┘
+       │ PersonaGateway
+       ▼
+ persona/adapter ............... typed control-plane API
+```
 
-- **First-run flag** (`WelcomeOnboardingService`): a single persisted boolean recording whether the
-  user has finished the operator app's welcome flow. It lives here, not in `features/welcome`, because
-  both the welcome feature (which writes it) and the app's first-run route guard (which reads it) need
-  it — and a route guard must not statically import a lazy-loaded feature.
-- **Signup funnel cache** (`OnboardingCacheService`): saves the self-serve funnel's step + selections
-  so progress survives the Zitadel OIDC sign-in redirect (OIDC is the login standard; the user leaves
-  the app to authenticate and comes back). It also owns the funnel's step/state types.
+**In this flow:** [features/onboarding](../../features/onboarding/README.md) ·
+[persona/adapter](../persona/adapter/README.md)
 
-Invariant: all persistence is **best-effort** — a missing or throwing store means onboarding is simply
-treated as incomplete and writes silently no-op, never an error. The funnel cache is cleared once
-signup completes.
+The orchestrator creates a draft only after the completed snapshot proves no tie remains. An
+explicit prepare-draft command resumes an interrupted durable review transition. A failed mutation
+returns no optimistic state, so the current durable screen stays retryable. The first-chat
+store is component-scoped: its resource performs only the authoritative read, while explicit
+single-flight entry, answer, conclusion, and retry commands adopt complete server projections. It
+keeps retry identity outside durable browser storage, resets controlled input when the authoritative
+question changes, and asks the server to conclude only when its latest projection says all three
+answers are present.
+
+The model-adjacent runtime validators strip unknown response extensions and reject invalid lifecycle,
+question, score, revision, transcript, source, or completion evidence before feature state can
+consume it.
 
 ## Public surface
 
-- `WelcomeOnboardingService` — the first-run completed flag as a signal (`completed`, `markComplete`, `reset`).
-- `OnboardingCacheService` — save/restore/clear the funnel step + selection across the OIDC redirect;
-  restored browser data is rebuilt only after its step, plan, and account fields pass domain validation.
-- `welcome-onboarding.util` — the pure completion-decision helper.
-- `onboarding.types` — the funnel step, account, selection, and payment/provision state types.
+- `PersonaOnboardingService` — read, start, answer, complete, resolve, `ensureDraft`, approve, and restart
+  application commands over the narrow persona gateway.
+- `PersonaOnboardingStore` — read resources, single-flight command and ready-route admission,
+  bounded errors, and authoritative projection adoption for one mounted onboarding shell.
+- `PERSONA_GATEWAY` and `PersonaGateway` — transport-neutral dependency-injection port.
+- `_ParsePersonaOnboardingSnapshot` plus persona lifecycle models — bounded response validation and
+  the feature-facing projection.
+- `PersonaFirstChatService` and `PERSONA_FIRST_CHAT_GATEWAY` — read and explicit start, answer, and
+  guarded-conclusion operations over a package-internal narrow port.
+- `PersonaFirstChatStore` — component-scoped read resource, typed command phases and admission,
+  retry coordinates, conflict adoption, controlled draft, and authoritative projection state.
+- `OpenCranePersonaFirstChatGateway` — thin generated-client adapter for the signed-in owner's
+  onboarding and first-chat endpoints.
+- Package-internal adapter validators fail closed on routing, provenance, transcript order, and
+  completion eligibility; only the feature-consumed route, snapshot, transcript, and current-question
+  projections plus finite lifecycle enums are exported.
 
 ## Boundary
 
-Consumed by `features/welcome` and `apps/opencrane-ui` (the first-run guard). It persists small state
-only; it makes no HTTP calls and defines no gateway port.
+Consumed by the onboarding feature; the persona port is implemented by the persona adapter, while
+the bounded first-chat adapter stays beside its model and validator in this cohesive state package.
+It holds no browser-storage completion flag or durable transcript, performs no score calculation or
+model execution, and cannot assert that an answer, draft, approval, or conclusion succeeded.
 
 ## Dependency direction
 
-Tagged `scope:web` (`type:state`): it may depend only on other `scope:web` and `scope:shared`
-packages — here `state/utils/storage`, `@opencrane/core`, and Angular — never on apps or server domains.
+Tagged `scope:persona-onboarding`, `type:lib`, `layer:frontend`, and `frontend-role:state`. Its role
+constraint permits only frontend core and lower dependency-neutral model, contract, or utility
+layers. The persona adapter depends inward on this port and model; state cannot import a feature, an
+app, or backend source. Its first-chat HTTP adapter depends only on the generated client in core and
+the model-adjacent validators in this package.
 
 ## See also
 
 - Parent index: [state](../README.md)
-- Siblings: [utils/storage](../utils/storage/README.md) · [core](../core/README.md)
+- Adapter: [persona/adapter](../persona/adapter/README.md)
+- Feature: [features/onboarding](../../features/onboarding/README.md)

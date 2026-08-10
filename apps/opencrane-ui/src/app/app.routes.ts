@@ -19,14 +19,14 @@ export const APP_ROUTES: Routes =
 		}
 	},
 	{
-		// First-run onboarding (OPS.1). Reached directly or via the first-run guard.
-		path: "welcome",
+		// Server-authoritative persona lifecycle and bounded first-chat journey.
+		path: "onboarding",
 		canActivate: [___OperatorAccessGuard],
-		loadChildren: function loadWelcomeRoutes()
+		loadChildren: function loadOnboardingRoutes()
 		{
-			return import("@opencrane/features/welcome").then(function pickWelcomeRoutes(m)
+			return import("@opencrane/features/onboarding").then(function pickOnboardingRoutes(m)
 			{
-				return m.WELCOME_ROUTES;
+				return m.ONBOARDING_ROUTES;
 			});
 		}
 	},
@@ -43,19 +43,7 @@ export const APP_ROUTES: Routes =
 			});
 		}
 	},
-	{
-		// Authenticated workspace shell. On first use the welcome flow must finish
-		// before the shell activates; the shell owns its child feature routes.
-		path: "",
-		canActivate: [___OperatorAccessGuard, ___FirstRunGuard],
-		loadChildren: function loadWorkspaceRoutes()
-		{
-			return import("@opencrane/features/workspace").then(function pickWorkspaceRoutes(m)
-			{
-				return m.WORKSPACE_ROUTES;
-			});
-		}
-	},
+	{ path: "", pathMatch: "full", redirectTo: "onboarding" },
 	{
 		path: "**",
 		redirectTo: ""

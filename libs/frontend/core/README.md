@@ -26,12 +26,17 @@ a feature never calls `fetch` directly and never guesses a request or response s
 
 - `lib/models/*.types.ts` — shared data models (DTOs), enums, and colour/label maps (`scope`, `session`, `thread`,
   `context`, `notification`, `settings`, `mcp`, `plan`).
+- `CanvasDocument` — the owner-supplied content and action-state contract for context-panel canvas documents.
 - `lib/data/*.data.ts` — demo fixtures, temporary until the live API replaces them.
 - `ControlPlaneApiService` — the typed HTTP client and its `CONTROL_PLANE_BASE_URL` injection token.
 - `OpenCraneApiError` — the browser-safe failed-request model. It preserves the public status/code
   and bounded validation issues so forms can bind `issue.path` to controls, while discarding
   server-only detail and arbitrary response bodies.
-- `OpenCranePreset` (`lib/theme/opencrane-preset`) — the PrimeNG (the component library) theme preset.
+- `OpenCranePreset` (`lib/theme/opencrane-preset`) — the PrimeNG (the component library) theme preset
+  that maps accessible controls onto OpenCrane's paper, ink, and cyan visual language.
+- `lib/theme/opencrane-theme.scss` — shared font loading, canonical `--oc-*` design tokens, reset,
+  focus treatment, reduced-motion behaviour, and global typography/overflow primitives used by the
+  SPA and Storybook.
 - `lib/utils/*` — framework-agnostic helpers (`_ToggleId`, collection helpers).
 
 ## Boundary
@@ -43,9 +48,10 @@ coupling.
 
 ## Dependency direction
 
-Tagged `type:lib`, `layer:frontend`, and `scope:web` (the frontend dependency tier): it may import
-only other `scope:web` packages and `scope:shared` contracts. It imports no other frontend package;
-its one dependency is the `scope:shared` `@opencrane/contracts`.
+Tagged `type:lib`, `layer:frontend`, `scope:shared`, and `frontend-role:core`. It imports no other
+frontend package; its one dependency is the shared `@opencrane/contracts` package. Capability-bound
+frontend packages may depend on this explicitly cross-cutting core without gaining access to every
+legacy `scope:web` package.
 
 ## See also
 

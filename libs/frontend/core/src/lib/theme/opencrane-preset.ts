@@ -1,21 +1,12 @@
 import { definePreset } from "@primeng/themes";
 import Aura from "@primeng/themes/aura";
 
-/** Paper theme primary accent (matches --oc-teal). */
-const OC_PRIMARY = "#0db5cc";
-
-/** Brighter fold used by the hard-stop hover treatment. */
-const OC_PRIMARY_HOVER = "#22c7dd";
-
-/** Dark edge and accessible focus colour for primary controls. */
-const OC_PRIMARY_EDGE = "#0a94a7";
-
 /**
- * OpenCrane PrimeNG preset.
+ * OpenCrane's PrimeNG preset.
  *
- * Extends Aura with the semantic colours used by the OpenCrane Paper handoff.
- * Component-specific overrides stay here so PrimeNG controls and application
- * styles share the same surface, focus, and primary colour contracts.
+ * Aura retains the accessible interaction anatomy while this preset maps
+ * controls onto the same cyan, paper, ink, and focus language as the product
+ * shell. Component styles consume the matching CSS tokens in `opencrane-theme.scss`.
  */
 export const OpenCranePreset = definePreset(Aura,
 {
@@ -23,24 +14,17 @@ export const OpenCranePreset = definePreset(Aura,
 	{
 		primary:
 		{
-			50: "#e6f8fc",
-			100: "#c4f0f7",
-			200: "#9fe5ef",
-			300: "#7ad9e7",
-			400: OC_PRIMARY_HOVER,
-			500: OC_PRIMARY,
-			600: OC_PRIMARY_EDGE,
-			700: "#087888",
-			800: "#075f6c",
-			900: "#054751",
-			950: "#032f36"
-		},
-		focusRing:
-		{
-			width: "3px",
-			style: "solid",
-			color: OC_PRIMARY_EDGE,
-			offset: "2px"
+			50: "#e9fbfe",
+			100: "#cff6fb",
+			200: "#9eeaf4",
+			300: "#65d9e9",
+			400: "#2bc5d8",
+			500: "#0db5cc",
+			600: "#0a94a7",
+			700: "#0b7787",
+			800: "#105f6c",
+			900: "#124f59",
+			950: "#052f37"
 		},
 		colorScheme:
 		{
@@ -48,31 +32,56 @@ export const OpenCranePreset = definePreset(Aura,
 			{
 				primary:
 				{
-					color: OC_PRIMARY,
-					contrastColor: "#1a1918",
-					hoverColor: OC_PRIMARY_HOVER,
-					activeColor: OC_PRIMARY_EDGE
+					color: "{primary.500}",
+					contrastColor: "#16191a",
+					hoverColor: "{primary.600}",
+					activeColor: "{primary.700}"
 				},
-				surface:
+				highlight:
 				{
-					0: "#ffffff",
-					50: "#fdfcfa",
-					100: "#f5f2ec",
-					200: "#ebe8e2",
-					300: "#dedad2",
-					400: "#d0cdc6",
-					500: "#9a9690",
-					600: "#6a6660",
-					700: "#4a4845",
-					800: "#2f2d2b",
-					900: "#1a1918",
-					950: "#141312"
+					background: "{primary.50}",
+					focusBackground: "{primary.100}",
+					color: "{primary.800}",
+					focusColor: "{primary.900}"
 				}
 			}
 		}
 	},
 	components:
 	{
+		button:
+		{
+			root:
+			{
+				borderRadius: "7px"
+			}
+		},
+		progressspinner:
+		{
+			colorScheme:
+			{
+				light:
+				{
+					root:
+					{
+						colorOne: "{primary.400}",
+						colorTwo: "{primary.500}",
+						colorThree: "{primary.600}",
+						colorFour: "{primary.700}"
+					}
+				}
+			}
+		},
+		radiobutton:
+		{
+			root:
+			{
+				checkedBackground: "{primary.500}",
+				checkedHoverBackground: "{primary.600}",
+				checkedBorderColor: "{primary.500}",
+				checkedHoverBorderColor: "{primary.600}"
+			}
+		},
 		toggleswitch:
 		{
 			colorScheme:
@@ -81,15 +90,15 @@ export const OpenCranePreset = definePreset(Aura,
 				{
 					root:
 					{
-						checkedBackground: OC_PRIMARY,
-						checkedHoverBackground: OC_PRIMARY_HOVER,
-						checkedBorderColor: OC_PRIMARY,
-						checkedHoverBorderColor: OC_PRIMARY_HOVER
+						checkedBackground: "{primary.500}",
+						checkedHoverBackground: "{primary.600}",
+						checkedBorderColor: "{primary.500}",
+						checkedHoverBorderColor: "{primary.600}"
 					},
 					handle:
 					{
-						checkedColor: OC_PRIMARY,
-						checkedHoverColor: OC_PRIMARY_HOVER
+						checkedColor: "{primary.500}",
+						checkedHoverColor: "{primary.600}"
 					}
 				}
 			}

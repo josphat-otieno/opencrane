@@ -6,7 +6,8 @@ import { toSanitizedMarkdownHtml } from "@opencrane/state/conversation/render";
 import { _OpenCraneA2uiTheme } from "./a2ui.theme";
 
 /**
- * App-level providers for in-process A2UI rendering. Registers the standard component catalog + an empty theme, and routes A2UI's
+ * App-level providers for in-process A2UI rendering (the v0.8 dialect OpenClaw ships at the
+ * pinned tag). Registers the standard component catalog + the OpenCrane theme, and routes A2UI's
  * Text markdown through the SAME vendored pipeline the transcript uses — one renderer, one
  * sanitization posture. Include once in an app's `providers` (spread the returned array).
  */

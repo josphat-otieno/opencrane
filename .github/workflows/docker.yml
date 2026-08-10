@@ -192,6 +192,18 @@ jobs:
       - name: Prove the module-growth classifier
         run: npm run test:module-growth
 
+      - name: Enforce release versions and migration history
+        run: npm run check:release-versioning -- --base "$GUARD_BASE"
+
+      - name: Prove the release-versioning classifier
+        run: npm run test:release-versioning
+
+      - name: Enforce version-to-version database migration contracts
+        run: npm run check:database-migrations
+
+      - name: Prove previous-to-current database convergence and rollback
+        run: npm run test:database-migrations
+
       - name: Prove the PR-stack integrity classifier
         run: npm run test:pr-stack-integrity
 
@@ -233,6 +245,35 @@ jobs:
 
       - name: Build, test, and lint affected projects
         run: npx nx affected -t build test lint
+
+      - name: Detect affected Storybook regression coverage
+        id: storybook-regression
+        shell: bash
+        run: |
+          AFFECTED_STORYBOOK_PROJECTS="$(npx nx show projects --affected --with-target=test-storybook-visual --base="$NX_BASE" --head="$NX_HEAD")"
+          if [[ -n "$AFFECTED_STORYBOOK_PROJECTS" ]]; then
+            echo "required=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "required=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Chromium for affected Storybook regressions
+        if: steps.storybook-regression.outputs.required == 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Build and test affected Storybook component contracts
+        if: steps.storybook-regression.outputs.required == 'true'
+        run: npx nx affected -t build-storybook test-storybook test-storybook-visual --base="$NX_BASE" --head="$NX_HEAD" --parallel=1
+
+      - name: Upload failed Storybook visual evidence
+        if: failure() && steps.storybook-regression.outputs.required == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: storybook-visual-evidence-${{ github.run_attempt }}
+          path: .nx/test-results/storybook
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Enforce monorepo dependency boundaries
         run: npm run lint:boundaries

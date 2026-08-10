@@ -1,18 +1,20 @@
-# OpenCrane server capabilities
+# OpenCrane server capabilities and infrastructure
 
 > [backend](../README.md) › server
 
-The OpenCrane server composes these backend capabilities. Directories group related authorities
-without changing any NX project, scope tag, or dependency contract.
+The OpenCrane server composes these backend capabilities and its process-specific infrastructure.
+Directories group related packages without changing any NX project, scope tag, or dependency
+contract.
 
 | Group | Shared concern | Members |
 | --- | --- | --- |
 | [`iam`](./iam/) | Who may act, and evidence of those decisions. | identity, membership, authorization, grants, groups, audit |
-| [`agents`](./agents/) | Agent publication, scheduling, channel admission, artifacts, and replay. | agent-services, scheduling, skills, artifacts, channel-targets, conversation-replay |
+| [`agents`](./agents/) | Agent publication, onboarding, scheduling, channel admission, artifacts, and replay. | agent-services, onboarding, scheduling, skills, artifacts, channel-targets, conversation-replay |
 | [`gateways`](./gateways/) | Governance of external model and tool planes. | mcp, integrations, providers, model-routing |
 | [`knowledge`](./knowledge/) | Organisational retrieval and memory access. | retrieval |
 | [`tenancy`](./tenancy/) | The organisation boundary used by server capabilities. | cluster-tenants |
 | [`reporting`](./reporting/) | Agent and model economics. | spend |
+| [`infra`](./infra/) | Process-specific transport, identity, and external-I/O seams. | api, auth, agent-runtime-stream, workload-identity, http, memory-gateway-client, obot-custody, sandbox-execution |
 
 [`api-spec`](./api-spec/main/) remains flat because it aggregates public paths from every group;
 placing it in one group would imply ownership of those capabilities.

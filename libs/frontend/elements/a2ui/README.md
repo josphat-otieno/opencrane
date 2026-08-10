@@ -41,15 +41,17 @@ intentionally unproduced.
 
 ## Boundary
 
-Consumed by the workspace shell, which calls `provideOpenCraneA2ui()` on its lazy route so the copied-in third-party
-A2UI code stays out of the initial bundle. It only renders and emits — it does not fetch canvas
-payloads or talk to the API; returning an action to the agent is the host's job.
+The future workspace shell will call `provideOpenCraneA2ui()` on its lazy route so the vendored
+(copied-in third-party code) A2UI code stays out of the initial bundle. No product route consumes
+the provider yet because the canvas producer is intentionally unwired. This package only renders
+and emits — it does not fetch canvas payloads or talk to the API; returning an action to the agent
+is the host's job.
 
 ## Dependency direction
 
-Tagged `scope:web` (the frontend dependency tier): it may import only other `scope:web` packages
-and `scope:shared` contracts — never backend code or app source. Its one internal dependency is
-`state/conversation/render` for the shared markdown pipeline.
+Tagged `type:lib`, `layer:frontend`, and `scope:web` (the frontend dependency tier): it may import
+only other `scope:web` packages and `scope:shared` contracts — never backend code or app source.
+Its one internal dependency is `state/conversation/render` for the shared markdown pipeline.
 
 ## See also
 
