@@ -5,7 +5,7 @@
 ## What it owns
 
 This pure browser-state package turns the small, display-safe AG-UI event projection into message,
-tool, run, and reconnect-cursor state. A future OpenCrane-authorised replay reader supplies the
+tool, run, source-reference, and reconnect-cursor state. A future OpenCrane-authorised replay reader supplies the
 events; this package never opens a connection, reads browser storage, or invents a conversation.
 
 ```
@@ -30,6 +30,7 @@ server reader's responsibility because SSE identifiers are opaque.
 - `__DecodeAgUiSseRecord` — validates one complete projected SSE record.
 - `__ReduceAgUiStream` / `__CreateAgUiStreamState` — builds immutable browser view state.
 - `__AgUiResumeCursor` — returns the cursor for a future authorised reconnect.
+- `AgUiSourceReferencesView` — display-safe citation, artifact, and memory references retained from the replay projection.
 
 ## Boundary
 

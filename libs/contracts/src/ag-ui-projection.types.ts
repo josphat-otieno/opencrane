@@ -17,6 +17,78 @@ export interface AgUiPublicEventPayload
 	readonly toolCallName?: string;
 	/** Display-safe, already-redacted tool result text. */
 	readonly toolResult?: string;
+	/** Display-safe source references selected by the server-owned replay projection. */
+	readonly sourceReferences?: AgUiPublicSourceReferences;
+}
+
+/** Display-safe citation reference selected by the server-owned projection. */
+export interface AgUiPublicCitationReference
+{
+	/** Stable display reference id. */
+	readonly id: string;
+	/** Human-readable source label. */
+	readonly label: string;
+	/** Optional display-safe source category. */
+	readonly sourceKind?: string;
+	/** Optional server-selected excerpt. */
+	readonly snippet?: string;
+	/** Optional capture timestamp. */
+	readonly capturedAt?: string;
+}
+
+/** Display-safe artifact reference selected by the server-owned projection. */
+export interface AgUiPublicArtifactReference
+{
+	/** Stable display reference id. */
+	readonly id: string;
+	/** Human-readable artifact label. */
+	readonly label: string;
+	/** Server-selected display access state. */
+	readonly accessState: string;
+	/** Optional artifact id. */
+	readonly artifactId?: string;
+	/** Optional artifact revision id. */
+	readonly artifactRevisionId?: string;
+	/** Optional media type. */
+	readonly mediaType?: string;
+	/** Optional display byte length. */
+	readonly byteLength?: string;
+	/** Optional creation timestamp. */
+	readonly createdAt?: string;
+}
+
+/** Display-safe memory reference selected by the server-owned projection. */
+export interface AgUiPublicMemoryReference
+{
+	/** Stable display reference id. */
+	readonly id: string;
+	/** Optional human-readable memory label. */
+	readonly label?: string;
+	/** Optional gateway-native dataset id. */
+	readonly datasetId?: string;
+	/** Optional memory fact id. */
+	readonly factId?: string;
+	/** Optional immutable content digest. */
+	readonly contentDigest?: string;
+	/** Optional display-safe source category. */
+	readonly sourceKind?: string;
+	/** Optional capture timestamp. */
+	readonly capturedAt?: string;
+	/** Optional server-selected summary. */
+	readonly summary?: string;
+}
+
+/** Display-safe source references selected for one projected message. */
+export interface AgUiPublicSourceReferences
+{
+	/** Optional message id associated with these references. */
+	readonly messageId?: string;
+	/** Display-safe citation references. */
+	readonly citations: readonly AgUiPublicCitationReference[];
+	/** Display-safe artifact references. */
+	readonly artifacts: readonly AgUiPublicArtifactReference[];
+	/** Display-safe memory references. */
+	readonly memoryReferences: readonly AgUiPublicMemoryReference[];
 }
 
 /** One already-authorized canonical event made safe for protocol projection. */
@@ -140,8 +212,8 @@ export interface AgUiCustomEvent
 	readonly type: "CUSTOM";
 	/** OpenCrane event name that clients may display but must not treat as a command. */
 	readonly name: string;
-	/** Non-sensitive canonical classification only. */
-	readonly value: { readonly eventType: string };
+	/** Non-sensitive canonical classification, with optional display-safe projection fields. */
+	readonly value: { readonly eventType: string } | ({ readonly eventType: "source.references" } & AgUiPublicSourceReferences);
 }
 
 /** One protocol event the offline projection can encode without an AG-UI runtime dependency. */

@@ -37,6 +37,11 @@ describe("AG-UI projection", function _Suite()
 		expect(__ProjectAgUiEvent(_Source("message.delta")).data).toEqual({ type: "CUSTOM", name: "opencrane.message_delta", value: { eventType: "message.delta" } });
 	});
 
+	it("projects display-safe source references without raw payload fields", function _ProjectsSources()
+	{
+		expect(__ProjectAgUiEvent(_Source("source.references", { sourceReferences: { messageId: "message-1", citations: [{ id: "cite-1", label: "Project brief", snippet: "safe" }], artifacts: [{ id: "artifact-ref-1", label: "brief.pdf", accessState: "metadata_only", mediaType: "application/pdf" }], memoryReferences: [{ id: "memory-1", factId: "fact-1", contentDigest: "sha256:abc" }] } })).data).toEqual({ type: "CUSTOM", name: "opencrane.source_references", value: { eventType: "source.references", messageId: "message-1", citations: [{ id: "cite-1", label: "Project brief", snippet: "safe" }], artifacts: [{ id: "artifact-ref-1", label: "brief.pdf", accessState: "metadata_only", mediaType: "application/pdf" }], memoryReferences: [{ id: "memory-1", factId: "fact-1", contentDigest: "sha256:abc" }] } });
+	});
+
 	it("encodes a versioned projection as one bounded SSE record", function _EncodesSse()
 	{
 		const record = __ProjectAgUiEvent(_Source("run.started"));

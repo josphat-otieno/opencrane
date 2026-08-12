@@ -15,4 +15,10 @@ describe("conversation timeline projection", function _Suite()
 		expect(__ProjectConversationReplayEvent({ cursor: "c.cursor", conversationId: "conversation-1", runId: "run-1", position: "1", type: "run.usage", payload: { providerKey: "secret" }, occurredAt: "2026-07-23T10:00:00.000Z" })?.payload).toEqual({});
 		expect(__ProjectConversationReplayEvent({ cursor: "", conversationId: "conversation-1", runId: "run-1", position: "1", type: "run.started", payload: {}, occurredAt: "2026-07-23T10:00:00.000Z" })).toBeNull();
 	});
+
+	it("copies only display-safe source references", function _Sources()
+	{
+		const projected = __ProjectConversationReplayEvent({ cursor: "c.cursor", conversationId: "conversation-1", runId: "run-1", position: "1", type: "source.references", payload: { messageId: "message-1", citations: [{ id: "cite-1", label: "Project brief", snippet: "safe", storageUrl: "https://storage.invalid" }], artifacts: [{ id: "artifact-ref-1", label: "brief.pdf", accessState: "metadata_only", mediaType: "application/pdf", lease: "secret" }], memoryReferences: [{ id: "memory-1", factId: "fact-1", contentDigest: "sha256:abc", rawFact: "never" }] }, occurredAt: "2026-07-23T10:00:00.000Z" });
+		expect(projected?.payload).toEqual({ sourceReferences: { messageId: "message-1", citations: [{ id: "cite-1", label: "Project brief", snippet: "safe" }], artifacts: [{ id: "artifact-ref-1", label: "brief.pdf", accessState: "metadata_only", mediaType: "application/pdf" }], memoryReferences: [{ id: "memory-1", factId: "fact-1", contentDigest: "sha256:abc" }] } });
+	});
 });

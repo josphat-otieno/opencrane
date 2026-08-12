@@ -66,9 +66,11 @@ runtime from silently interpreting a frozen snapshot with different assembly rul
 - `___ModelRoutingDefaultWriteSchema` — the model-adjacent Zod schema shared by the public routing
   defaults boundary; it enforces known fields while deliberately preserving auto-config extensions.
 - `AG_UI_PROJECTION_VERSION`, `AgUiProjectionSourceEvent`, `AgUiSseRecord`,
-  `__ProjectAgUiEvent`, and `__EncodeAgUiSseRecord` — the display-safe input, output, projection,
-  and SSE-record contract used by the server-owned AG-UI replay path. They do not authenticate a
-  browser, read canonical event storage, or create an approval-resume protocol.
+  `AgUiPublicSourceReferences`/`AgUiPublicCitationReference`/`AgUiPublicArtifactReference`/
+  `AgUiPublicMemoryReference`, `__ProjectAgUiEvent`, and `__EncodeAgUiSseRecord` — the display-safe
+  input, source-reference, output, projection, and SSE-record contract used by the server-owned
+  AG-UI replay path. They do not authenticate a browser, read canonical event storage, or create an
+  approval-resume protocol.
 - Hand-written DTOs/enums: `Grant`/`GrantScope`/`GrantAccess`, `Group`, `ClusterTenant*`,
   `McpServer*`/`Mcp*` operator types (MCP — the Model Context Protocol for connecting external tools),
   model-routing types, `Memory*`, `Approval`, `ThirdPartySource*`, `RuntimeAssignment`,

@@ -29,6 +29,8 @@ function _Project(source: AgUiProjectionSourceEvent): AgUiProjectionEvent
 		case RunEventTypes.ToolCompleted:
 			if (typeof source.payload.toolCallId !== "string") return _Custom(source);
 			return { type: "TOOL_CALL_END", toolCallId: source.payload.toolCallId };
+		case "source.references":
+			return source.payload.sourceReferences === undefined ? _Custom(source) : { type: "CUSTOM", name: "opencrane.source_references", value: { eventType: "source.references", ...source.payload.sourceReferences } };
 		default:
 			return _Custom(source);
 	}
